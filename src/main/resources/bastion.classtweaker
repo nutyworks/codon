@@ -1,0 +1,15 @@
+classTweaker v1 official
+accessible field net/minecraft/commands/execution/tasks/BuildContexts$TopLevel source Lnet/minecraft/commands/ExecutionCommandSource;
+accessible field net/minecraft/commands/execution/tasks/CallFunction function Lnet/minecraft/commands/functions/InstantiatedFunction;
+accessible class net/minecraft/commands/functions/MacroFunction$Entry
+accessible field net/minecraft/commands/execution/tasks/BuildContexts commandInput Ljava/lang/String;
+accessible field net/minecraft/commands/execution/tasks/BuildContexts command Lcom/mojang/brigadier/context/ContextChain;
+accessible class net/minecraft/commands/functions/FunctionBuilder
+accessible class net/minecraft/commands/functions/MacroFunction$PlainTextEntry
+accessible class net/minecraft/commands/functions/MacroFunction$MacroEntry
+accessible field net/minecraft/commands/functions/MacroFunction$MacroEntry template Lnet/minecraft/commands/functions/StringTemplate;
+accessible field net/minecraft/commands/functions/MacroFunction$MacroEntry parameters Lit/unimi/dsi/fastutil/ints/IntList;
+accessible field net/minecraft/commands/functions/MacroFunction$MacroEntry compilationContext Lnet/minecraft/commands/ExecutionCommandSource;
+accessible field net/minecraft/server/level/ServerPlayer server Lnet/minecraft/server/MinecraftServer;
+accessible field net/minecraft/commands/functions/MacroFunction parameters Ljava/util/List;
+accessible field net/minecraft/commands/execution/tasks/BuildContexts$Continuation originalSource Lnet/minecraft/commands/ExecutionCommandSource;

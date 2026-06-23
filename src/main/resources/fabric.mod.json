@@ -1,0 +1,40 @@
+{
+	"schemaVersion": 1,
+	"id": "bastion",
+	"version": "${version}",
+	"name": "Bastion",
+	"description": "An in-game step debugger for Minecraft commands and datapack functions: breakpoints, stepping, call stacks, and in-world visualization.",
+	"authors": [
+		"nutyworks"
+	],
+	"contact": {
+		"homepage": "https://github.com/nutyworks/bastion",
+		"sources": "https://github.com/nutyworks/bastion",
+		"issues": "https://github.com/nutyworks/bastion/issues"
+	},
+	"license": "MIT",
+	"icon": "assets/bastion/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"works.nuty.bastion.BastionMod"
+		],
+		"client": [
+			"works.nuty.bastion.client.BastionClientMod"
+		]
+	},
+	"accessWidener": "bastion.classtweaker",
+	"mixins": [
+		"bastion.mixins.json",
+		{
+			"config": "bastion.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.19.3",
+		"minecraft": "~26.2",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}

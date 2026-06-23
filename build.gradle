@@ -1,0 +1,133 @@
+plugins {
+	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+	id 'maven-publish'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+	archivesName = project.archives_base_name
+}
+
+repositories {
+	// Add repositories to retrieve artifacts from in here.
+	// You should only use this when depending on other mods because
+	// Loom adds the essential maven repositories to download Minecraft and libraries from automatically.
+	// See https://docs.gradle.org/current/userguide/declaring_repositories.html
+	// for more information about repositories.
+}
+
+// Minecraft-free core (hexagonal domain + ports + use cases).
+// Its configurations intentionally exclude minecraft/fabric, so any stray MC
+// import fails to compile — enforcing the architectural boundary at build time.
+sourceSets {
+	core
+	// Unit tests for the core. Its classpath is core + JUnit only (no Minecraft), so the domain
+	// is verifiable in milliseconds without launching or compiling the game.
+	coreTest
+}
+
+loom {
+	splitEnvironmentSourceSets()
+
+	accessWidenerPath = file("src/main/resources/bastion.classtweaker")
+
+	mods {
+		"bastion" {
+			sourceSet sourceSets.core
+			sourceSet sourceSets.main
+			sourceSet sourceSets.client
+		}
+	}
+
+}
+
+dependencies {
+	// To change the versions see the gradle.properties file
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+
+	// Fabric API. This is technically optional, but you probably want it anyway.
+	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+	// The core is Minecraft-free; the only dependency it may use is jspecify
+	// (pure nullability annotations, no runtime, no Minecraft).
+	coreCompileOnly "org.jspecify:jspecify:${project.jspecify_version}"
+
+	// Minecraft adapters (main/client) depend on the core's output.
+	implementation sourceSets.core.output
+	clientImplementation sourceSets.core.output
+
+	// Domain tests target the Minecraft-free core only.
+	coreTestImplementation sourceSets.core.output
+	coreTestCompileOnly "org.jspecify:jspecify:${project.jspecify_version}"
+	coreTestImplementation "org.junit.jupiter:junit-jupiter:${project.junit_version}"
+	coreTestRuntimeOnly "org.junit.platform:junit-platform-launcher"
+}
+
+// A dedicated task so `./gradlew coreTest` runs the domain suite with no Minecraft on the classpath.
+tasks.register("coreTest", Test) {
+	description = "Runs the Minecraft-free core unit tests."
+	group = "verification"
+	testClassesDirs = sourceSets.coreTest.output.classesDirs
+	classpath = sourceSets.coreTest.runtimeClasspath
+	useJUnitPlatform()
+}
+
+tasks.named("check") {
+	dependsOn "coreTest"
+}
+
+processResources {
+	inputs.property "version", project.version
+
+	filesMatching("fabric.mod.json") {
+		expand "version": inputs.properties.version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 25
+}
+
+java {
+	// Loom will automatically attach sourcesJar to a RemapSourcesJar task and to the "build" task
+	// if it is present.
+	// If you remove this line, sources will not be generated.
+	withSourcesJar()
+
+	sourceCompatibility = JavaVersion.VERSION_25
+	targetCompatibility = JavaVersion.VERSION_25
+}
+
+jar {
+	inputs.property "archivesName", project.base.archivesName
+
+	// Bundle the Minecraft-free core into the mod jar (remapJar carries it through;
+	// remapping is a no-op for these non-Minecraft classes).
+	from sourceSets.core.output
+
+	from("LICENSE") {
+		rename { "${it}_${inputs.properties.archivesName}"}
+	}
+}
+
+// configure the maven publication
+publishing {
+	publications {
+		create("mavenJava", MavenPublication) {
+			artifactId = project.archives_base_name
+			from components.java
+		}
+	}
+
+	// See https://docs.gradle.org/current/userguide/publishing_maven.html for information on how to set up publishing.
+	repositories {
+		// Add repositories to publish to here.
+		// Notice: This block does NOT have the same function as the block in the top level.
+		// The repositories here will be used for publishing your artifact, not for
+		// retrieving dependencies.
+	}
+}
