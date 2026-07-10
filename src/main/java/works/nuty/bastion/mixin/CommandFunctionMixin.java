@@ -31,7 +31,12 @@ interface CommandFunctionMixin {
         @Local(name = "lineNumber") int lineNumber,
         @Local(argsOnly = true) Identifier functionId
     ) {
-        BuildContexts.Unbound<T> ret = (BuildContexts.Unbound<T>) original.call(dispatcher, compilationContext, input);
-        return new PlainLineAction<>(ret.commandInput, ret.command, lineNumber, functionId);
+        UnboundEntryAction<T> ret = original.call(dispatcher, compilationContext, input);
+        // Another mod may wrap the same call with its own action type; leave those lines
+        // untouched (they only lose line-number attribution) instead of failing datapack load.
+        if (ret instanceof BuildContexts.Unbound<T> unbound) {
+            return new PlainLineAction<>(unbound.commandInput, unbound.command, lineNumber, functionId);
+        }
+        return ret;
     }
 }

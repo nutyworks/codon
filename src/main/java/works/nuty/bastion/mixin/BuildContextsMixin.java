@@ -24,14 +24,30 @@ import works.nuty.bastion.core.model.SourceLocation;
 import works.nuty.bastion.core.service.CommandStageEvent;
 import works.nuty.bastion.core.service.DebuggerEngine;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.WeakHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 @Mixin(BuildContexts.class)
 public class BuildContextsMixin<T extends ExecutionCommandSource<T>> {
+    @Unique
+    private static final AtomicLong bastion$nextChainId = new AtomicLong();
+
+    /**
+     * Continuation tasks create fresh {@code BuildContexts} instances for one forked execute
+     * command. Frame + source + input gives those instances one debugger chain identity, while a
+     * later invocation of the same command gets a new frame and therefore a new identity.
+     */
+    @Unique
+    private static final Map<Frame, Map<String, Long>> bastion$chainIds = new WeakHashMap<>();
+
     @Shadow
     @Final
     public String commandInput;
 
+    /** Fires once per modifier stage ({@code as @e}, {@code at @s}, …) with the sources entering it. */
     @Inject(
         method = "execute",
         at = @At(
@@ -53,6 +69,7 @@ public class BuildContextsMixin<T extends ExecutionCommandSource<T>> {
         pauseIfNeeded(frame, currentStage, currentSources);
     }
 
+    /** Fires exactly once per chain, for the executable stage with the fully resolved sources. */
     @Inject(
         method = "execute",
         at = @At(
@@ -74,17 +91,29 @@ public class BuildContextsMixin<T extends ExecutionCommandSource<T>> {
         final DebuggerEngine engine = BastionMod.engine();
         if (engine == null || !engine.isActive()) return;
 
+        final SourceLocation location = SourceMapper.toSourceLocation((BuildContexts<?>) (Object) this);
+        if (location == null) return;
+
         final StringRange range = currentStage.getTopContext().getRange();
         final CommandSnippet command = new CommandSnippet(this.commandInput, range.getStart(), range.getEnd());
-        final SourceLocation location = SourceMapper.toSourceLocation((BuildContexts<?>) (Object) this);
 
         final List<CommandSourceStack> sources = (List<CommandSourceStack>) currentSources;
 
         engine.onCommandStage(new CommandStageEvent(
+            bastion$chainId(frame, location),
             frame.depth(),
             location,
             command,
             () -> SourceMapper.toPauseSources(sources)
         ));
+    }
+
+    @Unique
+    private long bastion$chainId(final Frame frame, final SourceLocation location) {
+        final String commandKey = location + "\u0000" + commandInput;
+        synchronized (bastion$chainIds) {
+            final Map<String, Long> idsForFrame = bastion$chainIds.computeIfAbsent(frame, ignored -> new HashMap<>());
+            return idsForFrame.computeIfAbsent(commandKey, ignored -> bastion$nextChainId.getAndIncrement());
+        }
     }
 }

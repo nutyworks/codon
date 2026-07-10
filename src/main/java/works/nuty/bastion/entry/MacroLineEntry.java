@@ -37,7 +37,12 @@ public class MacroLineEntry<T extends ExecutionCommandSource<T>> extends MacroFu
         @NonNull final CommandDispatcher<T> dispatcher,
         @NonNull final Identifier functionId
     ) throws FunctionInstantiationException {
-        BuildContexts.Unbound<T> ret = (BuildContexts.Unbound<T>) super.instantiate(substitutions, dispatcher, functionId);
+        UnboundEntryAction<T> action = super.instantiate(substitutions, dispatcher, functionId);
+        // Another mod may wrap parseCommand with its own action type; pass those through
+        // (losing only line-number attribution) instead of failing instantiation.
+        if (!(action instanceof BuildContexts.Unbound<T> ret)) {
+            return action;
+        }
 
         if (substitutions.isEmpty()) {
             return new PlainLineAction<>(ret.commandInput, ret.command, this.lineNumber, functionId);

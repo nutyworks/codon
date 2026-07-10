@@ -2,9 +2,11 @@ package works.nuty.bastion.core.service;
 
 import org.junit.jupiter.api.Test;
 import works.nuty.bastion.core.model.BlockLocation;
+import works.nuty.bastion.core.model.CallFrame;
 import works.nuty.bastion.core.model.CommandSnippet;
 import works.nuty.bastion.core.model.FunctionId;
 import works.nuty.bastion.core.model.FunctionLocation;
+import works.nuty.bastion.core.model.PauseReason;
 import works.nuty.bastion.core.model.SourceLocation;
 import works.nuty.bastion.core.support.ImmediateExecutionController;
 import works.nuty.bastion.core.support.RecordingEventSink;
@@ -31,7 +33,12 @@ class DebuggerEngineTest {
     }
 
     private CommandStageEvent functionStage(int depth, int line) {
+        return functionStage(0, depth, line);
+    }
+
+    private CommandStageEvent functionStage(long chainId, int depth, int line) {
         return new CommandStageEvent(
+            chainId,
             depth,
             new SourceLocation.Function(tick(line)),
             CommandSnippet.plain("say hi"),
@@ -67,7 +74,7 @@ class DebuggerEngineTest {
         breakpoints.toggleBlock(pos);
 
         engine.onCommandStage(new CommandStageEvent(
-            0, new SourceLocation.Block(pos), CommandSnippet.plain("setblock ~ ~ ~ stone"), List::of));
+            0, 0, new SourceLocation.Block(pos), CommandSnippet.plain("setblock ~ ~ ~ stone"), List::of));
 
         assertTrue(engine.isPaused());
         assertEquals(1, sink.pauses.size());
@@ -82,6 +89,93 @@ class DebuggerEngineTest {
         engine.resume();
         assertFalse(engine.isPaused());
         assertEquals(1, sink.resumes);
+    }
+
+    @Test
+    void resumeSkipsRemainingStagesOfThePausedChain() {
+        breakpoints.toggleFunction(tick(3));
+        engine.onCommandStage(functionStage(11, 2, 3));
+
+        engine.resume();
+        engine.onCommandStage(functionStage(11, 2, 3)); // continuation of the same chain
+        assertFalse(engine.isPaused());
+        assertEquals(1, sink.pauses.size(), "the same execute chain must not re-hit its breakpoint");
+
+        engine.onCommandStage(functionStage(12, 2, 3)); // a separate chain may
+        assertTrue(engine.isPaused());
+    }
+
+    @Test
+    void resumeSkipSurvivesInterleavedForeignChains() {
+        breakpoints.toggleFunction(tick(3));
+        engine.onCommandStage(functionStage(11, 1, 3));
+
+        engine.resume();
+        engine.onCommandStage(functionStage(12, 2, 5)); // e.g. the called function's body
+        assertFalse(engine.isPaused());
+
+        engine.onCommandStage(functionStage(11, 1, 3)); // fork continuation after the interleaver
+        assertFalse(engine.isPaused(), "an interleaved chain must not revive the skipped chain");
+        assertEquals(1, sink.pauses.size());
+    }
+
+    @Test
+    void stepOutSkipsRemainingStagesOfThePausedChain() {
+        breakpoints.toggleFunction(tick(3));
+        engine.onCommandStage(functionStage(21, 2, 3));
+
+        engine.stepOut();
+        engine.onCommandStage(functionStage(21, 2, 3)); // rest of the paused chain
+        assertFalse(engine.isPaused());
+
+        engine.onCommandStage(functionStage(22, 1, 5)); // returned to the caller frame
+        assertTrue(engine.isPaused());
+    }
+
+    @Test
+    void stagesArrivingWhilePausedAreIgnored() {
+        breakpoints.toggleFunction(tick(3));
+        engine.onCommandStage(functionStage(31, 1, 3));
+        assertTrue(engine.isPaused());
+        List<CallFrame> framesAtPause = engine.callStack().frames();
+
+        // e.g. a console command executing while the command thread is parked
+        engine.onCommandStage(functionStage(32, 0, 3));
+
+        assertEquals(1, sink.pauses.size(), "a nested execution must not pause again");
+        assertEquals(framesAtPause, engine.callStack().frames(), "a nested execution must not touch the stack");
+        assertTrue(engine.isPaused());
+    }
+
+    @Test
+    void tickBoundaryClearsSkippedChainsAndStaleFrames() {
+        breakpoints.toggleFunction(tick(3));
+        engine.onCommandStage(functionStage(41, 1, 3));
+        engine.resume();
+
+        engine.onTickBoundary();
+
+        assertTrue(engine.callStack().isEmpty(), "frames from finished executions are dropped");
+        engine.onCommandStage(functionStage(41, 1, 3));
+        assertTrue(engine.isPaused(), "skip bookkeeping does not outlive the tick");
+    }
+
+    @Test
+    void pauseAtABreakpointReportsBreakpointReason() {
+        breakpoints.toggleFunction(tick(3));
+        engine.onCommandStage(functionStage(0, 3));
+        assertEquals(PauseReason.BREAKPOINT, sink.lastPause().reason());
+    }
+
+    @Test
+    void pauseFromASteppingRequestReportsStepReason() {
+        breakpoints.toggleFunction(tick(3));
+        engine.onCommandStage(functionStage(0, 3));
+        breakpoints.clear();
+
+        engine.stepInto();
+        engine.onCommandStage(functionStage(1, 4));
+        assertEquals(PauseReason.STEP, sink.lastPause().reason());
     }
 
     @Test

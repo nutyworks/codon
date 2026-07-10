@@ -1,6 +1,7 @@
 package works.nuty.bastion.adapter;
 
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.dedicated.DedicatedServer;
 import works.nuty.bastion.core.port.ExecutionController;
 
 import java.util.function.BooleanSupplier;
@@ -25,8 +26,24 @@ public final class McExecutionController implements ExecutionController {
             return;
         }
         s.managedBlock(() -> {
+            // 26.2 first queues serverbound packets in MinecraftServer.packetProcessor(). A
+            // paused server never reaches the tick stage that dispatches them, so ticking the
+            // connection alone receives packets without ever handling them. Console lines
+            // likewise sit in the dedicated server's own queue, drained only during a tick.
+            // Pump all three here so players and the console can lift the pause while parked.
             s.getConnection().tick();
+            s.packetProcessor().processQueuedPackets();
+            if (s instanceof DedicatedServer dedicated) {
+                dedicated.handleConsoleInputs();
+            }
             return resumed.getAsBoolean() || !s.isRunning();
         });
+
+        // The pause happened mid-tick while Minecraft's deadline kept advancing. Restart the
+        // schedule from the current wall clock so the server neither logs a misleading
+        // "Can't keep up" warning nor burst-runs hundreds of ticks to catch up.
+        if (resumed.getAsBoolean() && s instanceof ServerTickScheduleController schedule) {
+            schedule.bastion$resetTickSchedule();
+        }
     }
 }

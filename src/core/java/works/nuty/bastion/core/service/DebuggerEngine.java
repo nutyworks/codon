@@ -4,11 +4,13 @@ import org.jspecify.annotations.Nullable;
 import works.nuty.bastion.core.model.BlockLocation;
 import works.nuty.bastion.core.model.CallFrame;
 import works.nuty.bastion.core.model.FunctionLocation;
+import works.nuty.bastion.core.model.PauseReason;
 import works.nuty.bastion.core.model.PauseSnapshot;
 import works.nuty.bastion.core.port.DebuggerEventSink;
 import works.nuty.bastion.core.port.ExecutionController;
 
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * The heart of the debugger: a Minecraft-free state machine that decides when to pause, drives
@@ -18,9 +20,12 @@ import java.util.Set;
  *
  * <p>Threading: {@link #onCommandStage} and {@link #pause} run on the command-execution thread;
  * {@link #resume()}/{@code step*()} are invoked (from command or packet handlers) while that
- * thread is parked. {@link #paused} is {@code volatile} so the parked thread observes the flip.
+ * thread is parked, and {@link #onTickBoundary()} between drains at the end of a host tick.
+ * {@link #paused} is {@code volatile} so the parked thread observes the flip.
  */
 public final class DebuggerEngine {
+    private static final long NO_CHAIN = -1L;
+
     private final BreakpointRegistry breakpoints;
     private final StepController step;
     private final CallStack callStack;
@@ -29,6 +34,10 @@ public final class DebuggerEngine {
 
     private volatile boolean paused;
     private volatile @Nullable PauseSnapshot currentSnapshot;
+    /** The execute chain that owns the current pause. */
+    private volatile long pausedChainId = NO_CHAIN;
+    /** Resumed/stepped-out chains whose remaining stages must not re-hit their own breakpoint. */
+    private final Set<Long> skippedChainIds = ConcurrentHashMap.newKeySet();
 
     public DebuggerEngine(
         BreakpointRegistry breakpoints,
@@ -108,19 +117,30 @@ public final class DebuggerEngine {
      * there is nothing to debug.
      */
     public void onCommandStage(CommandStageEvent event) {
+        if (paused) {
+            // A nested execution while the command thread is parked (e.g. a console command run
+            // by the suspension loop). Debugging it would corrupt the paused chain's call stack
+            // and re-enter pause() on the parked thread.
+            return;
+        }
         if (breakpoints.isEmpty() && !step.isStepping()) {
+            return;
+        }
+        if (skippedChainIds.contains(event.chainId())) {
             return;
         }
 
         callStack.push(new CallFrame(event.depth(), event.location(), event.command()));
 
-        if (step.shouldPauseAt(event.depth()) || breakpoints.matches(event.location())) {
-            pause(event);
+        boolean breakpointHit = breakpoints.matches(event.location());
+        if (breakpointHit || step.shouldPauseAt(event.depth())) {
+            pause(event, breakpointHit ? PauseReason.BREAKPOINT : PauseReason.STEP);
         }
     }
 
-    private void pause(CommandStageEvent event) {
+    private void pause(CommandStageEvent event, PauseReason reason) {
         paused = true;
+        pausedChainId = event.chainId();
         step.onPaused(event.depth());
 
         PauseSnapshot snapshot = new PauseSnapshot(
@@ -128,7 +148,8 @@ public final class DebuggerEngine {
             event.command(),
             event.depth(),
             callStack.frames(),
-            event.pauseSources().get()
+            event.pauseSources().get(),
+            reason
         );
         currentSnapshot = snapshot;
         eventSink.paused(snapshot);
@@ -138,6 +159,7 @@ public final class DebuggerEngine {
 
     /** Resume normal execution (run to the next breakpoint). */
     public void resume() {
+        skipRemainingPausedChain();
         step.clear();
         unpause();
     }
@@ -156,12 +178,33 @@ public final class DebuggerEngine {
 
     /** Resume, pausing once execution returns to a shallower call depth. */
     public void stepOut() {
+        skipRemainingPausedChain();
         step.stepOut();
         unpause();
     }
 
+    /**
+     * Marks the end of a host tick. Command chains never span ticks, so skip bookkeeping and
+     * call-stack frames left over from finished executions can be dropped. A tick cannot end
+     * while paused (the pause parks the tick itself); the guard keeps the invariant anyway.
+     */
+    public void onTickBoundary() {
+        if (paused) {
+            return;
+        }
+        skippedChainIds.clear();
+        callStack.clear();
+    }
+
+    private void skipRemainingPausedChain() {
+        if (pausedChainId != NO_CHAIN) {
+            skippedChainIds.add(pausedChainId);
+        }
+    }
+
     private void unpause() {
         paused = false;
+        pausedChainId = NO_CHAIN;
         currentSnapshot = null;
         eventSink.resumed();
     }

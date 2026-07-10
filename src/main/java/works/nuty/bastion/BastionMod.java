@@ -3,6 +3,7 @@ package works.nuty.bastion;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.server.MinecraftServer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -50,6 +51,7 @@ public final class BastionMod implements ModInitializer {
 
         ServerLifecycleEvents.SERVER_STARTED.register(s -> server = s);
         ServerLifecycleEvents.SERVER_STOPPED.register(s -> server = null);
+        ServerTickEvents.END_SERVER_TICK.register(s -> wiredEngine.onTickBoundary());
 
         BastionNetworking.registerPayloadTypes();
         BastionNetworking.registerJoinSync(wiredEngine);

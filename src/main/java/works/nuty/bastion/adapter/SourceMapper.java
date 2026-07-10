@@ -7,6 +7,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
+import org.jspecify.annotations.Nullable;
 import works.nuty.bastion.action.MacroLineAction;
 import works.nuty.bastion.action.PlainLineAction;
 import works.nuty.bastion.core.model.BlockLocation;
@@ -41,18 +42,22 @@ public final class SourceMapper {
     /**
      * Derives the {@link SourceLocation} for a command stage, mirroring the four execution shapes
      * the debugger understands: top-level invocation, continuation, and plain/macro function lines.
+     * Returns {@code null} for shapes introduced by other mods so the debugger skips them instead
+     * of failing mid-command.
      */
-    public static SourceLocation toSourceLocation(BuildContexts<?> contexts) {
-        if (contexts instanceof BuildContexts.TopLevel<?> topLevel) {
-            return fromCommandSource((CommandSourceStack) topLevel.source);
-        } else if (contexts instanceof BuildContexts.Continuation<?> continuation) {
-            return fromCommandSource((CommandSourceStack) continuation.originalSource);
+    public static @Nullable SourceLocation toSourceLocation(BuildContexts<?> contexts) {
+        if (contexts instanceof BuildContexts.TopLevel<?> topLevel
+            && topLevel.source instanceof CommandSourceStack source) {
+            return fromCommandSource(source);
+        } else if (contexts instanceof BuildContexts.Continuation<?> continuation
+            && continuation.originalSource instanceof CommandSourceStack source) {
+            return fromCommandSource(source);
         } else if (contexts instanceof PlainLineAction<?> plain) {
             return functionLocation(plain.functionId, plain.lineNumber);
         } else if (contexts instanceof MacroLineAction<?> macro) {
             return functionLocation(macro.functionId, macro.lineNumber);
         }
-        throw new IllegalStateException("Could not map command context to a source location: " + contexts);
+        return null;
     }
 
     private static SourceLocation functionLocation(Identifier id, int line) {

@@ -12,7 +12,8 @@ public record PauseSnapshot(
     CommandSnippet command,
     int depth,
     List<CallFrame> callStack,
-    List<PauseSource> pauseSources
+    List<PauseSource> pauseSources,
+    PauseReason reason
 ) {
     public PauseSnapshot {
         callStack = List.copyOf(callStack);

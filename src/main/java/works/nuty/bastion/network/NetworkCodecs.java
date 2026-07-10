@@ -7,6 +7,7 @@ import works.nuty.bastion.core.model.CommandSnippet;
 import works.nuty.bastion.core.model.EntityRef;
 import works.nuty.bastion.core.model.FunctionId;
 import works.nuty.bastion.core.model.FunctionLocation;
+import works.nuty.bastion.core.model.PauseReason;
 import works.nuty.bastion.core.model.PauseSnapshot;
 import works.nuty.bastion.core.model.PauseSource;
 import works.nuty.bastion.core.model.SourceLocation;
@@ -126,6 +127,7 @@ final class NetworkCodecs {
         buf.writeVarInt(snapshot.depth());
         buf.writeCollection(snapshot.callStack(), NetworkCodecs::writeCallFrame);
         buf.writeCollection(snapshot.pauseSources(), NetworkCodecs::writePauseSource);
+        buf.writeEnum(snapshot.reason());
     }
 
     static PauseSnapshot readSnapshot(FriendlyByteBuf buf) {
@@ -134,7 +136,8 @@ final class NetworkCodecs {
         int depth = buf.readVarInt();
         List<CallFrame> callStack = buf.readCollection(ArrayList::new, NetworkCodecs::readCallFrame);
         List<PauseSource> pauseSources = buf.readCollection(ArrayList::new, NetworkCodecs::readPauseSource);
-        return new PauseSnapshot(location, command, depth, callStack, pauseSources);
+        PauseReason reason = buf.readEnum(PauseReason.class);
+        return new PauseSnapshot(location, command, depth, callStack, pauseSources, reason);
     }
 
     static void writeBlockLocations(FriendlyByteBuf buf, List<BlockLocation> blocks) {
