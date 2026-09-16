@@ -92,6 +92,20 @@ class DebuggerEngineTest {
     }
 
     @Test
+    void steppingCommandsDoNothingWhenNoExecutionIsPaused() {
+        engine.stepInto();
+        engine.stepOver();
+        engine.stepOut();
+
+        engine.onCommandStage(functionStage(72, 1, 1));
+
+        assertFalse(step.isStepping());
+        assertFalse(engine.isPaused());
+        assertTrue(sink.pauses.isEmpty());
+        assertEquals(0, sink.resumes);
+    }
+
+    @Test
     void resumeSkipsRemainingStagesOfThePausedChain() {
         breakpoints.toggleFunction(tick(3));
         engine.onCommandStage(functionStage(11, 2, 3));
@@ -161,6 +175,35 @@ class DebuggerEngineTest {
     }
 
     @Test
+    void executionFinishedClearsSkippedChainsStepAndFrames() {
+        breakpoints.toggleFunction(tick(3));
+        engine.onCommandStage(functionStage(42, 2, 3));
+
+        engine.stepOver();
+        assertTrue(step.isStepping());
+        engine.onExecutionFinished();
+
+        assertFalse(step.isStepping());
+        assertTrue(engine.callStack().isEmpty());
+        engine.onCommandStage(functionStage(42, 2, 3));
+        assertTrue(engine.isPaused(), "a later execution may use the former chain ID");
+    }
+
+    @Test
+    void tickBoundaryClearsAStepThatCannotLandInTheFinishedExecution() {
+        breakpoints.toggleFunction(tick(3));
+        engine.onCommandStage(functionStage(43, 2, 3));
+        breakpoints.clear();
+
+        engine.stepOver();
+        engine.onTickBoundary();
+        engine.onCommandStage(functionStage(44, 2, 4));
+
+        assertFalse(engine.isPaused());
+        assertFalse(step.isStepping());
+    }
+
+    @Test
     void pauseAtABreakpointReportsBreakpointReason() {
         breakpoints.toggleFunction(tick(3));
         engine.onCommandStage(functionStage(0, 3));
@@ -216,17 +259,89 @@ class DebuggerEngineTest {
     }
 
     @Test
+    void stepIntoCanStopAtTheNextStageOfTheSameCommandChain() {
+        breakpoints.toggleFunction(tick(3));
+        engine.onCommandStage(functionStage(88, 1, 3));
+        breakpoints.clear();
+
+        engine.stepInto();
+        engine.onCommandStage(functionStage(88, 1, 4));
+
+        assertTrue(engine.isPaused());
+        assertEquals(PauseReason.STEP, sink.lastPause().reason());
+    }
+
+    @Test
     void stepOverDoesNotPauseInsideDeeperFrames() {
         breakpoints.toggleFunction(tick(3));
-        engine.onCommandStage(functionStage(2, 3)); // pause at depth 2
+        engine.onCommandStage(functionStage(90, 2, 3)); // pause at depth 2
         breakpoints.clear();
 
         engine.stepOver(); // target depth 2
 
-        engine.onCommandStage(functionStage(3, 1)); // deeper call -> no pause
+        engine.onCommandStage(functionStage(91, 3, 1)); // deeper call -> no pause
         assertFalse(engine.isPaused());
 
-        engine.onCommandStage(functionStage(2, 4)); // back at depth 2 -> pause
+        engine.onCommandStage(functionStage(92, 2, 4)); // back at depth 2 -> pause
         assertTrue(engine.isPaused());
+    }
+
+    @Test
+    void rootDepthStepOutSimplyResumesWithoutAnUnreachableStepRequest() {
+        breakpoints.toggleFunction(tick(3));
+        engine.onCommandStage(functionStage(93, 0, 3));
+        breakpoints.clear();
+
+        engine.stepOut();
+
+        assertFalse(engine.isPaused());
+        assertFalse(step.isStepping());
+        engine.onCommandStage(functionStage(94, 0, 4));
+        assertFalse(engine.isPaused());
+    }
+
+    @Test
+    void resetSessionDropsPauseAndExecutionStateButKeepsBreakpoints() {
+        breakpoints.toggleFunction(tick(3));
+        engine.onCommandStage(functionStage(95, 1, 3));
+        assertTrue(engine.isPaused());
+
+        engine.resetSession();
+
+        assertFalse(engine.isPaused());
+        assertNull(engine.currentSnapshot());
+        assertFalse(step.isStepping());
+        assertTrue(engine.callStack().isEmpty());
+        engine.onCommandStage(functionStage(96, 1, 3));
+        assertTrue(engine.isPaused(), "configured breakpoints survive a server-session reset");
+    }
+
+    @Test
+    void cancelledParkCleansUpTheEngineState() {
+        controller.result = works.nuty.bastion.core.port.ExecutionController.ParkResult.CANCELLED;
+        breakpoints.toggleFunction(tick(3));
+
+        engine.onCommandStage(functionStage(97, 1, 3));
+
+        assertFalse(engine.isPaused());
+        assertNull(engine.currentSnapshot());
+        assertFalse(step.isStepping());
+        assertTrue(engine.callStack().isEmpty());
+    }
+
+    @Test
+    void failedParkCleansUpTheEngineStateBeforePropagating() {
+        controller.failure = new IllegalStateException("server stopped");
+        breakpoints.toggleFunction(tick(3));
+
+        IllegalStateException failure = org.junit.jupiter.api.Assertions.assertThrows(
+            IllegalStateException.class,
+            () -> engine.onCommandStage(functionStage(98, 1, 3))
+        );
+
+        assertEquals("server stopped", failure.getMessage());
+        assertFalse(engine.isPaused());
+        assertNull(engine.currentSnapshot());
+        assertTrue(engine.callStack().isEmpty());
     }
 }

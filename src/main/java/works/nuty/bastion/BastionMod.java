@@ -8,6 +8,7 @@ import net.minecraft.server.MinecraftServer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jspecify.annotations.Nullable;
+import works.nuty.bastion.adapter.DebuggerTaskQueue;
 import works.nuty.bastion.adapter.McExecutionController;
 import works.nuty.bastion.command.BastionCommand;
 import works.nuty.bastion.network.BastionNetworking;
@@ -49,9 +50,20 @@ public final class BastionMod implements ModInitializer {
         DebuggerEngine wiredEngine = new DebuggerEngine(breakpoints, step, callStack, executionController, eventSink);
         engine = wiredEngine;
 
-        ServerLifecycleEvents.SERVER_STARTED.register(s -> server = s);
-        ServerLifecycleEvents.SERVER_STOPPED.register(s -> server = null);
-        ServerTickEvents.END_SERVER_TICK.register(s -> wiredEngine.onTickBoundary());
+        ServerLifecycleEvents.SERVER_STARTED.register(s -> {
+            wiredEngine.resetSession();
+            server = s;
+        });
+        ServerLifecycleEvents.SERVER_STOPPED.register(s -> {
+            wiredEngine.resetSession();
+            DebuggerTaskQueue.clear(s);
+            server = null;
+        });
+        ServerTickEvents.START_SERVER_TICK.register(DebuggerTaskQueue::drain);
+        ServerTickEvents.END_SERVER_TICK.register(s -> {
+            DebuggerTaskQueue.drain(s);
+            wiredEngine.onTickBoundary();
+        });
 
         BastionNetworking.registerPayloadTypes();
         BastionNetworking.registerJoinSync(wiredEngine);

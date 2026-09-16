@@ -7,7 +7,12 @@
     "CommandFunctionMixin",
     "CommandsMixin",
     "FunctionBuilderMixin",
-    "MinecraftServerMixin"
+    "MinecraftServerMixin",
+    "ExecutionContextMixin",
+    "ServerCommonPacketListenerAccessor",
+    "ServerGamePacketListenerMixin",
+    "DedicatedServerMixin",
+    "ServerCommonPacketListenerMixin"
   ],
   "injectors": {
     "defaultRequire": 1

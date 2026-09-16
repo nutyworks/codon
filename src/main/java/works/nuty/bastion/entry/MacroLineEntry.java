@@ -13,22 +13,16 @@ import org.jspecify.annotations.NonNull;
 import works.nuty.bastion.action.MacroLineAction;
 import works.nuty.bastion.action.PlainLineAction;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 public class MacroLineEntry<T extends ExecutionCommandSource<T>> extends MacroFunction.MacroEntry<T> {
-    public MacroFunction<T> function;
     public final int lineNumber;
 
     public MacroLineEntry(StringTemplate template, IntList parameters, T compilationContext, int lineNumber) {
         super(template, parameters, compilationContext);
         this.lineNumber = lineNumber;
-    }
-
-    public void setFunction(MacroFunction<T> function) {
-        this.function = function;
     }
 
     @Override
@@ -47,13 +41,16 @@ public class MacroLineEntry<T extends ExecutionCommandSource<T>> extends MacroFu
         if (substitutions.isEmpty()) {
             return new PlainLineAction<>(ret.commandInput, ret.command, this.lineNumber, functionId);
         } else {
-            List<String> usedKeys = this.template.variables();
-            Map<String, String> usedVariables = IntStream.range(0, substitutions.size()).boxed()
-                .collect(Collectors.toMap(this.function.parameters::get, substitutions::get));
+            // MacroFunction supplies values selected by this entry's parameter indices. They
+            // therefore align with template.variables(), rather than the owning function's
+            // de-duplicated parameter list. A name can occur multiple times in one template.
+            Map<String, String> usedVariables = new LinkedHashMap<>();
+            List<String> variables = this.template.variables();
+            for (int index = 0; index < substitutions.size(); index++) {
+                usedVariables.putIfAbsent(variables.get(index), substitutions.get(index));
+            }
 
-            usedVariables.keySet().removeIf(key -> !usedKeys.contains(key));
-
-            return new MacroLineAction<>(ret.commandInput, ret.command, this.lineNumber, functionId, usedVariables);
+            return new MacroLineAction<>(ret.commandInput, ret.command, this.lineNumber, functionId, Map.copyOf(usedVariables));
         }
     }
 }

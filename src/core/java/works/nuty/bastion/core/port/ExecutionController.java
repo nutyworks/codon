@@ -4,15 +4,15 @@ import java.util.function.BooleanSupplier;
 
 /**
  * Driven port: the mechanism that actually suspends the thread executing commands while the
- * debugger is paused. The Minecraft adapter implements this with {@code server.managedBlock},
- * which keeps the server responsive (ticking the network connection) so resume/step packets can
- * arrive while parked.
+ * debugger is paused. The Minecraft adapter services only debugger requests and
+ * connection maintenance while parked.
  */
 public interface ExecutionController {
+    enum ParkResult { RESUMED, CANCELLED }
     /**
      * Block the calling thread until {@code resumed} reports {@code true}, keeping the host
      * responsive in the meantime. Must return promptly once {@code resumed} becomes true (or the
-     * host is shutting down).
+     * host is shutting down). Return CANCELLED for host shutdown or an unavailable host.
      */
-    void parkUntil(BooleanSupplier resumed);
+    ParkResult parkUntil(BooleanSupplier resumed);
 }

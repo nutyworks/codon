@@ -19,17 +19,15 @@ public abstract class CommandsMixin {
     @Shadow
     public abstract CommandDispatcher<CommandSourceStack> getDispatcher();
 
-    /**
-     * While the debugger is parked, {@code executeCommandInContext} would enqueue any new command
-     * into the suspended execution context, deferring it until resume — a paused server could
-     * never receive {@code /bastion resume}. Run commands issued during a pause immediately on the
-     * plain dispatcher instead. Players, the console, and RCON all funnel through
-     * {@code performCommand}, so each of them can lift a pause.
-     */
+    /** Only debugger control commands bypass the parked execution queue. Ordinary commands
+     * retain vanilla ContextChain/custom-executor semantics and run after resume. */
     @Inject(method = "performCommand", at = @At("HEAD"), cancellable = true)
     private void bastion$executeImmediatelyWhenPaused(ParseResults<CommandSourceStack> parseResults, String command, CallbackInfo ci) {
         DebuggerEngine engine = BastionMod.engine();
-        if (engine != null && engine.isPaused()) {
+        if (engine != null && engine.isPaused()
+            && !parseResults.getContext().getNodes().isEmpty()
+            && java.util.Set.of("bastion", "stop").contains(
+                parseResults.getContext().getNodes().getFirst().getNode().getName())) {
             CommandSourceStack source = parseResults.getContext().getSource();
             try {
                 this.getDispatcher().execute(parseResults);

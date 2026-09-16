@@ -38,6 +38,8 @@ public final class DebuggerEngine {
     private volatile long pausedChainId = NO_CHAIN;
     /** Resumed/stepped-out chains whose remaining stages must not re-hit their own breakpoint. */
     private final Set<Long> skippedChainIds = ConcurrentHashMap.newKeySet();
+    /** A line breakpoint belongs to the invocation, not each modifier stage within it. */
+    private final Set<Long> evaluatedBreakpointChains = ConcurrentHashMap.newKeySet();
 
     public DebuggerEngine(
         BreakpointRegistry breakpoints,
@@ -126,13 +128,14 @@ public final class DebuggerEngine {
         if (breakpoints.isEmpty() && !step.isStepping()) {
             return;
         }
+        callStack.push(new CallFrame(event.depth(), event.location(), event.command()));
+
         if (skippedChainIds.contains(event.chainId())) {
             return;
         }
 
-        callStack.push(new CallFrame(event.depth(), event.location(), event.command()));
-
-        boolean breakpointHit = breakpoints.matches(event.location());
+        boolean breakpointHit = breakpoints.matches(event.location())
+            && evaluatedBreakpointChains.add(event.chainId());
         if (breakpointHit || step.shouldPauseAt(event.depth())) {
             pause(event, breakpointHit ? PauseReason.BREAKPOINT : PauseReason.STEP);
         }
@@ -143,18 +146,25 @@ public final class DebuggerEngine {
         pausedChainId = event.chainId();
         step.onPaused(event.depth());
 
-        PauseSnapshot snapshot = new PauseSnapshot(
-            event.location(),
-            event.command(),
-            event.depth(),
-            callStack.frames(),
-            event.pauseSources().get(),
-            reason
-        );
-        currentSnapshot = snapshot;
-        eventSink.paused(snapshot);
+        try {
+            PauseSnapshot snapshot = new PauseSnapshot(
+                event.location(),
+                event.command(),
+                event.depth(),
+                callStack.frames(),
+                event.pauseSources().get(),
+                reason
+            );
+            currentSnapshot = snapshot;
+            eventSink.paused(snapshot);
 
-        executionController.parkUntil(() -> !paused);
+            if (executionController.parkUntil(() -> !paused) == ExecutionController.ParkResult.CANCELLED) {
+                resetSession();
+            }
+        } catch (RuntimeException | Error failure) {
+            resetSession();
+            throw failure;
+        }
     }
 
     /** Resume normal execution (run to the next breakpoint). */
@@ -166,18 +176,21 @@ public final class DebuggerEngine {
 
     /** Resume, pausing at the next command stage (descending into called functions). */
     public void stepInto() {
+        if (!paused) return;
         step.stepInto();
         unpause();
     }
 
     /** Resume, pausing at the next stage at the same call depth. */
     public void stepOver() {
+        if (!paused) return;
         step.stepOver();
         unpause();
     }
 
     /** Resume, pausing once execution returns to a shallower call depth. */
     public void stepOut() {
+        if (!paused) return;
         skipRemainingPausedChain();
         step.stepOut();
         unpause();
@@ -189,11 +202,27 @@ public final class DebuggerEngine {
      * while paused (the pause parks the tick itself); the guard keeps the invariant anyway.
      */
     public void onTickBoundary() {
+        onExecutionFinished();
+    }
+
+    /** Called in finally when a vanilla execution queue drains, fails or exhausts its quota. */
+    public void onExecutionFinished() {
         if (paused) {
             return;
         }
         skippedChainIds.clear();
+        evaluatedBreakpointChains.clear();
         callStack.clear();
+        step.clear();
+    }
+
+    /** End the host session, retaining user breakpoints but no execution state. */
+    public void resetSession() {
+        step.clear();
+        skippedChainIds.clear();
+        evaluatedBreakpointChains.clear();
+        callStack.clear();
+        unpause();
     }
 
     private void skipRemainingPausedChain() {
@@ -203,9 +232,10 @@ public final class DebuggerEngine {
     }
 
     private void unpause() {
+        boolean wasPaused = paused;
         paused = false;
         pausedChainId = NO_CHAIN;
         currentSnapshot = null;
-        eventSink.resumed();
+        if (wasPaused) eventSink.resumed();
     }
 }

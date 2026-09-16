@@ -38,7 +38,7 @@ public final class StepController {
     }
 
     public void stepOut() {
-        mode = StepMode.OUT;
+        mode = lastPausedDepth > 0 ? StepMode.OUT : StepMode.NONE;
         targetDepth = lastPausedDepth - 1;
     }
 

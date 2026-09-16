@@ -1,5 +1,7 @@
 package works.nuty.bastion.mixin;
 
+import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.sugar.Local;
 import com.mojang.brigadier.context.ContextChain;
 import com.mojang.brigadier.context.StringRange;
@@ -8,7 +10,7 @@ import net.minecraft.commands.ExecutionCommandSource;
 import net.minecraft.commands.execution.ChainModifiers;
 import net.minecraft.commands.execution.ExecutionContext;
 import net.minecraft.commands.execution.Frame;
-import net.minecraft.commands.execution.tasks.BuildContexts;
+import org.jspecify.annotations.Nullable;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -17,103 +19,77 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Slice;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import net.minecraft.commands.execution.tasks.BuildContexts;
 import works.nuty.bastion.BastionMod;
+import works.nuty.bastion.adapter.CommandTrace;
+import works.nuty.bastion.adapter.TracedCommand;
 import works.nuty.bastion.adapter.SourceMapper;
 import works.nuty.bastion.core.model.CommandSnippet;
 import works.nuty.bastion.core.model.SourceLocation;
 import works.nuty.bastion.core.service.CommandStageEvent;
 import works.nuty.bastion.core.service.DebuggerEngine;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.WeakHashMap;
-import java.util.concurrent.atomic.AtomicLong;
 
 @Mixin(BuildContexts.class)
-public class BuildContextsMixin<T extends ExecutionCommandSource<T>> {
-    @Unique
-    private static final AtomicLong bastion$nextChainId = new AtomicLong();
+public class BuildContextsMixin<T extends ExecutionCommandSource<T>> implements TracedCommand {
+    @Shadow @Final public String commandInput;
+    @Unique private @Nullable CommandTrace bastion$inheritedTrace;
 
-    /**
-     * Continuation tasks create fresh {@code BuildContexts} instances for one forked execute
-     * command. Frame + source + input gives those instances one debugger chain identity, while a
-     * later invocation of the same command gets a new frame and therefore a new identity.
-     */
-    @Unique
-    private static final Map<Frame, Map<String, Long>> bastion$chainIds = new WeakHashMap<>();
+    @Override
+    public void bastion$inheritTrace(CommandTrace trace) { bastion$inheritedTrace = trace; }
 
-    @Shadow
-    @Final
-    public String commandInput;
-
-    /** Fires once per modifier stage ({@code as @e}, {@code at @s}, …) with the sources entering it. */
-    @Inject(
-        method = "execute",
-        at = @At(
-            value = "INVOKE",
-            target = "Lcom/mojang/brigadier/context/ContextChain;getTopContext()Lcom/mojang/brigadier/context/CommandContext;"
-        ),
-        slice = @Slice(
-            to = @At(
-                value = "INVOKE",
-                target = "Ljava/util/List;isEmpty()Z"
-            )
-        )
-    )
-    void bastion$executeBeforeApplyModifier(
-        T originalSource, List<T> initialSources, ExecutionContext<T> context, Frame frame, ChainModifiers initialModifiers, CallbackInfo ci,
-        @Local(name = "currentSources") List<T> currentSources,
-        @Local(name = "currentStage") ContextChain<T> currentStage
-    ) {
-        pauseIfNeeded(frame, currentStage, currentSources);
+    @WrapMethod(method = "execute")
+    private void bastion$traceInvocation(T source, List<T> sources, ExecutionContext<T> context,
+                                       Frame frame, ChainModifiers modifiers, Operation<Void> original) {
+        DebuggerEngine engine = BastionMod.engine();
+        CommandTrace previous = CommandTrace.current();
+        CommandTrace trace = bastion$inheritedTrace;
+        if (engine != null && engine.isActive()) {
+            if (trace == null) {
+                SourceLocation location = SourceMapper.toSourceLocation((BuildContexts<?>) (Object) this);
+                if (location != null) trace = new CommandTrace(location);
+            }
+        } else {
+            trace = null;
+        }
+        CommandTrace.setCurrent(trace);
+        try {
+            original.call(source, sources, context, frame, modifiers);
+        } finally {
+            CommandTrace.setCurrent(previous);
+            bastion$inheritedTrace = null;
+        }
     }
 
-    /** Fires exactly once per chain, for the executable stage with the fully resolved sources. */
-    @Inject(
-        method = "execute",
-        at = @At(
-            value = "INVOKE",
-            target = "Ljava/util/List;isEmpty()Z"
-        )
-    )
-    void bastion$executeAfterModifiers(
-        T originalSource, List<T> initialSources, ExecutionContext<T> context, Frame frame, ChainModifiers initialModifiers, CallbackInfo ci,
-        @Local(name = "currentStage") ContextChain<T> currentStage,
-        @Local(name = "currentSources") List<T> currentSources
-    ) {
-        pauseIfNeeded(frame, currentStage, currentSources);
+    @Inject(method = "execute", at = @At(value = "INVOKE",
+        target = "Lcom/mojang/brigadier/context/ContextChain;getTopContext()Lcom/mojang/brigadier/context/CommandContext;"),
+        slice = @Slice(to = @At(value = "INVOKE", target = "Ljava/util/List;isEmpty()Z")))
+    private void bastion$beforeModifier(T source, List<T> sources, ExecutionContext<T> context,
+                                       Frame frame, ChainModifiers modifiers, CallbackInfo ci,
+                                       @Local(name = "currentSources") List<T> currentSources,
+                                       @Local(name = "currentStage") ContextChain<T> currentStage) {
+        bastion$observe(frame, currentStage, currentSources);
+    }
+
+    @Inject(method = "execute", at = @At(value = "INVOKE", target = "Ljava/util/List;isEmpty()Z"))
+    private void bastion$beforeExecutable(T source, List<T> sources, ExecutionContext<T> context,
+                                         Frame frame, ChainModifiers modifiers, CallbackInfo ci,
+                                         @Local(name = "currentStage") ContextChain<T> currentStage,
+                                         @Local(name = "currentSources") List<T> currentSources) {
+        bastion$observe(frame, currentStage, currentSources);
     }
 
     @Unique
     @SuppressWarnings("unchecked")
-    private void pauseIfNeeded(final Frame frame, final ContextChain<T> currentStage, final List<T> currentSources) {
-        final DebuggerEngine engine = BastionMod.engine();
-        if (engine == null || !engine.isActive()) return;
-
-        final SourceLocation location = SourceMapper.toSourceLocation((BuildContexts<?>) (Object) this);
-        if (location == null) return;
-
-        final StringRange range = currentStage.getTopContext().getRange();
-        final CommandSnippet command = new CommandSnippet(this.commandInput, range.getStart(), range.getEnd());
-
-        final List<CommandSourceStack> sources = (List<CommandSourceStack>) currentSources;
-
-        engine.onCommandStage(new CommandStageEvent(
-            bastion$chainId(frame, location),
-            frame.depth(),
-            location,
-            command,
-            () -> SourceMapper.toPauseSources(sources)
-        ));
-    }
-
-    @Unique
-    private long bastion$chainId(final Frame frame, final SourceLocation location) {
-        final String commandKey = location + "\u0000" + commandInput;
-        synchronized (bastion$chainIds) {
-            final Map<String, Long> idsForFrame = bastion$chainIds.computeIfAbsent(frame, ignored -> new HashMap<>());
-            return idsForFrame.computeIfAbsent(commandKey, ignored -> bastion$nextChainId.getAndIncrement());
-        }
+    private void bastion$observe(Frame frame, ContextChain<T> stage, List<T> sources) {
+        DebuggerEngine engine = BastionMod.engine();
+        CommandTrace trace = CommandTrace.current();
+        if (engine == null || trace == null || !engine.isActive()) return;
+        StringRange range = stage.getTopContext().getRange();
+        CommandSnippet command = new CommandSnippet(commandInput, range.getStart(), range.getEnd());
+        List<CommandSourceStack> current = (List<CommandSourceStack>) sources;
+        engine.onCommandStage(new CommandStageEvent(trace.id, frame.depth(), trace.location, command,
+            () -> SourceMapper.toPauseSources(current)));
     }
 }

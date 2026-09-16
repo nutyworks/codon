@@ -43,6 +43,16 @@ class StepControllerTest {
     }
 
     @Test
+    void outFromTheRootDoesNotArmAnUnreachableRequest() {
+        step.onPaused(0);
+
+        step.stepOut();
+
+        assertFalse(step.isStepping());
+        assertFalse(step.shouldPauseAt(0));
+    }
+
+    @Test
     void onPausedClearsModeAndRecordsDepth() {
         step.stepInto();
         step.onPaused(7);

@@ -12,10 +12,16 @@ import java.util.function.BooleanSupplier;
 public final class ImmediateExecutionController implements ExecutionController {
     public int parkCount = 0;
     public boolean resumedAtPark;
+    public ParkResult result = ParkResult.RESUMED;
+    public RuntimeException failure;
 
     @Override
-    public void parkUntil(BooleanSupplier resumed) {
+    public ParkResult parkUntil(BooleanSupplier resumed) {
         parkCount++;
         resumedAtPark = resumed.getAsBoolean();
+        if (failure != null) {
+            throw failure;
+        }
+        return result;
     }
 }
