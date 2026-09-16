@@ -7,6 +7,9 @@
   "entrypoints": {
     "fabric-client-gametest": [
       "works.nuty.bastion.client.DebuggerPresentationGameTest",
+      "works.nuty.bastion.client.DebuggerChatPauseGameTest",
+      "works.nuty.bastion.client.DebuggerClientPauseGameTest",
+      "works.nuty.bastion.client.DebuggerSoundPauseGameTest",
       "works.nuty.bastion.client.DebuggerFreecamGameTest",
       "works.nuty.bastion.client.DebuggerMountedFreecamGameTest"
     ]

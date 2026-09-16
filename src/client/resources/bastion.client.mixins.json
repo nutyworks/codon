@@ -3,12 +3,21 @@
 	"package": "works.nuty.bastion.mixin.client",
 	"compatibilityLevel": "JAVA_25",
 	"client": [
+		"CameraMixin",
+		"ChannelMixin",
 		"ClientLevelMixin",
+		"DeltaTrackerAccessor",
+		"DeltaTrackerMixin",
+		"EffectClockMixin",
 		"GameRendererMixin",
 		"LevelExtractorMixin",
 		"LocalPlayerMixin",
 		"MinecraftMixin",
 		"MouseHandlerMixin",
+		"NowPlayingToastMixin",
+		"SoundEngineMixin",
+		"SoundManagerAccessor",
+		"TimedNotificationMixin",
 		"ToggleKeyMappingAccessor"
 	],
 	"injectors": {

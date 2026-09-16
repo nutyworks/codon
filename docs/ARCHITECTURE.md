@@ -114,6 +114,19 @@ gameplay clicks (including accessibility toggle states) are cleared on exit so t
 replacement abandons the old camera until a fresh pause snapshot arrives. The existing server
 pause loop still processes only debugger controls and connection maintenance.
 
+The synced pause state also drives vanilla client simulation and render interpolation pause:
+entities, block entities, world/weather time, ambient particles, particle motion/lifetime,
+HUD/chat/title timers, and delayed/ticking sounds stop advancing. Texture animation and music
+scheduling also stop. Freecam uses the live camera interpolation fraction while the world keeps
+its frozen fraction; input, the debugger UI, rendering, loading, and network maintenance stay live.
+Wall-clock effects (glint, border texture, boss-bar/heart interpolation, subtitles, and toasts) use a
+presentation clock that excludes debugger pause duration, preserving their remaining lifetime.
+Existing audio channels, including music, pause at their playback position; channels whose buffers
+finish loading during pause also pause immediately. Closing a screen cannot unpause them. New UI
+click sounds are discarded during pause so they do not consume channels or burst on resume.
+The now-playing toast's music-note color animation uses the same paused presentation clock.
+Resume/disconnect restores audio while preserving any ordinary singleplayer menu pause.
+
 Pause payloads use `bastion:pause_sync_v2` because each `PauseSource` now carries its dimension.
 Client and server must both use the updated mod for pause visualization.
 
@@ -135,6 +148,8 @@ temporary singleplayer world under `build/run/clientGameTest`, exercises the act
 renderer with an explicit pause fixture, checks the pause codec round trip, and saves screenshots
 there. The freecam fixture separately exercises the production client mirror and mixins, checking
 player immobility, horizontal/vertical camera input, blocked gameplay packets and controls,
-accessibility toggle cleanup, mounted vehicle immobility, and restoration. Passing these
+accessibility toggle cleanup, mounted vehicle immobility, and restoration. Additional client tests
+check chat opacity/lifetime, particles, world/entity clocks, texture/glint animation, and OpenAL
+channel pause/resume with delayed sounds and music scheduling. Passing these
 checks does not prove server-driven breakpoint/step synchronization or long-running dedicated
 server pause behavior; those require separate end-to-end Minecraft runtime checks.

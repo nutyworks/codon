@@ -13,6 +13,7 @@ import works.nuty.bastion.client.network.ClientNetworking;
 import works.nuty.bastion.client.render.DebugHudElement;
 import works.nuty.bastion.client.render.DebugLevelRenderer;
 import works.nuty.bastion.client.state.ClientDebuggerState;
+import works.nuty.bastion.client.state.ClientPauseEffects;
 import works.nuty.bastion.client.ui.BastionScreen;
 import works.nuty.bastion.client.ui.DebuggerOverlay;
 
@@ -23,23 +24,40 @@ import works.nuty.bastion.client.ui.DebuggerOverlay;
 public final class BastionClientMod implements ClientModInitializer {
     private static @Nullable ClientDebuggerState debuggerState;
     private static @Nullable DebuggerFreecam freecam;
+    private static volatile @Nullable ClientPauseEffects pauseEffects;
 
     /** Client composition seams, including the service used by framework-created mixins. */
     public static @Nullable ClientDebuggerState state() { return debuggerState; }
     public static @Nullable DebuggerFreecam freecam() { return freecam; }
+    public static @Nullable ClientPauseEffects pauseEffects() { return pauseEffects; }
+
+    public static boolean isAudioPaused() {
+        return pauseEffects != null && pauseEffects.isPaused();
+    }
+
+    public static boolean isWorldPaused() {
+        return debuggerState != null && debuggerState.isPaused() && Minecraft.getInstance().level != null;
+    }
+
+    public static long effectTimeMillis(long realTimeMillis) {
+        return pauseEffects == null ? realTimeMillis : pauseEffects.effectTimeMillis(realTimeMillis);
+    }
+
     @Override
     public void onInitializeClient() {
         ClientDebuggerState state = new ClientDebuggerState();
         debuggerState = state;
         DebuggerFreecam camera = new DebuggerFreecam(state);
         freecam = camera;
+        ClientPauseEffects effects = new ClientPauseEffects(state);
+        pauseEffects = effects;
         DebuggerOverlay overlay = new DebuggerOverlay(state);
 
         InputManager inputManager = new InputManager(state,
             im -> Minecraft.getInstance().setScreenAndShow(new BastionScreen(im, overlay)));
         inputManager.registerKeyMappings();
 
-        ClientNetworking.register(state, camera);
+        ClientNetworking.register(state, camera, effects);
         ClientTickEvents.START_CLIENT_TICK.register(camera::tick);
         ClientTickEvents.END_CLIENT_TICK.register(inputManager);
         LevelRenderEvents.END_MAIN.register(new DebugLevelRenderer(state));
