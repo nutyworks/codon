@@ -36,6 +36,7 @@
   "bastion.ui.step_complete": "Paused · step",
   "bastion.ui.breakpoint_hit": "Paused · breakpoint",
   "bastion.ui.shortcuts": "%s: cursor / world    %s: block breakpoint",
+  "bastion.ui.freecam_shortcuts": "%s: cursor / freecam  %s/%s/%s/%s: move  %s/%s: up/down  %s: fast  %s: breakpoint",
   "bastion.ui.group": "Contexts ×%s",
   "bastion.ui.group_hint": "Open overlapping contexts in the panel; choose a source to highlight it.",
   "bastion.ui.legend": "Red: breakpoint · Teal: execution anchor + facing",

@@ -3,6 +3,13 @@
 	"package": "works.nuty.bastion.mixin.client",
 	"compatibilityLevel": "JAVA_25",
 	"client": [
+		"ClientLevelMixin",
+		"GameRendererMixin",
+		"LevelExtractorMixin",
+		"LocalPlayerMixin",
+		"MinecraftMixin",
+		"MouseHandlerMixin",
+		"ToggleKeyMappingAccessor"
 	],
 	"injectors": {
 		"defaultRequire": 1

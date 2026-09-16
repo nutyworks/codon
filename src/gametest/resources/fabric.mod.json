@@ -3,7 +3,12 @@
   "id": "bastion-ui-test",
   "version": "1.0.0",
   "environment": "client",
+  "mixins": ["bastion.gametest.mixins.json"],
   "entrypoints": {
-    "fabric-client-gametest": ["works.nuty.bastion.client.DebuggerPresentationGameTest"]
+    "fabric-client-gametest": [
+      "works.nuty.bastion.client.DebuggerPresentationGameTest",
+      "works.nuty.bastion.client.DebuggerFreecamGameTest",
+      "works.nuty.bastion.client.DebuggerMountedFreecamGameTest"
+    ]
   }
 }

@@ -36,6 +36,7 @@
   "bastion.ui.step_complete": "정지 · 스텝 완료",
   "bastion.ui.breakpoint_hit": "정지 · 중단점",
   "bastion.ui.shortcuts": "%s: 커서 / 월드 전환    %s: 블록 중단점",
+  "bastion.ui.freecam_shortcuts": "%s: 커서 / 자유 시점  %s/%s/%s/%s: 이동  %s/%s: 상승/하강  %s: 빠르게  %s: 중단점",
   "bastion.ui.group": "소스 %s개",
   "bastion.ui.group_hint": "겹친 실행 소스를 패널에서 펼칩니다. 소스를 선택하면 해당 기준점을 강조합니다.",
   "bastion.ui.legend": "빨강: 중단점 · 청록: 실행 기준점 + 방향",

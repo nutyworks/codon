@@ -2,6 +2,7 @@ package works.nuty.bastion.client.network;
 
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
+import works.nuty.bastion.client.camera.DebuggerFreecam;
 import works.nuty.bastion.client.state.ClientDebuggerState;
 import works.nuty.bastion.network.BreakpointSyncPayload;
 import works.nuty.bastion.network.PauseSyncPayload;
@@ -15,13 +16,22 @@ public final class ClientNetworking {
     private ClientNetworking() {
     }
 
-    public static void register(ClientDebuggerState state) {
-        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> state.reset());
+    public static void register(ClientDebuggerState state, DebuggerFreecam freecam) {
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+            state.reset();
+            freecam.synchronize(client);
+        });
         ClientPlayNetworking.registerGlobalReceiver(PauseSyncPayload.TYPE, (payload, context) ->
-            context.client().execute(() -> state.applyPause(payload.snapshot())));
+            context.client().execute(() -> {
+                state.applyPause(payload.snapshot());
+                freecam.synchronize(context.client());
+            }));
 
         ClientPlayNetworking.registerGlobalReceiver(ResumeSyncPayload.TYPE, (payload, context) ->
-            context.client().execute(state::applyResume));
+            context.client().execute(() -> {
+                state.applyResume();
+                freecam.synchronize(context.client());
+            }));
 
         ClientPlayNetworking.registerGlobalReceiver(BreakpointSyncPayload.TYPE, (payload, context) ->
             context.client().execute(() -> state.applyBreakpoints(payload.blocks())));

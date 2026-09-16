@@ -1,0 +1,7 @@
+{
+  "required": true,
+  "package": "works.nuty.bastion.client.testmixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": ["ConnectionMixin", "LevelExtractorMixin", "ItemInHandRendererMixin"],
+  "injectors": { "defaultRequire": 1 }
+}

@@ -114,7 +114,8 @@ public final class InputManager implements ClientTickEvents.EndTick {
     private void toggleTargetBreakpoint() {
         Minecraft client = Minecraft.getInstance();
         if (client.player == null) return;
-        HitResult hit = client.player.pick(20.0, 0.0F, false);
+        var viewpoint = client.getCameraEntity() != null ? client.getCameraEntity() : client.player;
+        HitResult hit = viewpoint.pick(20.0, 1.0F, false);
         if (hit instanceof BlockHitResult block && hit.getType() == HitResult.Type.BLOCK) {
             BlockPos pos = block.getBlockPos();
             client.player.connection.sendCommand("bastion breakpoint block %d %d %d".formatted(pos.getX(), pos.getY(), pos.getZ()));

@@ -97,8 +97,14 @@ public final class DebuggerOverlay {
         renderCommand(graphics, layout.command(), snapshot);
         if (layout.footer().height() > 0) {
             Bounds footer = layout.footer();
-            String hint = Component.translatable("bastion.ui.shortcuts", input.menuKey.getTranslatedKeyMessage(),
-                input.breakpointKey.getTranslatedKeyMessage()).getString();
+            String hint = state.isPaused()
+                ? Component.translatable("bastion.ui.freecam_shortcuts", input.menuKey.getTranslatedKeyMessage(),
+                    client.options.keyUp.getTranslatedKeyMessage(), client.options.keyLeft.getTranslatedKeyMessage(),
+                    client.options.keyDown.getTranslatedKeyMessage(), client.options.keyRight.getTranslatedKeyMessage(),
+                    client.options.keyJump.getTranslatedKeyMessage(), client.options.keyShift.getTranslatedKeyMessage(),
+                    client.options.keySprint.getTranslatedKeyMessage(), input.breakpointKey.getTranslatedKeyMessage()).getString()
+                : Component.translatable("bastion.ui.shortcuts", input.menuKey.getTranslatedKeyMessage(),
+                    input.breakpointKey.getTranslatedKeyMessage()).getString();
             text(graphics, hint, footer.x() + 3, footer.y() + 3, footer.width(), MUTED);
         }
 
