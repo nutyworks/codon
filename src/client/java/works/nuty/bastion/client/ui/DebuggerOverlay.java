@@ -11,6 +11,7 @@ import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
 import works.nuty.bastion.client.input.InputManager;
 import works.nuty.bastion.client.state.ClientDebuggerState;
+import works.nuty.bastion.client.state.DebuggerPreferences.InspectorTab;
 import works.nuty.bastion.client.ui.layout.DebuggerLayout;
 import works.nuty.bastion.client.ui.layout.GizmoLabelLayout;
 import works.nuty.bastion.client.ui.layout.GizmoLabelLayout.Anchor;
@@ -42,7 +43,6 @@ public final class DebuggerOverlay {
     private final Set<String> usedButtons = new HashSet<>();
     private final Set<Integer> visibleSources = new HashSet<>();
     private @Nullable PauseSnapshot lastSnapshot;
-    private @Nullable Boolean inspectorPreference;
     private List<Integer> expandedGroup = List.of();
     private int sourceOffset;
     private int stackOffset;
@@ -50,8 +50,6 @@ public final class DebuggerOverlay {
     private int maxSourceOffset;
     private int maxStackOffset;
     private int maxCommandOffset;
-    private boolean stackTab;
-    private boolean detailTab;
     private Bounds sourceScrollBounds = EMPTY;
     private Bounds stackScrollBounds = EMPTY;
     private Bounds commandScrollBounds = EMPTY;
@@ -88,7 +86,7 @@ public final class DebuggerOverlay {
             return List.of();
         }
 
-        showInspector = inspectorPreference != null ? inspectorPreference
+        showInspector = state.preferences().inspectorVisible() != null ? state.preferences().inspectorVisible()
             : graphics.guiWidth() >= 420 && graphics.guiHeight() >= 220;
         DebuggerLayout layout = DebuggerLayout.create(graphics.guiWidth(), graphics.guiHeight(), showInspector);
         renderHeader(graphics, layout, input, snapshot);
@@ -167,7 +165,7 @@ public final class DebuggerOverlay {
             });
         iconButton("inspector", new Bounds(x + width + gap, toolbar.y() + 2, width, DebuggerLayout.ICON_BUTTON_SIZE),
             component("bastion.ui.details"), showInspector ? DebuggerIcon.DETAILS_OPEN : DebuggerIcon.DETAILS_CLOSED,
-            true, () -> inspectorPreference = !showInspector);
+            true, () -> state.preferences().setInspectorVisible(!showInspector));
     }
 
     private void renderWorldLabels(GuiGraphicsExtractor graphics, Bounds world, @Nullable PauseSnapshot snapshot) {
@@ -226,9 +224,8 @@ public final class DebuggerOverlay {
                     state.selectSource(index);
                     sourceOffset = index;
                 }
-                inspectorPreference = true;
-                stackTab = false;
-                detailTab = !group;
+                state.preferences().setInspectorVisible(true);
+                state.preferences().setInspectorTab(group ? InspectorTab.SOURCES : InspectorTab.DETAILS);
             }).setTooltip(Tooltip.create(group ? component("bastion.ui.group_hint") : title));
         }
         String legend = tr("bastion.ui.legend");
@@ -257,15 +254,19 @@ public final class DebuggerOverlay {
             int tabCount = small ? 3 : 2;
             int tabWidth = (area.width() - 3 * (tabCount + 1)) / tabCount;
             button("tab-sources", new Bounds(area.x() + 3, area.y() + 3, tabWidth, 18), component("bastion.ui.contexts"),
-                true, !stackTab && (!small || !detailTab), false, false, () -> { stackTab = detailTab = false; });
+                true, state.preferences().inspectorTab() != InspectorTab.STACK
+                    && (!small || state.preferences().inspectorTab() != InspectorTab.DETAILS), false, false,
+                () -> state.preferences().setInspectorTab(InspectorTab.SOURCES));
             if (small) button("tab-detail", new Bounds(area.x() + 6 + tabWidth, area.y() + 3, tabWidth, 18),
-                component("bastion.ui.details"), true, detailTab && !stackTab, false, false, () -> { detailTab = true; stackTab = false; });
+                component("bastion.ui.details"), true, state.preferences().inspectorTab() == InspectorTab.DETAILS, false, false,
+                () -> state.preferences().setInspectorTab(InspectorTab.DETAILS));
             button("tab-stack", new Bounds(area.x() + 3 + (tabCount - 1) * (tabWidth + 3), area.y() + 3, tabWidth, 18), component("bastion.ui.stack"),
-                true, stackTab, false, false, () -> stackTab = true);
+                true, state.preferences().inspectorTab() == InspectorTab.STACK, false, false,
+                () -> state.preferences().setInspectorTab(InspectorTab.STACK));
             Bounds body = new Bounds(area.x(), area.y() + 25, area.width(), area.height() - 25);
-            if (stackTab) {
+            if (state.preferences().inspectorTab() == InspectorTab.STACK) {
                 renderStack(graphics, body, snapshot);
-            } else if (small && detailTab) {
+            } else if (small && state.preferences().inspectorTab() == InspectorTab.DETAILS) {
                 renderSourceDetails(graphics, body);
             } else {
                 int detailHeight = body.height() >= 155 ? 94 : body.height() >= 112 ? 70 : 0;
@@ -302,7 +303,10 @@ public final class DebuggerOverlay {
             if (!source.dimension().equals(dimension())) name += " · " + shortDimension(source.dimension());
             button("source-" + index, new Bounds(area.x() + 5, area.y() + 21 + row * 19, area.width() - 13, 17),
                 Component.literal(name), true, index == state.selectedSourceIndex(), true, false, () -> {
-                    if (state.snapshot() == snapshot) { state.selectSource(index); detailTab = true; }
+                    if (state.snapshot() == snapshot) {
+                        state.selectSource(index);
+                        state.preferences().setInspectorTab(InspectorTab.DETAILS);
+                    }
                 }).setTooltip(Tooltip.create(Component.literal(name)));
         }
         if (rows > 0 && indices.size() > rows) {

@@ -28,15 +28,24 @@ public final class ClientDebuggerState {
     private long controlRequestedAt;
     private final LongSupplier clock;
     private @Nullable PauseSource selectionHint;
-    private GizmoMode gizmoMode = GizmoMode.GROUPED;
+    private final DebuggerPreferences preferences;
 
     public ClientDebuggerState() {
-        this(System::nanoTime);
+        this(System::nanoTime, new DebuggerPreferences());
     }
 
     /** Injectable monotonic clock keeps acknowledgement timeouts deterministic in unit tests. */
     public ClientDebuggerState(LongSupplier clock) {
+        this(clock, new DebuggerPreferences());
+    }
+
+    public ClientDebuggerState(DebuggerPreferences preferences) {
+        this(System::nanoTime, preferences);
+    }
+
+    public ClientDebuggerState(LongSupplier clock, DebuggerPreferences preferences) {
         this.clock = Objects.requireNonNull(clock);
+        this.preferences = Objects.requireNonNull(preferences);
     }
 
     public enum GizmoMode {
@@ -142,11 +151,15 @@ public final class ClientDebuggerState {
     }
 
     public GizmoMode gizmoMode() {
-        return gizmoMode;
+        return preferences.gizmoMode();
     }
 
     public void setGizmoMode(GizmoMode mode) {
-        gizmoMode = Objects.requireNonNull(mode);
+        preferences.setGizmoMode(mode);
+    }
+
+    public DebuggerPreferences preferences() {
+        return preferences;
     }
 
     /** Only a fresh server packet completes a control request; UI never fabricates a pause. */

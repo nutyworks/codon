@@ -84,11 +84,20 @@ dependencies {
 	clientTestCompileOnly "org.jspecify:jspecify:${project.jspecify_version}"
 	clientTestImplementation "org.junit.jupiter:junit-jupiter:${project.junit_version}"
 	clientTestRuntimeOnly "org.junit.platform:junit-platform-launcher"
+	// File persistence adapters are tested separately from the Minecraft-free domain suites.
+	testImplementation sourceSets.core.output
+	testImplementation sourceSets.client.output
+	testImplementation "org.junit.jupiter:junit-jupiter:${project.junit_version}"
+	testRuntimeOnly "org.junit.platform:junit-platform-launcher"
 	gametestImplementation sourceSets.client.output
 	gametestImplementation sourceSets.core.output
 }
 
 // A dedicated task so `./gradlew coreTest` runs the domain suite with no Minecraft on the classpath.
+tasks.named("test", Test) {
+	useJUnitPlatform()
+}
+
 tasks.register("coreTest", Test) {
 	description = "Runs the Minecraft-free core unit tests."
 	group = "verification"

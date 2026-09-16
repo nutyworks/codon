@@ -133,6 +133,28 @@ Resume/disconnect restores audio while preserving any ordinary singleplayer menu
 Pause payloads use `bastion:pause_sync_v2` because each `PauseSource` now carries its dimension.
 Client and server must both use the updated mod for pause visualization.
 
+## Persistence
+
+Client preferences are shared across worlds and servers in the Minecraft instance's
+`config/bastion.json`: gizmo mode, inspector visibility, and inspector tab. Changes save immediately.
+An unset (`null`) inspector visibility retains the responsive automatic default. Key bindings
+continue to use Minecraft's own options file. Pause snapshots, source/frame selection, scroll
+positions, and freecam state remain session-local.
+
+Both block and function breakpoints live on the server in each world save's
+`data/bastion-breakpoints.json`. Block entries retain their dimension and coordinates; function
+entries retain their identifier and one-based line number. `WorldBreakpointPersistence` wraps the
+network event sink, saving both sets after every toggle or clear while forwarding pause, step,
+resume, and breakpoint notifications unchanged. It restores the registry at `SERVER_STARTING`,
+before the first tick or player join, and clears it at server shutdown so opening a different
+world cannot inherit the previous world's breakpoints. This also applies to dedicated servers;
+clients receive the restored block set through the existing join sync.
+
+The JSON files are versioned and written to a sibling temporary file before replacement. If
+loading fails or the version is unsupported, the original file stays untouched and persistence
+for that file is disabled until the next session; the failure is logged. Failed breakpoint writes
+retain the in-memory state and are retried on the next change, world save, or shutdown.
+
 ## Why the indirection
 The pause engine never touches Minecraft, so its logic is unit-tested directly and could later be
 driven by a different front end. The `DebuggerEventSink` port is the extension point for a future
@@ -144,6 +166,10 @@ slot in behind these same ports.
 
 Use Java 25 and `./gradlew build` for compilation and the core/presentation regression suites.
 They also run separately with `./gradlew coreTest clientTest`.
+`./gradlew test` checks file persistence with temporary directories, including restart/restore,
+world isolation, toggle/clear, invalid-file preservation, and failed-write recovery. These tests
+exercise the adapters and engine without launching Minecraft; Fabric lifecycle wiring still
+requires an in-game check to establish runtime behavior.
 
 `./gradlew runClientGameTest` is an opt-in real-client presentation check using Fabric's
 [client game test framework](https://docs.fabricmc.net/develop/automatic-testing). It creates a

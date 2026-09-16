@@ -5,6 +5,7 @@ import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.world.level.storage.LevelResource;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jspecify.annotations.Nullable;
@@ -13,6 +14,7 @@ import works.nuty.bastion.adapter.McExecutionController;
 import works.nuty.bastion.command.BastionCommand;
 import works.nuty.bastion.network.BastionNetworking;
 import works.nuty.bastion.network.NetworkDebuggerEventSink;
+import works.nuty.bastion.persistence.WorldBreakpointPersistence;
 import works.nuty.bastion.core.service.BreakpointRegistry;
 import works.nuty.bastion.core.service.CallStack;
 import works.nuty.bastion.core.service.DebuggerEngine;
@@ -46,14 +48,20 @@ public final class BastionMod implements ModInitializer {
         CallStack callStack = new CallStack();
         McExecutionController executionController = new McExecutionController(() -> server);
         NetworkDebuggerEventSink eventSink = new NetworkDebuggerEventSink(() -> server);
+        WorldBreakpointPersistence persistence = new WorldBreakpointPersistence(breakpoints, eventSink,
+            failure -> LOGGER.warn("Could not persist Bastion world breakpoints", failure));
 
-        DebuggerEngine wiredEngine = new DebuggerEngine(breakpoints, step, callStack, executionController, eventSink);
+        DebuggerEngine wiredEngine = new DebuggerEngine(breakpoints, step, callStack, executionController, persistence);
         engine = wiredEngine;
 
-        ServerLifecycleEvents.SERVER_STARTED.register(s -> {
+        ServerLifecycleEvents.SERVER_STARTING.register(s -> {
             wiredEngine.resetSession();
-            server = s;
+            persistence.openWorld(s.getWorldPath(LevelResource.ROOT));
         });
+        ServerLifecycleEvents.SERVER_STARTED.register(s -> server = s);
+        ServerLifecycleEvents.BEFORE_SAVE.register((s, flush, force) -> persistence.flush());
+        // Finish disk writes while the server still owns the world's session lock.
+        ServerLifecycleEvents.SERVER_STOPPING.register(s -> persistence.closeWorld());
         ServerLifecycleEvents.SERVER_STOPPED.register(s -> {
             wiredEngine.resetSession();
             DebuggerTaskQueue.clear(s);

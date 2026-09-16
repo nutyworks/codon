@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -152,6 +153,44 @@ class ClientDebuggerStateTest {
         assertEquals(0, state.selectedFrameIndex());
         assertTrue(state.blockBreakpoints().isEmpty());
         assertFalse(state.controlPending());
+    }
+
+    @Test
+    void resetPreservesClientPreferences() {
+        DebuggerPreferences preferences = new DebuggerPreferences();
+        preferences.setGizmoMode(ClientDebuggerState.GizmoMode.FOCUS);
+        preferences.setInspectorVisible(true);
+        preferences.setInspectorTab(DebuggerPreferences.InspectorTab.STACK);
+        ClientDebuggerState state = new ClientDebuggerState(preferences);
+
+        state.reset();
+
+        assertSame(preferences, state.preferences());
+        assertEquals(ClientDebuggerState.GizmoMode.FOCUS, state.gizmoMode());
+        assertEquals(Boolean.TRUE, preferences.inspectorVisible());
+        assertEquals(DebuggerPreferences.InspectorTab.STACK, preferences.inspectorTab());
+    }
+
+    @Test
+    void preferencesNotifyOnlyWhenTheirValuesChange() {
+        DebuggerPreferences preferences = new DebuggerPreferences();
+        AtomicInteger changes = new AtomicInteger();
+        preferences.setChangeListener(changes::incrementAndGet);
+
+        preferences.setGizmoMode(ClientDebuggerState.GizmoMode.GROUPED);
+        preferences.setInspectorVisible(null);
+        preferences.setInspectorTab(DebuggerPreferences.InspectorTab.SOURCES);
+        assertEquals(0, changes.get());
+
+        preferences.setGizmoMode(ClientDebuggerState.GizmoMode.LABELS);
+        preferences.setInspectorVisible(false);
+        preferences.setInspectorTab(DebuggerPreferences.InspectorTab.DETAILS);
+        assertEquals(3, changes.get());
+
+        preferences.setGizmoMode(ClientDebuggerState.GizmoMode.LABELS);
+        preferences.setInspectorVisible(false);
+        preferences.setInspectorTab(DebuggerPreferences.InspectorTab.DETAILS);
+        assertEquals(3, changes.get());
     }
 
     @Test

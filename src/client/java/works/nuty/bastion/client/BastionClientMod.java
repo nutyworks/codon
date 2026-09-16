@@ -1,18 +1,22 @@
 package works.nuty.bastion.client;
 
 import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
 import org.jspecify.annotations.Nullable;
+import works.nuty.bastion.BastionMod;
 import works.nuty.bastion.client.camera.DebuggerFreecam;
+import works.nuty.bastion.client.config.ClientSettingsStore;
 import works.nuty.bastion.client.input.InputManager;
 import works.nuty.bastion.client.network.ClientNetworking;
 import works.nuty.bastion.client.render.DebugHudElement;
 import works.nuty.bastion.client.render.DebugLevelRenderer;
 import works.nuty.bastion.client.state.ClientDebuggerState;
+import works.nuty.bastion.client.state.DebuggerPreferences;
 import works.nuty.bastion.client.state.ClientPauseEffects;
 import works.nuty.bastion.client.ui.BastionScreen;
 import works.nuty.bastion.client.ui.DebuggerOverlay;
@@ -45,7 +49,10 @@ public final class BastionClientMod implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
-        ClientDebuggerState state = new ClientDebuggerState();
+        DebuggerPreferences preferences = ClientSettingsStore.open(
+            FabricLoader.getInstance().getConfigDir().resolve("bastion.json"),
+            exception -> BastionMod.LOGGER.error("Could not load or save Bastion client settings", exception));
+        ClientDebuggerState state = new ClientDebuggerState(preferences);
         debuggerState = state;
         DebuggerFreecam camera = new DebuggerFreecam(state);
         freecam = camera;
