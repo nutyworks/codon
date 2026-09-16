@@ -8,6 +8,7 @@ import works.nuty.bastion.client.state.ClientPauseEffects;
 import works.nuty.bastion.network.BreakpointSyncPayload;
 import works.nuty.bastion.network.PauseSyncPayload;
 import works.nuty.bastion.network.ResumeSyncPayload;
+import works.nuty.bastion.network.StepSyncPayload;
 
 /**
  * Client-side receivers for the debugger sync payloads. Each handler hops onto the client thread
@@ -33,6 +34,13 @@ public final class ClientNetworking {
         ClientPlayNetworking.registerGlobalReceiver(ResumeSyncPayload.TYPE, (payload, context) ->
             context.client().execute(() -> {
                 state.applyResume();
+                freecam.synchronize(context.client());
+                effects.synchronize(context.client());
+            }));
+
+        ClientPlayNetworking.registerGlobalReceiver(StepSyncPayload.TYPE, (payload, context) ->
+            context.client().execute(() -> {
+                state.applyStep();
                 freecam.synchronize(context.client());
                 effects.synchronize(context.client());
             }));

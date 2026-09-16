@@ -11,7 +11,8 @@
       "works.nuty.bastion.client.DebuggerClientPauseGameTest",
       "works.nuty.bastion.client.DebuggerSoundPauseGameTest",
       "works.nuty.bastion.client.DebuggerFreecamGameTest",
-      "works.nuty.bastion.client.DebuggerMountedFreecamGameTest"
+      "works.nuty.bastion.client.DebuggerMountedFreecamGameTest",
+      "works.nuty.bastion.client.DebuggerFreecamStepGameTest"
     ]
   }
 }

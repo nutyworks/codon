@@ -24,6 +24,50 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ClientDebuggerStateTest {
     @Test
+    void repeatedStepsClearStaleSnapshotsButRetainSelectionForTheNextPause() {
+        ClientDebuggerState state = new ClientDebuggerState();
+        PauseSource selected = source("selected", 2);
+        List<PauseSource> sources = List.of(source("other", 1), selected);
+        state.applyPause(snapshot(sources, 2));
+        state.selectSource(1);
+        for (int i = 0; i < 6; i++) {
+            state.selectFrame(1);
+            assertTrue(state.beginControlRequest());
+            state.applyStep();
+            assertTrue(state.isStepping());
+            assertFalse(state.isPaused());
+            assertNull(state.snapshot());
+            assertFalse(state.controlPending());
+            assertFalse(state.beginControlRequest(), "cannot issue another step before the next pause");
+            assertNull(state.selectedSource());
+            assertEquals(0, state.selectedFrameIndex());
+
+            state.applyPause(snapshot(sources, 2));
+            assertFalse(state.isStepping());
+            assertTrue(state.isPaused());
+            assertSame(selected, state.selectedSource());
+        }
+    }
+
+    @Test
+    void terminalResumeAndDisconnectClearAnInFlightStep() {
+        ClientDebuggerState state = new ClientDebuggerState();
+        state.applyPause(snapshot(List.of(source("one", 1)), 1));
+        state.applyStep();
+        state.applyResume();
+        assertFalse(state.isStepping());
+        assertFalse(state.isPaused());
+        assertNull(state.snapshot());
+
+        state.applyPause(snapshot(List.of(source("two", 2)), 1));
+        state.applyStep();
+        state.reset();
+        assertFalse(state.isStepping());
+        assertFalse(state.isPaused());
+        assertNull(state.snapshot());
+    }
+
+    @Test
     void acceptsOnlyValidSelectionsAndResetsFrameForEveryAuthoritativePause() {
         ClientDebuggerState state = new ClientDebuggerState();
         PauseSnapshot first = snapshot(List.of(source("one", 1)), 3);

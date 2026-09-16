@@ -14,8 +14,13 @@ public interface DebuggerEventSink {
     /** The engine has paused execution; {@code snapshot} fully describes the pause. */
     void paused(PauseSnapshot snapshot);
 
-    /** The engine has resumed (via resume or a step request). */
+    /** The engine has resumed normal execution, or a step finished without another pause. */
     void resumed();
+
+    /** Execution is advancing to the next step; presentation may retain its detached camera. */
+    default void stepping() {
+        resumed();
+    }
 
     /**
      * The set of breakpoints changed; {@code blockBreakpoints} is the new full set of block

@@ -103,6 +103,89 @@ class DebuggerEngineTest {
         assertFalse(engine.isPaused());
         assertTrue(sink.pauses.isEmpty());
         assertEquals(0, sink.resumes);
+        assertEquals(0, sink.steps);
+    }
+
+    @Test
+    void repeatedStepsPublishAdvancementWithoutEndingTheCameraSession() {
+        engine.onExecutionStarted();
+        breakpoints.toggleFunction(tick(3));
+        engine.onCommandStage(functionStage(1, 2, 3));
+        breakpoints.clear();
+
+        Runnable[] actions = {engine::stepInto, engine::stepOver, engine::stepOut};
+        for (int i = 0; i < 6; i++) {
+            actions[i % actions.length].run();
+            assertFalse(engine.isPaused());
+            assertNull(engine.currentSnapshot());
+            assertEquals(i + 1, sink.steps);
+            assertEquals(0, sink.resumes, "a step must not publish a terminal resume");
+            engine.onCommandStage(functionStage(i + 2, i % 3 == 2 ? 1 : 2, i + 4));
+            assertTrue(engine.isPaused());
+        }
+
+        engine.resume();
+        engine.onExecutionFinished();
+        assertEquals(1, sink.resumes, "only the final continue ends the camera session");
+    }
+
+    @Test
+    void stepExhaustionPublishesOneTerminalResumeAtTheOutermostExecutionBoundary() {
+        engine.onExecutionStarted();
+        engine.onExecutionStarted();
+        breakpoints.toggleFunction(tick(3));
+        engine.onCommandStage(functionStage(1, 2, 3));
+        engine.stepOver();
+
+        engine.onExecutionFinished();
+        assertEquals(0, sink.resumes, "finishing an inner queue must retain freecam");
+        engine.onExecutionFinished();
+        assertEquals(1, sink.steps);
+        assertEquals(1, sink.resumes, "exhausting the outer queue must release freecam");
+        engine.onTickBoundary();
+        engine.resetSession();
+        assertEquals(1, sink.resumes, "later cleanup must not publish another resume");
+    }
+
+    @Test
+    void rootStepOutIsATerminalResume() {
+        breakpoints.toggleFunction(tick(3));
+        engine.onCommandStage(functionStage(1, 0, 3));
+        engine.stepOut();
+
+        assertFalse(step.isStepping());
+        assertEquals(0, sink.steps);
+        assertEquals(1, sink.resumes);
+    }
+
+    @Test
+    void resetDuringAStepReleasesTheRetainedCameraSession() {
+        assertStepCancellationNotifies(engine::resetSession);
+    }
+
+    @Test
+    void resumeDuringAStepReleasesTheRetainedCameraSession() {
+        assertStepCancellationNotifies(engine::resume);
+    }
+
+    @Test
+    void tickBoundaryDuringAStepReleasesTheRetainedCameraSession() {
+        assertStepCancellationNotifies(engine::onTickBoundary);
+    }
+
+    private void assertStepCancellationNotifies(Runnable cancellation) {
+        breakpoints.toggleFunction(tick(3));
+        engine.onCommandStage(functionStage(1, 2, 3));
+        engine.stepInto();
+        assertEquals(1, sink.steps);
+        assertEquals(0, sink.resumes);
+
+        cancellation.run();
+        assertFalse(engine.isPaused());
+        assertFalse(step.isStepping());
+        assertEquals(1, sink.resumes);
+        cancellation.run();
+        assertEquals(1, sink.resumes);
     }
 
     @Test

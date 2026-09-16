@@ -172,7 +172,7 @@ public final class DebuggerEngine {
     /** Resume normal execution (run to the next breakpoint). */
     public void resume() {
         skipRemainingPausedChain();
-        step.clear();
+        clearStep();
         unpause();
     }
 
@@ -225,13 +225,13 @@ public final class DebuggerEngine {
         skippedChainIds.clear();
         evaluatedBreakpointChains.clear();
         callStack.clear();
-        step.clear();
+        clearStep();
     }
 
     /** End the host session, retaining user breakpoints but no execution state. */
     public void resetSession() {
         executionNesting = 0;
-        step.clear();
+        clearStep();
         skippedChainIds.clear();
         evaluatedBreakpointChains.clear();
         callStack.clear();
@@ -249,6 +249,17 @@ public final class DebuggerEngine {
         paused = false;
         pausedChainId = NO_CHAIN;
         currentSnapshot = null;
-        if (wasPaused) eventSink.resumed();
+        if (wasPaused) {
+            if (step.isStepping()) eventSink.stepping();
+            else eventSink.resumed();
+        }
+    }
+
+    private void clearStep() {
+        boolean wasStepping = step.isStepping();
+        step.clear();
+        // A final step can exhaust its queue without producing a new pause. Release any
+        // presentation retained during that step, including on cancellation/server shutdown.
+        if (wasStepping && !paused) eventSink.resumed();
     }
 }

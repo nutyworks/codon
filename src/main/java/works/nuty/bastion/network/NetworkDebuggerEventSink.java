@@ -35,6 +35,20 @@ public final class NetworkDebuggerEventSink implements DebuggerEventSink {
     }
 
     @Override
+    public void stepping() {
+        MinecraftServer s = server.get();
+        if (s == null) return;
+        for (ServerPlayer player : s.getPlayerList().getPlayers()) {
+            if (ServerPlayNetworking.canSend(player, StepSyncPayload.TYPE.id())) {
+                ServerPlayNetworking.send(player, new StepSyncPayload());
+            } else if (ServerPlayNetworking.canSend(player, ResumeSyncPayload.TYPE.id())) {
+                // Keep the original resume protocol usable by clients without step support.
+                ServerPlayNetworking.send(player, new ResumeSyncPayload());
+            }
+        }
+    }
+
+    @Override
     public void breakpointsChanged(Set<BlockLocation> blockBreakpoints) {
         broadcast(new BreakpointSyncPayload(List.copyOf(blockBreakpoints)));
     }

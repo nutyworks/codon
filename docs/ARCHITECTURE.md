@@ -89,10 +89,13 @@ while preserving breakpoint definitions.
   but are not drawn in the current world. Source anchors are execution reference points, not
   necessarily the attached entity's position.
 - `input/InputManager` — keybinds; control actions go to the server as `/bastion` commands.
-- `camera/DebuggerFreecam` — a client-only camera entity while paused.
+- `camera/DebuggerFreecam` — a client-only camera entity while paused and between debugger steps.
   Client mixins suspend local player and ridden-vehicle simulation, route mouse look into the
   camera, and block gameplay inputs. The camera never enters the level's entity list or supplies
   player movement packets. Resume/disconnect restores the original viewpoint and perspective.
+  A separate step sync retains the camera's position and orientation across step acknowledgements;
+  the server sends a terminal resume if the execution ends without another pause. Client pause
+  snapshots are still cleared during advancement so stale command state cannot be inspected.
   The original player's body remains visible at its paused position through vanilla entity
   rendering; player/vehicle render interpolation is fixed so the pose stays still.
   First-person arms and held items are hidden while freecam is active and return through vanilla
@@ -108,8 +111,8 @@ Transition trails are not inferred: they need execution history beyond the curre
 Pausing automatically enables freecam: movement keys follow the horizontal facing direction, jump/sneak move
 up/down, and sprint accelerates. `B` switches between freecam and the cursor UI; open screens stop
 camera motion. `F10` targets the block under the camera. Gameplay actions and inventory input are
-disabled while paused, and already-open containers close. Resuming (including a step's resume
-packet) restores the player camera; a new pause starts a fresh freecam. Camera navigation and
+disabled while paused, and already-open containers close. Stepping retains the freecam viewpoint;
+resuming normal execution or finishing the execution restores the player camera. Camera navigation and
 gameplay clicks (including accessibility toggle states) are cleared on exit so they do not turn into player actions. World/player
 replacement abandons the old camera until a fresh pause snapshot arrives. The existing server
 pause loop still processes only debugger controls and connection maintenance.
@@ -150,6 +153,8 @@ there. The freecam fixture separately exercises the production client mirror and
 player immobility, horizontal/vertical camera input, blocked gameplay packets and controls,
 accessibility toggle cleanup, mounted vehicle immobility, and restoration. Additional client tests
 check chat opacity/lifetime, particles, world/entity clocks, texture/glint animation, and OpenAL
-channel pause/resume with delayed sounds and music scheduling. Passing these
+channel pause/resume with delayed sounds and music scheduling. The freecam step regression sends
+pause/step/resume packets from the integrated server and checks camera identity and rendered pose
+across both back-to-back and delayed step transitions, plus terminal restoration. Passing these
 checks does not prove server-driven breakpoint/step synchronization or long-running dedicated
 server pause behavior; those require separate end-to-end Minecraft runtime checks.

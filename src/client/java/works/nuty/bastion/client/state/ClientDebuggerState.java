@@ -19,6 +19,7 @@ import java.util.function.LongSupplier;
  */
 public final class ClientDebuggerState {
     private volatile boolean paused;
+    private volatile boolean stepping;
     private volatile @Nullable PauseSnapshot snapshot;
     private volatile List<BlockLocation> blockBreakpoints = List.of();
     private int selectedSourceIndex = -1;
@@ -51,6 +52,7 @@ public final class ClientDebuggerState {
         selectionHint = null;
         this.snapshot = snapshot;
         this.paused = true;
+        this.stepping = false;
         this.controlPending = false;
         this.selectedFrameIndex = 0;
         this.selectedSourceIndex = snapshot.pauseSources().isEmpty() ? -1 : 0;
@@ -78,10 +80,21 @@ public final class ClientDebuggerState {
     public void applyResume() {
         if (selectedSource() != null) selectionHint = selectedSource();
         this.paused = false;
+        this.stepping = false;
         this.snapshot = null;
         this.selectedSourceIndex = -1;
         this.selectedFrameIndex = 0;
         this.controlPending = false;
+    }
+
+    /** Server-confirmed advancement: discard the old pause but retain the freecam session. */
+    public void applyStep() {
+        applyResume();
+        this.stepping = true;
+    }
+
+    public boolean isStepping() {
+        return stepping;
     }
 
     public void applyBreakpoints(List<BlockLocation> blocks) {
