@@ -29,7 +29,7 @@ interface CommandFunctionMixin {
         StringReader input,
         Operation<UnboundEntryAction<T>> original,
         @Local(name = "lineNumber") int lineNumber,
-        @Local(argsOnly = true) Identifier functionId
+        @Local(argsOnly = true, name = "id") Identifier functionId
     ) {
         UnboundEntryAction<T> ret = original.call(dispatcher, compilationContext, input);
         // Another mod may wrap the same call with its own action type; leave those lines

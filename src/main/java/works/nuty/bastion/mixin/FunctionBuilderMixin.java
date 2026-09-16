@@ -23,7 +23,7 @@ public class FunctionBuilderMixin<T extends ExecutionCommandSource<T>> {
     )
     private MacroFunction.MacroEntry<T> bastion$addMacro$newPlainTextEntry(
         StringTemplate template, IntList parameters, T compilationContext, Operation<MacroFunction.MacroEntry<T>> original,
-        @Local(name = "line") int lineNumber
+        @Local(name = "line", argsOnly = true) int lineNumber
     ) {
         MacroFunction.MacroEntry<T> ret = original.call(template, parameters, compilationContext);
         return new MacroLineEntry<>(ret.template, ret.parameters, ret.compilationContext, lineNumber);
