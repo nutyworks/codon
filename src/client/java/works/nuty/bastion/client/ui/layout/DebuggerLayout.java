@@ -19,12 +19,13 @@ public record DebuggerLayout(Bounds header, Bounds controls, Bounds world, Bound
         int panelWidth = showInspector ? Math.min(190, Math.max(144, usableWidth / 3)) : 0;
         // Extremely small windows use a full-width information drawer, never negative world space.
         panelWidth = Math.min(panelWidth, usableWidth);
-        int worldWidth = Math.max(0, usableWidth - (panelWidth == 0 ? 0 : panelWidth + 4));
+        int inspectorSpace = panelWidth == 0 ? 0 : Math.min(usableWidth, panelWidth + 4);
+        int worldWidth = usableWidth - inspectorSpace;
         return new DebuggerLayout(
             new Bounds(margin, margin, usableWidth, headerHeight),
             new Bounds(margin, margin + headerHeight, usableWidth, controlHeight),
-            new Bounds(margin, worldY, worldWidth, worldHeight),
-            new Bounds(width - margin - panelWidth, worldY, panelWidth, worldHeight),
+            new Bounds(margin + inspectorSpace, worldY, worldWidth, worldHeight),
+            new Bounds(margin, worldY, panelWidth, worldHeight),
             new Bounds(margin, commandY, usableWidth, Math.max(0, Math.min(commandHeight, height - margin - commandY))),
             new Bounds(margin, height - margin - footerHeight, usableWidth, footerHeight),
             compact

@@ -139,7 +139,8 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
 
     private static PauseSnapshot fixture(Minecraft client) {
         var player = client.player;
-        double x = player.getX() + 2;
+        // Keep the fixture in the world viewport to the right of the source inspector.
+        double x = player.getX() - 2;
         double y = player.getY() + 0.1;
         double z = player.getZ() + 6;
         List<PauseSource> sources = new ArrayList<>();
@@ -147,7 +148,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
             sources.add(new PauseSource(new Vec3d(x + i * 0.025, y, z), 0, i * 30,
                 new EntityRef(new UUID(0, i + 1), "Zombie " + (i + 1)), "minecraft:overworld"));
         }
-        sources.add(new PauseSource(new Vec3d(x + 2, y, z + 2), 0, 60, null, "minecraft:overworld"));
+        sources.add(new PauseSource(new Vec3d(x + 1, y, z + 2), 0, 60, null, "minecraft:overworld"));
         sources.add(new PauseSource(new Vec3d(x, y, z), 0, 0,
             new EntityRef(new UUID(0, 10), "Nether source"), "minecraft:the_nether"));
         SourceLocation location = new SourceLocation.Function(new FunctionLocation(new FunctionId("demo", "spawn_wave"), 12));

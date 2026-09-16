@@ -76,7 +76,8 @@ while preserving breakpoint definitions.
   gizmo mode, and a pending-control latch cleared by server packets or a retry timeout.
 - `network/ClientNetworking` — receivers that update the mirror and clear it on disconnect.
 - `ui/DebuggerOverlay` — shared transparent HUD and cursor-mode presentation: control bar, source
-  inspector, call stack, and scrollable command text. `BastionScreen` registers its native widgets
+  inspector and call stack on the left (clear of the scoreboard), and scrollable command text.
+  `BastionScreen` registers its native widgets
   for mouse, keyboard, and narration. `ClientFormatting` renders core types as chat components.
   The older `Window` classes are no longer used by the client composition root.
 - `ui/layout/` — Minecraft-free responsive panel and screen-space label placement. Overlapping
