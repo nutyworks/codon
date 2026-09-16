@@ -12,8 +12,7 @@ import works.nuty.bastion.client.render.DebugHudElement;
 import works.nuty.bastion.client.render.DebugLevelRenderer;
 import works.nuty.bastion.client.state.ClientDebuggerState;
 import works.nuty.bastion.client.ui.BastionScreen;
-import works.nuty.bastion.client.ui.CallStackWindow;
-import works.nuty.bastion.client.ui.WindowManager;
+import works.nuty.bastion.client.ui.DebuggerOverlay;
 
 /**
  * Client composition root. Builds the synced {@link ClientDebuggerState} and wires the client
@@ -23,16 +22,15 @@ public final class BastionClientMod implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         ClientDebuggerState state = new ClientDebuggerState();
-        WindowManager windowManager = new WindowManager();
-        windowManager.addWindow(new CallStackWindow(state, 10, 10, 300, 200));
+        DebuggerOverlay overlay = new DebuggerOverlay(state);
 
         InputManager inputManager = new InputManager(state,
-            im -> Minecraft.getInstance().setScreenAndShow(new BastionScreen(im, windowManager)));
+            im -> Minecraft.getInstance().setScreenAndShow(new BastionScreen(im, overlay)));
         inputManager.registerKeyMappings();
 
         ClientNetworking.register(state);
         ClientTickEvents.END_CLIENT_TICK.register(inputManager);
         LevelRenderEvents.END_MAIN.register(new DebugLevelRenderer(state));
-        HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("bastion", "debug_overlay"), new DebugHudElement(windowManager));
+        HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("bastion", "debug_overlay"), new DebugHudElement(overlay, inputManager));
     }
 }

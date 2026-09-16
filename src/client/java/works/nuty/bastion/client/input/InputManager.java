@@ -5,8 +5,10 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.input.KeyEvent;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.Identifier;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import org.lwjgl.glfw.GLFW;
@@ -29,6 +31,13 @@ public final class InputManager implements ClientTickEvents.EndTick {
     public KeyMapping stepOverKey;
     public KeyMapping stepIntoKey;
 
+    public enum Control {
+        RESUME("resume"), OVER("stepover"), INTO("stepinto"), OUT("stepout");
+        private final String command;
+        Control(String command) { this.command = command; }
+        public String translationKey() { return "bastion.ui.control." + command; }
+    }
+
     public InputManager(ClientDebuggerState state, OpenScreen openScreen) {
         this.state = state;
         this.openScreen = openScreen;
@@ -42,13 +51,13 @@ public final class InputManager implements ClientTickEvents.EndTick {
 
         if (state.isPaused()) {
             while (resumeKey.consumeClick()) {
-                client.player.connection.sendCommand("bastion resume");
+                control(Control.RESUME);
             }
             while (stepOverKey.consumeClick()) {
-                client.player.connection.sendCommand("bastion stepover");
+                control(Control.OVER);
             }
             while (stepIntoKey.consumeClick()) {
-                client.player.connection.sendCommand(client.hasShiftDown() ? "bastion stepout" : "bastion stepinto");
+                control(client.hasShiftDown() ? Control.OUT : Control.INTO);
             }
         } else {
             // Drain clicks so they don't fire later when paused.
@@ -58,15 +67,57 @@ public final class InputManager implements ClientTickEvents.EndTick {
         }
 
         while (breakpointKey.consumeClick()) {
-            HitResult hit = client.player.pick(20.0, 0.0F, false);
-            if (hit.getType() == HitResult.Type.BLOCK) {
-                BlockPos pos = ((BlockHitResult) hit).getBlockPos();
-                client.player.connection.sendCommand("bastion breakpoint block %d %d %d".formatted(pos.getX(), pos.getY(), pos.getZ()));
-            }
+            toggleTargetBreakpoint();
         }
 
         while (menuKey.consumeClick()) {
             openScreen.open(this);
+        }
+    }
+
+    public void control(Control action) {
+        Minecraft client = Minecraft.getInstance();
+        if (client.player != null && state.beginControlRequest()) {
+            client.player.connection.sendCommand("bastion " + action.command);
+        }
+    }
+
+    public Component keyLabel(Control action) {
+        return switch (action) {
+            case RESUME -> resumeKey.getTranslatedKeyMessage();
+            case OVER -> stepOverKey.getTranslatedKeyMessage();
+            case INTO -> stepIntoKey.getTranslatedKeyMessage();
+            case OUT -> Component.literal("Shift+").append(stepIntoKey.getTranslatedKeyMessage());
+        };
+    }
+
+    /** Screens consume key events before gameplay mappings, so route both through one action. */
+    public boolean handleScreenKey(KeyEvent event) {
+        Control action = resumeKey.matches(event) ? Control.RESUME
+            : stepOverKey.matches(event) ? Control.OVER
+            : stepIntoKey.matches(event) ? (event.hasShiftDown() ? Control.OUT : Control.INTO) : null;
+        if (action != null) {
+            while (resumeKey.consumeClick()) { }
+            while (stepOverKey.consumeClick()) { }
+            while (stepIntoKey.consumeClick()) { }
+            control(action);
+            return true;
+        }
+        if (breakpointKey.matches(event)) {
+            while (breakpointKey.consumeClick()) { }
+            toggleTargetBreakpoint();
+            return true;
+        }
+        return false;
+    }
+
+    private void toggleTargetBreakpoint() {
+        Minecraft client = Minecraft.getInstance();
+        if (client.player == null) return;
+        HitResult hit = client.player.pick(20.0, 0.0F, false);
+        if (hit instanceof BlockHitResult block && hit.getType() == HitResult.Type.BLOCK) {
+            BlockPos pos = block.getBlockPos();
+            client.player.connection.sendCommand("bastion breakpoint block %d %d %d".formatted(pos.getX(), pos.getY(), pos.getZ()));
         }
     }
 

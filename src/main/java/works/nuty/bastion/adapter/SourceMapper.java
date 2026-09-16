@@ -90,7 +90,8 @@ public final class SourceMapper {
                 new Vec3d(anchored.x, anchored.y, anchored.z),
                 rotation.x,
                 rotation.y,
-                entityRef
+                entityRef,
+                source.getLevel().dimension().identifier().toString()
             ));
         }
         return result;

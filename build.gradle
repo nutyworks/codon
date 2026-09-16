@@ -26,6 +26,8 @@ sourceSets {
 	// Unit tests for the core. Its classpath is core + JUnit only (no Minecraft), so the domain
 	// is verifiable in milliseconds without launching or compiling the game.
 	coreTest
+	// Client selection/layout tests only touch Minecraft-free presentation classes.
+	clientTest
 }
 
 loom {
@@ -41,6 +43,18 @@ loom {
 		}
 	}
 
+}
+
+// Opt-in real-client presentation checks, isolated from the developer's run directory.
+fabricApi {
+	configureTests {
+		createSourceSet = true
+		modId = "bastion-ui-test"
+		enableGameTests = false
+		enableClientGameTests = true
+		clearRunDirectory = true
+		username = "BastionQA"
+	}
 }
 
 dependencies {
@@ -65,6 +79,13 @@ dependencies {
 	coreTestCompileOnly "org.jspecify:jspecify:${project.jspecify_version}"
 	coreTestImplementation "org.junit.jupiter:junit-jupiter:${project.junit_version}"
 	coreTestRuntimeOnly "org.junit.platform:junit-platform-launcher"
+	clientTestImplementation sourceSets.client.output
+	clientTestImplementation sourceSets.core.output
+	clientTestCompileOnly "org.jspecify:jspecify:${project.jspecify_version}"
+	clientTestImplementation "org.junit.jupiter:junit-jupiter:${project.junit_version}"
+	clientTestRuntimeOnly "org.junit.platform:junit-platform-launcher"
+	gametestImplementation sourceSets.client.output
+	gametestImplementation sourceSets.core.output
 }
 
 // A dedicated task so `./gradlew coreTest` runs the domain suite with no Minecraft on the classpath.
@@ -78,6 +99,15 @@ tasks.register("coreTest", Test) {
 
 tasks.named("check") {
 	dependsOn "coreTest"
+	dependsOn "clientTest"
+}
+
+tasks.register("clientTest", Test) {
+	description = "Tests client selection and screen-space label layout without launching Minecraft."
+	group = "verification"
+	testClassesDirs = sourceSets.clientTest.output.classesDirs
+	classpath = sourceSets.clientTest.runtimeClasspath
+	useJUnitPlatform()
 }
 
 processResources {

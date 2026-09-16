@@ -5,29 +5,24 @@ import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import org.jspecify.annotations.NonNull;
-import works.nuty.bastion.client.ui.BastionScreen;
-import works.nuty.bastion.client.ui.WindowManager;
+import works.nuty.bastion.client.input.InputManager;
+import works.nuty.bastion.client.ui.DebuggerOverlay;
 
-/**
- * Draws the debugger windows onto the HUD while no {@link BastionScreen} is open (when the editor
- * screen is open it draws the windows itself, so we skip to avoid double-rendering).
- */
+/** Passive HUD; cursor mode renders the same overlay once through BastionScreen. */
 public final class DebugHudElement implements HudElement {
-    private final WindowManager windowManager;
+    private final DebuggerOverlay overlay;
+    private final InputManager input;
 
-    public DebugHudElement(WindowManager windowManager) {
-        this.windowManager = windowManager;
+    public DebugHudElement(DebuggerOverlay overlay, InputManager input) {
+        this.overlay = overlay;
+        this.input = input;
     }
 
     @Override
-    public void extractRenderState(@NonNull GuiGraphicsExtractor drawContext, @NonNull DeltaTracker tickCounter) {
-        drawContext.pose().pushMatrix();
-        drawContext.pose().scale(windowManager.getScale());
-
-        if (!(Minecraft.getInstance().gui.screen() instanceof BastionScreen)) {
-            windowManager.getWindows().forEach(window -> window.render(drawContext, -1, -1));
+    public void extractRenderState(@NonNull GuiGraphicsExtractor graphics, @NonNull DeltaTracker tracker) {
+        // Avoid competing with chat, inventories, menus, or the interactive debugger screen.
+        if (Minecraft.getInstance().gui.screen() == null) {
+            overlay.render(graphics, -1, -1, 0, false, input);
         }
-
-        drawContext.pose().popMatrix();
     }
 }

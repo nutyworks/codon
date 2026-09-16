@@ -72,24 +72,49 @@ excluded from watchdog accounting through the tick-deadline reset. The suspensio
 while preserving breakpoint definitions.
 
 ### Client adapters — `works.nuty.bastion.client.*` (source set `client`)
-- `state/ClientDebuggerState` — client mirror updated only by sync packets; everything reads it.
-- `network/ClientNetworking` — receivers that update the mirror.
-- `ui/` — windowing (`Window`, `WindowManager`, `CallStackWindow`, `BastionScreen`) +
-  `ClientFormatting` (core types → chat components).
-- `render/` — `DebugHudElement`, `DebugLevelRenderer` (in-world gizmos), `DistinctColorGenerator`.
+- `state/ClientDebuggerState` — authoritative pause/breakpoint mirror, local source/frame selection,
+  gizmo mode, and a pending-control latch cleared by server packets or a retry timeout.
+- `network/ClientNetworking` — receivers that update the mirror and clear it on disconnect.
+- `ui/DebuggerOverlay` — shared transparent HUD and cursor-mode presentation: control bar, source
+  inspector, call stack, and scrollable command text. `BastionScreen` registers its native widgets
+  for mouse, keyboard, and narration. `ClientFormatting` renders core types as chat components.
+  The older `Window` classes are no longer used by the client composition root.
+- `ui/layout/` — Minecraft-free responsive panel and screen-space label placement. Overlapping
+  labels can be grouped; crowded ungrouped labels move into free slots or one aggregate. Clicking
+  a group filters the inspector without changing the underlying source positions.
+- `render/` — `DebugHudElement` and `DebugLevelRenderer`: rings for entity-bearing sources,
+  squares for position-only sources, one-block facing arrows, selected-source emphasis, red
+  breakpoint outlines, and amber active stops. Sources in other dimensions remain in the inspector
+  but are not drawn in the current world. Source anchors are execution reference points, not
+  necessarily the attached entity's position.
 - `input/InputManager` — keybinds; control actions go to the server as `/bastion` commands.
 - `BastionClientMod` — client composition root.
+
+`B` opens/closes cursor mode. `F7` continues, `F8` steps over, `F9` steps into, `Shift+F9` steps
+out, and `F10` toggles the targeted block breakpoint; UI hints follow remapped keys. Gizmo modes
+are Grouped (default), Labels, and Focus. Source numbers identify entries in the current snapshot;
+selection survives a step only when an exact source or unambiguous entity/dimension match exists.
+Transition trails are not inferred: they need execution history beyond the current snapshot.
+
+Pause payloads use `bastion:pause_sync_v2` because each `PauseSource` now carries its dimension.
+Client and server must both use the updated mod for pause visualization.
 
 ## Why the indirection
 The pause engine never touches Minecraft, so its logic is unit-tested directly and could later be
 driven by a different front end. The `DebuggerEventSink` port is the extension point for a future
 Debug Adapter Protocol bridge (external editors); roadmap features — conditional breakpoints,
-watch/expression evaluation, state inspection, execution trace, command/NBT editors, free-cursor
-mode — slot in behind these same ports.
+watch/expression evaluation, deeper state inspection, execution trace, and command/NBT editors —
+slot in behind these same ports.
 
 ## Verification
 
-Use Java 25 and `./gradlew build` for compilation and the core regression suite. Core tests also
-run separately with `./gradlew coreTest`. A successful build does not establish runtime Mixin
-application, client packet behavior, or long-running dedicated-server pause behavior; those
-require Minecraft runtime checks.
+Use Java 25 and `./gradlew build` for compilation and the core/presentation regression suites.
+They also run separately with `./gradlew coreTest clientTest`.
+
+`./gradlew runClientGameTest` is an opt-in real-client presentation check using Fabric's
+[client game test framework](https://docs.fabricmc.net/develop/automatic-testing). It creates a
+temporary singleplayer world under `build/run/clientGameTest`, exercises the actual widgets and
+renderer with an explicit pause fixture, checks the pause codec round trip, and saves screenshots
+there. The fixture is intentionally separate from the production client state. Passing these
+checks does not prove server-driven breakpoint/step synchronization or long-running dedicated
+server pause behavior; those require separate end-to-end Minecraft runtime checks.

@@ -1,107 +1,65 @@
 package works.nuty.bastion.client.ui;
 
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
-import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import works.nuty.bastion.client.input.InputManager;
 
-import java.util.Optional;
+import java.util.List;
 
-/**
- * Full-screen, transparent editor for the debugger windows: lets the cursor move freely to drag,
- * resize, and scroll windows without affecting the game. Opened with the menu key.
- */
+/** Cursor mode for the shared debugger HUD. The underlying world remains visible. */
 public final class BastionScreen extends Screen {
-    private final InputManager inputManager;
-    private final WindowManager windowManager;
-    private Optional<Window> latestHoveredWindow = Optional.empty();
-    private Optional<Window> draggingWindow = Optional.empty();
-    private Optional<Window> resizingWindow = Optional.empty();
+    private final InputManager input;
+    private final DebuggerOverlay overlay;
+    private List<DebuggerButton> registered = List.of();
 
-    public BastionScreen(final InputManager inputManager, final WindowManager windowManager) {
-        super(Component.empty());
-        this.inputManager = inputManager;
-        this.windowManager = windowManager;
+    public BastionScreen(InputManager input, DebuggerOverlay overlay) {
+        super(Component.translatable("bastion.ui.title"));
+        this.input = input;
+        this.overlay = overlay;
     }
 
     @Override
+    protected void init() { registered = List.of(); }
+
+    @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-        windowManager.getWindows().forEach(window -> window.render(graphics, mouseX, mouseY));
+        List<DebuggerButton> buttons = overlay.render(graphics, mouseX, mouseY, partialTick, true, input);
+        if (!registered.equals(buttons)) {
+            GuiEventListener focused = getFocused();
+            setFocused(null);
+            clearWidgets();
+            buttons.forEach(this::addWidget);
+            if (focused != null && buttons.contains(focused)) setFocused(focused);
+            registered = buttons;
+        }
     }
 
     @Override
     public void extractBackground(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-        // Transparent: the game world stays visible behind the windows.
-    }
-
-    @Override
-    public void mouseMoved(double x, double y) {
-        Optional<Window> currentHoveredWindow = windowManager.getWindows().reversed().stream()
-            .filter(window -> window.checkHovered(x, y))
-            .findFirst();
-
-        latestHoveredWindow.ifPresent(l -> {
-            if (l.equals(currentHoveredWindow.orElse(null))) {
-                return;
-            }
-            l.unhovered(x, y);
-        });
-        currentHoveredWindow.ifPresent(w -> w.hovered(x, y));
-
-        latestHoveredWindow = currentHoveredWindow;
-    }
-
-    @Override
-    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-        latestHoveredWindow.ifPresent(w -> {
-            windowManager.bringToTop(w);
-            if (w.isHeaderHovered(event.x(), event.y())) {
-                draggingWindow = Optional.of(w);
-            } else if (w.isResizeHovered(event.x(), event.y())) {
-                resizingWindow = Optional.of(w);
-            }
-        });
-        return super.mouseClicked(event, doubleClick);
-    }
-
-    @Override
-    public boolean mouseReleased(MouseButtonEvent event) {
-        draggingWindow = Optional.empty();
-        resizingWindow = Optional.empty();
-        return super.mouseReleased(event);
-    }
-
-    @Override
-    public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
-        draggingWindow.ifPresent(w -> w.addXY(dx, dy));
-        resizingWindow.ifPresent(w -> w.addWH(dx, dy));
-        return super.mouseDragged(event, dx, dy);
+        // No world dimming/blur: markers must retain their scene context.
     }
 
     @Override
     public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
-        latestHoveredWindow.ifPresent(w -> w.mouseScrolled(scrollX, scrollY));
-        return super.mouseScrolled(x, y, scrollX, scrollY);
-    }
-
-    @Override
-    public boolean isPauseScreen() {
-        return false;
-    }
-
-    @Override
-    public boolean isInGameUi() {
-        return true;
+        return overlay.scroll(x, y, scrollY) || super.mouseScrolled(x, y, scrollX, scrollY);
     }
 
     @Override
     public boolean keyPressed(KeyEvent event) {
-        if (this.inputManager.menuKey.matches(event)) {
-            this.onClose();
+        if (input.menuKey.matches(event)) {
+            while (input.menuKey.consumeClick()) { }
+            onClose();
             return true;
         }
-        return super.keyPressed(event);
+        return input.handleScreenKey(event) || super.keyPressed(event);
     }
+
+    @Override
+    public boolean isPauseScreen() { return false; }
+
+    @Override
+    public boolean isInGameUi() { return true; }
 }

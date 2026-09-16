@@ -111,6 +111,7 @@ final class NetworkCodecs {
             buf.writeUUID(entity.uuid());
             buf.writeUtf(entity.name());
         }
+        buf.writeUtf(source.dimension());
     }
 
     static PauseSource readPauseSource(FriendlyByteBuf buf) {
@@ -118,7 +119,7 @@ final class NetworkCodecs {
         float pitch = buf.readFloat();
         float yaw = buf.readFloat();
         EntityRef entity = buf.readBoolean() ? new EntityRef(buf.readUUID(), buf.readUtf()) : null;
-        return new PauseSource(anchor, pitch, yaw, entity);
+        return new PauseSource(anchor, pitch, yaw, entity, buf.readUtf());
     }
 
     static void writeSnapshot(FriendlyByteBuf buf, PauseSnapshot snapshot) {

@@ -1,6 +1,7 @@
 package works.nuty.bastion.client.network;
 
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import works.nuty.bastion.client.state.ClientDebuggerState;
 import works.nuty.bastion.network.BreakpointSyncPayload;
 import works.nuty.bastion.network.PauseSyncPayload;
@@ -15,6 +16,7 @@ public final class ClientNetworking {
     }
 
     public static void register(ClientDebuggerState state) {
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> state.reset());
         ClientPlayNetworking.registerGlobalReceiver(PauseSyncPayload.TYPE, (payload, context) ->
             context.client().execute(() -> state.applyPause(payload.snapshot())));
 
