@@ -5,12 +5,18 @@ import works.nuty.bastion.client.ui.layout.GizmoLabelLayout.Bounds;
 /** Layout in Minecraft GUI pixels (already scaled by the user's GUI scale setting). */
 public record DebuggerLayout(Bounds header, Bounds controls, Bounds world, Bounds inspector,
                              Bounds command, Bounds footer, boolean compact) {
+    public static final int ICON_BUTTON_SIZE = 20;
+    public static final int ICON_BUTTON_GAP = 3;
+    public static final int ICON_GROUP_GAP = 7;
+
     public static DebuggerLayout create(int width, int height, boolean showInspector) {
         int margin = width < 360 ? 3 : 6;
         int usableWidth = Math.max(1, width - margin * 2);
+        int headerWidth = Math.min(240, usableWidth);
+        int toolbarWidth = Math.min(6 + 6 * ICON_BUTTON_SIZE + 4 * ICON_BUTTON_GAP + ICON_GROUP_GAP, usableWidth);
         boolean compact = width < 480 || height < 300;
         int headerHeight = 18;
-        int controlHeight = 23;
+        int controlHeight = ICON_BUTTON_SIZE + 4;
         int footerHeight = height < 220 ? 0 : 12;
         int commandHeight = height < 240 ? 32 : 52;
         int worldY = margin + headerHeight + controlHeight + 3;
@@ -22,8 +28,8 @@ public record DebuggerLayout(Bounds header, Bounds controls, Bounds world, Bound
         int inspectorSpace = panelWidth == 0 ? 0 : Math.min(usableWidth, panelWidth + 4);
         int worldWidth = usableWidth - inspectorSpace;
         return new DebuggerLayout(
-            new Bounds(margin, margin, usableWidth, headerHeight),
-            new Bounds(margin, margin + headerHeight, usableWidth, controlHeight),
+            new Bounds(margin, margin, headerWidth, headerHeight),
+            new Bounds(margin, margin + headerHeight, toolbarWidth, controlHeight),
             new Bounds(margin + inspectorSpace, worldY, worldWidth, worldHeight),
             new Bounds(margin, worldY, panelWidth, worldHeight),
             new Bounds(margin, commandY, usableWidth, Math.max(0, Math.min(commandHeight, height - margin - commandY))),

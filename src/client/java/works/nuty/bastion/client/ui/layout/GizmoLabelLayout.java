@@ -88,7 +88,7 @@ public final class GizmoLabelLayout {
             DisjointSet sets = new DisjointSet(units.size());
             List<Bounds> idealBounds = new ArrayList<>(units.size());
             for (int i = 0; i < units.size(); i++) {
-                idealBounds.add(idealBounds(units.get(i), viewport));
+                idealBounds.add(idealBounds(units.get(i), viewport, selected));
             }
             boolean merged = mergeIntersectingBounds(idealBounds, sets);
             if (!merged) {
@@ -177,12 +177,12 @@ public final class GizmoLabelLayout {
         List<Unit> placed = new ArrayList<>();
 
         for (Unit unit : ordered) {
-            Bounds chosen = findOpenBounds(unit, viewport, occupied);
+            Bounds chosen = findOpenBounds(unit, viewport, occupied, selected);
             if (chosen == null) {
                 // There is no readable free slot within the viewport.  A single
                 // aggregate remains clickable and satisfies the no-overlap rule.
                 Unit all = join(ordered);
-                Bounds aggregate = idealBounds(all, viewport);
+                Bounds aggregate = idealBounds(all, viewport, selected);
                 return List.of(toLabel(all, aggregate, selected));
             }
             unit.bounds = chosen;
@@ -197,8 +197,8 @@ public final class GizmoLabelLayout {
         return List.copyOf(result);
     }
 
-    private static Bounds findOpenBounds(Unit unit, Bounds viewport, SpatialIndex occupied) {
-        int width = labelWidth(unit, viewport);
+    private static Bounds findOpenBounds(Unit unit, Bounds viewport, SpatialIndex occupied, int selected) {
+        int width = labelWidth(unit, viewport, selected);
         int idealX = clamp((int) Math.round(unit.anchorX - width / 2.0), viewport.x(), viewport.x() + viewport.width() - width);
         int idealY = clamp((int) Math.round(unit.anchorY - LABEL_HEIGHT - PADDING), viewport.y(), viewport.y() + viewport.height() - LABEL_HEIGHT);
 
@@ -226,31 +226,47 @@ public final class GizmoLabelLayout {
         return null;
     }
 
-    private static Bounds idealBounds(Unit unit, Bounds viewport) {
-        int width = labelWidth(unit, viewport);
+    private static Bounds idealBounds(Unit unit, Bounds viewport, int selected) {
+        int width = labelWidth(unit, viewport, selected);
         int x = clamp((int) Math.round(unit.anchorX - width / 2.0), viewport.x(), viewport.x() + viewport.width() - width);
         int y = clamp((int) Math.round(unit.anchorY - LABEL_HEIGHT - PADDING), viewport.y(), viewport.y() + viewport.height() - LABEL_HEIGHT);
         return new Bounds(x, y, width, LABEL_HEIGHT);
     }
 
-    private static int labelWidth(Unit unit, Bounds viewport) {
+    private static int labelWidth(Unit unit, Bounds viewport, int selected) {
         int raw = unit.anchors.size() == 1
                 ? unit.anchors.get(0).width() + 2 * PADDING
                 : 76 + Integer.toString(unit.anchors.size()).length() * 6;
+        if (unit.anchors.size() > 1) {
+            for (Anchor anchor : unit.anchors) {
+                if (anchor.sourceIndex() == selected) {
+                    // Preserve the selected source's normal label and reserve room for "  +N".
+                    raw = anchor.width() + 2 * PADDING + 18
+                            + Integer.toString(unit.anchors.size() - 1).length() * 6;
+                    break;
+                }
+            }
+        }
         return Math.min(viewport.width(), Math.max(1, raw));
     }
 
     private static Label toLabel(Unit unit, Bounds bounds, int selected) {
         List<Integer> indices = new ArrayList<>(unit.anchors.size());
+        double anchorX = unit.anchorX;
+        double anchorY = unit.anchorY;
         for (Anchor anchor : unit.anchors) {
             indices.add(anchor.sourceIndex());
+            if (anchor.sourceIndex() == selected) {
+                anchorX = anchor.x();
+                anchorY = anchor.y();
+            }
         }
         indices.sort((left, right) -> {
             if (left == selected) return -1;
             if (right == selected) return 1;
             return Integer.compare(left, right);
         });
-        return new Label(indices, bounds, unit.anchorX, unit.anchorY);
+        return new Label(indices, bounds, anchorX, anchorY);
     }
 
     private static Unit join(List<Unit> units) {

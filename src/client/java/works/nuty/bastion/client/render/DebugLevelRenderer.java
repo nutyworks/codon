@@ -21,7 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Draws compact, meaning-based debugger markers from the synced client state. */
+/** Draws debugger markers above terrain, preserving their exact execution coordinates. */
 public final class DebugLevelRenderer implements LevelRenderEvents.EndMain {
     private static final int BREAKPOINT_RED = ARGB.color(0.9f, 0xFC8C8C);
     private static final int PAUSED_AMBER = ARGB.color(1.0f, 0xF3C171);
@@ -57,7 +57,7 @@ public final class DebugLevelRenderer implements LevelRenderEvents.EndMain {
         BlockLocation pausedBlock = pausedBlock(snapshot, dimension);
         for (BlockLocation breakpoint : state.blockBreakpoints()) {
             if (breakpoint.dimension().equals(dimension) && !breakpoint.equals(pausedBlock)) {
-                Gizmos.cuboid(blockPos(breakpoint), GizmoStyle.stroke(BREAKPOINT_RED, BREAKPOINT_WIDTH));
+                Gizmos.cuboid(blockPos(breakpoint), GizmoStyle.stroke(BREAKPOINT_RED, BREAKPOINT_WIDTH)).setAlwaysOnTop();
             }
         }
         if (pausedBlock != null) {
@@ -78,9 +78,9 @@ public final class DebugLevelRenderer implements LevelRenderEvents.EndMain {
 
     private static void renderPausedBlock(BlockLocation location) {
         BlockPos pos = blockPos(location);
-        Gizmos.cuboid(pos, GizmoStyle.stroke(PAUSED_AMBER, PAUSED_WIDTH));
+        Gizmos.cuboid(pos, GizmoStyle.stroke(PAUSED_AMBER, PAUSED_WIDTH)).setAlwaysOnTop();
         // A center point distinguishes the active stop from ordinary breakpoint outlines.
-        Gizmos.point(Vec3.atCenterOf(pos), PAUSED_AMBER, 7.0f);
+        Gizmos.point(Vec3.atCenterOf(pos), PAUSED_AMBER, 7.0f).setAlwaysOnTop();
     }
 
     private void renderPauseSources(List<PauseSource> sources, String dimension) {
@@ -121,9 +121,9 @@ public final class DebugLevelRenderer implements LevelRenderEvents.EndMain {
         } else {
             renderHorizontalSquare(anchor, SQUARE_RADIUS, color, width);
         }
-        Gizmos.arrow(anchor, anchor.add(marker.facing().scale(FACING_LENGTH)), color, width);
+        Gizmos.arrow(anchor, anchor.add(marker.facing().scale(FACING_LENGTH)), color, width).setAlwaysOnTop();
         if (selected) {
-            Gizmos.point(anchor, color, 8.0f);
+            Gizmos.point(anchor, color, 8.0f).setAlwaysOnTop();
         }
     }
 
@@ -133,7 +133,7 @@ public final class DebugLevelRenderer implements LevelRenderEvents.EndMain {
             double to = Math.TAU * (segment + 1) / RING_SEGMENTS;
             Vec3 start = center.add(Math.cos(from) * radius, 0.0, Math.sin(from) * radius);
             Vec3 end = center.add(Math.cos(to) * radius, 0.0, Math.sin(to) * radius);
-            Gizmos.line(start, end, color, width);
+            Gizmos.line(start, end, color, width).setAlwaysOnTop();
         }
     }
 
@@ -142,10 +142,10 @@ public final class DebugLevelRenderer implements LevelRenderEvents.EndMain {
         Vec3 northeast = center.add(radius, 0.0, -radius);
         Vec3 southeast = center.add(radius, 0.0, radius);
         Vec3 southwest = center.add(-radius, 0.0, radius);
-        Gizmos.line(northwest, northeast, color, width);
-        Gizmos.line(northeast, southeast, color, width);
-        Gizmos.line(southeast, southwest, color, width);
-        Gizmos.line(southwest, northwest, color, width);
+        Gizmos.line(northwest, northeast, color, width).setAlwaysOnTop();
+        Gizmos.line(northeast, southeast, color, width).setAlwaysOnTop();
+        Gizmos.line(southeast, southwest, color, width).setAlwaysOnTop();
+        Gizmos.line(southwest, northwest, color, width).setAlwaysOnTop();
     }
 
     private static boolean isFinite(Vec3 vector) {

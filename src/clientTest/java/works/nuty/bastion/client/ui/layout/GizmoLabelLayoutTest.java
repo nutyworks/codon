@@ -67,6 +67,22 @@ class GizmoLabelLayoutTest {
     }
 
     @Test
+    void selectedMemberKeepsItsLongLabelWidthAndAnchorWhenGrouped() {
+        GizmoLabelLayout.Anchor selected = new GizmoLabelLayout.Anchor(3, 75, 125, 240);
+        List<GizmoLabelLayout.Label> labels = GizmoLabelLayout.layout(
+                List.of(selected, new GizmoLabelLayout.Anchor(7, 150, 125, 24)), VIEWPORT, 3, true);
+
+        assertEquals(1, labels.size());
+        GizmoLabelLayout.Label group = labels.getFirst();
+        assertEquals(List.of(3, 7), group.sourceIndices());
+        assertEquals(selected.x(), group.anchorX());
+        assertEquals(selected.y(), group.anchorY());
+        assertTrue(group.bounds().width() > selected.width(),
+                "The selected name and the remaining-member count both need room");
+        assertReadableAndInBounds(labels, VIEWPORT);
+    }
+
+    @Test
     void returnsEmptyWhenTheViewportCannotContainALabel() {
         assertTrue(GizmoLabelLayout.layout(List.of(anchor(0, 0, 0)), new GizmoLabelLayout.Bounds(0, 0, 50, 17), 0, true).isEmpty());
         assertTrue(GizmoLabelLayout.layout(List.of(anchor(0, 0, 0)), new GizmoLabelLayout.Bounds(0, 0, 0, 18), 0, true).isEmpty());

@@ -6,6 +6,7 @@ import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.input.InputWithModifiers;
 import net.minecraft.network.chat.Component;
+import org.jspecify.annotations.Nullable;
 
 /** Standard keyboard/narration behavior with Bastion's compact, high-contrast chrome. */
 public final class DebuggerButton extends AbstractButton {
@@ -13,6 +14,7 @@ public final class DebuggerButton extends AbstractButton {
     private boolean selected;
     private boolean leftAligned;
     private boolean subdued;
+    private @Nullable DebuggerIcon icon;
 
     public DebuggerButton() {
         super(0, 0, 1, 1, Component.empty());
@@ -29,6 +31,16 @@ public final class DebuggerButton extends AbstractButton {
         this.leftAligned = leftAligned;
         this.subdued = subdued;
         this.action = action;
+        this.icon = null;
+    }
+
+    public DebuggerButton withIcon(DebuggerIcon icon) {
+        this.icon = icon;
+        return this;
+    }
+
+    public @Nullable DebuggerIcon icon() {
+        return icon;
     }
 
     @Override
@@ -38,13 +50,22 @@ public final class DebuggerButton extends AbstractButton {
 
     @Override
     protected void extractContents(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-        int background = selected ? DebuggerTheme.TEAL_SURFACE
-            : isHoveredOrFocused() && active ? DebuggerTheme.RAISED : DebuggerTheme.SURFACE;
+        var client = Minecraft.getInstance();
+        boolean keyboardFocus = isFocused() && client.getLastInputType().isKeyboard();
+        int background = selected && active ? DebuggerTheme.TEAL_SURFACE
+            : (isHovered() || keyboardFocus) && active ? DebuggerTheme.RAISED : DebuggerTheme.SURFACE;
         int foreground = !active || subdued ? DebuggerTheme.MUTED : DebuggerTheme.TEXT;
-        int outline = selected || isFocused() ? DebuggerTheme.TEAL : DebuggerTheme.BORDER;
+        int outline = active && (selected || keyboardFocus) ? DebuggerTheme.TEAL : DebuggerTheme.BORDER;
         graphics.fill(getX(), getY(), getRight(), getBottom(), background);
         graphics.outline(getX(), getY(), width, height, outline);
-        var font = Minecraft.getInstance().font;
+        if (icon != null) {
+            graphics.enableScissor(getX() + 1, getY() + 1, getRight() - 1, getBottom() - 1);
+            icon.draw(graphics, getX() + (width - DebuggerIcon.SIZE) / 2,
+                getY() + (height - DebuggerIcon.SIZE) / 2, foreground);
+            graphics.disableScissor();
+            return;
+        }
+        var font = client.font;
         String full = getMessage().getString();
         int available = Math.max(0, width - 10);
         String text = font.width(full) <= available ? full
@@ -53,6 +74,12 @@ public final class DebuggerButton extends AbstractButton {
         graphics.text(font, text, leftAligned ? getX() + 5 : getX() + (width - font.width(text)) / 2,
             getY() + (height - font.lineHeight) / 2 + 1, foreground, false);
         graphics.disableScissor();
+    }
+
+    @Override
+    protected void extractTooltipForNextRenderPass(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
+        // Icon names remain available to narration; visual shortcut hints require an actual hover.
+        if (icon == null || isHovered()) super.extractTooltipForNextRenderPass(graphics, mouseX, mouseY);
     }
 
     @Override

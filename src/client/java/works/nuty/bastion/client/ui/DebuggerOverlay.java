@@ -112,44 +112,56 @@ public final class DebuggerOverlay {
 
     private void renderHeader(GuiGraphicsExtractor graphics, DebuggerLayout layout, InputManager input,
                               @Nullable PauseSnapshot snapshot) {
-        Bounds header = layout.header();
+        String status = state.controlPending() ? tr("bastion.ui.waiting")
+            : snapshot == null ? tr("bastion.ui.running")
+            : tr(snapshot.reason() == PauseReason.STEP ? "bastion.ui.step_complete" : "bastion.ui.breakpoint_hit");
+        Bounds toolbar = layout.controls();
+        Bounds header = new Bounds(layout.header().x(), layout.header().y(),
+            Math.min(layout.header().width(), Math.max(toolbar.width(), 72 + client.font.width(status))),
+            layout.header().height());
         panel(graphics, header);
-        panel(graphics, layout.controls());
+        panel(graphics, toolbar);
         graphics.fill(header.x(), header.y(), header.x() + 2, header.y() + header.height(), TEAL);
         text(graphics, "BASTION", header.x() + 7, header.y() + 5, 52, TEXT);
-        int infoWidth = header.width() < 400 ? 45 : 58;
-        int modeWidth = header.width() < 400 ? 82 : 105;
-        int infoX = header.x() + header.width() - infoWidth - 3;
-        int modeX = infoX - modeWidth - 4;
-        button("inspector", new Bounds(infoX, header.y() + 1, infoWidth, 16),
-            component("bastion.ui.details"), true, showInspector, false, false,
-            () -> inspectorPreference = !showInspector);
-        button("mode", new Bounds(modeX, header.y() + 1, modeWidth, 16),
-            Component.literal("Gizmo: ").append(component("bastion.ui.mode." + state.gizmoMode().name().toLowerCase(Locale.ROOT))),
-            true, false, false, false, () -> {
+        text(graphics, status, header.x() + 64, header.y() + 5, Math.max(0, header.width() - 69),
+            snapshot == null ? MUTED : AMBER);
+
+        int gap = DebuggerLayout.ICON_BUTTON_GAP;
+        int width = Math.min(DebuggerLayout.ICON_BUTTON_SIZE,
+            Math.max(1, (toolbar.width() - 6 - 4 * gap - DebuggerLayout.ICON_GROUP_GAP) / 6));
+        int x = toolbar.x() + 3;
+        for (InputManager.Control action : InputManager.Control.values()) {
+            DebuggerIcon icon = switch (action) {
+                case RESUME -> DebuggerIcon.CONTINUE;
+                case OVER -> DebuggerIcon.STEP_OVER;
+                case INTO -> DebuggerIcon.STEP_INTO;
+                case OUT -> DebuggerIcon.STEP_OUT;
+            };
+            DebuggerButton control = iconButton("control-" + action,
+                new Bounds(x, toolbar.y() + 2, width, DebuggerLayout.ICON_BUTTON_SIZE),
+                component(action.translationKey()), icon, snapshot != null && state.isPaused() && !state.controlPending(),
+                () -> input.control(action));
+            control.setTooltip(Tooltip.create(component(action.translationKey()).append("  ").append(input.keyLabel(action))));
+            x += width + gap;
+        }
+        x += DebuggerLayout.ICON_GROUP_GAP - gap;
+        graphics.fill(x - 4, toolbar.y() + 5, x - 3, toolbar.y() + toolbar.height() - 5, BORDER);
+        Component mode = Component.literal("Gizmo: ")
+            .append(component("bastion.ui.mode." + state.gizmoMode().name().toLowerCase(Locale.ROOT)));
+        DebuggerIcon modeIcon = switch (state.gizmoMode()) {
+            case GROUPED -> DebuggerIcon.GIZMO_GROUPED;
+            case LABELS -> DebuggerIcon.GIZMO_LABELS;
+            case FOCUS -> DebuggerIcon.GIZMO_FOCUS;
+        };
+        iconButton("mode", new Bounds(x, toolbar.y() + 2, width, DebuggerLayout.ICON_BUTTON_SIZE),
+            mode, modeIcon, true, () -> {
                 state.setGizmoMode(state.gizmoMode().next());
                 expandedGroup = List.of();
                 sourceOffset = 0;
             });
-        String status = state.controlPending() ? tr("bastion.ui.waiting")
-            : snapshot == null ? tr("bastion.ui.running")
-            : tr(snapshot.reason() == PauseReason.STEP ? "bastion.ui.step_complete" : "bastion.ui.breakpoint_hit");
-        text(graphics, status, header.x() + 64, header.y() + 5, Math.max(0, modeX - header.x() - 69),
-            snapshot == null ? MUTED : AMBER);
-
-        Bounds toolbar = layout.controls();
-        int gap = 3;
-        int width = Math.max(1, (toolbar.width() - 6 - gap * 3) / 4);
-        InputManager.Control[] actions = InputManager.Control.values();
-        for (int i = 0; i < actions.length; i++) {
-            InputManager.Control action = actions[i];
-            Component label = component(action.translationKey());
-            if (!layout.compact()) label = label.copy().append("  ").append(input.keyLabel(action));
-            DebuggerButton control = button("control-" + action, new Bounds(toolbar.x() + 3 + i * (width + gap),
-                toolbar.y() + 2, width, 18), label, snapshot != null && state.isPaused() && !state.controlPending(),
-                action == InputManager.Control.RESUME, false, false, () -> input.control(action));
-            control.setTooltip(Tooltip.create(component(action.translationKey()).append("  ").append(input.keyLabel(action))));
-        }
+        iconButton("inspector", new Bounds(x + width + gap, toolbar.y() + 2, width, DebuggerLayout.ICON_BUTTON_SIZE),
+            component("bastion.ui.details"), showInspector ? DebuggerIcon.DETAILS_OPEN : DebuggerIcon.DETAILS_CLOSED,
+            true, () -> inspectorPreference = !showInspector);
     }
 
     private void renderWorldLabels(GuiGraphicsExtractor graphics, Bounds world, @Nullable PauseSnapshot snapshot) {
@@ -186,9 +198,15 @@ public final class DebuggerOverlay {
             boolean selected = indices.contains(state.selectedSourceIndex());
             boolean group = indices.size() > 1;
             int index = indices.getFirst();
-            Component title = group ? Component.translatable("bastion.ui.group", indices.size())
-                : Component.literal(sourceLabel(snapshot.pauseSources().get(index), index));
             Bounds bounds = label.bounds();
+            String sourceTitle = sourceLabel(snapshot.pauseSources().get(index), index);
+            Component title;
+            if (group && selected) {
+                String count = "  +" + (indices.size() - 1);
+                title = Component.literal(trimmed(sourceTitle, Math.max(0, bounds.width() - 10 - client.font.width(count))) + count);
+            } else {
+                title = group ? Component.translatable("bastion.ui.group", indices.size()) : Component.literal(sourceTitle);
+            }
             leader(graphics, (int) label.anchorX(), (int) label.anchorY(),
                 bounds.x() + bounds.width() / 2, bounds.y() + bounds.height(), selected ? TEAL : MUTED);
             button("label-" + index, bounds, title, true, selected, false, false, () -> {
@@ -312,7 +330,8 @@ public final class DebuggerOverlay {
         if (source.entity() != null && y + 16 <= area.y() + area.height()) {
             String uuid = source.entity().uuid().toString();
             button("copy-uuid", new Bounds(area.x() + 7, y, area.width() - 14, 16),
-                Component.literal("UUID " + uuid.substring(0, 8) + "… " + tr("bastion.ui.copy")),
+                Component.literal("UUID " + uuid.substring(0, 4) + "..." + uuid.substring(uuid.length() - 4)
+                    + " " + tr("bastion.ui.copy")),
                 true, false, true, false, () -> client.keyboardHandler.setClipboard(uuid))
                 .setTooltip(Tooltip.create(Component.literal(uuid)));
             y += 18;
@@ -407,13 +426,24 @@ public final class DebuggerOverlay {
         return button;
     }
 
+    private DebuggerButton iconButton(String id, Bounds bounds, Component label, DebuggerIcon icon,
+                                     boolean active, Runnable action) {
+        DebuggerButton button = button(id, bounds, label, active, false, false, false, action).withIcon(icon);
+        button.setTooltip(Tooltip.create(label));
+        return button;
+    }
+
     private void text(GuiGraphicsExtractor graphics, String value, int x, int y, int width, int color) {
         if (width <= 0) return;
-        String trimmed = client.font.width(value) <= width ? value
-            : client.font.plainSubstrByWidth(value, Math.max(0, width - client.font.width("…"))) + "…";
         graphics.enableScissor(x, y, x + width, y + client.font.lineHeight + 1);
-        graphics.text(client.font, trimmed, x, y, color, false);
+        graphics.text(client.font, trimmed(value, width), x, y, color, false);
         graphics.disableScissor();
+    }
+
+    private String trimmed(String value, int width) {
+        if (client.font.width(value) <= width) return value;
+        if (width < client.font.width("…")) return "";
+        return client.font.plainSubstrByWidth(value, width - client.font.width("…")) + "…";
     }
 
     private void wrapped(GuiGraphicsExtractor graphics, Component value, Bounds bounds, int color) {
