@@ -34,7 +34,7 @@ public final class DebuggerFreecamStepGameTest implements FabricClientGameTest {
     @Override
     public void runTest(ClientGameTestContext context) {
         try (TestSingleplayerContext world = context.worldBuilder().create()) {
-            world.getClientLevel().waitForChunksRender();
+            world.getConnection().waitForChunksRender();
             Fixture fixture = context.computeOnClient(DebuggerFreecamStepGameTest::prepare);
             try {
                 PauseSnapshot firstPause = context.computeOnClient(client -> pauseFixture(fixture.player(), "initial"));

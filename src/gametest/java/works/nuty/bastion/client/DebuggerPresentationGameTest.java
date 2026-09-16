@@ -1,6 +1,7 @@
 package works.nuty.bastion.client;
 
 import io.netty.buffer.Unpooled;
+import com.mojang.blaze3d.platform.InputConstants;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
@@ -24,6 +25,7 @@ import works.nuty.bastion.client.ui.DebuggerIcon;
 import works.nuty.bastion.client.ui.DebuggerOverlay;
 import works.nuty.bastion.core.model.*;
 import works.nuty.bastion.network.PauseSyncPayload;
+import works.nuty.bastion.network.BreakpointSyncPayload;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -44,7 +46,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
                 client.resizeGui();
             });
             context.getInput().lookAt(0, 18);
-            world.getClientLevel().waitForChunksRender();
+            world.getConnection().waitForChunksRender();
             ClientDebuggerState state = new ClientDebuggerState();
             BastionScreen screen = context.computeOnClient(client -> {
                 InputManager input = input(client, state);
@@ -57,6 +59,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
                 } finally {
                     buffer.release();
                 }
+                checkBreakpointCodec();
                 state.applyPause(fixture);
                 BlockLocation active = ((SourceLocation.Block) fixture.location()).block();
                 state.applyBreakpoints(List.of(active, new BlockLocation(active.x() + 2, active.y(), active.z(), active.dimension())));
@@ -79,7 +82,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
                 // Direct screen events bypass the handlers, so supply fixture input metadata explicitly.
                 client.setLastInputType(InputType.KEYBOARD_TAB);
                 var previousFocus = screen.getFocused();
-                screen.keyPressed(new KeyEvent(258, 0, 0));
+                screen.keyPressed(new KeyEvent(InputConstants.KEY_TAB, InputConstants.KEYCODE_TAB, 0));
                 require(screen.getFocused() != null && screen.getFocused() != previousFocus,
                     "Tab moves focus after a mouse click");
             });
@@ -110,7 +113,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
             context.waitTicks(2);
             context.runOnClient(client -> {
                 require(screen.getFocused() == null, "Scrolled-out button loses focus");
-                screen.keyPressed(new KeyEvent(257, 0, 0));
+                screen.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, InputConstants.KEYCODE_RETURN, 0));
                 require(state.selectedSourceIndex() == 1, "Enter cannot activate a hidden source");
                 state.setGizmoMode(ClientDebuggerState.GizmoMode.FOCUS);
             });
@@ -221,7 +224,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
         world.getServer().runOnServer(server -> positions.forEach(pos ->
             server.overworld().setBlockAndUpdate(pos, Blocks.STONE.defaultBlockState())));
         context.waitFor(client -> positions.stream().allMatch(pos -> client.level.getBlockState(pos).is(Blocks.STONE)));
-        world.getClientLevel().waitForChunksRender();
+        world.getConnection().waitForChunksRender();
         context.waitTicks(3);
         context.takeScreenshot("bastion-solid-block-markers");
         context.getInput().lookAt(15, 30);
@@ -279,9 +282,44 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
         // This fixture calls the screen directly, so mirror MouseHandler's input classification.
         Minecraft.getInstance().setLastInputType(InputType.MOUSE);
         MouseButtonEvent event = new MouseButtonEvent(button.getX() + button.getWidth() / 2.0,
-            button.getY() + button.getHeight() / 2.0, new MouseButtonInfo(0, 0));
+            button.getY() + button.getHeight() / 2.0, new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
         require(screen.mouseClicked(event, false), "Widget accepts click");
         screen.mouseReleased(event);
+    }
+
+    private static void checkBreakpointCodec() {
+        checkBreakpointRoundTrip(List.of());
+        checkBreakpointRoundTrip(List.of(
+            new BlockLocation(-16, 64, 32, "minecraft:overworld"),
+            new BlockLocation(8, -12, -4, "minecraft:the_nether")
+        ));
+    }
+
+    private static void checkBreakpointRoundTrip(List<BlockLocation> expected) {
+        FriendlyByteBuf roundTripBuffer = new FriendlyByteBuf(Unpooled.buffer());
+        try {
+            BreakpointSyncPayload payload = new BreakpointSyncPayload(expected);
+            BreakpointSyncPayload.CODEC.encode(roundTripBuffer, payload);
+            require(BreakpointSyncPayload.CODEC.decode(roundTripBuffer).blocks().equals(expected),
+                "Breakpoint codec round trip preserves list contents and order");
+            require(roundTripBuffer.readableBytes() == 0, "Breakpoint codec consumes its complete payload");
+        } finally {
+            roundTripBuffer.release();
+        }
+
+        FriendlyByteBuf wireBuffer = new FriendlyByteBuf(Unpooled.buffer());
+        try {
+            BreakpointSyncPayload.CODEC.encode(wireBuffer, new BreakpointSyncPayload(expected));
+            require(wireBuffer.readVarInt() == expected.size(), "Breakpoint list uses its expected VarInt count");
+            for (BlockLocation block : expected) {
+                require(wireBuffer.readInt() == block.x() && wireBuffer.readInt() == block.y()
+                        && wireBuffer.readInt() == block.z() && wireBuffer.readUtf().equals(block.dimension()),
+                    "Breakpoint list keeps block order and block fields on the wire");
+            }
+            require(wireBuffer.readableBytes() == 0, "Breakpoint wire format has no trailing bytes");
+        } finally {
+            wireBuffer.release();
+        }
     }
 
     private static void require(boolean condition, String description) {

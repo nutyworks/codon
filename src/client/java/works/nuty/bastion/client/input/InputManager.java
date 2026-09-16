@@ -11,7 +11,6 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
-import org.lwjgl.glfw.GLFW;
 import works.nuty.bastion.client.state.ClientDebuggerState;
 
 /**
@@ -124,15 +123,15 @@ public final class InputManager implements ClientTickEvents.EndTick {
 
     public void registerKeyMappings() {
         KeyMapping.Category category = new KeyMapping.Category(CATEGORY_ID);
-        this.menuKey = register("key.bastion.open_menu", GLFW.GLFW_KEY_B, category);
-        this.breakpointKey = register("key.bastion.breakpoint", GLFW.GLFW_KEY_F10, category);
-        this.resumeKey = register("key.bastion.resume", GLFW.GLFW_KEY_F7, category);
-        this.stepOverKey = register("key.bastion.step_over", GLFW.GLFW_KEY_F8, category);
-        this.stepIntoKey = register("key.bastion.step_into", GLFW.GLFW_KEY_F9, category);
+        this.menuKey = register("key.bastion.open_menu", InputConstants.KEY_B, category);
+        this.breakpointKey = register("key.bastion.breakpoint", InputConstants.KEY_F10, category);
+        this.resumeKey = register("key.bastion.resume", InputConstants.KEY_F7, category);
+        this.stepOverKey = register("key.bastion.step_over", InputConstants.KEY_F8, category);
+        this.stepIntoKey = register("key.bastion.step_into", InputConstants.KEY_F9, category);
     }
 
     private static KeyMapping register(String translationKey, int key, KeyMapping.Category category) {
-        return KeyMappingHelper.registerKeyMapping(new KeyMapping(translationKey, InputConstants.Type.KEYSYM, key, category));
+        return KeyMappingHelper.registerKeyMapping(new KeyMapping(translationKey, InputConstants.Type.KEYBOARD, key, category));
     }
 
     @FunctionalInterface

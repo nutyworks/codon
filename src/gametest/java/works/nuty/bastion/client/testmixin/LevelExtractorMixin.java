@@ -15,12 +15,12 @@ import works.nuty.bastion.client.FreecamRenderProbe;
 public abstract class LevelExtractorMixin {
     @Inject(method = "isEntityVisible", at = @At("RETURN"))
     private void bastion$observeVisibility(Entity entity, Frustum frustum, double x, double y, double z,
-                                          CallbackInfoReturnable<Boolean> cir) {
+                                          float partialTick, long chunkFadeDuration, CallbackInfoReturnable<Boolean> cir) {
         Minecraft client = Minecraft.getInstance();
         if (entity == client.player) {
             FreecamRenderProbe.observeVisibility(entity, cir.getReturnValue(),
-                client.levelRenderer.isSectionCompiledAndVisible(entity.blockPosition()),
-                client.levelRenderer.entityRenderDispatcher().shouldRender(entity, frustum, x, y, z));
+                client.levelRenderer.isSectionCompiledAndVisible(entity.blockPosition(), chunkFadeDuration),
+                client.levelRenderer.entityRenderDispatcher().shouldRender(entity, frustum, x, y, z, partialTick));
         }
     }
 

@@ -25,7 +25,7 @@ public final class DebuggerMountedFreecamGameTest implements FabricClientGameTes
     @Override
     public void runTest(ClientGameTestContext context) {
         try (TestSingleplayerContext world = context.worldBuilder().create()) {
-            world.getClientLevel().waitForChunksRender();
+            world.getConnection().waitForChunksRender();
             Fixture fixture = context.computeOnClient(client -> createMountedPauseFixture(client));
             try {
                 VehicleState vehicleAtPause = context.computeOnClient(client -> vehicleState(fixture.vehicle()));

@@ -31,7 +31,7 @@ public final class DebuggerFreecamGameTest implements FabricClientGameTest {
     @Override
     public void runTest(ClientGameTestContext context) {
         try (TestSingleplayerContext world = context.worldBuilder().create()) {
-            world.getClientLevel().waitForChunksRender();
+            world.getConnection().waitForChunksRender();
             Fixture fixture = context.computeOnClient(client -> {
                 ClientDebuggerState state = require(BastionClientMod.state(), "client debugger state is initialized");
                 DebuggerFreecam freecam = require(BastionClientMod.freecam(), "client freecam is initialized");

@@ -42,7 +42,7 @@ public final class DebuggerSoundPauseGameTest implements FabricClientGameTest {
     @Override
     public void runTest(ClientGameTestContext context) {
         try (TestSingleplayerContext world = context.worldBuilder().create()) {
-            world.getClientLevel().waitForChunksRender();
+            world.getConnection().waitForChunksRender();
             Fixture fixture = context.computeOnClient(DebuggerSoundPauseGameTest::prepare);
             try {
                 context.waitTicks(4);

@@ -1,6 +1,8 @@
 package works.nuty.bastion.network;
 
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.codec.ByteBufCodecs;
+import net.minecraft.network.codec.StreamCodec;
 import works.nuty.bastion.core.model.BlockLocation;
 import works.nuty.bastion.core.model.CallFrame;
 import works.nuty.bastion.core.model.CommandSnippet;
@@ -13,7 +15,6 @@ import works.nuty.bastion.core.model.PauseSource;
 import works.nuty.bastion.core.model.SourceLocation;
 import works.nuty.bastion.core.model.Vec3d;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -25,6 +26,16 @@ final class NetworkCodecs {
     private static final byte SOURCE_BLOCK = 0;
     private static final byte SOURCE_FUNCTION = 1;
     private static final byte SOURCE_PLAYER = 2;
+
+    private static final StreamCodec<FriendlyByteBuf, List<CallFrame>> CALL_STACK_CODEC =
+        StreamCodec.<FriendlyByteBuf, CallFrame>of(NetworkCodecs::writeCallFrame, NetworkCodecs::readCallFrame)
+            .apply(ByteBufCodecs.list());
+    private static final StreamCodec<FriendlyByteBuf, List<PauseSource>> PAUSE_SOURCES_CODEC =
+        StreamCodec.<FriendlyByteBuf, PauseSource>of(NetworkCodecs::writePauseSource, NetworkCodecs::readPauseSource)
+            .apply(ByteBufCodecs.list());
+    private static final StreamCodec<FriendlyByteBuf, List<BlockLocation>> BLOCK_LOCATIONS_CODEC =
+        StreamCodec.<FriendlyByteBuf, BlockLocation>of(NetworkCodecs::writeBlockLocation, NetworkCodecs::readBlockLocation)
+            .apply(ByteBufCodecs.list());
 
     private NetworkCodecs() {
     }
@@ -126,8 +137,8 @@ final class NetworkCodecs {
         writeSourceLocation(buf, snapshot.location());
         writeCommandSnippet(buf, snapshot.command());
         buf.writeVarInt(snapshot.depth());
-        buf.writeCollection(snapshot.callStack(), NetworkCodecs::writeCallFrame);
-        buf.writeCollection(snapshot.pauseSources(), NetworkCodecs::writePauseSource);
+        CALL_STACK_CODEC.encode(buf, snapshot.callStack());
+        PAUSE_SOURCES_CODEC.encode(buf, snapshot.pauseSources());
         buf.writeEnum(snapshot.reason());
     }
 
@@ -135,17 +146,17 @@ final class NetworkCodecs {
         SourceLocation location = readSourceLocation(buf);
         CommandSnippet command = readCommandSnippet(buf);
         int depth = buf.readVarInt();
-        List<CallFrame> callStack = buf.readCollection(ArrayList::new, NetworkCodecs::readCallFrame);
-        List<PauseSource> pauseSources = buf.readCollection(ArrayList::new, NetworkCodecs::readPauseSource);
+        List<CallFrame> callStack = CALL_STACK_CODEC.decode(buf);
+        List<PauseSource> pauseSources = PAUSE_SOURCES_CODEC.decode(buf);
         PauseReason reason = buf.readEnum(PauseReason.class);
         return new PauseSnapshot(location, command, depth, callStack, pauseSources, reason);
     }
 
     static void writeBlockLocations(FriendlyByteBuf buf, List<BlockLocation> blocks) {
-        buf.writeCollection(blocks, NetworkCodecs::writeBlockLocation);
+        BLOCK_LOCATIONS_CODEC.encode(buf, blocks);
     }
 
     static List<BlockLocation> readBlockLocations(FriendlyByteBuf buf) {
-        return buf.readCollection(ArrayList::new, NetworkCodecs::readBlockLocation);
+        return BLOCK_LOCATIONS_CODEC.decode(buf);
     }
 }

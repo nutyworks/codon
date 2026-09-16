@@ -8,7 +8,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.gizmos.GizmoStyle;
 import net.minecraft.gizmos.Gizmos;
 import net.minecraft.util.ARGB;
-import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.NonNull;
 import works.nuty.bastion.client.state.ClientDebuggerState;
@@ -93,7 +92,7 @@ public final class DebugLevelRenderer implements LevelRenderEvents.EndMain {
                 continue;
             }
             Vec3 anchor = new Vec3(source.anchor().x(), source.anchor().y(), source.anchor().z());
-            Vec3 facing = Vec3.applyLocalCoordinatesToRotation(new Vec2(source.pitch(), source.yaw()), Vec3.Z_AXIS);
+            Vec3 facing = Vec3.directionFromRotation(source.pitch(), source.yaw());
             if (!isFinite(anchor) || !isFinite(facing) || facing.lengthSqr() < 1.0e-8) {
                 continue;
             }

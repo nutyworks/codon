@@ -18,7 +18,7 @@ public final class FreecamPacketProbe {
     public static void observe(Packet<?> packet) {
         if (recording && (packet instanceof ServerboundMovePlayerPacket || packet instanceof ServerboundMoveVehiclePacket
                 || packet instanceof ServerboundPlayerInputPacket || packet instanceof ServerboundPlayerActionPacket
-                || packet instanceof ServerboundPlayerCommandPacket || packet instanceof ServerboundSwingPacket
+                || packet instanceof ServerboundPlayerCommandPacket || packet instanceof ServerboundPunchPacket
                 || packet instanceof ServerboundUseItemPacket || packet instanceof ServerboundUseItemOnPacket
                 || packet instanceof ServerboundInteractPacket || packet instanceof ServerboundSetCarriedItemPacket
                 || packet instanceof ServerboundContainerClickPacket || packet instanceof ServerboundSetCreativeModeSlotPacket)) {

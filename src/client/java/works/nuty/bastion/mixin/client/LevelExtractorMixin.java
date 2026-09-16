@@ -14,7 +14,7 @@ import works.nuty.bastion.client.BastionClientMod;
 
 @Mixin(LevelExtractor.class)
 public abstract class LevelExtractorMixin {
-    // 26.2's fourth Camera.entity() call hides LocalPlayer when the camera belongs to another entity.
+    // The fourth Camera.entity() call hides LocalPlayer when the camera belongs to another entity.
     // Let only our paused body pass that check, preserving vanilla visibility/culling and rendering.
     @WrapOperation(method = "extractVisibleEntities", at = @At(value = "INVOKE",
         target = "Lnet/minecraft/client/Camera;entity()Lnet/minecraft/world/entity/Entity;", ordinal = 3))
