@@ -12,6 +12,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import works.nuty.bastion.BastionMod;
 import works.nuty.bastion.adapter.CommandTrace;
 import works.nuty.bastion.adapter.TracedCommand;
+import works.nuty.bastion.core.service.DebuggerEngine;
 
 @Mixin(ExecutionContext.class)
 abstract class ExecutionContextMixin<T> {
@@ -26,12 +27,12 @@ abstract class ExecutionContextMixin<T> {
 
     @WrapMethod(method = "runCommandQueue")
     private void bastion$finishExecution(Operation<Void> original) {
+        DebuggerEngine engine = BastionMod.engine();
+        if (engine != null) engine.onExecutionStarted();
         try {
             original.call();
         } finally {
-            if (BastionMod.engine() != null) {
-                BastionMod.engine().onExecutionFinished();
-            }
+            if (engine != null) engine.onExecutionFinished();
         }
     }
 }

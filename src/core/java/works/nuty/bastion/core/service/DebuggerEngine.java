@@ -40,6 +40,8 @@ public final class DebuggerEngine {
     private final Set<Long> skippedChainIds = ConcurrentHashMap.newKeySet();
     /** A line breakpoint belongs to the invocation, not each modifier stage within it. */
     private final Set<Long> evaluatedBreakpointChains = ConcurrentHashMap.newKeySet();
+    /** Server-thread scopes: a command-block chain can contain several execution queues. */
+    private int executionNesting;
 
     public DebuggerEngine(
         BreakpointRegistry breakpoints,
@@ -202,11 +204,21 @@ public final class DebuggerEngine {
      * while paused (the pause parks the tick itself); the guard keeps the invariant anyway.
      */
     public void onTickBoundary() {
-        onExecutionFinished();
+        if (executionNesting == 0) clearExecutionState();
     }
 
-    /** Called in finally when a vanilla execution queue drains, fails or exhausts its quota. */
+    /** Enter a command execution queue or an enclosing batch such as a command-block chain. */
+    public void onExecutionStarted() {
+        executionNesting++;
+    }
+
+    /** End a scope in finally; only the outermost completion ends the pending step. */
     public void onExecutionFinished() {
+        if (executionNesting > 0) executionNesting--;
+        if (executionNesting == 0) clearExecutionState();
+    }
+
+    private void clearExecutionState() {
         if (paused) {
             return;
         }
@@ -218,6 +230,7 @@ public final class DebuggerEngine {
 
     /** End the host session, retaining user breakpoints but no execution state. */
     public void resetSession() {
+        executionNesting = 0;
         step.clear();
         skippedChainIds.clear();
         evaluatedBreakpointChains.clear();

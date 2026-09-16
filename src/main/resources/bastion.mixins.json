@@ -4,6 +4,7 @@
   "compatibilityLevel": "JAVA_25",
   "mixins": [
     "BuildContextsMixin",
+    "CommandBlockMixin",
     "CommandFunctionMixin",
     "CommandsMixin",
     "FunctionBuilderMixin",

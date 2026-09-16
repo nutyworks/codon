@@ -57,8 +57,11 @@ Continuations inherit that trace, while later invocations of a cached function a
 new ids. A line breakpoint is evaluated once per invocation; explicit stepping still observes
 the modifier stages. The existing `BuildContexts.execute` observation points are retained.
 
-Queue completion clears pending steps, chain bookkeeping, and stale stack frames; the tick
-boundary is a fallback. Root-level step-out resumes because there is no caller to return to.
+Execution scopes nest: `CommandBlockMixin` wraps the initial block and its connected chain, while
+`ExecutionContextMixin` wraps each command queue. Only the outermost completion clears pending
+steps, chain bookkeeping, and stale stack frames. This lets step-into/over continue into the next
+block without leaking into an unrelated chain. The tick boundary is a fallback when no scope is
+active. Root-level step-out resumes because there is no caller to return to.
 The call stack and stepping still use observed depth, not exact function/frame lifecycle events.
 
 While paused, the server services only debugger mailbox work and bounded connection maintenance
