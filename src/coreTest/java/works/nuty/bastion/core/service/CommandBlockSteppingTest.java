@@ -160,7 +160,7 @@ class CommandBlockSteppingTest {
     }
 
     @Test
-    void rootStepOutFinishesNormally() {
+    void rootStepOutStopsAtOuterCompletionAndLeavesTheNextChainAlone() {
         BlockLocation first = block(1);
         BlockLocation second = block(2);
         engine.onExecutionStarted();
@@ -169,6 +169,11 @@ class CommandBlockSteppingTest {
 
         engine.stepOut();
         engine.onExecutionFinished();
+        assertFalse(engine.isPaused(), "an inner queue cannot complete the root step-out");
+        engine.onExecutionFinished();
+        assertTrue(engine.isPaused());
+        assertEquals(PauseReason.EXECUTION_COMPLETE, sink.lastPause().reason());
+        engine.resume();
         engine.onExecutionStarted();
         engine.onCommandStage(blockStage(2, 0, second));
 
@@ -189,6 +194,10 @@ class CommandBlockSteppingTest {
         engine.onExecutionFinished();
         assertTrue(step.isStepping());
         engine.onExecutionFinished();
+
+        assertTrue(engine.isPaused());
+        assertEquals(PauseReason.EXECUTION_COMPLETE, sink.lastPause().reason());
+        engine.resume();
 
         engine.onExecutionStarted();
         engine.onExecutionStarted();

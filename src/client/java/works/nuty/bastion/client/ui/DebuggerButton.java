@@ -1,16 +1,19 @@
 package works.nuty.bastion.client.ui;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.input.InputWithModifiers;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import org.jspecify.annotations.Nullable;
 
 /** Standard keyboard/narration behavior with Bastion's compact, high-contrast chrome. */
 public final class DebuggerButton extends AbstractButton {
     private Runnable action = () -> { };
+    private @Nullable Runnable secondaryAction;
     private boolean selected;
     private boolean leftAligned;
     private boolean subdued;
@@ -31,11 +34,18 @@ public final class DebuggerButton extends AbstractButton {
         this.leftAligned = leftAligned;
         this.subdued = subdued;
         this.action = action;
+        this.secondaryAction = null;
         this.icon = null;
     }
 
     public DebuggerButton withIcon(DebuggerIcon icon) {
         this.icon = icon;
+        return this;
+    }
+
+    /** An optional right-click action; normal left-click and keyboard activation stay unchanged. */
+    public DebuggerButton withSecondaryAction(Runnable action) {
+        this.secondaryAction = action;
         return this;
     }
 
@@ -46,6 +56,16 @@ public final class DebuggerButton extends AbstractButton {
     @Override
     public void onPress(InputWithModifiers input) {
         if (active) action.run();
+    }
+
+    @Override
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        if (secondaryAction != null && active && event.button() == InputConstants.MOUSE_BUTTON_RIGHT && isMouseOver(event.x(), event.y())) {
+            playDownSound(Minecraft.getInstance().getSoundManager());
+            secondaryAction.run();
+            return true;
+        }
+        return super.mouseClicked(event, doubleClick);
     }
 
     @Override

@@ -140,6 +140,7 @@ final class NetworkCodecs {
         CALL_STACK_CODEC.encode(buf, snapshot.callStack());
         PAUSE_SOURCES_CODEC.encode(buf, snapshot.pauseSources());
         buf.writeEnum(snapshot.reason());
+        buf.writeVarLong(snapshot.pauseId());
     }
 
     static PauseSnapshot readSnapshot(FriendlyByteBuf buf) {
@@ -149,7 +150,7 @@ final class NetworkCodecs {
         List<CallFrame> callStack = CALL_STACK_CODEC.decode(buf);
         List<PauseSource> pauseSources = PAUSE_SOURCES_CODEC.decode(buf);
         PauseReason reason = buf.readEnum(PauseReason.class);
-        return new PauseSnapshot(location, command, depth, callStack, pauseSources, reason);
+        return new PauseSnapshot(location, command, depth, callStack, pauseSources, reason, buf.readVarLong());
     }
 
     static void writeBlockLocations(FriendlyByteBuf buf, List<BlockLocation> blocks) {

@@ -19,15 +19,14 @@ public abstract class CommandsMixin {
     @Shadow
     public abstract CommandDispatcher<CommandSourceStack> getDispatcher();
 
-    /** Only debugger control commands bypass the parked execution queue. Ordinary commands
-     * retain vanilla ContextChain/custom-executor semantics and run after resume. */
+    /** Debugger commands must never enter the execution they inspect, even just after a step
+     * unpauses it. Ordinary commands retain vanilla ContextChain/custom-executor semantics. */
     @Inject(method = "performCommand", at = @At("HEAD"), cancellable = true)
-    private void bastion$executeImmediatelyWhenPaused(ParseResults<CommandSourceStack> parseResults, String command, CallbackInfo ci) {
+    private void bastion$executeControlsImmediately(ParseResults<CommandSourceStack> parseResults, String command, CallbackInfo ci) {
         DebuggerEngine engine = BastionMod.engine();
-        if (engine != null && engine.isPaused()
-            && !parseResults.getContext().getNodes().isEmpty()
-            && java.util.Set.of("bastion", "stop").contains(
-                parseResults.getContext().getNodes().getFirst().getNode().getName())) {
+        if (engine == null || parseResults.getContext().getNodes().isEmpty()) return;
+        String root = parseResults.getContext().getNodes().getFirst().getNode().getName();
+        if (root.equals("bastion") || (engine.isPaused() && root.equals("stop"))) {
             CommandSourceStack source = parseResults.getContext().getSource();
             try {
                 this.getDispatcher().execute(parseResults);

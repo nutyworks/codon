@@ -38,7 +38,8 @@ public final class StepController {
     }
 
     public void stepOut() {
-        mode = lastPausedDepth > 0 ? StepMode.OUT : StepMode.NONE;
+        // At the root, the execution-complete stop satisfies this request.
+        mode = StepMode.OUT;
         targetDepth = lastPausedDepth - 1;
     }
 

@@ -44,6 +44,10 @@ public final class DebuggerEngine {
     private final Set<Long> evaluatedBreakpointChains = ConcurrentHashMap.newKeySet();
     /** Server-thread scopes: a command-block chain can contain several execution queues. */
     private int executionNesting;
+    private boolean executionFailed;
+    private @Nullable CommandStageEvent lastStage;
+    // Never reset: even identical stops in a later session must reject old watch requests.
+    private long nextPauseId;
 
     public DebuggerEngine(
         BreakpointRegistry breakpoints,
@@ -133,6 +137,7 @@ public final class DebuggerEngine {
             return;
         }
         callStack.push(new CallFrame(event.depth(), event.location(), event.command()));
+        lastStage = event;
 
         if (skippedChainIds.contains(event.chainId())) {
             return;
@@ -158,7 +163,8 @@ public final class DebuggerEngine {
                 event.depth(),
                 callStack.frames(),
                 event.pauseSources().get(),
-                reason
+                reason,
+                ++nextPauseId
             );
             currentSnapshot = snapshot;
             eventSink.paused(snapshot);
@@ -174,8 +180,9 @@ public final class DebuggerEngine {
 
     /** Resume normal execution (run to the next breakpoint). */
     public void resume() {
+        boolean complete = isExecutionComplete();
         skipRemainingPausedChain();
-        if (executionNesting > 0 && (paused || step.isStepping() || continuing)) {
+        if (!complete && executionNesting > 0 && (paused || step.isStepping() || continuing)) {
             boolean wasStepping = step.isStepping();
             step.clear();
             continuing = true;
@@ -185,11 +192,13 @@ public final class DebuggerEngine {
             clearAdvancement();
             unpause();
         }
+        if (complete) clearExecutionState();
     }
 
     /** Resume, pausing at the next command stage (descending into called functions). */
     public void stepInto() {
         if (!paused) return;
+        if (isExecutionComplete()) { resume(); return; }
         step.stepInto();
         unpause();
     }
@@ -197,6 +206,7 @@ public final class DebuggerEngine {
     /** Resume, pausing at the next stage at the same call depth. */
     public void stepOver() {
         if (!paused) return;
+        if (isExecutionComplete()) { resume(); return; }
         step.stepOver();
         unpause();
     }
@@ -204,6 +214,7 @@ public final class DebuggerEngine {
     /** Resume, pausing once execution returns to a shallower call depth. */
     public void stepOut() {
         if (!paused) return;
+        if (isExecutionComplete()) { resume(); return; }
         skipRemainingPausedChain();
         step.stepOut();
         unpause();
@@ -220,13 +231,32 @@ public final class DebuggerEngine {
 
     /** Enter a command execution queue or an enclosing batch such as a command-block chain. */
     public void onExecutionStarted() {
+        if (executionNesting == 0 && !paused) {
+            executionFailed = false;
+            lastStage = null;
+        }
         executionNesting++;
     }
 
-    /** End a scope in finally; only the outermost completion ends the pending step. */
+    /** Normal completion of a scope, including synthetic/offline drivers. */
     public void onExecutionFinished() {
+        onExecutionFinished(true);
+    }
+
+    /** End a scope in finally; exceptional unwinding must never create another blocking stop. */
+    public void onExecutionFinished(boolean completedNormally) {
+        if (!completedNormally) executionFailed = true;
         if (executionNesting > 0) executionNesting--;
-        if (executionNesting == 0) clearExecutionState();
+        if (executionNesting != 0 || paused) return;
+        CommandStageEvent completedStage = lastStage;
+        lastStage = null;
+        try {
+            if (!executionFailed && step.isStepping() && completedStage != null) {
+                pause(completedStage, PauseReason.EXECUTION_COMPLETE);
+            }
+        } finally {
+            clearExecutionState();
+        }
     }
 
     private void clearExecutionState() {
@@ -236,12 +266,16 @@ public final class DebuggerEngine {
         skippedChainIds.clear();
         evaluatedBreakpointChains.clear();
         callStack.clear();
+        lastStage = null;
+        executionFailed = false;
         clearAdvancement();
     }
 
     /** End the host session, retaining user breakpoints but no execution state. */
     public void resetSession() {
         executionNesting = 0;
+        lastStage = null;
+        executionFailed = false;
         clearAdvancement();
         skippedChainIds.clear();
         evaluatedBreakpointChains.clear();
@@ -253,6 +287,11 @@ public final class DebuggerEngine {
         if (pausedChainId != NO_CHAIN) {
             skippedChainIds.add(pausedChainId);
         }
+    }
+
+    private boolean isExecutionComplete() {
+        PauseSnapshot snapshot = currentSnapshot;
+        return paused && snapshot != null && snapshot.reason() == PauseReason.EXECUTION_COMPLETE;
     }
 
     private void unpause() {

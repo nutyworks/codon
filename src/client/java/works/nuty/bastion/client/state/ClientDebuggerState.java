@@ -28,6 +28,8 @@ public final class ClientDebuggerState {
     private boolean controlPending;
     private long controlRequestedAt;
     private final LongSupplier clock;
+    private final ClientWatchState watches;
+    private final ClientNbtState nbt;
     private @Nullable PauseSource selectionHint;
     private final DebuggerPreferences preferences;
 
@@ -47,6 +49,10 @@ public final class ClientDebuggerState {
     public ClientDebuggerState(LongSupplier clock, DebuggerPreferences preferences) {
         this.clock = Objects.requireNonNull(clock);
         this.preferences = Objects.requireNonNull(preferences);
+        this.watches = new ClientWatchState(clock);
+        this.nbt = new ClientNbtState(clock);
+        this.nbt.setEnabled(preferences.nbtExpanded());
+        this.nbt.setEnabledListener(preferences::setNbtExpanded);
     }
 
     public enum GizmoMode {
@@ -86,9 +92,21 @@ public final class ClientDebuggerState {
                 if (match >= 0) this.selectedSourceIndex = match;
             }
         }
+        watches.paused(snapshot.pauseId(), selectedSourceIndex);
+        watches.rememberExecutors(snapshot.pauseSources());
+        nbt.paused(snapshot.pauseId(), snapshot.pauseSources(), selectedSourceIndex);
     }
 
+    public ClientWatchState watches() { return watches; }
+    public ClientNbtState nbt() { return nbt; }
+
     public void applyResume() {
+        watches.resumed();
+        nbt.resumed();
+        clearPause();
+    }
+
+    private void clearPause() {
         if (selectedSource() != null) selectionHint = selectedSource();
         this.paused = false;
         this.stepping = false;
@@ -101,7 +119,9 @@ public final class ClientDebuggerState {
 
     /** Server-confirmed advancement: discard the old pause but retain the freecam session. */
     public void applyStep() {
-        applyResume();
+        watches.stepping();
+        nbt.stepping();
+        clearPause();
         this.stepping = true;
     }
 
@@ -149,6 +169,8 @@ public final class ClientDebuggerState {
         PauseSnapshot current = snapshot;
         if (paused && current != null && index >= 0 && index < current.pauseSources().size()) {
             selectedSourceIndex = index;
+            watches.selectSource(index);
+            nbt.selectSource(index);
         }
     }
 
@@ -194,5 +216,7 @@ public final class ClientDebuggerState {
         applyResume();
         selectionHint = null;
         blockBreakpoints = List.of();
+        watches.reset();
+        nbt.reset();
     }
 }

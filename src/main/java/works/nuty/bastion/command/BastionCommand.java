@@ -16,6 +16,7 @@ import works.nuty.bastion.adapter.SourceMapper;
 import works.nuty.bastion.core.model.BlockLocation;
 import works.nuty.bastion.core.model.FunctionLocation;
 import works.nuty.bastion.core.service.DebuggerEngine;
+import works.nuty.bastion.persistence.WorldWatchPersistence;
 
 /**
  * The {@code /bastion} command tree: a thin driving adapter that maps Brigadier arguments to core
@@ -27,9 +28,12 @@ public final class BastionCommand {
     private BastionCommand() {
     }
 
-    public static void register(CommandDispatcher<CommandSourceStack> dispatcher, DebuggerEngine engine) {
+    public static void register(CommandDispatcher<CommandSourceStack> dispatcher, DebuggerEngine engine,
+                                WorldWatchPersistence watches) {
         dispatcher.register(Commands.literal("bastion")
             .requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_OWNER))
+            .then(WatchCommand.node(engine, watches))
+            .then(NbtTreeCommand.node(engine))
             .then(Commands.literal("breakpoint")
                 .then(Commands.literal("list").executes(c -> listBreakpoints(c, engine)))
                 .then(Commands.literal("clear").executes(c -> clearBreakpoints(c, engine)))

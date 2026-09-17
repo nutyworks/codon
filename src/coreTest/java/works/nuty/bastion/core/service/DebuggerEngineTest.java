@@ -7,11 +7,14 @@ import works.nuty.bastion.core.model.CommandSnippet;
 import works.nuty.bastion.core.model.FunctionId;
 import works.nuty.bastion.core.model.FunctionLocation;
 import works.nuty.bastion.core.model.PauseReason;
+import works.nuty.bastion.core.model.PauseSource;
 import works.nuty.bastion.core.model.SourceLocation;
+import works.nuty.bastion.core.model.Vec3d;
 import works.nuty.bastion.core.support.ImmediateExecutionController;
 import works.nuty.bastion.core.support.RecordingEventSink;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -44,6 +47,21 @@ class DebuggerEngineTest {
             CommandSnippet.plain("say hi"),
             List::of
         );
+    }
+
+    @Test
+    void everyPauseHasAFreshQueryIdIncludingAfterReset() {
+        breakpoints.toggleFunction(tick(3));
+        engine.onCommandStage(functionStage(1, 0, 3));
+        long first = engine.currentSnapshot().pauseId();
+        assertTrue(first > 0);
+        engine.stepInto();
+        engine.onCommandStage(functionStage(2, 0, 4));
+        long second = engine.currentSnapshot().pauseId();
+        assertTrue(second > first);
+        engine.resetSession();
+        engine.onCommandStage(functionStage(1, 0, 3));
+        assertTrue(engine.currentSnapshot().pauseId() > second, "identical stops after reset cannot accept old queries");
     }
 
     @Test
@@ -207,7 +225,7 @@ class DebuggerEngineTest {
     }
 
     @Test
-    void stepExhaustionPublishesOneTerminalResumeAtTheOutermostExecutionBoundary() {
+    void stepExhaustionPausesOnceAtTheOutermostExecutionBoundary() {
         engine.onExecutionStarted();
         engine.onExecutionStarted();
         breakpoints.toggleFunction(tick(3));
@@ -218,21 +236,28 @@ class DebuggerEngineTest {
         assertEquals(0, sink.resumes, "finishing an inner queue must retain freecam");
         engine.onExecutionFinished();
         assertEquals(1, sink.steps);
-        assertEquals(1, sink.resumes, "exhausting the outer queue must release freecam");
+        assertTrue(engine.isPaused());
+        assertEquals(PauseReason.EXECUTION_COMPLETE, sink.lastPause().reason());
+        assertEquals(0, sink.resumes, "completion remains inspectable until the user resumes");
+        engine.resume();
+        assertEquals(1, sink.resumes);
         engine.onTickBoundary();
         engine.resetSession();
         assertEquals(1, sink.resumes, "later cleanup must not publish another resume");
     }
 
     @Test
-    void rootStepOutIsATerminalResume() {
+    void rootStepOutStopsAtExecutionCompletion() {
+        engine.onExecutionStarted();
         breakpoints.toggleFunction(tick(3));
         engine.onCommandStage(functionStage(1, 0, 3));
         engine.stepOut();
 
-        assertFalse(step.isStepping());
-        assertEquals(0, sink.steps);
-        assertEquals(1, sink.resumes);
+        assertTrue(step.isStepping());
+        assertEquals(1, sink.steps);
+        engine.onExecutionFinished();
+        assertTrue(engine.isPaused());
+        assertEquals(PauseReason.EXECUTION_COMPLETE, sink.lastPause().reason());
     }
 
     @Test
@@ -335,7 +360,8 @@ class DebuggerEngineTest {
     }
 
     @Test
-    void executionFinishedClearsSkippedChainsStepAndFrames() {
+    void completionPauseClearsExecutionStateWhenResumed() {
+        engine.onExecutionStarted();
         breakpoints.toggleFunction(tick(3));
         engine.onCommandStage(functionStage(42, 2, 3));
 
@@ -343,6 +369,9 @@ class DebuggerEngineTest {
         assertTrue(step.isStepping());
         engine.onExecutionFinished();
 
+        assertTrue(engine.isPaused());
+        assertEquals(PauseReason.EXECUTION_COMPLETE, sink.lastPause().reason());
+        engine.resume();
         assertFalse(step.isStepping());
         assertTrue(engine.callStack().isEmpty());
         engine.onCommandStage(functionStage(42, 2, 3));
@@ -447,17 +476,114 @@ class DebuggerEngineTest {
     }
 
     @Test
-    void rootDepthStepOutSimplyResumesWithoutAnUnreachableStepRequest() {
+    void rootDepthStepOutRetainsTheLastSkippedStageForCompletionInspection() {
+        PauseSource finalSource = new PauseSource(new Vec3d(4, 64, 0), 0, 0, null, "minecraft:overworld");
+        AtomicReference<List<PauseSource>> finalSources = new AtomicReference<>(List.of());
+        engine.onExecutionStarted();
         breakpoints.toggleFunction(tick(3));
         engine.onCommandStage(functionStage(93, 0, 3));
+        long breakpointPauseId = sink.lastPause().pauseId();
         breakpoints.clear();
 
         engine.stepOut();
+        engine.onCommandStage(new CommandStageEvent(
+            93, 0, new SourceLocation.Function(tick(4)), CommandSnippet.plain("say final"), finalSources::get
+        ));
+        finalSources.set(List.of(finalSource));
+        engine.onExecutionFinished();
+
+        assertTrue(engine.isPaused());
+        assertEquals(PauseReason.EXECUTION_COMPLETE, sink.lastPause().reason());
+        assertEquals(new SourceLocation.Function(tick(4)), sink.lastPause().location());
+        assertEquals(List.of(finalSource), sink.lastPause().pauseSources());
+        assertTrue(sink.lastPause().pauseId() > breakpointPauseId, "completion must receive a fresh ID");
+    }
+
+    @Test
+    void terminalPauseActionsResumeExactlyOnceAndDoNotPoisonFutureCommands() {
+        Runnable[] actions = {engine::stepInto, engine::stepOver, engine::stepOut, engine::resume};
+        breakpoints.toggleFunction(tick(3));
+
+        for (int i = 0; i < actions.length; i++) {
+            engine.onExecutionStarted();
+            engine.onCommandStage(functionStage(100 + i, 0, 3));
+            engine.stepOut();
+            engine.onExecutionFinished();
+            assertEquals(PauseReason.EXECUTION_COMPLETE, sink.lastPause().reason());
+            int resumesBefore = sink.resumes;
+
+            actions[i].run();
+
+            assertFalse(engine.isPaused());
+            assertFalse(step.isStepping());
+            assertNull(engine.currentSnapshot());
+            assertEquals(resumesBefore + 1, sink.resumes);
+            engine.onExecutionFinished();
+            assertEquals(resumesBefore + 1, sink.resumes, "a terminal action cannot replay completion");
+
+            engine.onExecutionStarted();
+            engine.onCommandStage(functionStage(200 + i, 0, 3));
+            assertEquals(PauseReason.BREAKPOINT, sink.lastPause().reason(), "a future command starts cleanly");
+            engine.resume();
+            engine.onExecutionFinished();
+            assertEquals(resumesBefore + 2, sink.resumes, "plain continue adds no completion pause");
+        }
+    }
+
+    @Test
+    void exceptionalInnerCompletionSuppressesTheOutermostTerminalPause() {
+        engine.onExecutionStarted();
+        engine.onExecutionStarted();
+        breakpoints.toggleFunction(tick(3));
+        engine.onCommandStage(functionStage(110, 0, 3));
+        engine.stepOut();
+
+        engine.onExecutionFinished(false);
+        engine.onExecutionFinished(true);
 
         assertFalse(engine.isPaused());
         assertFalse(step.isStepping());
-        engine.onCommandStage(functionStage(94, 0, 4));
+        assertEquals(1, sink.pauses.size());
+        assertEquals(1, sink.resumes, "failed execution releases the retained step without a completion stop");
+    }
+
+    @Test
+    void terminalPauseFailureCleansStateBeforePropagating() {
+        engine.onExecutionStarted();
+        breakpoints.toggleFunction(tick(3));
+        engine.onCommandStage(functionStage(120, 0, 3));
+        engine.stepOut();
+        controller.failure = new IllegalStateException("terminal park failed");
+
+        IllegalStateException failure = org.junit.jupiter.api.Assertions.assertThrows(
+            IllegalStateException.class, engine::onExecutionFinished
+        );
+
+        assertEquals("terminal park failed", failure.getMessage());
         assertFalse(engine.isPaused());
+        assertFalse(step.isStepping());
+        assertNull(engine.currentSnapshot());
+        assertTrue(engine.callStack().isEmpty());
+    }
+
+    @Test
+    void cancelledTerminalPauseDoesNotLeakIntoTheNextExecution() {
+        engine.onExecutionStarted();
+        breakpoints.toggleFunction(tick(3));
+        engine.onCommandStage(functionStage(130, 0, 3));
+        engine.stepOut();
+        controller.result = works.nuty.bastion.core.port.ExecutionController.ParkResult.CANCELLED;
+
+        engine.onExecutionFinished();
+
+        assertFalse(engine.isPaused());
+        assertNull(engine.currentSnapshot());
+        assertFalse(step.isStepping());
+        assertTrue(engine.callStack().isEmpty());
+        controller.result = works.nuty.bastion.core.port.ExecutionController.ParkResult.RESUMED;
+        engine.onExecutionStarted();
+        engine.onCommandStage(functionStage(131, 0, 3));
+        assertEquals(PauseReason.BREAKPOINT, sink.lastPause().reason());
     }
 
     @Test

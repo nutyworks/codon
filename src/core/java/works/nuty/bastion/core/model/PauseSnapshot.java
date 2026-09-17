@@ -13,8 +13,15 @@ public record PauseSnapshot(
     int depth,
     List<CallFrame> callStack,
     List<PauseSource> pauseSources,
-    PauseReason reason
+    PauseReason reason,
+    long pauseId
 ) {
+    /** Fixtures and offline presentations have no queryable server pause. */
+    public PauseSnapshot(SourceLocation location, CommandSnippet command, int depth,
+                         List<CallFrame> callStack, List<PauseSource> pauseSources, PauseReason reason) {
+        this(location, command, depth, callStack, pauseSources, reason, 0);
+    }
+
     public PauseSnapshot {
         callStack = List.copyOf(callStack);
         pauseSources = List.copyOf(pauseSources);

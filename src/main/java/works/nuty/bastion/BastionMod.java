@@ -15,6 +15,7 @@ import works.nuty.bastion.command.BastionCommand;
 import works.nuty.bastion.network.BastionNetworking;
 import works.nuty.bastion.network.NetworkDebuggerEventSink;
 import works.nuty.bastion.persistence.WorldBreakpointPersistence;
+import works.nuty.bastion.persistence.WorldWatchPersistence;
 import works.nuty.bastion.core.service.BreakpointRegistry;
 import works.nuty.bastion.core.service.CallStack;
 import works.nuty.bastion.core.service.DebuggerEngine;
@@ -51,17 +52,23 @@ public final class BastionMod implements ModInitializer {
         WorldBreakpointPersistence persistence = new WorldBreakpointPersistence(breakpoints, eventSink,
             failure -> LOGGER.warn("Could not persist Bastion world breakpoints", failure));
 
+        WorldWatchPersistence watches = new WorldWatchPersistence(
+            failure -> LOGGER.warn("Could not persist Bastion world watches", failure));
+
         DebuggerEngine wiredEngine = new DebuggerEngine(breakpoints, step, callStack, executionController, persistence);
         engine = wiredEngine;
 
         ServerLifecycleEvents.SERVER_STARTING.register(s -> {
             wiredEngine.resetSession();
             persistence.openWorld(s.getWorldPath(LevelResource.ROOT));
+            var owner = s.isSingleplayer() ? s.getSingleplayerProfile() : null;
+            watches.openWorld(s.getWorldPath(LevelResource.ROOT), owner == null ? null : owner.id(),
+                s.isSingleplayer() ? s.getWorldData().getSinglePlayerUUID() : null);
         });
         ServerLifecycleEvents.SERVER_STARTED.register(s -> server = s);
-        ServerLifecycleEvents.BEFORE_SAVE.register((s, flush, force) -> persistence.flush());
+        ServerLifecycleEvents.BEFORE_SAVE.register((s, flush, force) -> { persistence.flush(); watches.flush(); });
         // Finish disk writes while the server still owns the world's session lock.
-        ServerLifecycleEvents.SERVER_STOPPING.register(s -> persistence.closeWorld());
+        ServerLifecycleEvents.SERVER_STOPPING.register(s -> { persistence.closeWorld(); watches.closeWorld(); });
         ServerLifecycleEvents.SERVER_STOPPED.register(s -> {
             wiredEngine.resetSession();
             DebuggerTaskQueue.clear(s);
@@ -74,9 +81,9 @@ public final class BastionMod implements ModInitializer {
         });
 
         BastionNetworking.registerPayloadTypes();
-        BastionNetworking.registerJoinSync(wiredEngine);
+        BastionNetworking.registerJoinSync(wiredEngine, watches);
 
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
-            BastionCommand.register(dispatcher, wiredEngine));
+            BastionCommand.register(dispatcher, wiredEngine, watches));
     }
 }

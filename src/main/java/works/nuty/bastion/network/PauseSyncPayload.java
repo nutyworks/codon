@@ -10,7 +10,7 @@ import works.nuty.bastion.core.model.PauseSnapshot;
 /** S2C: the debugger paused; carries the full {@link PauseSnapshot} for the client to render. */
 public record PauseSyncPayload(PauseSnapshot snapshot) implements CustomPacketPayload {
     public static final Type<PauseSyncPayload> TYPE =
-        new Type<>(Identifier.fromNamespaceAndPath("bastion", "pause_sync_v2"));
+        new Type<>(Identifier.fromNamespaceAndPath("bastion", "pause_sync_v4"));
 
     public static final StreamCodec<FriendlyByteBuf, PauseSyncPayload> CODEC = StreamCodec.of(
         (buf, payload) -> NetworkCodecs.writeSnapshot(buf, payload.snapshot()),
