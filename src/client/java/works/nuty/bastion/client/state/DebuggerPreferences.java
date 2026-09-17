@@ -7,7 +7,7 @@ import java.util.Objects;
 /** Client preferences that are retained across worlds and client restarts. */
 public final class DebuggerPreferences {
     public enum InspectorTab {
-        SOURCES, DETAILS, STACK
+        SOURCES, FLOW, DETAILS, STACK
     }
 
     private ClientDebuggerState.GizmoMode gizmoMode = ClientDebuggerState.GizmoMode.GROUPED;

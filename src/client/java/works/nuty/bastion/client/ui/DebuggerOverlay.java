@@ -18,6 +18,9 @@ import works.nuty.bastion.client.ui.layout.GizmoLabelLayout.Anchor;
 import works.nuty.bastion.client.ui.layout.GizmoLabelLayout.Bounds;
 import works.nuty.bastion.core.model.CallFrame;
 import works.nuty.bastion.core.model.CommandSnippet;
+import works.nuty.bastion.core.model.ExecutionFlowContext;
+import works.nuty.bastion.core.model.ExecutionFlowStage;
+import works.nuty.bastion.core.model.ExecutionFlowTrace;
 import works.nuty.bastion.core.model.PauseReason;
 import works.nuty.bastion.core.model.PauseSnapshot;
 import works.nuty.bastion.core.model.PauseSource;
@@ -29,6 +32,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 import static works.nuty.bastion.client.ui.DebuggerTheme.*;
@@ -47,12 +51,15 @@ public final class DebuggerOverlay {
     private int sourceOffset;
     private int stackOffset;
     private int commandOffset;
+    private int flowOffset;
     private int maxSourceOffset;
     private int maxStackOffset;
     private int maxCommandOffset;
+    private int maxFlowOffset;
     private Bounds sourceScrollBounds = EMPTY;
     private Bounds stackScrollBounds = EMPTY;
     private Bounds commandScrollBounds = EMPTY;
+    private Bounds flowScrollBounds = EMPTY;
     private boolean showInspector;
 
     public DebuggerOverlay(ClientDebuggerState state) {
@@ -63,15 +70,16 @@ public final class DebuggerOverlay {
                                        float partialTick, boolean interactive, InputManager input) {
         controls.clear();
         usedButtons.clear();
-        sourceScrollBounds = stackScrollBounds = commandScrollBounds = EMPTY;
+        sourceScrollBounds = stackScrollBounds = commandScrollBounds = flowScrollBounds = EMPTY;
         if (client.level == null || client.player == null) {
             buttonCache.clear();
             return List.of();
         }
-        PauseSnapshot snapshot = state.snapshot();
+        PauseSnapshot snapshot = state.inspectionSnapshot();
         if (snapshot != lastSnapshot) {
             expandedGroup = List.of();
             sourceOffset = Math.max(0, state.selectedSourceIndex());
+            flowOffset = Math.max(0, state.selectedFlowStageIndex());
             stackOffset = commandOffset = 0;
             lastSnapshot = snapshot;
         }
@@ -117,7 +125,7 @@ public final class DebuggerOverlay {
     private void renderHeader(GuiGraphicsExtractor graphics, DebuggerLayout layout, InputManager input,
                               @Nullable PauseSnapshot snapshot) {
         String status = state.controlPending() ? tr("bastion.ui.waiting")
-            : snapshot == null ? tr("bastion.ui.running")
+            : !state.isPaused() || snapshot == null ? tr("bastion.ui.running")
             : tr(snapshot.reason() == PauseReason.STEP ? "bastion.ui.step_complete" : "bastion.ui.breakpoint_hit");
         Bounds toolbar = layout.controls();
         Bounds header = new Bounds(layout.header().x(), layout.header().y(),
@@ -128,7 +136,7 @@ public final class DebuggerOverlay {
         graphics.fill(header.x(), header.y(), header.x() + 2, header.y() + header.height(), TEAL);
         text(graphics, "BASTION", header.x() + 7, header.y() + 5, 52, TEXT);
         text(graphics, status, header.x() + 64, header.y() + 5, Math.max(0, header.width() - 69),
-            snapshot == null ? MUTED : AMBER);
+            state.isPaused() ? AMBER : MUTED);
 
         int gap = DebuggerLayout.ICON_BUTTON_GAP;
         int width = Math.min(DebuggerLayout.ICON_BUTTON_SIZE,
@@ -177,8 +185,9 @@ public final class DebuggerOverlay {
         Bounds labelArea = new Bounds(world.x() + 2, world.y() + 2,
             Math.max(0, world.width() - 4), Math.max(0, world.height() - 18));
         List<Anchor> anchors = new ArrayList<>();
-        for (int index = 0; index < snapshot.pauseSources().size(); index++) {
-            PauseSource source = snapshot.pauseSources().get(index);
+        List<PauseSource> displayedSources = state.displayedSources();
+        for (int index = 0; index < displayedSources.size(); index++) {
+            PauseSource source = displayedSources.get(index);
             if (!dimension.equals(source.dimension())) continue;
             Vec3 point = new Vec3(source.anchor().x(), source.anchor().y(), source.anchor().z());
             Vec3 relative = point.subtract(camera.position());
@@ -192,7 +201,8 @@ public final class DebuggerOverlay {
             if (!labelArea.contains(x, y)) continue;
             visibleSources.add(index);
             if (state.gizmoMode() == ClientDebuggerState.GizmoMode.FOCUS && index != state.selectedSourceIndex()) continue;
-            int labelWidth = Math.min(150, client.font.width(sourceLabel(source, index)) + 14);
+            int labelWidth = Math.min(150,
+                client.font.width(sourceLabel(source, index, state.isDisplayedSourceDropped(index))) + 14);
             anchors.add(new Anchor(index, x, y, labelWidth));
         }
         List<GizmoLabelLayout.Label> labels = GizmoLabelLayout.layout(anchors, labelArea,
@@ -203,7 +213,7 @@ public final class DebuggerOverlay {
             boolean group = indices.size() > 1;
             int index = indices.getFirst();
             Bounds bounds = label.bounds();
-            String sourceTitle = sourceLabel(snapshot.pauseSources().get(index), index);
+            String sourceTitle = sourceLabel(displayedSources.get(index), index, state.isDisplayedSourceDropped(index));
             Component title;
             if (group && selected) {
                 String count = "  +" + (indices.size() - 1);
@@ -214,7 +224,7 @@ public final class DebuggerOverlay {
             leader(graphics, (int) label.anchorX(), (int) label.anchorY(),
                 bounds.x() + bounds.width() / 2, bounds.y() + bounds.height(), selected ? TEAL : MUTED);
             button("label-" + index, bounds, title, true, selected, false, false, () -> {
-                if (state.snapshot() != snapshot) return;
+                if (state.inspectionSnapshot() != snapshot) return;
                 if (group) {
                     expandedGroup = List.copyOf(indices);
                     if (!indices.contains(state.selectedSourceIndex())) state.selectSource(index);
@@ -242,38 +252,118 @@ public final class DebuggerOverlay {
                 area.width() - 16, area.height() - 18), MUTED);
             return;
         }
-        if (area.height() >= 265) {
-            int sourcesHeight = Math.min(106, 30 + Math.max(1, snapshot.pauseSources().size()) * 19);
-            Bounds sources = new Bounds(area.x(), area.y(), area.width(), sourcesHeight);
-            renderSources(graphics, sources, snapshot);
-            renderSourceDetails(graphics, new Bounds(area.x(), area.y() + sourcesHeight, area.width(), 98));
-            renderStack(graphics, new Bounds(area.x(), area.y() + sourcesHeight + 98, area.width(),
-                area.height() - sourcesHeight - 98), snapshot);
+        if (area.height() >= 360) {
+            int flowHeight = Math.min(110, Math.max(74, area.height() / 4));
+            int sourcesHeight = Math.min(92, 30 + Math.max(1, state.displayedSources().size()) * 19);
+            int detailsHeight = 82;
+            renderFlow(graphics, new Bounds(area.x(), area.y(), area.width(), flowHeight), snapshot);
+            renderSources(graphics, new Bounds(area.x(), area.y() + flowHeight, area.width(), sourcesHeight), snapshot);
+            renderSourceDetails(graphics, new Bounds(area.x(), area.y() + flowHeight + sourcesHeight,
+                area.width(), detailsHeight));
+            renderStack(graphics, new Bounds(area.x(), area.y() + flowHeight + sourcesHeight + detailsHeight,
+                area.width(), area.height() - flowHeight - sourcesHeight - detailsHeight), snapshot);
         } else {
-            boolean small = area.height() < 190;
-            int tabCount = small ? 3 : 2;
+            int tabCount = 4;
             int tabWidth = (area.width() - 3 * (tabCount + 1)) / tabCount;
             button("tab-sources", new Bounds(area.x() + 3, area.y() + 3, tabWidth, 18), component("bastion.ui.contexts"),
-                true, state.preferences().inspectorTab() != InspectorTab.STACK
-                    && (!small || state.preferences().inspectorTab() != InspectorTab.DETAILS), false, false,
+                true, state.preferences().inspectorTab() == InspectorTab.SOURCES, false, false,
                 () -> state.preferences().setInspectorTab(InspectorTab.SOURCES));
-            if (small) button("tab-detail", new Bounds(area.x() + 6 + tabWidth, area.y() + 3, tabWidth, 18),
+            button("tab-flow", new Bounds(area.x() + 6 + tabWidth, area.y() + 3, tabWidth, 18),
+                component("bastion.ui.flow"), true, state.preferences().inspectorTab() == InspectorTab.FLOW, false, false,
+                () -> state.preferences().setInspectorTab(InspectorTab.FLOW));
+            button("tab-detail", new Bounds(area.x() + 9 + tabWidth * 2, area.y() + 3, tabWidth, 18),
                 component("bastion.ui.details"), true, state.preferences().inspectorTab() == InspectorTab.DETAILS, false, false,
                 () -> state.preferences().setInspectorTab(InspectorTab.DETAILS));
             button("tab-stack", new Bounds(area.x() + 3 + (tabCount - 1) * (tabWidth + 3), area.y() + 3, tabWidth, 18), component("bastion.ui.stack"),
                 true, state.preferences().inspectorTab() == InspectorTab.STACK, false, false,
                 () -> state.preferences().setInspectorTab(InspectorTab.STACK));
             Bounds body = new Bounds(area.x(), area.y() + 25, area.width(), area.height() - 25);
-            if (state.preferences().inspectorTab() == InspectorTab.STACK) {
-                renderStack(graphics, body, snapshot);
-            } else if (small && state.preferences().inspectorTab() == InspectorTab.DETAILS) {
-                renderSourceDetails(graphics, body);
-            } else {
-                int detailHeight = body.height() >= 155 ? 94 : body.height() >= 112 ? 70 : 0;
-                renderSources(graphics, new Bounds(body.x(), body.y(), body.width(), body.height() - detailHeight), snapshot);
-                if (detailHeight > 0) renderSourceDetails(graphics,
-                    new Bounds(body.x(), body.y() + body.height() - detailHeight, body.width(), detailHeight));
+            switch (state.preferences().inspectorTab()) {
+                case STACK -> renderStack(graphics, body, snapshot);
+                case FLOW -> renderFlow(graphics, body, snapshot);
+                case DETAILS -> {
+                    if (body.height() >= 155) renderSourcesWithDetails(graphics, body, snapshot);
+                    else renderSourceDetails(graphics, body);
+                }
+                case SOURCES -> renderSourcesWithDetails(graphics, body, snapshot);
             }
+        }
+    }
+
+    private void renderSourcesWithDetails(GuiGraphicsExtractor graphics, Bounds body,
+                                          PauseSnapshot snapshot) {
+        int detailHeight = body.height() >= 155 ? 94 : body.height() >= 112 ? 70 : 0;
+        renderSources(graphics, new Bounds(body.x(), body.y(), body.width(), body.height() - detailHeight), snapshot);
+        if (detailHeight > 0) renderSourceDetails(graphics,
+            new Bounds(body.x(), body.y() + body.height() - detailHeight, body.width(), detailHeight));
+    }
+
+    private void renderFlow(GuiGraphicsExtractor graphics, Bounds area, PauseSnapshot snapshot) {
+        if (area.height() < 28) return;
+        graphics.fill(area.x() + 5, area.y(), area.x() + area.width() - 5, area.y() + 1, BORDER);
+        ExecutionFlowTrace flow = state.selectedExecutionFlow();
+        if (flow == null) {
+            text(graphics, tr("bastion.ui.flow"), area.x() + 7, area.y() + 6, area.width() - 14, TEXT);
+            text(graphics, tr("bastion.ui.no_flow"), area.x() + 7, area.y() + 22, area.width() - 14, MUTED);
+            return;
+        }
+
+        int flowIndex = state.selectedFlowIndex();
+        int flowCount = snapshot.executionFlows().size();
+        String flowHeading = state.isPaused()
+            ? Component.translatable("bastion.ui.flow_index", flowIndex + 1, flowCount).getString()
+            : Component.translatable("bastion.ui.last_completed_flow", flowIndex + 1, flowCount).getString();
+        text(graphics, flowHeading,
+            area.x() + 7, area.y() + 6, area.width() - 58, TEXT);
+        button("flow-prev", new Bounds(area.x() + area.width() - 47, area.y() + 2, 20, 15),
+            Component.literal("‹"), flowIndex > 0, false, false, false, () -> {
+                state.selectExecutionFlow(flowIndex - 1);
+                flowOffset = Math.max(0, state.selectedFlowStageIndex());
+                commandOffset = sourceOffset = 0;
+                expandedGroup = List.of();
+            });
+        button("flow-next", new Bounds(area.x() + area.width() - 24, area.y() + 2, 20, 15),
+            Component.literal("›"), flowIndex + 1 < flowCount, false, false, false, () -> {
+                state.selectExecutionFlow(flowIndex + 1);
+                flowOffset = Math.max(0, state.selectedFlowStageIndex());
+                commandOffset = sourceOffset = 0;
+                expandedGroup = List.of();
+            });
+
+        int firstCount = flow.stages().isEmpty() ? 0 : flow.stages().getFirst().inputCount();
+        String finalCount = !flow.stages().isEmpty() && flow.stages().getLast().terminal()
+            ? Integer.toString(flow.finalContextCount()) : "…";
+        String summary = Component.translatable("bastion.ui.flow_summary", firstCount, finalCount,
+            flow.executionCount(), flow.successCount()).getString();
+        if (flow.truncated()) summary += " · " + tr("bastion.ui.truncated");
+        text(graphics, summary, area.x() + 7, area.y() + 21, area.width() - 14,
+            flow.truncated() ? AMBER : MUTED);
+
+        int rows = Math.max(0, (area.height() - 43) / 19);
+        maxFlowOffset = Math.max(0, flow.stages().size() - Math.max(1, rows));
+        flowOffset = Math.clamp(flowOffset, 0, maxFlowOffset);
+        flowScrollBounds = area;
+        for (int row = 0; row < rows && flowOffset + row < flow.stages().size(); row++) {
+            int index = flowOffset + row;
+            ExecutionFlowStage stage = flow.stages().get(index);
+            String counts = stage.inputCount() + "→" + (stage.complete() ? stage.outputCount() : "…");
+            if (stage.droppedCount() > 0) counts += "  −" + stage.droppedCount();
+            if (!stage.lineageComplete()) counts += "  ?";
+            String label = (stage.terminal() ? "RUN " : (stage.index() + 1) + "  ") + counts
+                + "  " + stageSegment(stage.command());
+            button("flow-stage-" + flow.invocationId() + "-" + stage.index(),
+                new Bounds(area.x() + 5, area.y() + 35 + row * 19, area.width() - 13, 17),
+                Component.literal(label), true, index == state.selectedFlowStageIndex(), true,
+                !stage.complete() || !stage.lineageComplete(), () -> {
+                    state.selectExecutionFlowStage(index);
+                    state.preferences().setInspectorTab(InspectorTab.FLOW);
+                    sourceOffset = commandOffset = 0;
+                    expandedGroup = List.of();
+                }).setTooltip(Tooltip.create(Component.literal(stage.command().text())));
+        }
+        if (rows > 0 && flow.stages().size() > rows) {
+            scrollbar(graphics, area.x() + area.width() - 5, area.y() + 35, Math.max(1, rows * 19 - 2),
+                flowOffset, maxFlowOffset, rows, flow.stages().size());
         }
     }
 
@@ -287,8 +377,8 @@ public final class DebuggerOverlay {
         }
         List<Integer> indices = expandedGroup;
         if (indices.isEmpty()) {
-            List<Integer> all = new ArrayList<>(snapshot.pauseSources().size());
-            for (int i = 0; i < snapshot.pauseSources().size(); i++) all.add(i);
+            List<Integer> all = new ArrayList<>(state.displayedSources().size());
+            for (int i = 0; i < state.displayedSources().size(); i++) all.add(i);
             indices = all;
         }
         int rows = Math.max(0, (area.height() - 30) / 19);
@@ -298,12 +388,12 @@ public final class DebuggerOverlay {
         if (indices.isEmpty()) text(graphics, tr("bastion.ui.no_sources"), area.x() + 7, area.y() + 24, area.width() - 14, MUTED);
         for (int row = 0; row < rows && sourceOffset + row < indices.size(); row++) {
             int index = indices.get(sourceOffset + row);
-            PauseSource source = snapshot.pauseSources().get(index);
-            String name = sourceLabel(source, index);
+            PauseSource source = state.displayedSources().get(index);
+            String name = sourceLabel(source, index, state.isDisplayedSourceDropped(index));
             if (!source.dimension().equals(dimension())) name += " · " + shortDimension(source.dimension());
             button("source-" + index, new Bounds(area.x() + 5, area.y() + 21 + row * 19, area.width() - 13, 17),
                 Component.literal(name), true, index == state.selectedSourceIndex(), true, false, () -> {
-                    if (state.snapshot() == snapshot) {
+                    if (state.inspectionSnapshot() == snapshot) {
                         state.selectSource(index);
                         state.preferences().setInspectorTab(InspectorTab.DETAILS);
                     }
@@ -322,13 +412,24 @@ public final class DebuggerOverlay {
         if (source == null) return;
         graphics.fill(area.x() + 5, area.y(), area.x() + area.width() - 5, area.y() + 1, BORDER);
         int y = area.y() + 6;
-        text(graphics, "#" + (state.selectedSourceIndex() + 1) + " · " + name(source), area.x() + 7, y, area.width() - 14, TEAL);
+        int accent = state.selectedSourceDropped() ? RED : TEAL;
+        text(graphics, "#" + (state.selectedSourceIndex() + 1) + " · " + name(source), area.x() + 7, y, area.width() - 14, accent);
         y += 13;
+        if (state.selectedSourceDropped() && y + 9 <= area.y() + area.height()) {
+            text(graphics, tr("bastion.ui.flow_excluded"), area.x() + 7, y, area.width() - 14, RED);
+            y += 11;
+        } else {
+            ExecutionFlowContext parent = state.selectedFlowParent();
+            if (parent != null) y = renderFlowChanges(graphics, area, y, parent.source(), source);
+        }
+        if (y + 9 > area.y() + area.height()) return;
         text(graphics, tr("bastion.ui.anchor"), area.x() + 7, y, area.width() - 14, MUTED);
         y += 10;
+        if (y + 9 > area.y() + area.height()) return;
         text(graphics, String.format(Locale.ROOT, "%.2f, %.2f, %.2f", source.anchor().x(), source.anchor().y(), source.anchor().z()),
             area.x() + 7, y, area.width() - 14, TEXT);
         y += 11;
+        if (y + 9 > area.y() + area.height()) return;
         text(graphics, shortDimension(source.dimension()), area.x() + 7, y, area.width() - 14,
             source.dimension().equals(dimension()) ? MUTED : AMBER);
         y += 11;
@@ -352,6 +453,33 @@ public final class DebuggerOverlay {
         }
     }
 
+    private int renderFlowChanges(GuiGraphicsExtractor graphics, Bounds area, int y,
+                                  PauseSource before, PauseSource after) {
+        String beforeEntity = before.entity() == null ? tr("bastion.ui.position_source") : before.entity().name();
+        String afterEntity = after.entity() == null ? tr("bastion.ui.position_source") : after.entity().name();
+        if (!Objects.equals(before.entity(), after.entity()) && y + 9 <= area.y() + area.height()) {
+            text(graphics, Component.translatable("bastion.ui.flow_executor_change", beforeEntity, afterEntity).getString(),
+                area.x() + 7, y, area.width() - 14, TEXT);
+            y += 11;
+        }
+        if (!before.dimension().equals(after.dimension()) && y + 9 <= area.y() + area.height()) {
+            text(graphics, Component.translatable("bastion.ui.flow_dimension_change",
+                shortDimension(before.dimension()), shortDimension(after.dimension())).getString(),
+                area.x() + 7, y, area.width() - 14, AMBER);
+            y += 11;
+        }
+        if (!before.anchor().equals(after.anchor()) && y + 9 <= area.y() + area.height()) {
+            String from = String.format(Locale.ROOT, "%.1f,%.1f,%.1f",
+                before.anchor().x(), before.anchor().y(), before.anchor().z());
+            String to = String.format(Locale.ROOT, "%.1f,%.1f,%.1f",
+                after.anchor().x(), after.anchor().y(), after.anchor().z());
+            text(graphics, Component.translatable("bastion.ui.flow_position_change", from, to).getString(),
+                area.x() + 7, y, area.width() - 14, TEXT);
+            y += 11;
+        }
+        return y;
+    }
+
     private void renderStack(GuiGraphicsExtractor graphics, Bounds area, PauseSnapshot snapshot) {
         if (area.height() < 29) return;
         graphics.fill(area.x() + 5, area.y(), area.x() + area.width() - 5, area.y() + 1, BORDER);
@@ -369,7 +497,7 @@ public final class DebuggerOverlay {
             String label = (index == 0 ? "> " : "  ") + location(frame.location());
             button("frame-" + index, new Bounds(area.x() + 5, y, area.width() - 13, 17),
                 Component.literal(label), true, index == state.selectedFrameIndex(), true, false, () -> {
-                    if (state.snapshot() == snapshot) { state.selectFrame(index); commandOffset = 0; }
+                    if (state.inspectionSnapshot() == snapshot) { state.selectFrame(index); commandOffset = 0; }
                 }).setTooltip(Tooltip.create(ClientFormatting.sourceLocation(frame.location())));
             text(graphics, frame.command().text(), area.x() + 10, y + 19, area.width() - 20, MUTED);
         }
@@ -390,15 +518,21 @@ public final class DebuggerOverlay {
         }
         int index = state.selectedFrameIndex();
         CallFrame frame = index >= 0 && index < snapshot.callStack().size() ? snapshot.callStack().get(index) : null;
-        SourceLocation location = frame == null ? snapshot.location() : frame.location();
-        CommandSnippet command = frame == null ? snapshot.command() : frame.command();
-        String caption = tr(index == 0 ? "bastion.ui.current_command" : "bastion.ui.caller_command") + " · " + location(location);
-        text(graphics, caption, area.x() + 8, area.y() + 5, area.width() - (index == 0 ? 16 : 87), index == 0 ? AMBER : MUTED);
-        if (index > 0) button("current-frame", new Bounds(area.x() + area.width() - 75, area.y() + 2, 70, 15),
+        ExecutionFlowStage flowStage = index < 0 ? state.selectedExecutionFlowStage() : null;
+        ExecutionFlowTrace flow = index < 0 ? state.selectedExecutionFlow() : null;
+        SourceLocation location = flowStage != null && flow != null ? flow.location()
+            : frame == null ? snapshot.location() : frame.location();
+        CommandSnippet command = flowStage != null ? flowStage.command()
+            : frame == null ? snapshot.command() : frame.command();
+        String caption = tr(flowStage != null ? "bastion.ui.flow_stage"
+            : index == 0 ? "bastion.ui.current_command" : "bastion.ui.caller_command") + " · " + location(location);
+        int accent = flowStage != null ? TEAL : index == 0 ? AMBER : MUTED;
+        text(graphics, caption, area.x() + 8, area.y() + 5, area.width() - (index == 0 ? 16 : 87), accent);
+        if (index != 0) button("current-frame", new Bounds(area.x() + area.width() - 75, area.y() + 2, 70, 15),
             component("bastion.ui.current_frame"), true, false, false, false, () -> { state.selectFrame(0); stackOffset = commandOffset = 0; });
         Bounds content = new Bounds(area.x() + 8, area.y() + 19, Math.max(1, area.width() - 21), area.height() - 21);
         graphics.fill(area.x() + 4, content.y() - 1, area.x() + area.width() - 4, area.y() + area.height() - 3, AMBER_SURFACE);
-        graphics.fill(area.x() + 4, content.y() - 1, area.x() + 6, area.y() + area.height() - 3, index == 0 ? AMBER : BORDER);
+        graphics.fill(area.x() + 4, content.y() - 1, area.x() + 6, area.y() + area.height() - 3, accent);
         List<FormattedCharSequence> lines = client.font.split(ClientFormatting.command(command), content.width());
         int rows = Math.max(1, content.height() / 10);
         maxCommandOffset = Math.max(0, lines.size() - rows);
@@ -422,6 +556,8 @@ public final class DebuggerOverlay {
             stackOffset = Math.clamp(stackOffset + delta, 0, maxStackOffset);
         } else if (commandScrollBounds.contains(x, y)) {
             commandOffset = Math.clamp(commandOffset + delta, 0, maxCommandOffset);
+        } else if (flowScrollBounds.contains(x, y)) {
+            flowOffset = Math.clamp(flowOffset + delta, 0, maxFlowOffset);
         } else return false;
         return true;
     }
@@ -500,8 +636,16 @@ public final class DebuggerOverlay {
         return dimension.startsWith("minecraft:") ? dimension.substring(10) : dimension;
     }
 
-    private static String sourceLabel(PauseSource source, int index) {
-        return (source.entity() == null ? "[" + (index + 1) + "] " : "#" + (index + 1) + " ") + name(source);
+    private static String sourceLabel(PauseSource source, int index, boolean dropped) {
+        String prefix = dropped ? "× " : source.entity() == null ? "[" + (index + 1) + "] " : "#" + (index + 1) + " ";
+        return prefix + name(source);
+    }
+
+    private static String stageSegment(CommandSnippet command) {
+        int start = Math.clamp(command.highlightStart(), 0, command.text().length());
+        int end = Math.clamp(command.highlightEnd(), start, command.text().length());
+        String segment = command.text().substring(start, end).strip();
+        return segment.isEmpty() ? command.text() : segment;
     }
 
     private static String name(PauseSource source) {

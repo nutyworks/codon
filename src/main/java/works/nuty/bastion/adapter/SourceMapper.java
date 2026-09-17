@@ -19,6 +19,7 @@ import works.nuty.bastion.core.model.SourceLocation;
 import works.nuty.bastion.core.model.Vec3d;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -77,23 +78,27 @@ public final class SourceMapper {
      * Captures the active command sources at a pause as serializable {@link PauseSource}s for the
      * in-world visualization (position, facing, and optional attached entity).
      */
-    public static List<PauseSource> toPauseSources(List<CommandSourceStack> sources) {
+    public static List<PauseSource> toPauseSources(Collection<? extends CommandSourceStack> sources) {
         List<PauseSource> result = new ArrayList<>(sources.size());
         for (CommandSourceStack source : sources) {
-            Vec3 anchored = source.getAnchor().apply(source);
-            Vec2 rotation = source.getRotation();
-            Entity entity = source.getEntity();
-            EntityRef entityRef = entity == null
-                ? null
-                : new EntityRef(entity.getUUID(), entity.getPlainTextName());
-            result.add(new PauseSource(
-                new Vec3d(anchored.x, anchored.y, anchored.z),
-                rotation.x,
-                rotation.y,
-                entityRef,
-                source.getLevel().dimension().identifier().toString()
-            ));
+            result.add(toPauseSource(source));
         }
         return result;
+    }
+
+    public static PauseSource toPauseSource(CommandSourceStack source) {
+        Vec3 anchored = source.getAnchor().apply(source);
+        Vec2 rotation = source.getRotation();
+        Entity entity = source.getEntity();
+        EntityRef entityRef = entity == null
+            ? null
+            : new EntityRef(entity.getUUID(), entity.getPlainTextName());
+        return new PauseSource(
+            new Vec3d(anchored.x, anchored.y, anchored.z),
+            rotation.x,
+            rotation.y,
+            entityRef,
+            source.getLevel().dimension().identifier().toString()
+        );
     }
 }

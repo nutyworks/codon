@@ -54,5 +54,16 @@
   "bastion.ui.caller_command": "Caller command (read only)",
   "bastion.ui.current_frame": "Current frame",
   "bastion.ui.position_source": "Position source",
-  "bastion.ui.command_block": "Command block"
+  "bastion.ui.command_block": "Command block",
+  "bastion.ui.flow": "Flow",
+  "bastion.ui.no_flow": "No execute flow recorded",
+  "bastion.ui.flow_index": "Flow %s / %s",
+  "bastion.ui.last_completed_flow": "Last flow %s / %s",
+  "bastion.ui.flow_summary": "%s contexts → %s final · %s runs · %s success",
+  "bastion.ui.truncated": "limited",
+  "bastion.ui.flow_excluded": "Excluded at this stage",
+  "bastion.ui.flow_executor_change": "Executor: %s → %s",
+  "bastion.ui.flow_dimension_change": "Dimension: %s → %s",
+  "bastion.ui.flow_position_change": "Position: %s → %s",
+  "bastion.ui.flow_stage": "Execute flow stage"
 }

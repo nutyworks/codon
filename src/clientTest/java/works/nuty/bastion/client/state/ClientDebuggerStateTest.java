@@ -5,6 +5,10 @@ import works.nuty.bastion.core.model.BlockLocation;
 import works.nuty.bastion.core.model.CallFrame;
 import works.nuty.bastion.core.model.CommandSnippet;
 import works.nuty.bastion.core.model.EntityRef;
+import works.nuty.bastion.core.model.ExecutionFlowContext;
+import works.nuty.bastion.core.model.ExecutionFlowEdge;
+import works.nuty.bastion.core.model.ExecutionFlowStage;
+import works.nuty.bastion.core.model.ExecutionFlowTrace;
 import works.nuty.bastion.core.model.PauseReason;
 import works.nuty.bastion.core.model.PauseSnapshot;
 import works.nuty.bastion.core.model.PauseSource;
@@ -19,6 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -102,7 +107,7 @@ class ClientDebuggerStateTest {
     }
 
     @Test
-    void resumeThenPauseRetainsOnlyUniqueSameEntityAndDimensionSource() {
+    void resumeThenPauseDoesNotInferSelectionFromEntityIdentity() {
         UUID id = UUID.randomUUID();
         PauseSource old = source(id, "overworld", 1);
         PauseSource replacement = new PauseSource(new Vec3d(40, 70, -5), 30, 45,
@@ -115,8 +120,8 @@ class ClientDebuggerStateTest {
 
         state.applyPause(snapshot(List.of(other, replacement), 1));
 
-        assertEquals(1, state.selectedSourceIndex());
-        assertSame(replacement, state.selectedSource());
+        assertEquals(0, state.selectedSourceIndex());
+        assertSame(other, state.selectedSource());
     }
 
     @Test
@@ -219,6 +224,122 @@ class ClientDebuggerStateTest {
         assertNull(state.snapshot());
     }
 
+    @Test
+    void restoresFlowSelectionByOccurrenceIdEvenWhenSameEntityContextsReorder() {
+        UUID entity = UUID.randomUUID();
+        PauseSource one = source(entity, "overworld", 1);
+        PauseSource two = source(entity, "overworld", 2);
+        ExecutionFlowContext first = new ExecutionFlowContext(11, one);
+        ExecutionFlowContext second = new ExecutionFlowContext(12, two);
+        ClientDebuggerState state = new ClientDebuggerState();
+        state.applyPause(flowSnapshot(77, List.of(first, second), List.of()));
+        state.selectSource(1);
+        state.applyStep();
+
+        state.applyPause(flowSnapshot(77, List.of(second, first), List.of()));
+
+        assertEquals(0, state.selectedSourceIndex());
+        assertEquals(12, state.selectedFlowContext().id());
+        assertSame(two, state.selectedSource());
+    }
+
+    @Test
+    void flowAndCallStackSelectionsDoNotPresentMismatchedCommandsAndContexts() {
+        PauseSource flowSource = source("flow", 3);
+        ExecutionFlowContext context = new ExecutionFlowContext(31, flowSource);
+        SourceLocation location = new SourceLocation.Block(new BlockLocation(0, 64, 0, "overworld"));
+        ExecutionFlowStage stage = new ExecutionFlowStage(0, CommandSnippet.plain("execute at @s run say hi"),
+            List.of(context), List.of(context), List.of(), List.of(), 1, 1, 0, true,
+            0, 0, true, true, false);
+        PauseSnapshot snapshot = new PauseSnapshot(location, CommandSnippet.plain("say current"), 0,
+            List.of(new CallFrame(0, location, CommandSnippet.plain("say current"))), List.of(flowSource),
+            List.of(new ExecutionFlowTrace(101, location, List.of(stage), false)), PauseReason.BREAKPOINT);
+        ClientDebuggerState state = new ClientDebuggerState();
+
+        state.applyPause(snapshot);
+        assertEquals(-1, state.selectedFrameIndex(), "a recorded flow opens on its selected stage");
+        assertEquals(0, state.selectedFlowStageIndex());
+
+        state.selectFrame(0);
+        assertEquals(0, state.selectedFrameIndex());
+        assertEquals(-1, state.selectedFlowStageIndex(), "returning to the call stack also restores pause sources");
+        assertSame(flowSource, state.selectedSource());
+
+        state.selectExecutionFlowStage(0);
+        assertEquals(-1, state.selectedFrameIndex());
+        assertEquals(0, state.selectedFlowStageIndex());
+    }
+
+    @Test
+    void stageSelectionDrivesInspectorSourcesParentsAndExplicitDrops() {
+        PauseSource rootSource = source("root", 0);
+        PauseSource passedSource = source("passed", 4);
+        PauseSource droppedSource = source("dropped", 8);
+        ExecutionFlowContext root = new ExecutionFlowContext(1, rootSource);
+        ExecutionFlowContext passedInput = new ExecutionFlowContext(2, passedSource);
+        ExecutionFlowContext droppedInput = new ExecutionFlowContext(3, droppedSource);
+        ExecutionFlowContext passedOutput = new ExecutionFlowContext(4, passedSource);
+        ExecutionFlowStage branch = new ExecutionFlowStage(0, CommandSnippet.plain("execute as @e"),
+            List.of(root), List.of(passedInput, droppedInput),
+            List.of(new ExecutionFlowEdge(1, 2), new ExecutionFlowEdge(1, 3)), List.of(),
+            1, 2, 0, false, 0, 0, true, true, false);
+        ExecutionFlowStage condition = new ExecutionFlowStage(1, CommandSnippet.plain("if entity @s"),
+            List.of(passedInput, droppedInput), List.of(passedOutput),
+            List.of(new ExecutionFlowEdge(2, 4)), List.of(3L),
+            2, 1, 1, false, 0, 0, true, true, false);
+        PauseSnapshot snapshot = snapshotWithFlows(List.of(new ExecutionFlowTrace(88,
+            new SourceLocation.Block(new BlockLocation(0, 64, 0, "overworld")),
+            List.of(branch, condition), false)));
+        ClientDebuggerState state = new ClientDebuggerState();
+        state.applyPause(snapshot);
+
+        assertEquals(2, state.displayedSources().size());
+        state.selectSource(1);
+        assertTrue(state.selectedSourceDropped());
+        assertSame(droppedSource, state.selectedSource());
+
+        state.selectSource(0);
+        assertFalse(state.selectedSourceDropped());
+        assertEquals(2, state.selectedFlowParent().id());
+        state.selectExecutionFlowStage(0);
+        assertEquals(-1, state.selectedFrameIndex());
+        assertEquals(2, state.displayedSources().size());
+        assertFalse(state.isDisplayedSourceDropped(1));
+    }
+
+    @Test
+    void completedFlowRemainsReadOnlyAndInspectableAfterTerminalResume() {
+        PauseSource source = source("completed", 6);
+        ExecutionFlowContext context = new ExecutionFlowContext(51, source);
+        SourceLocation location = new SourceLocation.Block(new BlockLocation(0, 64, 0, "overworld"));
+        ExecutionFlowStage beforeRun = new ExecutionFlowStage(0, CommandSnippet.plain("say done"),
+            List.of(context), List.of(context), List.of(), List.of(), 1, 1, 0, true,
+            0, 0, true, true, false);
+        PauseSnapshot terminalPause = new PauseSnapshot(location, beforeRun.command(), 0, List.of(), List.of(source),
+            List.of(new ExecutionFlowTrace(901, location, List.of(beforeRun), false)), PauseReason.STEP);
+        ClientDebuggerState state = new ClientDebuggerState();
+        state.applyPause(terminalPause);
+        state.applyStep();
+        state.applyResume();
+
+        ExecutionFlowStage completed = new ExecutionFlowStage(0, beforeRun.command(),
+            List.of(context), List.of(context), List.of(), List.of(), 1, 1, 0, true,
+            1, 1, true, true, false);
+        state.applyCompletedExecutionFlows(
+            List.of(new ExecutionFlowTrace(901, location, List.of(completed), false)));
+
+        assertFalse(state.isPaused());
+        assertFalse(state.isStepping());
+        assertNull(state.snapshot(), "completed inspection data is not an active pause");
+        assertNotNull(state.inspectionSnapshot());
+        assertEquals(1, state.selectedExecutionFlow().executionCount());
+        assertEquals(1, state.selectedExecutionFlow().successCount());
+        assertFalse(state.beginControlRequest(), "completed flow must not reactivate debugger controls");
+
+        state.reset();
+        assertNull(state.inspectionSnapshot(), "disconnect/reset removes the retained result");
+    }
+
     private static PauseSnapshot snapshot(List<PauseSource> sources, int frameCount) {
         SourceLocation location = new SourceLocation.Block(new BlockLocation(0, 64, 0, "overworld"));
         List<CallFrame> frames = new ArrayList<>();
@@ -226,6 +347,23 @@ class ClientDebuggerStateTest {
             frames.add(new CallFrame(i, location, CommandSnippet.plain("say " + i)));
         }
         return new PauseSnapshot(location, CommandSnippet.plain("say test"), 0, frames, sources, PauseReason.BREAKPOINT);
+    }
+
+    private static PauseSnapshot flowSnapshot(long invocationId, List<ExecutionFlowContext> outputs,
+                                              List<Long> dropped) {
+        ExecutionFlowStage stage = new ExecutionFlowStage(0, CommandSnippet.plain("execute as @e run say hi"),
+            List.of(), outputs, List.of(), dropped, 1, outputs.size(), dropped.size(), false,
+            0, 0, true, true, false);
+        SourceLocation location = new SourceLocation.Block(new BlockLocation(0, 64, 0, "overworld"));
+        return new PauseSnapshot(location, CommandSnippet.plain("say hi"), 0, List.of(),
+            outputs.stream().map(ExecutionFlowContext::source).toList(),
+            List.of(new ExecutionFlowTrace(invocationId, location, List.of(stage), false)), PauseReason.BREAKPOINT);
+    }
+
+    private static PauseSnapshot snapshotWithFlows(List<ExecutionFlowTrace> flows) {
+        SourceLocation location = new SourceLocation.Block(new BlockLocation(0, 64, 0, "overworld"));
+        return new PauseSnapshot(location, CommandSnippet.plain("say hi"), 0, List.of(), List.of(), flows,
+            PauseReason.BREAKPOINT);
     }
 
     private static PauseSource source(String name, int x) {

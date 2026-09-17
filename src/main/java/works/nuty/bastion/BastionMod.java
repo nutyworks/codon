@@ -18,6 +18,7 @@ import works.nuty.bastion.persistence.WorldBreakpointPersistence;
 import works.nuty.bastion.core.service.BreakpointRegistry;
 import works.nuty.bastion.core.service.CallStack;
 import works.nuty.bastion.core.service.DebuggerEngine;
+import works.nuty.bastion.core.service.ExecutionFlowHistory;
 import works.nuty.bastion.core.service.StepController;
 
 /**
@@ -33,6 +34,7 @@ public final class BastionMod implements ModInitializer {
     public static final Logger LOGGER = LogManager.getLogger(MOD_ID);
 
     private static @Nullable DebuggerEngine engine;
+    private static @Nullable ExecutionFlowHistory executionFlows;
 
     private @Nullable MinecraftServer server;
 
@@ -41,18 +43,25 @@ public final class BastionMod implements ModInitializer {
         return engine;
     }
 
+    /** The execution-lifetime flow recorder shared by the engine and command mixins. */
+    public static @Nullable ExecutionFlowHistory executionFlows() {
+        return executionFlows;
+    }
+
     @Override
     public void onInitialize() {
         BreakpointRegistry breakpoints = new BreakpointRegistry();
         StepController step = new StepController();
         CallStack callStack = new CallStack();
+        ExecutionFlowHistory flows = new ExecutionFlowHistory();
         McExecutionController executionController = new McExecutionController(() -> server);
         NetworkDebuggerEventSink eventSink = new NetworkDebuggerEventSink(() -> server);
         WorldBreakpointPersistence persistence = new WorldBreakpointPersistence(breakpoints, eventSink,
             failure -> LOGGER.warn("Could not persist Bastion world breakpoints", failure));
 
-        DebuggerEngine wiredEngine = new DebuggerEngine(breakpoints, step, callStack, executionController, persistence);
+        DebuggerEngine wiredEngine = new DebuggerEngine(breakpoints, step, callStack, executionController, persistence, flows);
         engine = wiredEngine;
+        executionFlows = flows;
 
         ServerLifecycleEvents.SERVER_STARTING.register(s -> {
             wiredEngine.resetSession();

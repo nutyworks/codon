@@ -54,5 +54,16 @@
   "bastion.ui.caller_command": "호출자 명령 · 읽기 전용",
   "bastion.ui.current_frame": "현재 위치로",
   "bastion.ui.position_source": "위치 소스",
-  "bastion.ui.command_block": "명령 블록"
+  "bastion.ui.command_block": "명령 블록",
+  "bastion.ui.flow": "흐름",
+  "bastion.ui.no_flow": "기록된 execute 흐름 없음",
+  "bastion.ui.flow_index": "흐름 %s / %s",
+  "bastion.ui.last_completed_flow": "최근 완료 흐름 %s / %s",
+  "bastion.ui.flow_summary": "컨텍스트 %s → 최종 %s · 실행 %s · 성공 %s",
+  "bastion.ui.truncated": "일부만 기록",
+  "bastion.ui.flow_excluded": "이 단계에서 제외됨",
+  "bastion.ui.flow_executor_change": "실행자: %s → %s",
+  "bastion.ui.flow_dimension_change": "차원: %s → %s",
+  "bastion.ui.flow_position_change": "위치: %s → %s",
+  "bastion.ui.flow_stage": "execute 흐름 단계"
 }

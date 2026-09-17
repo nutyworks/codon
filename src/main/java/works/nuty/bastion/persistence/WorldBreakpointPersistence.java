@@ -7,6 +7,7 @@ import org.jspecify.annotations.Nullable;
 import works.nuty.bastion.core.model.BlockLocation;
 import works.nuty.bastion.core.model.FunctionId;
 import works.nuty.bastion.core.model.FunctionLocation;
+import works.nuty.bastion.core.model.ExecutionFlowTrace;
 import works.nuty.bastion.core.model.PauseSnapshot;
 import works.nuty.bastion.core.port.DebuggerEventSink;
 import works.nuty.bastion.core.service.BreakpointRegistry;
@@ -15,6 +16,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
 
@@ -83,6 +85,11 @@ public final class WorldBreakpointPersistence implements DebuggerEventSink {
 
     @Override
     public void stepping() { downstream.stepping(); }
+
+    @Override
+    public void executionFlowsCompleted(List<ExecutionFlowTrace> flows) {
+        downstream.executionFlowsCompleted(flows);
+    }
 
     private void restore(JsonObject document) {
         if (integer(document, "version") != 1) throw new IllegalArgumentException("Unsupported breakpoint version");

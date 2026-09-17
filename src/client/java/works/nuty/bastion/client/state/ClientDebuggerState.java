@@ -2,32 +2,37 @@ package works.nuty.bastion.client.state;
 
 import org.jspecify.annotations.Nullable;
 import works.nuty.bastion.core.model.BlockLocation;
+import works.nuty.bastion.core.model.ExecutionFlowContext;
+import works.nuty.bastion.core.model.ExecutionFlowEdge;
+import works.nuty.bastion.core.model.ExecutionFlowStage;
+import works.nuty.bastion.core.model.ExecutionFlowTrace;
 import works.nuty.bastion.core.model.PauseSnapshot;
 import works.nuty.bastion.core.model.PauseSource;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.LongSupplier;
 
 /**
- * The client-side mirror of the debugger, updated purely from server sync packets. The UI, HUD,
- * and in-world renderers read from here instead of reaching into server state — which is what lets
- * Bastion work the same on a dedicated server as in singleplayer.
- *
- * <p>Fields are {@code volatile}: network handlers schedule updates onto the client thread, and the
- * render thread reads them.
+ * Authoritative client-side mirror of server debugger packets. Flow selection uses invocation,
+ * stage, and occurrence ids; entity UUIDs are presentation data and never establish lineage.
  */
 public final class ClientDebuggerState {
     private volatile boolean paused;
     private volatile boolean stepping;
     private volatile @Nullable PauseSnapshot snapshot;
+    private volatile @Nullable PauseSnapshot recentFlowSnapshot;
     private volatile List<BlockLocation> blockBreakpoints = List.of();
     private int selectedSourceIndex = -1;
     private int selectedFrameIndex;
+    private int selectedFlowIndex = -1;
+    private int selectedFlowStageIndex = -1;
     private boolean controlPending;
     private long controlRequestedAt;
     private final LongSupplier clock;
     private @Nullable PauseSource selectionHint;
+    private @Nullable FlowSelectionHint flowSelectionHint;
     private final DebuggerPreferences preferences;
 
     public ClientDebuggerState() {
@@ -57,42 +62,41 @@ public final class ClientDebuggerState {
     }
 
     public void applyPause(PauseSnapshot snapshot) {
+        FlowSelectionHint previousFlow = currentFlowHint();
+        if (previousFlow == null) previousFlow = flowSelectionHint;
         PauseSource previous = selectedSource() != null ? selectedSource() : selectionHint;
         selectionHint = null;
+        flowSelectionHint = null;
         this.snapshot = snapshot;
+        this.recentFlowSnapshot = snapshot;
         this.paused = true;
         this.stepping = false;
         this.controlPending = false;
         this.selectedFrameIndex = 0;
-        this.selectedSourceIndex = snapshot.pauseSources().isEmpty() ? -1 : 0;
-        // A repeated source retains selection when possible; numeric badges are snapshot-local.
-        if (previous != null) {
+        selectLatestFlow(snapshot);
+        if (selectedFlowStageIndex >= 0) selectedFrameIndex = -1;
+        this.selectedSourceIndex = displayedSources().isEmpty() ? -1 : 0;
+
+        if (previousFlow != null && restoreFlow(previousFlow, snapshot)) return;
+        // Legacy snapshots have no occurrence ids. Preserve only an exact source value, never an
+        // entity/dimension guess which could silently select a different execution context.
+        if (selectedFlowIndex < 0 && previous != null) {
             int exact = snapshot.pauseSources().indexOf(previous);
-            if (exact >= 0) {
-                this.selectedSourceIndex = exact;
-            } else if (previous.entity() != null) {
-                int match = -1;
-                for (int i = 0; i < snapshot.pauseSources().size(); i++) {
-                    PauseSource candidate = snapshot.pauseSources().get(i);
-                    if (candidate.entity() != null
-                        && candidate.entity().uuid().equals(previous.entity().uuid())
-                        && candidate.dimension().equals(previous.dimension())) {
-                        if (match >= 0) { match = -1; break; }
-                        match = i;
-                    }
-                }
-                if (match >= 0) this.selectedSourceIndex = match;
-            }
+            if (exact >= 0) selectedSourceIndex = exact;
         }
     }
 
     public void applyResume() {
         if (selectedSource() != null) selectionHint = selectedSource();
+        FlowSelectionHint hint = currentFlowHint();
+        if (hint != null) flowSelectionHint = hint;
         this.paused = false;
         this.stepping = false;
         this.snapshot = null;
         this.selectedSourceIndex = -1;
         this.selectedFrameIndex = 0;
+        this.selectedFlowIndex = -1;
+        this.selectedFlowStageIndex = -1;
         this.controlPending = false;
     }
 
@@ -118,6 +122,28 @@ public final class ClientDebuggerState {
         return snapshot;
     }
 
+    /** Current pause, or the last completed flow retained for read-only menu inspection. */
+    public @Nullable PauseSnapshot inspectionSnapshot() {
+        PauseSnapshot current = snapshot;
+        return current != null ? current : recentFlowSnapshot;
+    }
+
+    /** Updates read-only completion data without changing pause, stepping, freecam, or controls. */
+    public void applyCompletedExecutionFlows(List<ExecutionFlowTrace> flows) {
+        PauseSnapshot previous = recentFlowSnapshot;
+        if (previous == null || flows.isEmpty()) return;
+        PauseSnapshot completed = new PauseSnapshot(previous.location(), previous.command(), previous.depth(),
+            previous.callStack(), previous.pauseSources(), flows, previous.reason());
+        recentFlowSnapshot = completed;
+
+        FlowSelectionHint previousFlow = flowSelectionHint;
+        selectLatestFlow(completed);
+        selectedFrameIndex = selectedFlowStageIndex >= 0 ? -1 : 0;
+        selectedSourceIndex = displayedSources().isEmpty() ? -1 : 0;
+        if (previousFlow != null) restoreFlow(previousFlow, completed);
+        controlPending = false;
+    }
+
     public List<BlockLocation> blockBreakpoints() {
         return blockBreakpoints;
     }
@@ -126,17 +152,69 @@ public final class ClientDebuggerState {
         return selectedSourceIndex;
     }
 
+    /** Sources currently connected to the inspector and world markers. */
+    public List<PauseSource> displayedSources() {
+        ExecutionFlowStage stage = selectedExecutionFlowStage();
+        if (stage != null) {
+            List<PauseSource> result = new ArrayList<>();
+            for (ExecutionFlowContext context : stage.displayContexts()) result.add(context.source());
+            return List.copyOf(result);
+        }
+        PauseSnapshot current = inspectionSnapshot();
+        return current == null ? List.of() : current.pauseSources();
+    }
+
+    public List<ExecutionFlowContext> displayedFlowContexts() {
+        ExecutionFlowStage stage = selectedExecutionFlowStage();
+        return stage == null ? List.of() : stage.displayContexts();
+    }
+
     public @Nullable PauseSource selectedSource() {
-        PauseSnapshot current = snapshot;
-        return current != null && selectedSourceIndex >= 0 && selectedSourceIndex < current.pauseSources().size()
-            ? current.pauseSources().get(selectedSourceIndex) : null;
+        List<PauseSource> sources = displayedSources();
+        return selectedSourceIndex >= 0 && selectedSourceIndex < sources.size()
+            ? sources.get(selectedSourceIndex) : null;
+    }
+
+    public @Nullable ExecutionFlowContext selectedFlowContext() {
+        List<ExecutionFlowContext> contexts = displayedFlowContexts();
+        return selectedSourceIndex >= 0 && selectedSourceIndex < contexts.size()
+            ? contexts.get(selectedSourceIndex) : null;
+    }
+
+    public @Nullable ExecutionFlowContext selectedFlowParent() {
+        ExecutionFlowStage stage = selectedExecutionFlowStage();
+        ExecutionFlowContext selected = selectedFlowContext();
+        if (stage == null || selected == null) return null;
+        long inputId = 0;
+        for (ExecutionFlowEdge edge : stage.edges()) {
+            if (edge.outputContextId() == selected.id()) {
+                inputId = edge.inputContextId();
+                break;
+            }
+        }
+        if (inputId == 0) return null;
+        for (ExecutionFlowContext input : stage.inputs()) {
+            if (input.id() == inputId) return input;
+        }
+        return null;
+    }
+
+    public boolean selectedSourceDropped() {
+        ExecutionFlowStage stage = selectedExecutionFlowStage();
+        ExecutionFlowContext selected = selectedFlowContext();
+        return stage != null && selected != null && stage.isDroppedContext(selected.id());
+    }
+
+    public boolean isDisplayedSourceDropped(int index) {
+        ExecutionFlowStage stage = selectedExecutionFlowStage();
+        List<ExecutionFlowContext> contexts = displayedFlowContexts();
+        return stage != null && index >= 0 && index < contexts.size()
+            && stage.isDroppedContext(contexts.get(index).id());
     }
 
     public void selectSource(int index) {
-        PauseSnapshot current = snapshot;
-        if (paused && current != null && index >= 0 && index < current.pauseSources().size()) {
-            selectedSourceIndex = index;
-        }
+        List<PauseSource> sources = displayedSources();
+        if (inspectionSnapshot() != null && index >= 0 && index < sources.size()) selectedSourceIndex = index;
     }
 
     public int selectedFrameIndex() {
@@ -144,10 +222,55 @@ public final class ClientDebuggerState {
     }
 
     public void selectFrame(int index) {
-        PauseSnapshot current = snapshot;
-        if (paused && current != null && index >= 0 && index < current.callStack().size()) {
-            selectedFrameIndex = index;
-        }
+        PauseSnapshot current = inspectionSnapshot();
+        boolean currentWithoutStack = index == 0 && current != null && current.callStack().isEmpty();
+        if (current == null || (!currentWithoutStack
+            && (index < 0 || index >= current.callStack().size()))) return;
+
+        PauseSource previous = selectedSource();
+        selectedFrameIndex = index;
+        selectedFlowStageIndex = -1;
+        int exact = previous == null ? -1 : current.pauseSources().indexOf(previous);
+        selectedSourceIndex = exact >= 0 ? exact : current.pauseSources().isEmpty() ? -1 : 0;
+    }
+
+    public int selectedFlowIndex() {
+        return selectedFlowIndex;
+    }
+
+    public int selectedFlowStageIndex() {
+        return selectedFlowStageIndex;
+    }
+
+    public @Nullable ExecutionFlowTrace selectedExecutionFlow() {
+        PauseSnapshot current = inspectionSnapshot();
+        return current != null && selectedFlowIndex >= 0 && selectedFlowIndex < current.executionFlows().size()
+            ? current.executionFlows().get(selectedFlowIndex) : null;
+    }
+
+    public @Nullable ExecutionFlowStage selectedExecutionFlowStage() {
+        ExecutionFlowTrace flow = selectedExecutionFlow();
+        return flow != null && selectedFlowStageIndex >= 0 && selectedFlowStageIndex < flow.stages().size()
+            ? flow.stages().get(selectedFlowStageIndex) : null;
+    }
+
+    public void selectExecutionFlow(int flowIndex) {
+        PauseSnapshot current = inspectionSnapshot();
+        if (current == null || flowIndex < 0 || flowIndex >= current.executionFlows().size()) return;
+        ExecutionFlowTrace flow = current.executionFlows().get(flowIndex);
+        if (flow.stages().isEmpty()) return;
+        selectedFlowIndex = flowIndex;
+        selectedFlowStageIndex = flow.stages().size() - 1;
+        selectedSourceIndex = displayedSources().isEmpty() ? -1 : 0;
+        selectedFrameIndex = -1;
+    }
+
+    public void selectExecutionFlowStage(int stageIndex) {
+        ExecutionFlowTrace flow = selectedExecutionFlow();
+        if (flow == null || stageIndex < 0 || stageIndex >= flow.stages().size()) return;
+        selectedFlowStageIndex = stageIndex;
+        selectedSourceIndex = displayedSources().isEmpty() ? -1 : 0;
+        selectedFrameIndex = -1;
     }
 
     public GizmoMode gizmoMode() {
@@ -171,15 +294,61 @@ public final class ClientDebuggerState {
     }
 
     public boolean controlPending() {
-        // Rejected commands (for example, lost permission) have no resume packet. Allow a retry
-        // without pretending that the server resumed or replacing its authoritative snapshot.
         if (controlPending && clock.getAsLong() - controlRequestedAt >= 2_000_000_000L) controlPending = false;
         return controlPending;
     }
 
     public void reset() {
         applyResume();
+        recentFlowSnapshot = null;
         selectionHint = null;
+        flowSelectionHint = null;
         blockBreakpoints = List.of();
+    }
+
+    private void selectLatestFlow(PauseSnapshot snapshot) {
+        selectedFlowIndex = -1;
+        selectedFlowStageIndex = -1;
+        for (int i = snapshot.executionFlows().size() - 1; i >= 0; i--) {
+            ExecutionFlowTrace flow = snapshot.executionFlows().get(i);
+            if (!flow.stages().isEmpty()) {
+                selectedFlowIndex = i;
+                selectedFlowStageIndex = flow.stages().size() - 1;
+                return;
+            }
+        }
+    }
+
+    private boolean restoreFlow(FlowSelectionHint hint, PauseSnapshot snapshot) {
+        for (int flowIndex = 0; flowIndex < snapshot.executionFlows().size(); flowIndex++) {
+            ExecutionFlowTrace flow = snapshot.executionFlows().get(flowIndex);
+            if (flow.invocationId() != hint.invocationId()) continue;
+            for (int stageIndex = 0; stageIndex < flow.stages().size(); stageIndex++) {
+                ExecutionFlowStage stage = flow.stages().get(stageIndex);
+                if (stage.index() != hint.stageIndex()) continue;
+                List<ExecutionFlowContext> contexts = stage.displayContexts();
+                for (int sourceIndex = 0; sourceIndex < contexts.size(); sourceIndex++) {
+                    if (contexts.get(sourceIndex).id() == hint.contextId()) {
+                        selectedFlowIndex = flowIndex;
+                        selectedFlowStageIndex = stageIndex;
+                        selectedSourceIndex = sourceIndex;
+                        selectedFrameIndex = -1;
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private @Nullable FlowSelectionHint currentFlowHint() {
+        ExecutionFlowTrace flow = selectedExecutionFlow();
+        ExecutionFlowStage stage = selectedExecutionFlowStage();
+        ExecutionFlowContext context = selectedFlowContext();
+        return flow == null || stage == null || context == null ? null
+            : new FlowSelectionHint(flow.invocationId(), stage.index(), context.id());
+    }
+
+    private record FlowSelectionHint(long invocationId, int stageIndex, long contextId) {
     }
 }

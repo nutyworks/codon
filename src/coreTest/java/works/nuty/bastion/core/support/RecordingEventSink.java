@@ -1,6 +1,7 @@
 package works.nuty.bastion.core.support;
 
 import works.nuty.bastion.core.model.BlockLocation;
+import works.nuty.bastion.core.model.ExecutionFlowTrace;
 import works.nuty.bastion.core.model.PauseSnapshot;
 import works.nuty.bastion.core.port.DebuggerEventSink;
 
@@ -11,6 +12,7 @@ import java.util.Set;
 /** Test double that records the snapshots and resume notifications the engine publishes. */
 public final class RecordingEventSink implements DebuggerEventSink {
     public final List<PauseSnapshot> pauses = new ArrayList<>();
+    public final List<List<ExecutionFlowTrace>> completedFlows = new ArrayList<>();
     public int resumes = 0;
     public int steps = 0;
     public int breakpointChanges = 0;
@@ -28,6 +30,11 @@ public final class RecordingEventSink implements DebuggerEventSink {
     @Override
     public void stepping() {
         steps++;
+    }
+
+    @Override
+    public void executionFlowsCompleted(List<ExecutionFlowTrace> flows) {
+        completedFlows.add(List.copyOf(flows));
     }
 
     @Override

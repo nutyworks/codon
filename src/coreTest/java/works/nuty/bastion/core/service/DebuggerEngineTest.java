@@ -427,4 +427,48 @@ class DebuggerEngineTest {
         assertNull(engine.currentSnapshot());
         assertTrue(engine.callStack().isEmpty());
     }
+
+    @Test
+    void pauseSnapshotFreezesCurrentFlowHistoryAndOutermostCompletionClearsIt() {
+        ExecutionFlowHistory flows = new ExecutionFlowHistory();
+        DebuggerEngine local = new DebuggerEngine(breakpoints, step, callStack, controller, sink, flows);
+        local.onExecutionStarted();
+        ExecutionFlowRecorder recorder = flows.start(501, new SourceLocation.Function(tick(3)));
+        recorder.beginStage(CommandSnippet.plain("execute if entity @s run say ok"), List.of(), 0, true);
+        recorder.executionStarted();
+        recorder.executionResult(true);
+        breakpoints.toggleFunction(tick(3));
+
+        local.onCommandStage(functionStage(501, 1, 3));
+
+        assertEquals(1, local.currentSnapshot().executionFlows().size());
+        assertEquals(501, local.currentSnapshot().executionFlows().getFirst().invocationId());
+        local.resume();
+        local.onExecutionFinished();
+        assertEquals(1, sink.completedFlows.size());
+        assertEquals(1, sink.completedFlows.getFirst().getFirst().executionCount());
+        assertEquals(1, sink.completedFlows.getFirst().getFirst().successCount());
+        assertTrue(flows.snapshot().isEmpty());
+    }
+
+    @Test
+    void nestedExecutionCompletionRetainsFlowsUntilTheOuterScopeAndResetAlsoClearsThem() {
+        ExecutionFlowHistory flows = new ExecutionFlowHistory();
+        DebuggerEngine local = new DebuggerEngine(breakpoints, step, callStack, controller, sink, flows);
+        local.onExecutionStarted();
+        local.onExecutionStarted();
+        flows.start(601, new SourceLocation.Function(tick(1)));
+
+        local.onExecutionFinished();
+        assertEquals(1, flows.snapshot().size());
+        assertTrue(sink.completedFlows.isEmpty());
+        local.onExecutionFinished();
+        assertEquals(1, sink.completedFlows.size());
+        assertTrue(flows.snapshot().isEmpty());
+
+        flows.start(602, new SourceLocation.Function(tick(2)));
+        local.resetSession();
+        assertEquals(1, sink.completedFlows.size(), "reset discards partial history without publishing completion");
+        assertTrue(flows.snapshot().isEmpty());
+    }
 }

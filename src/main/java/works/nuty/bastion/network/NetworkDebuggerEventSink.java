@@ -5,6 +5,7 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import works.nuty.bastion.core.model.BlockLocation;
+import works.nuty.bastion.core.model.ExecutionFlowTrace;
 import works.nuty.bastion.core.model.PauseSnapshot;
 import works.nuty.bastion.core.port.DebuggerEventSink;
 
@@ -46,6 +47,11 @@ public final class NetworkDebuggerEventSink implements DebuggerEventSink {
                 ServerPlayNetworking.send(player, new ResumeSyncPayload());
             }
         }
+    }
+
+    @Override
+    public void executionFlowsCompleted(List<ExecutionFlowTrace> flows) {
+        broadcast(new ExecutionFlowSyncPayload(flows));
     }
 
     @Override

@@ -31,6 +31,7 @@ public final class DebuggerEngine {
     private final CallStack callStack;
     private final ExecutionController executionController;
     private final DebuggerEventSink eventSink;
+    private final ExecutionFlowHistory executionFlows;
 
     private volatile boolean paused;
     private volatile @Nullable PauseSnapshot currentSnapshot;
@@ -50,11 +51,23 @@ public final class DebuggerEngine {
         ExecutionController executionController,
         DebuggerEventSink eventSink
     ) {
+        this(breakpoints, step, callStack, executionController, eventSink, new ExecutionFlowHistory());
+    }
+
+    public DebuggerEngine(
+        BreakpointRegistry breakpoints,
+        StepController step,
+        CallStack callStack,
+        ExecutionController executionController,
+        DebuggerEventSink eventSink,
+        ExecutionFlowHistory executionFlows
+    ) {
         this.breakpoints = breakpoints;
         this.step = step;
         this.callStack = callStack;
         this.executionController = executionController;
         this.eventSink = eventSink;
+        this.executionFlows = executionFlows;
     }
 
     public boolean isPaused() {
@@ -155,6 +168,7 @@ public final class DebuggerEngine {
                 event.depth(),
                 callStack.frames(),
                 event.pauseSources().get(),
+                executionFlows.snapshot(),
                 reason
             );
             currentSnapshot = snapshot;
@@ -204,18 +218,28 @@ public final class DebuggerEngine {
      * while paused (the pause parks the tick itself); the guard keeps the invariant anyway.
      */
     public void onTickBoundary() {
-        if (executionNesting == 0) clearExecutionState();
+        if (executionNesting == 0) completeExecutionState();
     }
 
     /** Enter a command execution queue or an enclosing batch such as a command-block chain. */
     public void onExecutionStarted() {
+        if (executionNesting == 0) executionFlows.clear();
         executionNesting++;
     }
 
     /** End a scope in finally; only the outermost completion ends the pending step. */
     public void onExecutionFinished() {
         if (executionNesting > 0) executionNesting--;
-        if (executionNesting == 0) clearExecutionState();
+        if (executionNesting == 0) completeExecutionState();
+    }
+
+    private void completeExecutionState() {
+        if (paused) return;
+        var completedFlows = executionFlows.snapshot();
+        clearExecutionState();
+        // If a terminal step exhausted the queue, clearExecutionState publishes the resume first.
+        // The following immutable inspection update then becomes the final client state.
+        if (!completedFlows.isEmpty()) eventSink.executionFlowsCompleted(completedFlows);
     }
 
     private void clearExecutionState() {
@@ -226,6 +250,7 @@ public final class DebuggerEngine {
         evaluatedBreakpointChains.clear();
         callStack.clear();
         clearStep();
+        executionFlows.clear();
     }
 
     /** End the host session, retaining user breakpoints but no execution state. */
@@ -235,6 +260,7 @@ public final class DebuggerEngine {
         skippedChainIds.clear();
         evaluatedBreakpointChains.clear();
         callStack.clear();
+        executionFlows.clear();
         unpause();
     }
 

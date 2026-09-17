@@ -6,6 +6,7 @@ import works.nuty.bastion.client.camera.DebuggerFreecam;
 import works.nuty.bastion.client.state.ClientDebuggerState;
 import works.nuty.bastion.client.state.ClientPauseEffects;
 import works.nuty.bastion.network.BreakpointSyncPayload;
+import works.nuty.bastion.network.ExecutionFlowSyncPayload;
 import works.nuty.bastion.network.PauseSyncPayload;
 import works.nuty.bastion.network.ResumeSyncPayload;
 import works.nuty.bastion.network.StepSyncPayload;
@@ -47,5 +48,8 @@ public final class ClientNetworking {
 
         ClientPlayNetworking.registerGlobalReceiver(BreakpointSyncPayload.TYPE, (payload, context) ->
             context.client().execute(() -> state.applyBreakpoints(payload.blocks())));
+
+        ClientPlayNetworking.registerGlobalReceiver(ExecutionFlowSyncPayload.TYPE, (payload, context) ->
+            context.client().execute(() -> state.applyCompletedExecutionFlows(payload.flows())));
     }
 }

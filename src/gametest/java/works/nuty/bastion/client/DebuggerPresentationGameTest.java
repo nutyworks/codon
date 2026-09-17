@@ -71,6 +71,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
             context.waitTicks(3);
             context.takeScreenshot("bastion-grouped");
             checkIconToolbar(context, screen);
+            checkFlowInspector(context, screen, state);
             context.runOnClient(client -> {
                 DebuggerButton mode = button(screen, value -> value.startsWith("Gizmo: "));
                 click(screen, mode);
@@ -209,6 +210,54 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
         context.waitTicks(2);
     }
 
+    private static void checkFlowInspector(ClientGameTestContext context, BastionScreen screen,
+                                           ClientDebuggerState state) {
+        context.getInput().resizeWindow(1280, 1100);
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            button(screen, value -> value.startsWith("RUN 9→9"));
+            require(state.selectedFlowStageIndex() == 3,
+                "the latest selected stage remains visible in the three-row tall flow panel");
+        });
+        context.takeScreenshot("bastion-flow-tall-selected-stage");
+        context.getInput().resizeWindow(1280, 800);
+        context.waitTicks(2);
+        context.runOnClient(client -> click(screen, button(screen, value -> value.equals("Flow"))));
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            DebuggerButton condition = button(screen, value -> value.contains("10→9") && value.contains("−1"));
+            click(screen, condition);
+            require(state.selectedExecutionFlowStage() != null
+                    && state.selectedExecutionFlowStage().droppedCount() == 1,
+                "Flow-stage click selects the condition result");
+            require(state.displayedSources().size() == 10,
+                "Condition stage exposes its nine outputs and one explicitly excluded input");
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> click(screen, button(screen, value -> value.equals("Sources"))));
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            DebuggerButton first = button(screen, value -> value.equals("#1 Zombie 1"));
+            for (int i = 0; i < 6; i++) {
+                screen.mouseScrolled(first.getX() + 2, first.getY() + 2, 0, -1);
+            }
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            click(screen, button(screen, value -> value.startsWith("× Nether source")));
+            require(state.selectedSourceDropped(), "Excluded context remains selectable in the inspector");
+        });
+        context.waitTicks(2);
+        context.takeScreenshot("bastion-flow-excluded-context");
+        context.runOnClient(client -> click(screen, button(screen, value -> value.equals("Flow"))));
+        context.waitTicks(2);
+        context.runOnClient(client -> click(screen, button(screen, value -> value.startsWith("RUN 9→9"))));
+        context.waitTicks(2);
+        context.runOnClient(client -> click(screen, button(screen, value -> value.equals("Sources"))));
+        context.waitTicks(2);
+        context.runOnClient(client -> state.selectSource(0));
+    }
+
     private static void checkSolidBlockMarkers(ClientGameTestContext context, TestSingleplayerContext world,
                                                ClientDebuggerState state) {
         List<BlockPos> positions = context.computeOnClient(client -> {
@@ -261,13 +310,54 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
         sources.add(new PauseSource(new Vec3d(x, y, z), 0, 0,
             new EntityRef(new UUID(0, 10), "Nether source"), "minecraft:the_nether"));
         SourceLocation location = new SourceLocation.Function(new FunctionLocation(new FunctionId("demo", "spawn_wave"), 12));
-        CommandSnippet command = new CommandSnippet("execute as @e[type=zombie] at @s run function demo:move", 26, 31);
+        String commandText = "execute as @e[type=zombie] at @s if entity @s[tag=keep] run function demo:move";
+        CommandSnippet command = new CommandSnippet(commandText, 60, commandText.length());
         List<CallFrame> stack = List.of(new CallFrame(1, location, command),
             new CallFrame(0, new SourceLocation.Function(new FunctionLocation(new FunctionId("demo", "tick"), 4)),
                 CommandSnippet.plain("function demo:spawn_wave")));
         SourceLocation pausedBlock = new SourceLocation.Block(new BlockLocation(
             (int) Math.floor(x) + 2, (int) Math.floor(y), (int) Math.floor(z) + 5, "minecraft:overworld"));
-        return new PauseSnapshot(pausedBlock, command, 1, stack, sources, PauseReason.BREAKPOINT);
+        List<PauseSource> finalSources = List.copyOf(sources.subList(0, 9));
+        return new PauseSnapshot(pausedBlock, command, 1, stack, finalSources,
+            List.of(flowFixture(pausedBlock, command, sources)), PauseReason.BREAKPOINT);
+    }
+
+    private static ExecutionFlowTrace flowFixture(SourceLocation location, CommandSnippet command,
+                                                   List<PauseSource> sources) {
+        ExecutionFlowContext root = new ExecutionFlowContext(1, sources.get(8));
+        List<ExecutionFlowContext> afterAs = contexts(2, sources);
+        List<ExecutionFlowContext> afterAt = contexts(12, sources);
+        List<ExecutionFlowContext> afterIf = contexts(22, sources.subList(0, 9));
+        ExecutionFlowStage as = new ExecutionFlowStage(0,
+            new CommandSnippet(command.text(), 8, 26), List.of(root), afterAs,
+            afterAs.stream().map(output -> new ExecutionFlowEdge(root.id(), output.id())).toList(),
+            List.of(), 1, 10, 0, false, 0, 0, true, true, false);
+        List<ExecutionFlowEdge> atEdges = new ArrayList<>();
+        for (int i = 0; i < afterAs.size(); i++) {
+            atEdges.add(new ExecutionFlowEdge(afterAs.get(i).id(), afterAt.get(i).id()));
+        }
+        ExecutionFlowStage at = new ExecutionFlowStage(1,
+            new CommandSnippet(command.text(), 27, 32), afterAs, afterAt, atEdges,
+            List.of(), 10, 10, 0, false, 0, 0, true, true, false);
+        List<ExecutionFlowEdge> ifEdges = new ArrayList<>();
+        for (int i = 0; i < afterIf.size(); i++) {
+            ifEdges.add(new ExecutionFlowEdge(afterAt.get(i).id(), afterIf.get(i).id()));
+        }
+        ExecutionFlowStage condition = new ExecutionFlowStage(2,
+            new CommandSnippet(command.text(), 33, 55), afterAt, afterIf, ifEdges,
+            List.of(afterAt.getLast().id()), 10, 9, 1, false, 0, 0, true, true, false);
+        ExecutionFlowStage terminal = new ExecutionFlowStage(3,
+            new CommandSnippet(command.text(), 60, command.text().length()), afterIf, afterIf,
+            List.of(), List.of(), 9, 9, 0, true, 9, 8, true, true, false);
+        return new ExecutionFlowTrace(77, location, List.of(as, at, condition, terminal), false);
+    }
+
+    private static List<ExecutionFlowContext> contexts(long firstId, List<PauseSource> sources) {
+        List<ExecutionFlowContext> result = new ArrayList<>(sources.size());
+        for (int i = 0; i < sources.size(); i++) {
+            result.add(new ExecutionFlowContext(firstId + i, sources.get(i)));
+        }
+        return List.copyOf(result);
     }
 
     private static DebuggerButton button(BastionScreen screen, Predicate<String> label) {

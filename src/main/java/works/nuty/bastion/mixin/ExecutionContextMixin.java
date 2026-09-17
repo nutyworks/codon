@@ -21,7 +21,7 @@ abstract class ExecutionContextMixin<T> {
         CommandTrace trace = CommandTrace.current();
         if (trace != null && entry.action() instanceof BuildContexts.Continuation<?>
             && entry.action() instanceof TracedCommand traced) {
-            traced.bastion$inheritTrace(trace);
+            traced.bastion$inheritTrace(trace.forkForContinuation());
         }
     }
 

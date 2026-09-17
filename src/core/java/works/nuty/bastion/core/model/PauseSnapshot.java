@@ -13,10 +13,18 @@ public record PauseSnapshot(
     int depth,
     List<CallFrame> callStack,
     List<PauseSource> pauseSources,
+    List<ExecutionFlowTrace> executionFlows,
     PauseReason reason
 ) {
+    public PauseSnapshot(SourceLocation location, CommandSnippet command, int depth,
+                         List<CallFrame> callStack, List<PauseSource> pauseSources,
+                         PauseReason reason) {
+        this(location, command, depth, callStack, pauseSources, List.of(), reason);
+    }
+
     public PauseSnapshot {
         callStack = List.copyOf(callStack);
         pauseSources = List.copyOf(pauseSources);
+        executionFlows = List.copyOf(executionFlows);
     }
 }

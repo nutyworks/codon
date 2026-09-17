@@ -12,11 +12,15 @@ import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.NonNull;
 import works.nuty.bastion.client.state.ClientDebuggerState;
 import works.nuty.bastion.core.model.BlockLocation;
+import works.nuty.bastion.core.model.ExecutionFlowContext;
+import works.nuty.bastion.core.model.ExecutionFlowEdge;
+import works.nuty.bastion.core.model.ExecutionFlowStage;
 import works.nuty.bastion.core.model.PauseSnapshot;
 import works.nuty.bastion.core.model.PauseSource;
 import works.nuty.bastion.core.model.SourceLocation;
 
 import java.util.LinkedHashMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -27,6 +31,8 @@ public final class DebugLevelRenderer implements LevelRenderEvents.EndMain {
     private static final int SOURCE_TEAL = ARGB.color(0.95f, 0x75DFD6);
     private static final int MUTED_TEAL = ARGB.color(0.28f, 0x567C7B);
     private static final int SELECTED_TEAL = ARGB.color(1.0f, 0x75DFD6);
+    private static final int DROPPED_RED = ARGB.color(0.95f, 0xFC8C8C);
+    private static final int FLOW_TEAL = ARGB.color(0.7f, 0x75DFD6);
 
     private static final float BREAKPOINT_WIDTH = 1.0f;
     private static final float PAUSED_WIDTH = 3.0f;
@@ -63,7 +69,8 @@ public final class DebugLevelRenderer implements LevelRenderEvents.EndMain {
             renderPausedBlock(pausedBlock);
         }
         if (paused) {
-            renderPauseSources(snapshot.pauseSources(), dimension);
+            renderFlowConnections(state.selectedExecutionFlowStage(), dimension);
+            renderPauseSources(state.displayedSources(), dimension);
         }
     }
 
@@ -97,19 +104,46 @@ public final class DebugLevelRenderer implements LevelRenderEvents.EndMain {
                 continue;
             }
 
-            SourceKey key = new SourceKey(anchor.x, anchor.y, anchor.z, source.pitch(), source.yaw(), source.entity() != null);
+            boolean dropped = state.isDisplayedSourceDropped(index);
+            SourceKey key = new SourceKey(anchor.x, anchor.y, anchor.z, source.pitch(), source.yaw(),
+                source.entity() != null, dropped);
             SourceMarker marker = markers.get(key);
             if (marker == null || index == selectedIndex) {
-                markers.put(key, new SourceMarker(anchor, facing.normalize(), source.entity() != null, index == selectedIndex));
+                markers.put(key, new SourceMarker(anchor, facing.normalize(), source.entity() != null,
+                    index == selectedIndex, dropped));
             }
         }
 
         boolean focus = state.gizmoMode() != ClientDebuggerState.GizmoMode.LABELS;
         for (SourceMarker marker : markers.values()) {
             boolean selected = marker.selected();
-            int color = focus && !selected ? MUTED_TEAL : selected ? SELECTED_TEAL : SOURCE_TEAL;
+            int color = selected && !marker.dropped() ? SELECTED_TEAL : marker.dropped() ? DROPPED_RED
+                : focus ? MUTED_TEAL : SOURCE_TEAL;
             float width = selected ? SELECTED_WIDTH : SOURCE_WIDTH;
             renderSourceMarker(marker, color, width, selected);
+        }
+    }
+
+    private void renderFlowConnections(ExecutionFlowStage stage, String dimension) {
+        if (stage == null || stage.edges().isEmpty()) return;
+        Map<Long, PauseSource> inputs = new HashMap<>();
+        Map<Long, PauseSource> outputs = new HashMap<>();
+        for (ExecutionFlowContext context : stage.inputs()) inputs.put(context.id(), context.source());
+        for (ExecutionFlowContext context : stage.outputs()) outputs.put(context.id(), context.source());
+        ExecutionFlowContext selected = state.selectedFlowContext();
+        long selectedId = selected == null ? 0 : selected.id();
+
+        for (ExecutionFlowEdge edge : stage.edges()) {
+            PauseSource fromSource = inputs.get(edge.inputContextId());
+            PauseSource toSource = outputs.get(edge.outputContextId());
+            if (fromSource == null || toSource == null
+                || !dimension.equals(fromSource.dimension()) || !dimension.equals(toSource.dimension())) continue;
+            Vec3 from = vec(fromSource);
+            Vec3 to = vec(toSource);
+            if (!isFinite(from) || !isFinite(to) || from.distanceToSqr(to) < 1.0e-6) continue;
+            boolean selectedEdge = edge.outputContextId() == selectedId;
+            Gizmos.arrow(from, to, selectedEdge ? SELECTED_TEAL : FLOW_TEAL,
+                selectedEdge ? SELECTED_WIDTH : SOURCE_WIDTH).setAlwaysOnTop();
         }
     }
 
@@ -151,13 +185,19 @@ public final class DebugLevelRenderer implements LevelRenderEvents.EndMain {
         return Double.isFinite(vector.x) && Double.isFinite(vector.y) && Double.isFinite(vector.z);
     }
 
+    private static Vec3 vec(PauseSource source) {
+        return new Vec3(source.anchor().x(), source.anchor().y(), source.anchor().z());
+    }
+
     private static BlockPos blockPos(BlockLocation location) {
         return new BlockPos(location.x(), location.y(), location.z());
     }
 
-    private record SourceKey(double x, double y, double z, float pitch, float yaw, boolean entityPresent) {
+    private record SourceKey(double x, double y, double z, float pitch, float yaw,
+                             boolean entityPresent, boolean dropped) {
     }
 
-    private record SourceMarker(Vec3 anchor, Vec3 facing, boolean entityPresent, boolean selected) {
+    private record SourceMarker(Vec3 anchor, Vec3 facing, boolean entityPresent,
+                                boolean selected, boolean dropped) {
     }
 }

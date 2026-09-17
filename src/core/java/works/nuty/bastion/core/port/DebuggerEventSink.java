@@ -1,8 +1,10 @@
 package works.nuty.bastion.core.port;
 
 import works.nuty.bastion.core.model.BlockLocation;
+import works.nuty.bastion.core.model.ExecutionFlowTrace;
 import works.nuty.bastion.core.model.PauseSnapshot;
 
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -20,6 +22,13 @@ public interface DebuggerEventSink {
     /** Execution is advancing to the next step; presentation may retain its detached camera. */
     default void stepping() {
         resumed();
+    }
+
+    /**
+     * The outer execution scope completed. This is inspection data only: recipients must not
+     * recreate a pause or reactivate debugger controls.
+     */
+    default void executionFlowsCompleted(List<ExecutionFlowTrace> flows) {
     }
 
     /**
