@@ -21,6 +21,7 @@ import java.util.function.LongSupplier;
 public final class ClientDebuggerState {
     private volatile boolean paused;
     private volatile boolean stepping;
+    private volatile boolean continuing;
     private volatile @Nullable PauseSnapshot snapshot;
     private volatile @Nullable PauseSnapshot recentFlowSnapshot;
     private volatile List<BlockLocation> blockBreakpoints = List.of();
@@ -31,6 +32,8 @@ public final class ClientDebuggerState {
     private boolean controlPending;
     private long controlRequestedAt;
     private final LongSupplier clock;
+    private final ClientWatchState watches;
+    private final ClientNbtState nbt;
     private @Nullable PauseSource selectionHint;
     private @Nullable FlowSelectionHint flowSelectionHint;
     private final DebuggerPreferences preferences;
@@ -51,6 +54,10 @@ public final class ClientDebuggerState {
     public ClientDebuggerState(LongSupplier clock, DebuggerPreferences preferences) {
         this.clock = Objects.requireNonNull(clock);
         this.preferences = Objects.requireNonNull(preferences);
+        this.watches = new ClientWatchState(clock);
+        this.nbt = new ClientNbtState(clock);
+        this.nbt.setEnabled(preferences.nbtExpanded());
+        this.nbt.setEnabledListener(preferences::setNbtExpanded);
     }
 
     public enum GizmoMode {
@@ -71,27 +78,47 @@ public final class ClientDebuggerState {
         this.recentFlowSnapshot = snapshot;
         this.paused = true;
         this.stepping = false;
+        this.continuing = false;
         this.controlPending = false;
         this.selectedFrameIndex = 0;
         selectLatestFlow(snapshot);
         if (selectedFlowStageIndex >= 0) selectedFrameIndex = -1;
         this.selectedSourceIndex = displayedSources().isEmpty() ? -1 : 0;
 
-        if (previousFlow != null && restoreFlow(previousFlow, snapshot)) return;
+        ExecutionFlowTrace latestFlow = selectedExecutionFlow();
+        ExecutionFlowStage latestStage = selectedExecutionFlowStage();
+        boolean restoredFlow = previousFlow != null && latestFlow != null && latestStage != null
+            && previousFlow.invocationId() == latestFlow.invocationId()
+            && previousFlow.stageIndex() == latestStage.index()
+            && restoreFlow(previousFlow, snapshot);
         // Legacy snapshots have no occurrence ids. Preserve only an exact source value, never an
         // entity/dimension guess which could silently select a different execution context.
-        if (selectedFlowIndex < 0 && previous != null) {
+        if (!restoredFlow && selectedFlowIndex < 0 && previous != null) {
             int exact = snapshot.pauseSources().indexOf(previous);
             if (exact >= 0) selectedSourceIndex = exact;
         }
+        int liveSourceIndex = selectedPauseSourceIndex();
+        watches.paused(snapshot.pauseId(), liveSourceIndex);
+        watches.rememberExecutors(snapshot.pauseSources());
+        nbt.paused(snapshot.pauseId(), snapshot.pauseSources(), liveSourceIndex);
     }
 
+    public ClientWatchState watches() { return watches; }
+    public ClientNbtState nbt() { return nbt; }
+
     public void applyResume() {
+        watches.resumed();
+        nbt.resumed();
+        clearPause();
+    }
+
+    private void clearPause() {
         if (selectedSource() != null) selectionHint = selectedSource();
         FlowSelectionHint hint = currentFlowHint();
         if (hint != null) flowSelectionHint = hint;
         this.paused = false;
         this.stepping = false;
+        this.continuing = false;
         this.snapshot = null;
         this.selectedSourceIndex = -1;
         this.selectedFrameIndex = 0;
@@ -102,12 +129,24 @@ public final class ClientDebuggerState {
 
     /** Server-confirmed advancement: discard the old pause but retain the freecam session. */
     public void applyStep() {
-        applyResume();
+        watches.stepping();
+        nbt.stepping();
+        clearPause();
         this.stepping = true;
     }
 
     public boolean isStepping() {
         return stepping;
+    }
+
+    /** Continue clears inspection data like Resume, but the current execution still owns freecam. */
+    public void applyContinue() {
+        applyResume();
+        this.continuing = true;
+    }
+
+    public boolean isContinuing() {
+        return continuing;
     }
 
     public void applyBreakpoints(List<BlockLocation> blocks) {
@@ -133,7 +172,7 @@ public final class ClientDebuggerState {
         PauseSnapshot previous = recentFlowSnapshot;
         if (previous == null || flows.isEmpty()) return;
         PauseSnapshot completed = new PauseSnapshot(previous.location(), previous.command(), previous.depth(),
-            previous.callStack(), previous.pauseSources(), flows, previous.reason());
+            previous.callStack(), previous.pauseSources(), flows, previous.reason(), previous.pauseId());
         recentFlowSnapshot = completed;
 
         FlowSelectionHint previousFlow = flowSelectionHint;
@@ -150,6 +189,13 @@ public final class ClientDebuggerState {
 
     public int selectedSourceIndex() {
         return selectedSourceIndex;
+    }
+
+    /** Index in the live pause packet, or -1 for a historical flow-only context. */
+    public int selectedPauseSourceIndex() {
+        PauseSnapshot current = snapshot;
+        PauseSource selected = selectedSource();
+        return current == null || selected == null ? -1 : current.pauseSources().indexOf(selected);
     }
 
     /** Sources currently connected to the inspector and world markers. */
@@ -214,7 +260,17 @@ public final class ClientDebuggerState {
 
     public void selectSource(int index) {
         List<PauseSource> sources = displayedSources();
-        if (inspectionSnapshot() != null && index >= 0 && index < sources.size()) selectedSourceIndex = index;
+        if (inspectionSnapshot() == null || index < 0 || index >= sources.size()) return;
+        selectedSourceIndex = index;
+        syncLiveSourceSelection();
+    }
+
+    /** Prevent Watch/NBT reads from inheriting an unrelated executor after flow navigation. */
+    private void syncLiveSourceSelection() {
+        if (!paused || snapshot == null) return;
+        int liveIndex = selectedPauseSourceIndex();
+        watches.selectSource(liveIndex);
+        nbt.selectSource(liveIndex);
     }
 
     public int selectedFrameIndex() {
@@ -232,6 +288,7 @@ public final class ClientDebuggerState {
         selectedFlowStageIndex = -1;
         int exact = previous == null ? -1 : current.pauseSources().indexOf(previous);
         selectedSourceIndex = exact >= 0 ? exact : current.pauseSources().isEmpty() ? -1 : 0;
+        syncLiveSourceSelection();
     }
 
     public int selectedFlowIndex() {
@@ -263,6 +320,7 @@ public final class ClientDebuggerState {
         selectedFlowStageIndex = flow.stages().size() - 1;
         selectedSourceIndex = displayedSources().isEmpty() ? -1 : 0;
         selectedFrameIndex = -1;
+        syncLiveSourceSelection();
     }
 
     public void selectExecutionFlowStage(int stageIndex) {
@@ -271,6 +329,7 @@ public final class ClientDebuggerState {
         selectedFlowStageIndex = stageIndex;
         selectedSourceIndex = displayedSources().isEmpty() ? -1 : 0;
         selectedFrameIndex = -1;
+        syncLiveSourceSelection();
     }
 
     public GizmoMode gizmoMode() {
@@ -304,6 +363,8 @@ public final class ClientDebuggerState {
         selectionHint = null;
         flowSelectionHint = null;
         blockBreakpoints = List.of();
+        watches.reset();
+        nbt.reset();
     }
 
     private void selectLatestFlow(PauseSnapshot snapshot) {

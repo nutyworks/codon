@@ -158,10 +158,13 @@ class WorldBreakpointPersistenceTest {
     }
 
     @Test
-    void steppingRemainsDistinctFromResumeThroughThePersistenceAdapter() {
+    void steppingAndContinuingRemainDistinctFromTerminalResumeThroughThePersistenceAdapter() {
         Harness harness = new Harness();
         harness.persistence.stepping();
         assertEquals(1, harness.sink.steps);
+        assertEquals(0, harness.sink.resumes);
+        harness.persistence.continued();
+        assertEquals(1, harness.sink.continues);
         assertEquals(0, harness.sink.resumes);
         harness.persistence.resumed();
         assertEquals(1, harness.sink.resumes);
@@ -187,9 +190,11 @@ class WorldBreakpointPersistenceTest {
         int changes;
         int resumes;
         int steps;
+        int continues;
         @Override public void paused(PauseSnapshot snapshot) { }
         @Override public void resumed() { resumes++; }
         @Override public void stepping() { steps++; }
+        @Override public void continued() { continues++; }
         @Override public void breakpointsChanged(Set<BlockLocation> blocks) { changes++; }
     }
 }

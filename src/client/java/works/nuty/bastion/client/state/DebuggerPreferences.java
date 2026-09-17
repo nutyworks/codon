@@ -13,6 +13,7 @@ public final class DebuggerPreferences {
     private ClientDebuggerState.GizmoMode gizmoMode = ClientDebuggerState.GizmoMode.GROUPED;
     private @Nullable Boolean inspectorVisible;
     private InspectorTab inspectorTab = InspectorTab.SOURCES;
+    private boolean nbtExpanded = true;
     private Runnable changeListener = () -> { };
 
     public ClientDebuggerState.GizmoMode gizmoMode() {
@@ -46,6 +47,15 @@ public final class DebuggerPreferences {
         tab = Objects.requireNonNull(tab);
         if (inspectorTab != tab) {
             inspectorTab = tab;
+            changed();
+        }
+    }
+
+    public boolean nbtExpanded() { return nbtExpanded; }
+
+    public void setNbtExpanded(boolean expanded) {
+        if (nbtExpanded != expanded) {
+            nbtExpanded = expanded;
             changed();
         }
     }

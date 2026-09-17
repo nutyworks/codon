@@ -41,6 +41,7 @@ import static works.nuty.bastion.client.ui.DebuggerTheme.*;
 public final class DebuggerOverlay {
     private static final Bounds EMPTY = new Bounds(0, 0, 0, 0);
     private final ClientDebuggerState state;
+    private final NbtTreePanel nbtPanel;
     private final Minecraft client = Minecraft.getInstance();
     private final Map<String, DebuggerButton> buttonCache = new HashMap<>();
     private final List<DebuggerButton> controls = new ArrayList<>();
@@ -55,15 +56,20 @@ public final class DebuggerOverlay {
     private int maxSourceOffset;
     private int maxStackOffset;
     private int maxCommandOffset;
+    private int watchSummaryHeight;
+    private int watchSummaryOffset;
+    private int maxWatchSummaryOffset;
     private int maxFlowOffset;
     private Bounds sourceScrollBounds = EMPTY;
     private Bounds stackScrollBounds = EMPTY;
     private Bounds commandScrollBounds = EMPTY;
+    private Bounds watchSummaryScrollBounds = EMPTY;
     private Bounds flowScrollBounds = EMPTY;
     private boolean showInspector;
 
     public DebuggerOverlay(ClientDebuggerState state) {
         this.state = state;
+        this.nbtPanel = new NbtTreePanel(state);
     }
 
     public List<DebuggerButton> render(GuiGraphicsExtractor graphics, int mouseX, int mouseY,
@@ -71,6 +77,8 @@ public final class DebuggerOverlay {
         controls.clear();
         usedButtons.clear();
         sourceScrollBounds = stackScrollBounds = commandScrollBounds = flowScrollBounds = EMPTY;
+        watchSummaryScrollBounds = EMPTY;
+        nbtPanel.clearBounds();
         if (client.level == null || client.player == null) {
             buttonCache.clear();
             return List.of();
@@ -98,9 +106,10 @@ public final class DebuggerOverlay {
             : graphics.guiWidth() >= 420 && graphics.guiHeight() >= 220;
         DebuggerLayout layout = DebuggerLayout.create(graphics.guiWidth(), graphics.guiHeight(), showInspector);
         renderHeader(graphics, layout, input, snapshot);
+        renderWatchSummary(graphics, layout, mouseX, mouseY, interactive, input);
         renderWorldLabels(graphics, layout.world(), snapshot);
         if (showInspector) renderInspector(graphics, layout.inspector(), snapshot);
-        renderCommand(graphics, layout.command(), snapshot);
+        renderCommand(graphics, layout.command(), snapshot, input);
         if (layout.footer().height() > 0) {
             Bounds footer = layout.footer();
             String hint = state.isPaused()
@@ -125,8 +134,12 @@ public final class DebuggerOverlay {
     private void renderHeader(GuiGraphicsExtractor graphics, DebuggerLayout layout, InputManager input,
                               @Nullable PauseSnapshot snapshot) {
         String status = state.controlPending() ? tr("bastion.ui.waiting")
-            : !state.isPaused() || snapshot == null ? tr("bastion.ui.running")
-            : tr(snapshot.reason() == PauseReason.STEP ? "bastion.ui.step_complete" : "bastion.ui.breakpoint_hit");
+            : snapshot == null ? tr("bastion.ui.running")
+            : tr(switch (snapshot.reason()) {
+                case BREAKPOINT -> "bastion.ui.breakpoint_hit";
+                case STEP -> "bastion.ui.step_complete";
+                case EXECUTION_COMPLETE -> "bastion.ui.execution_complete";
+            });
         Bounds toolbar = layout.controls();
         Bounds header = new Bounds(layout.header().x(), layout.header().y(),
             Math.min(layout.header().width(), Math.max(toolbar.width(), 72 + client.font.width(status))),
@@ -182,8 +195,8 @@ public final class DebuggerOverlay {
         var camera = client.gameRenderer.mainCamera();
         if (!camera.isInitialized()) return;
         String dimension = dimension();
-        Bounds labelArea = new Bounds(world.x() + 2, world.y() + 2,
-            Math.max(0, world.width() - 4), Math.max(0, world.height() - 18));
+        Bounds labelArea = new Bounds(world.x() + 2, world.y() + 2 + watchSummaryHeight,
+            Math.max(0, world.width() - 4), Math.max(0, world.height() - 18 - watchSummaryHeight));
         List<Anchor> anchors = new ArrayList<>();
         List<PauseSource> displayedSources = state.displayedSources();
         for (int index = 0; index < displayedSources.size(); index++) {
@@ -242,6 +255,70 @@ public final class DebuggerOverlay {
         int legendWidth = Math.min(world.width(), client.font.width(legend) + 10);
         graphics.fill(world.x(), world.y() + world.height() - 13, world.x() + legendWidth, world.y() + world.height(), PANEL);
         text(graphics, legend, world.x() + 4, world.y() + world.height() - 10, world.width() - 8, MUTED);
+    }
+
+    /** A passive, compact reminder keeps pinned values visible without taking over the inspector. */
+    private void renderWatchSummary(GuiGraphicsExtractor graphics, DebuggerLayout layout,
+                                    int mouseX, int mouseY, boolean interactive, InputManager input) {
+        watchSummaryHeight = 0;
+        var entries = state.watches().entries();
+        Bounds world = layout.world();
+        if (world.width() < 60 || world.height() < 40) return;
+        // Keep the panel above the world legend while sharing normal-height space with NBT.
+        int availableHeight = Math.max(0, world.height() - 24);
+        int minimumWatchHeight = entries.isEmpty() ? 20 : 32;
+        int nbtCapacity = Math.max(0, Math.min(220, availableHeight - minimumWatchHeight));
+        int nbtPreferred = nbtCapacity >= 18 ? nbtPanel.preferredHeight(nbtCapacity) : 0;
+        int nbtFloor = nbtPreferred > 18 ? 54 : nbtPreferred;
+        int allWatchHeight = entries.isEmpty() ? 20 : 20 + entries.size() * 12;
+        int targetWatchHeight = entries.isEmpty() ? 20 : Math.min(allWatchHeight, 80);
+        int nbtHeight;
+        if (availableHeight >= allWatchHeight + nbtFloor) {
+            // When the viewport has room, retain every watch row before growing the tree.
+            nbtHeight = Math.min(nbtPreferred, availableHeight - allWatchHeight);
+        } else {
+            // Typical viewport: keep a field-sized tree region and 3–5 readable watch rows.
+            nbtHeight = Math.min(nbtPreferred, Math.max(nbtFloor, availableHeight - targetWatchHeight));
+        }
+        int remainingWatchHeight = Math.max(0, availableHeight - nbtHeight);
+        int rows = entries.isEmpty() || remainingWatchHeight < 32 ? 0
+            : Math.max(1, Math.min(entries.size(), (remainingWatchHeight - 20) / 12));
+        int watchHeight = 20 + rows * 12;
+        int panelHeight = watchHeight + nbtHeight;
+        maxWatchSummaryOffset = Math.max(0, entries.size() - rows);
+        watchSummaryOffset = Math.clamp(watchSummaryOffset, 0, maxWatchSummaryOffset);
+        int width = Math.min(270, Math.max(1, world.width() - 8));
+        Bounds panelBounds = new Bounds(world.x() + Math.max(0, world.width() - width - 4), world.y() + 4,
+            width, panelHeight);
+        watchSummaryHeight = panelBounds.height() + 5;
+        panel(graphics, panelBounds);
+        String title = tr("bastion.watch.title");
+        text(graphics, title, panelBounds.x() + 5, panelBounds.y() + 5, panelBounds.width() - 45, TEAL);
+        int addX = panelBounds.x() + Math.min(client.font.width(title) + 10, panelBounds.width() - 40);
+        button("watch-add", new Bounds(addX, panelBounds.y() + 2, 16, 15), Component.literal("+"),
+            true, false, false, false, () -> client.setScreenAndShow(new WatchScreen(input, state, this)))
+            .setTooltip(Tooltip.create(component("bastion.watch.open")));
+        watchSummaryScrollBounds = rows == 0 ? EMPTY : new Bounds(panelBounds.x() + 3, panelBounds.y() + 19,
+            panelBounds.width() - 6, rows * 12);
+        for (int row = 0; row < rows; row++) {
+            var entry = entries.get(watchSummaryOffset + row);
+            int color = entry.displayedChange().isValueChange() ? AMBER : TEXT;
+            int rowY = panelBounds.y() + 19 + row * 12;
+            WatchRowRenderer.render(graphics, client.font, entry, state.isPaused(), panelBounds.x() + 5,
+                rowY, panelBounds.width() - 10, color, color);
+            if (interactive && mouseX >= panelBounds.x() + 5 && mouseX < panelBounds.x() + panelBounds.width() - 5
+                && mouseY >= rowY && mouseY < rowY + 12) {
+                graphics.setComponentTooltipForNextFrame(Minecraft.getInstance().font,
+                    WatchFormatting.tooltip(entry, state.isPaused()), mouseX, mouseY);
+            }
+        }
+        if (rows > 0 && maxWatchSummaryOffset > 0) scrollbar(graphics,
+            panelBounds.x() + panelBounds.width() - 4, panelBounds.y() + 19, rows * 12,
+            watchSummaryOffset, maxWatchSummaryOffset, rows, entries.size());
+        if (nbtHeight > 0) nbtPanel.render(graphics,
+            new Bounds(panelBounds.x() + 3, panelBounds.y() + watchHeight, panelBounds.width() - 6, nbtHeight),
+            interactive ? mouseX : -1, interactive ? mouseY : -1,
+            (id, bounds, label, active, selected, action) -> button(id, bounds, label, active, selected, true, false, action));
     }
 
     private void renderInspector(GuiGraphicsExtractor graphics, Bounds area, @Nullable PauseSnapshot snapshot) {
@@ -509,7 +586,7 @@ public final class DebuggerOverlay {
         }
     }
 
-    private void renderCommand(GuiGraphicsExtractor graphics, Bounds area, @Nullable PauseSnapshot snapshot) {
+    private void renderCommand(GuiGraphicsExtractor graphics, Bounds area, @Nullable PauseSnapshot snapshot, InputManager input) {
         if (area.height() < 20) return;
         panel(graphics, area);
         if (snapshot == null) {
@@ -525,10 +602,17 @@ public final class DebuggerOverlay {
         CommandSnippet command = flowStage != null ? flowStage.command()
             : frame == null ? snapshot.command() : frame.command();
         String caption = tr(flowStage != null ? "bastion.ui.flow_stage"
-            : index == 0 ? "bastion.ui.current_command" : "bastion.ui.caller_command") + " · " + location(location);
+            : index != 0 ? "bastion.ui.caller_command"
+            : snapshot.reason() == PauseReason.EXECUTION_COMPLETE ? "bastion.ui.last_command" : "bastion.ui.current_command")
+            + " · " + location(location);
         int accent = flowStage != null ? TEAL : index == 0 ? AMBER : MUTED;
-        text(graphics, caption, area.x() + 8, area.y() + 5, area.width() - (index == 0 ? 16 : 87), accent);
-        if (index != 0) button("current-frame", new Bounds(area.x() + area.width() - 75, area.y() + 2, 70, 15),
+        int watchWidth = 48;
+        text(graphics, caption, area.x() + 8, area.y() + 5,
+            area.width() - (index == 0 ? 16 : 87) - watchWidth, accent);
+        button("watch", new Bounds(area.x() + area.width() - (index > 0 ? 129 : 54), area.y() + 2, 48, 15),
+            component("bastion.watch.open"), true, false, false, false,
+            () -> client.setScreenAndShow(new WatchScreen(input, state, this)));
+        if (index > 0) button("current-frame", new Bounds(area.x() + area.width() - 75, area.y() + 2, 70, 15),
             component("bastion.ui.current_frame"), true, false, false, false, () -> { state.selectFrame(0); stackOffset = commandOffset = 0; });
         Bounds content = new Bounds(area.x() + 8, area.y() + 19, Math.max(1, area.width() - 21), area.height() - 21);
         graphics.fill(area.x() + 4, content.y() - 1, area.x() + area.width() - 4, area.y() + area.height() - 3, AMBER_SURFACE);
@@ -548,9 +632,12 @@ public final class DebuggerOverlay {
     }
 
     public boolean scroll(double x, double y, double amount) {
+        if (nbtPanel.scroll(x, y, amount)) return true;
         int delta = amount > 0 ? -1 : amount < 0 ? 1 : 0;
         if (delta == 0) return false;
-        if (sourceScrollBounds.contains(x, y)) {
+        if (watchSummaryScrollBounds.contains(x, y)) {
+            watchSummaryOffset = Math.clamp(watchSummaryOffset + delta, 0, maxWatchSummaryOffset);
+        } else if (sourceScrollBounds.contains(x, y)) {
             sourceOffset = Math.clamp(sourceOffset + delta, 0, maxSourceOffset);
         } else if (stackScrollBounds.contains(x, y)) {
             stackOffset = Math.clamp(stackOffset + delta, 0, maxStackOffset);

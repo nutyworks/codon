@@ -34,6 +34,8 @@ public final class DebuggerEngine {
     private final ExecutionFlowHistory executionFlows;
 
     private volatile boolean paused;
+    /** Continue retains presentation until this execution ends or pauses again. */
+    private boolean continuing;
     private volatile @Nullable PauseSnapshot currentSnapshot;
     /** The execute chain that owns the current pause. */
     private volatile long pausedChainId = NO_CHAIN;
@@ -43,6 +45,10 @@ public final class DebuggerEngine {
     private final Set<Long> evaluatedBreakpointChains = ConcurrentHashMap.newKeySet();
     /** Server-thread scopes: a command-block chain can contain several execution queues. */
     private int executionNesting;
+    private boolean executionFailed;
+    private @Nullable CommandStageEvent lastStage;
+    // Never reset: even identical stops in a later session must reject old watch requests.
+    private long nextPauseId;
 
     public DebuggerEngine(
         BreakpointRegistry breakpoints,
@@ -144,6 +150,7 @@ public final class DebuggerEngine {
             return;
         }
         callStack.push(new CallFrame(event.depth(), event.location(), event.command()));
+        lastStage = event;
 
         if (skippedChainIds.contains(event.chainId())) {
             return;
@@ -158,6 +165,7 @@ public final class DebuggerEngine {
 
     private void pause(CommandStageEvent event, PauseReason reason) {
         paused = true;
+        continuing = false;
         pausedChainId = event.chainId();
         step.onPaused(event.depth());
 
@@ -169,7 +177,8 @@ public final class DebuggerEngine {
                 callStack.frames(),
                 event.pauseSources().get(),
                 executionFlows.snapshot(),
-                reason
+                reason,
+                ++nextPauseId
             );
             currentSnapshot = snapshot;
             eventSink.paused(snapshot);
@@ -185,14 +194,25 @@ public final class DebuggerEngine {
 
     /** Resume normal execution (run to the next breakpoint). */
     public void resume() {
+        boolean complete = isExecutionComplete();
         skipRemainingPausedChain();
-        clearStep();
-        unpause();
+        if (!complete && executionNesting > 0 && (paused || step.isStepping() || continuing)) {
+            boolean wasStepping = step.isStepping();
+            step.clear();
+            continuing = true;
+            if (paused) unpause();
+            else if (wasStepping) eventSink.continued();
+        } else {
+            clearAdvancement();
+            unpause();
+        }
+        if (complete) clearExecutionState();
     }
 
     /** Resume, pausing at the next command stage (descending into called functions). */
     public void stepInto() {
         if (!paused) return;
+        if (isExecutionComplete()) { resume(); return; }
         step.stepInto();
         unpause();
     }
@@ -200,6 +220,7 @@ public final class DebuggerEngine {
     /** Resume, pausing at the next stage at the same call depth. */
     public void stepOver() {
         if (!paused) return;
+        if (isExecutionComplete()) { resume(); return; }
         step.stepOver();
         unpause();
     }
@@ -207,6 +228,7 @@ public final class DebuggerEngine {
     /** Resume, pausing once execution returns to a shallower call depth. */
     public void stepOut() {
         if (!paused) return;
+        if (isExecutionComplete()) { resume(); return; }
         skipRemainingPausedChain();
         step.stepOut();
         unpause();
@@ -223,14 +245,33 @@ public final class DebuggerEngine {
 
     /** Enter a command execution queue or an enclosing batch such as a command-block chain. */
     public void onExecutionStarted() {
-        if (executionNesting == 0) executionFlows.clear();
+        if (executionNesting == 0 && !paused) {
+            executionFailed = false;
+            lastStage = null;
+            executionFlows.clear();
+        }
         executionNesting++;
     }
 
-    /** End a scope in finally; only the outermost completion ends the pending step. */
+    /** Normal completion of a scope, including synthetic/offline drivers. */
     public void onExecutionFinished() {
+        onExecutionFinished(true);
+    }
+
+    /** End a scope in finally; exceptional unwinding must never create another blocking stop. */
+    public void onExecutionFinished(boolean completedNormally) {
+        if (!completedNormally) executionFailed = true;
         if (executionNesting > 0) executionNesting--;
-        if (executionNesting == 0) completeExecutionState();
+        if (executionNesting != 0 || paused) return;
+        CommandStageEvent completedStage = lastStage;
+        lastStage = null;
+        try {
+            if (!executionFailed && step.isStepping() && completedStage != null) {
+                pause(completedStage, PauseReason.EXECUTION_COMPLETE);
+            }
+        } finally {
+            completeExecutionState();
+        }
     }
 
     private void completeExecutionState() {
@@ -249,14 +290,18 @@ public final class DebuggerEngine {
         skippedChainIds.clear();
         evaluatedBreakpointChains.clear();
         callStack.clear();
-        clearStep();
+        lastStage = null;
+        executionFailed = false;
+        clearAdvancement();
         executionFlows.clear();
     }
 
     /** End the host session, retaining user breakpoints but no execution state. */
     public void resetSession() {
         executionNesting = 0;
-        clearStep();
+        lastStage = null;
+        executionFailed = false;
+        clearAdvancement();
         skippedChainIds.clear();
         evaluatedBreakpointChains.clear();
         callStack.clear();
@@ -270,6 +315,11 @@ public final class DebuggerEngine {
         }
     }
 
+    private boolean isExecutionComplete() {
+        PauseSnapshot snapshot = currentSnapshot;
+        return paused && snapshot != null && snapshot.reason() == PauseReason.EXECUTION_COMPLETE;
+    }
+
     private void unpause() {
         boolean wasPaused = paused;
         paused = false;
@@ -277,15 +327,17 @@ public final class DebuggerEngine {
         currentSnapshot = null;
         if (wasPaused) {
             if (step.isStepping()) eventSink.stepping();
+            else if (continuing) eventSink.continued();
             else eventSink.resumed();
         }
     }
 
-    private void clearStep() {
-        boolean wasStepping = step.isStepping();
+    private void clearAdvancement() {
+        boolean wasAdvancing = step.isStepping() || continuing;
         step.clear();
-        // A final step can exhaust its queue without producing a new pause. Release any
-        // presentation retained during that step, including on cancellation/server shutdown.
-        if (wasStepping && !paused) eventSink.resumed();
+        continuing = false;
+        // Release retained presentation at execution end, cancellation, or a tick-boundary
+        // fallback. A later breakpoint within this execution must not reset the camera.
+        if (wasAdvancing && !paused) eventSink.resumed();
     }
 }

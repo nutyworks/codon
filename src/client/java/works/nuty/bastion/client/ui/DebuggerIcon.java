@@ -12,7 +12,8 @@ public enum DebuggerIcon {
     GIZMO_LABELS,
     GIZMO_FOCUS,
     DETAILS_OPEN,
-    DETAILS_CLOSED;
+    DETAILS_CLOSED,
+    PIN;
 
     public static final int SIZE = 12;
 
@@ -27,6 +28,7 @@ public enum DebuggerIcon {
             case GIZMO_FOCUS -> focus(graphics, x, y, color);
             case DETAILS_OPEN -> details(graphics, x, y, color, true);
             case DETAILS_CLOSED -> details(graphics, x, y, color, false);
+            case PIN -> pin(graphics, x, y, color);
         }
     }
 
@@ -90,6 +92,14 @@ public enum DebuggerIcon {
         if (open) {
             graphics.fill(x + 2, y + 3, x + 6, y + 9, color);
         }
+    }
+
+    private static void pin(GuiGraphicsExtractor graphics, int x, int y, int color) {
+        graphics.fill(x + 4, y + 1, x + 8, y + 2, color);
+        graphics.fill(x + 3, y + 2, x + 9, y + 7, color);
+        graphics.fill(x + 4, y + 7, x + 8, y + 9, color);
+        graphics.fill(x + 5, y + 9, x + 7, y + 12, color);
+        graphics.fill(x + 5, y + 4, x + 7, y + 6, DebuggerTheme.SURFACE);
     }
 
     private static void outline(GuiGraphicsExtractor graphics, int x, int y, int width, int height, int color) {

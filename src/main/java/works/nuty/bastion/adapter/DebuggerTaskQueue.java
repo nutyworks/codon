@@ -83,15 +83,15 @@ public final class DebuggerTaskQueue {
     }
 
     /** Runs a bounded batch so a resume or shutdown check cannot be starved by queued work. */
-    public static void drain(MinecraftServer server) {
+    public static int drain(MinecraftServer server) {
         ConcurrentLinkedQueue<Runnable> queue = QUEUES.get(server);
         if (queue == null) {
-            return;
+            return 0;
         }
         for (int i = 0; i < MAX_TASKS_PER_DRAIN; i++) {
             Runnable task = queue.poll();
             if (task == null) {
-                return;
+                return i;
             }
             try {
                 task.run();
@@ -99,6 +99,7 @@ public final class DebuggerTaskQueue {
                 BastionMod.LOGGER.error("Debugger mailbox task failed", e);
             }
         }
+        return MAX_TASKS_PER_DRAIN;
     }
 
     /** Drops queued work when a server session ends. */

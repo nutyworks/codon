@@ -71,6 +71,13 @@ public final class ClientSettingsStore {
         if (json.has("inspectorTab")) {
             preferences.setInspectorTab(enumValue(json.get("inspectorTab"), DebuggerPreferences.InspectorTab.class, "inspectorTab"));
         }
+        if (json.has("nbtExpanded")) {
+            JsonElement expanded = json.get("nbtExpanded");
+            if (!expanded.isJsonPrimitive() || !expanded.getAsJsonPrimitive().isBoolean()) {
+                throw new IOException("Invalid nbtExpanded in Bastion client settings");
+            }
+            preferences.setNbtExpanded(expanded.getAsBoolean());
+        }
     }
 
     private static boolean isVersion(JsonElement value) {
@@ -105,6 +112,7 @@ public final class ClientSettingsStore {
             json.addProperty("inspectorVisible", preferences.inspectorVisible());
         }
         json.addProperty("inspectorTab", preferences.inspectorTab().name());
+        json.addProperty("nbtExpanded", preferences.nbtExpanded());
         return json;
     }
 }

@@ -3,9 +3,15 @@
   "id": "bastion-ui-test",
   "version": "1.0.0",
   "environment": "client",
-  "mixins": ["bastion.gametest.mixins.json"],
+  "mixins": [
+    "bastion.gametest.mixins.json"
+  ],
   "entrypoints": {
     "fabric-client-gametest": [
+      "works.nuty.bastion.client.NbtTreeReaderGameTest",
+      "works.nuty.bastion.client.DebuggerNbtTreeGameTest",
+      "works.nuty.bastion.client.DebuggerWatchChainGameTest",
+      "works.nuty.bastion.client.DebuggerWatchGameTest",
       "works.nuty.bastion.client.DebuggerPresentationGameTest",
       "works.nuty.bastion.client.DebuggerChatPauseGameTest",
       "works.nuty.bastion.client.DebuggerClientPauseGameTest",
@@ -13,6 +19,9 @@
       "works.nuty.bastion.client.DebuggerFreecamGameTest",
       "works.nuty.bastion.client.DebuggerMountedFreecamGameTest",
       "works.nuty.bastion.client.DebuggerFreecamStepGameTest",
+      "works.nuty.bastion.client.DebuggerFreecamResumeGameTest",
+      "works.nuty.bastion.client.DebuggerWatchPersistenceGameTest",
+      "works.nuty.bastion.client.DebuggerWatchPinGameTest",
       "works.nuty.bastion.client.DebuggerExecutionFlowGameTest"
     ]
   }

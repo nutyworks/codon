@@ -30,6 +30,33 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ClientDebuggerStateTest {
     @Test
+    void continueClearsStaleInspectionWhileAwaitingTheNextBreakpoint() {
+        ClientDebuggerState state = new ClientDebuggerState();
+        PauseSource selected = source("selected", 2);
+        List<PauseSource> sources = List.of(source("other", 1), selected);
+        state.applyPause(snapshot(sources, 2));
+        state.selectSource(1);
+        assertTrue(state.beginControlRequest());
+        state.applyContinue();
+        assertTrue(state.isContinuing());
+        assertFalse(state.isPaused());
+        assertFalse(state.isStepping());
+        assertNull(state.snapshot());
+        assertFalse(state.controlPending());
+        assertFalse(state.beginControlRequest());
+
+        state.applyPause(snapshot(sources, 2));
+        assertFalse(state.isContinuing());
+        assertSame(selected, state.selectedSource());
+        state.applyContinue();
+        state.applyResume();
+        assertFalse(state.isContinuing());
+        state.applyContinue();
+        state.reset();
+        assertFalse(state.isContinuing(), "disconnect must clear retained presentation");
+    }
+
+    @Test
     void repeatedStepsClearStaleSnapshotsButRetainSelectionForTheNextPause() {
         ClientDebuggerState state = new ClientDebuggerState();
         PauseSource selected = source("selected", 2);
@@ -338,6 +365,39 @@ class ClientDebuggerStateTest {
 
         state.reset();
         assertNull(state.inspectionSnapshot(), "disconnect/reset removes the retained result");
+    }
+
+    @Test
+    void flowSelectionMapsLiveQueriesBySourceRatherThanHistoricalListIndex() {
+        PauseSource live = source("live", 1);
+        PauseSource historical = source("old", 2);
+        PauseSnapshot fixture = flowSnapshot(999,
+            List.of(new ExecutionFlowContext(1, historical), new ExecutionFlowContext(2, live)), List.of());
+        ClientDebuggerState state = new ClientDebuggerState();
+        state.applyPause(new PauseSnapshot(fixture.location(), fixture.command(), 0, List.of(),
+            List.of(live), fixture.executionFlows(), PauseReason.STEP, 73));
+        assertEquals(-1, state.selectedPauseSourceIndex());
+        assertNull(state.nbt().executor(), "historical context must not select live source index zero");
+        state.selectSource(1);
+        assertEquals(0, state.selectedPauseSourceIndex());
+        assertEquals(live.entity(), state.nbt().executor());
+        state.selectSource(0);
+        assertEquals(-1, state.selectedPauseSourceIndex());
+        assertNull(state.nbt().executor());
+    }
+
+    @Test
+    void newPauseSelectsLatestInvocationInsteadOfRetainedHistory() {
+        PauseSnapshot old = flowSnapshot(1001, List.of(new ExecutionFlowContext(1, source("old", 1))), List.of());
+        PauseSnapshot next = flowSnapshot(1002, List.of(new ExecutionFlowContext(1, source("new", 2))), List.of());
+        ClientDebuggerState state = new ClientDebuggerState();
+        state.applyPause(old);
+        state.applyStep();
+        state.applyPause(new PauseSnapshot(next.location(), next.command(), 0, List.of(), next.pauseSources(),
+            List.of(old.executionFlows().getFirst(), next.executionFlows().getFirst()), PauseReason.STEP, 74));
+        assertEquals(1002, state.selectedExecutionFlow().invocationId());
+        assertEquals(next.pauseSources().getFirst(), state.selectedSource());
+        assertEquals(0, state.selectedPauseSourceIndex());
     }
 
     private static PauseSnapshot snapshot(List<PauseSource> sources, int frameCount) {

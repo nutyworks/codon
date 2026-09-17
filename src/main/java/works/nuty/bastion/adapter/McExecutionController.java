@@ -38,7 +38,11 @@ public final class McExecutionController implements ExecutionController {
         try {
             long nextKeepAliveNanos = 0L;
             while (s.isRunning() && !resumed.getAsBoolean()) {
-                DebuggerTaskQueue.drain(s);
+                if (DebuggerTaskQueue.drain(s) > 0) {
+                    // Vanilla defers server-thread sends until the tick ends. This tick is parked:
+                    // deliver command acknowledgements and Watch replies before waiting or resuming.
+                    flushConnections(s);
+                }
                 if (!s.isRunning() || resumed.getAsBoolean()) {
                     break;
                 }
@@ -69,6 +73,16 @@ public final class McExecutionController implements ExecutionController {
                     continue;
                 }
                 listener.bastion$keepConnectionAlive();
+                listener.bastion$connection().flushChannel();
+            }
+        }
+    }
+
+    /** Flush outgoing data only; do not tick connections or process unrelated inbound packets. */
+    private static void flushConnections(MinecraftServer server) {
+        for (ServerPlayer player : java.util.List.copyOf(server.getPlayerList().getPlayers())) {
+            if (player.connection instanceof ServerCommonPacketListenerAccessor listener
+                && listener.bastion$connection().isConnected()) {
                 listener.bastion$connection().flushChannel();
             }
         }

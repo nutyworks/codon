@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import works.nuty.bastion.client.state.ClientDebuggerState;
 import works.nuty.bastion.client.state.DebuggerPreferences;
+import works.nuty.bastion.client.state.ClientNbtState;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -27,12 +28,14 @@ class ClientSettingsStoreTest {
         first.setGizmoMode(ClientDebuggerState.GizmoMode.FOCUS);
         first.setInspectorVisible(true);
         first.setInspectorTab(DebuggerPreferences.InspectorTab.STACK);
+        first.setNbtExpanded(false);
 
         DebuggerPreferences reloaded = ClientSettingsStore.open(file, exception -> { throw new AssertionError(exception); });
 
         assertEquals(ClientDebuggerState.GizmoMode.FOCUS, reloaded.gizmoMode());
         assertEquals(Boolean.TRUE, reloaded.inspectorVisible());
         assertEquals(DebuggerPreferences.InspectorTab.STACK, reloaded.inspectorTab());
+        assertFalse(reloaded.nbtExpanded());
     }
 
     @Test
@@ -43,6 +46,37 @@ class ClientSettingsStoreTest {
         assertEquals(ClientDebuggerState.GizmoMode.GROUPED, preferences.gizmoMode());
         assertNull(preferences.inspectorVisible());
         assertEquals(DebuggerPreferences.InspectorTab.SOURCES, preferences.inspectorTab());
+        assertTrue(preferences.nbtExpanded());
+    }
+
+    @Test
+    void nbtCollapseSurvivesStateResetAndFreshSettingsLoad() {
+        Path file = temporaryDirectory.resolve("nbt.json");
+        DebuggerPreferences preferences = ClientSettingsStore.open(file, exception -> { throw new AssertionError(exception); });
+        ClientNbtState nbt = new ClientNbtState(() -> 0);
+        nbt.setEnabled(preferences.nbtExpanded());
+        nbt.setEnabledListener(preferences::setNbtExpanded);
+        nbt.setEnabled(false);
+        nbt.reset();
+        assertFalse(nbt.enabled());
+        assertFalse(ClientSettingsStore.open(file, exception -> { throw new AssertionError(exception); }).nbtExpanded());
+        nbt.setEnabled(true);
+        assertTrue(ClientSettingsStore.open(file, exception -> { throw new AssertionError(exception); }).nbtExpanded());
+    }
+
+    @Test
+    void olderSettingsDefaultToExpandedAndInvalidExpansionIsPreserved() throws IOException {
+        Path file = temporaryDirectory.resolve("nbt.json");
+        Files.writeString(file, "{\"version\":1,\"inspectorTab\":\"STACK\"}");
+        DebuggerPreferences old = ClientSettingsStore.open(file, exception -> { throw new AssertionError(exception); });
+        assertTrue(old.nbtExpanded());
+        assertEquals(DebuggerPreferences.InspectorTab.STACK, old.inspectorTab());
+        String invalid = "{\"version\":1,\"nbtExpanded\":\"false\"}";
+        Files.writeString(file, invalid);
+        List<Exception> errors = new ArrayList<>();
+        ClientSettingsStore.open(file, errors::add).setNbtExpanded(false);
+        assertEquals(1, errors.size());
+        assertEquals(invalid, Files.readString(file));
     }
 
     @Test

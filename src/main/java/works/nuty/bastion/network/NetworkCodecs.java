@@ -238,6 +238,7 @@ final class NetworkCodecs {
         PAUSE_SOURCES_CODEC.encode(buf, snapshot.pauseSources());
         FLOW_TRACES_CODEC.encode(buf, snapshot.executionFlows());
         buf.writeEnum(snapshot.reason());
+        buf.writeVarLong(snapshot.pauseId());
     }
 
     static PauseSnapshot readSnapshot(FriendlyByteBuf buf) {
@@ -248,7 +249,7 @@ final class NetworkCodecs {
         List<PauseSource> pauseSources = PAUSE_SOURCES_CODEC.decode(buf);
         List<ExecutionFlowTrace> executionFlows = FLOW_TRACES_CODEC.decode(buf);
         PauseReason reason = buf.readEnum(PauseReason.class);
-        return new PauseSnapshot(location, command, depth, callStack, pauseSources, executionFlows, reason);
+        return new PauseSnapshot(location, command, depth, callStack, pauseSources, executionFlows, reason, buf.readVarLong());
     }
 
     static void writeBlockLocations(FriendlyByteBuf buf, List<BlockLocation> blocks) {

@@ -14,12 +14,26 @@ public record PauseSnapshot(
     List<CallFrame> callStack,
     List<PauseSource> pauseSources,
     List<ExecutionFlowTrace> executionFlows,
-    PauseReason reason
+    PauseReason reason,
+    long pauseId
 ) {
+    /** Fixtures and offline presentations have no queryable server pause. */
+    public PauseSnapshot(SourceLocation location, CommandSnippet command, int depth,
+                         List<CallFrame> callStack, List<PauseSource> pauseSources, PauseReason reason) {
+        this(location, command, depth, callStack, pauseSources, List.of(), reason, 0);
+    }
+
     public PauseSnapshot(SourceLocation location, CommandSnippet command, int depth,
                          List<CallFrame> callStack, List<PauseSource> pauseSources,
+                         PauseReason reason, long pauseId) {
+        this(location, command, depth, callStack, pauseSources, List.of(), reason, pauseId);
+    }
+
+    public PauseSnapshot(SourceLocation location, CommandSnippet command, int depth,
+                         List<CallFrame> callStack, List<PauseSource> pauseSources,
+                         List<ExecutionFlowTrace> executionFlows,
                          PauseReason reason) {
-        this(location, command, depth, callStack, pauseSources, List.of(), reason);
+        this(location, command, depth, callStack, pauseSources, executionFlows, reason, 0);
     }
 
     public PauseSnapshot {

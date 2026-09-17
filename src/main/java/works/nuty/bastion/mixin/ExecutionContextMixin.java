@@ -29,10 +29,12 @@ abstract class ExecutionContextMixin<T> {
     private void bastion$finishExecution(Operation<Void> original) {
         DebuggerEngine engine = BastionMod.engine();
         if (engine != null) engine.onExecutionStarted();
+        boolean completedNormally = false;
         try {
             original.call();
+            completedNormally = true;
         } finally {
-            if (engine != null) engine.onExecutionFinished();
+            if (engine != null) engine.onExecutionFinished(completedNormally);
         }
     }
 }

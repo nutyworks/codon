@@ -12,6 +12,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import works.nuty.bastion.client.state.ClientDebuggerState;
+import works.nuty.bastion.client.network.ClientNetworking;
 
 /**
  * Client keybinds for the debugger. Control actions (resume/step) are issued as {@code /bastion}
@@ -77,6 +78,7 @@ public final class InputManager implements ClientTickEvents.EndTick {
     public void control(Control action) {
         Minecraft client = Minecraft.getInstance();
         if (client.player != null && state.beginControlRequest()) {
+            if (action != Control.RESUME) ClientNetworking.sendWatchQueries(client, state);
             client.player.connection.sendCommand("bastion " + action.command);
         }
     }

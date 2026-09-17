@@ -39,7 +39,7 @@ class NetworkCodecsTest {
             List.of(), List.of(), 1, 1, 0, true, 1, 1, true, true, false);
         PauseSnapshot expected = new PauseSnapshot(location, terminal.command(), 0, List.of(), List.of(after),
             List.of(new ExecutionFlowTrace(19, location, List.of(modifier, terminal), false)),
-            PauseReason.STEP);
+            PauseReason.STEP, 43);
 
         FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
         try {

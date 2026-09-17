@@ -84,6 +84,9 @@ public final class WorldBreakpointPersistence implements DebuggerEventSink {
     public void resumed() { downstream.resumed(); }
 
     @Override
+    public void continued() { downstream.continued(); }
+
+    @Override
     public void stepping() { downstream.stepping(); }
 
     @Override

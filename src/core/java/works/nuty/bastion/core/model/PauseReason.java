@@ -1,7 +1,8 @@
 package works.nuty.bastion.core.model;
 
-/** Why the debugger paused: a breakpoint was hit, or an active step request was satisfied. */
+/** Why the debugger paused, including inspection after the final command of a step. */
 public enum PauseReason {
     BREAKPOINT,
-    STEP
+    STEP,
+    EXECUTION_COMPLETE
 }

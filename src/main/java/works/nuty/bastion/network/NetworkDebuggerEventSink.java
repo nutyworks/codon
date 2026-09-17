@@ -36,6 +36,19 @@ public final class NetworkDebuggerEventSink implements DebuggerEventSink {
     }
 
     @Override
+    public void continued() {
+        MinecraftServer s = server.get();
+        if (s == null) return;
+        for (ServerPlayer player : s.getPlayerList().getPlayers()) {
+            if (ServerPlayNetworking.canSend(player, ContinueSyncPayload.TYPE.id())) {
+                ServerPlayNetworking.send(player, new ContinueSyncPayload());
+            } else if (ServerPlayNetworking.canSend(player, ResumeSyncPayload.TYPE.id())) {
+                ServerPlayNetworking.send(player, new ResumeSyncPayload());
+            }
+        }
+    }
+
+    @Override
     public void stepping() {
         MinecraftServer s = server.get();
         if (s == null) return;
