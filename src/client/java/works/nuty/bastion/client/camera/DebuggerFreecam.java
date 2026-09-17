@@ -31,9 +31,9 @@ public final class DebuggerFreecam {
     /** Called immediately after sync packets as well as before each client tick. */
     public void synchronize(Minecraft client) {
         if (!state.isPaused() || state.snapshot() == null) {
-            // A step is a temporary release of execution, not the end of camera inspection.
-            // Retain only a camera in the same player/world; never attach one mid-step.
-            if (state.isStepping() && isActive()) return;
+            // Step and Continue can reach another pause within this execution. Only its terminal
+            // resume ends inspection; retain an existing camera in the same player/world meanwhile.
+            if ((state.isStepping() || state.isContinuing()) && isActive()) return;
             stop(client);
             abandonedSnapshot = null;
             return;

@@ -14,8 +14,13 @@ public interface DebuggerEventSink {
     /** The engine has paused execution; {@code snapshot} fully describes the pause. */
     void paused(PauseSnapshot snapshot);
 
-    /** The engine has resumed normal execution, or a step finished without another pause. */
+    /** Debugger inspection ended; restore normal player presentation. */
     void resumed();
+
+    /** Run to the next breakpoint within the current execution, retaining the detached camera. */
+    default void continued() {
+        resumed();
+    }
 
     /** Execution is advancing to the next step; presentation may retain its detached camera. */
     default void stepping() {

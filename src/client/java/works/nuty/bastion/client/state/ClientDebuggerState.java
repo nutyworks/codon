@@ -20,6 +20,7 @@ import java.util.function.LongSupplier;
 public final class ClientDebuggerState {
     private volatile boolean paused;
     private volatile boolean stepping;
+    private volatile boolean continuing;
     private volatile @Nullable PauseSnapshot snapshot;
     private volatile List<BlockLocation> blockBreakpoints = List.of();
     private int selectedSourceIndex = -1;
@@ -62,6 +63,7 @@ public final class ClientDebuggerState {
         this.snapshot = snapshot;
         this.paused = true;
         this.stepping = false;
+        this.continuing = false;
         this.controlPending = false;
         this.selectedFrameIndex = 0;
         this.selectedSourceIndex = snapshot.pauseSources().isEmpty() ? -1 : 0;
@@ -90,6 +92,7 @@ public final class ClientDebuggerState {
         if (selectedSource() != null) selectionHint = selectedSource();
         this.paused = false;
         this.stepping = false;
+        this.continuing = false;
         this.snapshot = null;
         this.selectedSourceIndex = -1;
         this.selectedFrameIndex = 0;
@@ -104,6 +107,16 @@ public final class ClientDebuggerState {
 
     public boolean isStepping() {
         return stepping;
+    }
+
+    /** Continue clears inspection data like Resume, but the current execution still owns freecam. */
+    public void applyContinue() {
+        applyResume();
+        this.continuing = true;
+    }
+
+    public boolean isContinuing() {
+        return continuing;
     }
 
     public void applyBreakpoints(List<BlockLocation> blocks) {

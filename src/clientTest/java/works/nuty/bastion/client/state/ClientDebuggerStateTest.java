@@ -25,6 +25,33 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ClientDebuggerStateTest {
     @Test
+    void continueClearsStaleInspectionWhileAwaitingTheNextBreakpoint() {
+        ClientDebuggerState state = new ClientDebuggerState();
+        PauseSource selected = source("selected", 2);
+        List<PauseSource> sources = List.of(source("other", 1), selected);
+        state.applyPause(snapshot(sources, 2));
+        state.selectSource(1);
+        assertTrue(state.beginControlRequest());
+        state.applyContinue();
+        assertTrue(state.isContinuing());
+        assertFalse(state.isPaused());
+        assertFalse(state.isStepping());
+        assertNull(state.snapshot());
+        assertFalse(state.controlPending());
+        assertFalse(state.beginControlRequest());
+
+        state.applyPause(snapshot(sources, 2));
+        assertFalse(state.isContinuing());
+        assertSame(selected, state.selectedSource());
+        state.applyContinue();
+        state.applyResume();
+        assertFalse(state.isContinuing());
+        state.applyContinue();
+        state.reset();
+        assertFalse(state.isContinuing(), "disconnect must clear retained presentation");
+    }
+
+    @Test
     void repeatedStepsClearStaleSnapshotsButRetainSelectionForTheNextPause() {
         ClientDebuggerState state = new ClientDebuggerState();
         PauseSource selected = source("selected", 2);

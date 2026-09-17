@@ -21,6 +21,7 @@ public final class BastionNetworking {
         PayloadTypeRegistry.clientboundPlay().register(PauseSyncPayload.TYPE, PauseSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(ResumeSyncPayload.TYPE, ResumeSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(StepSyncPayload.TYPE, StepSyncPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(ContinueSyncPayload.TYPE, ContinueSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(BreakpointSyncPayload.TYPE, BreakpointSyncPayload.CODEC);
     }
 

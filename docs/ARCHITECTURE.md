@@ -89,17 +89,17 @@ while preserving breakpoint definitions.
   but are not drawn in the current world. Source anchors are execution reference points, not
   necessarily the attached entity's position.
 - `input/InputManager` — keybinds; control actions go to the server as `/bastion` commands.
-- `camera/DebuggerFreecam` — a client-only camera entity while paused and between debugger steps.
+- `camera/DebuggerFreecam` — a client-only camera entity while paused and while advancing the inspected execution.
   Client mixins suspend local player and ridden-vehicle simulation, route mouse look into the
   camera, and block gameplay inputs. The camera never enters the level's entity list or supplies
-  player movement packets. Resume/disconnect restores the original viewpoint and perspective.
-  A separate step sync retains the camera's position and orientation across step acknowledgements;
+  player movement packets. Execution end/disconnect restores the original viewpoint and perspective.
+  Separate step and continue syncs retain the camera's position and orientation across acknowledgements;
   the server sends a terminal resume if the execution ends without another pause. Client pause
   snapshots are still cleared during advancement so stale command state cannot be inspected.
   The original player's body remains visible at its paused position through vanilla entity
   rendering; player/vehicle render interpolation is fixed so the pose stays still.
   First-person arms and held items are hidden while freecam is active and return through vanilla
-  rendering on resume; the paused body's third-person arms and equipment remain visible.
+  rendering at execution end; the paused body's third-person arms and equipment remain visible.
 - `BastionClientMod` — client composition root.
 
 `B` opens/closes cursor mode. `F7` continues, `F8` steps over, `F9` steps into, `Shift+F9` steps
@@ -111,8 +111,8 @@ Transition trails are not inferred: they need execution history beyond the curre
 Pausing automatically enables freecam: movement keys follow the horizontal facing direction, jump/sneak move
 up/down, and sprint accelerates. `B` switches between freecam and the cursor UI; open screens stop
 camera motion. `F10` targets the block under the camera. Gameplay actions and inventory input are
-disabled while paused, and already-open containers close. Stepping retains the freecam viewpoint;
-resuming normal execution or finishing the execution restores the player camera. Camera navigation and
+disabled while freecam is active, and already-open containers close. Step and Continue retain the freecam viewpoint
+through later breakpoints in the current execution. Finishing the execution restores the player camera. Camera navigation and
 gameplay clicks (including accessibility toggle states) are cleared on exit so they do not turn into player actions. World/player
 replacement abandons the old camera until a fresh pause snapshot arrives. The existing server
 pause loop still processes only debugger controls and connection maintenance.
@@ -145,7 +145,7 @@ Both block and function breakpoints live on the server in each world save's
 `data/bastion-breakpoints.json`. Block entries retain their dimension and coordinates; function
 entries retain their identifier and one-based line number. `WorldBreakpointPersistence` wraps the
 network event sink, saving both sets after every toggle or clear while forwarding pause, step,
-resume, and breakpoint notifications unchanged. It restores the registry at `SERVER_STARTING`,
+continue, resume, and breakpoint notifications unchanged. It restores the registry at `SERVER_STARTING`,
 before the first tick or player join, and clears it at server shutdown so opening a different
 world cannot inherit the previous world's breakpoints. This also applies to dedicated servers;
 clients receive the restored block set through the existing join sync.
@@ -184,3 +184,10 @@ pause/step/resume packets from the integrated server and checks camera identity 
 across both back-to-back and delayed step transitions, plus terminal restoration. Passing these
 checks does not prove server-driven breakpoint/step synchronization or long-running dedicated
 server pause behavior; those require separate end-to-end Minecraft runtime checks.
+
+`DebuggerFreecamResumeGameTest` powers three connected command blocks with a breakpoint on each,
+then sends real client Resume commands. It checks camera identity and rendered pose at later
+breakpoints, player-view restoration when the chain ends, and that every block executes once.
+A gametest-only `WatchPauseTestMixin` releases the parked server from Fabric's client/server tick
+phaser so the test can render and send controls during a real debugger pause. This hook does not
+run in the shipped mod or process additional server work.

@@ -92,6 +92,83 @@ class DebuggerEngineTest {
     }
 
     @Test
+    void resumeToLaterBreakpointsRetainsPresentationUntilExecutionFinishes() {
+        for (int line = 3; line <= 6; line++) breakpoints.toggleFunction(tick(line));
+        engine.onExecutionStarted();
+        engine.onCommandStage(functionStage(1, 0, 3));
+        for (int line = 4; line <= 6; line++) {
+            engine.resume();
+            assertFalse(engine.isPaused());
+            assertNull(engine.currentSnapshot());
+            assertFalse(step.isStepping(), "continue must not turn into single stepping");
+            assertEquals(line - 3, sink.continues);
+            assertEquals(0, sink.resumes, "continue must not tear down the camera before the next breakpoint");
+            engine.onCommandStage(functionStage(line, 0, line));
+            assertTrue(engine.isPaused());
+            assertEquals(PauseReason.BREAKPOINT, sink.lastPause().reason());
+        }
+
+        engine.resume();
+        assertEquals(4, sink.continues);
+        assertEquals(0, sink.resumes);
+        engine.onExecutionFinished();
+        assertFalse(engine.isPaused(), "continue ends normally without a step-completion pause");
+        assertEquals(4, sink.pauses.size());
+        assertEquals(1, sink.resumes);
+        engine.onTickBoundary();
+        engine.resetSession();
+        assertEquals(1, sink.resumes, "terminal notification is sent exactly once");
+    }
+
+    @Test
+    void continuedExecutionRetainsPresentationAcrossInnerQueuesAndReleasesAtTheOuterBoundary() {
+        engine.onExecutionStarted();
+        engine.onExecutionStarted();
+        breakpoints.toggleFunction(tick(3));
+        engine.onCommandStage(functionStage(1, 0, 3));
+        engine.resume();
+        engine.onExecutionFinished();
+        engine.onTickBoundary();
+        assertEquals(0, sink.resumes, "inner queue completion does not end the enclosing chain");
+
+        engine.onExecutionFinished();
+        assertFalse(engine.isPaused());
+        assertEquals(1, sink.resumes, "the outermost completion must release freecam");
+        engine.onTickBoundary();
+        assertEquals(1, sink.resumes);
+    }
+
+    @Test
+    void resetDuringContinueReleasesPresentationAndDoesNotLeakIntoANewExecution() {
+        engine.onExecutionStarted();
+        breakpoints.toggleFunction(tick(3));
+        engine.onCommandStage(functionStage(1, 0, 3));
+        engine.resume();
+        engine.resetSession();
+        assertEquals(1, sink.resumes);
+        engine.onExecutionStarted();
+        engine.onExecutionFinished();
+        assertEquals(1, sink.resumes);
+    }
+
+    @Test
+    void continueDuringAnInFlightStepRetainsPresentationAndCancelsOnlyStepping() {
+        engine.onExecutionStarted();
+        breakpoints.toggleFunction(tick(3));
+        engine.onCommandStage(functionStage(1, 0, 3));
+        engine.stepInto();
+        engine.resume();
+        engine.resume();
+        assertFalse(step.isStepping());
+        assertEquals(1, sink.steps);
+        assertEquals(1, sink.continues);
+        assertEquals(0, sink.resumes);
+        engine.onExecutionFinished();
+        assertFalse(engine.isPaused());
+        assertEquals(1, sink.resumes);
+    }
+
+    @Test
     void steppingCommandsDoNothingWhenNoExecutionIsPaused() {
         engine.stepInto();
         engine.stepOver();

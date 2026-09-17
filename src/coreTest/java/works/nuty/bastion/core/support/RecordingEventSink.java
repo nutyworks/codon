@@ -13,6 +13,7 @@ public final class RecordingEventSink implements DebuggerEventSink {
     public final List<PauseSnapshot> pauses = new ArrayList<>();
     public int resumes = 0;
     public int steps = 0;
+    public int continues = 0;
     public int breakpointChanges = 0;
 
     @Override
@@ -28,6 +29,11 @@ public final class RecordingEventSink implements DebuggerEventSink {
     @Override
     public void stepping() {
         steps++;
+    }
+
+    @Override
+    public void continued() {
+        continues++;
     }
 
     @Override
