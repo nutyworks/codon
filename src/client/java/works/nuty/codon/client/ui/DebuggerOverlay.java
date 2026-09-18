@@ -476,7 +476,7 @@ public final class DebuggerOverlay {
                     state.preferences().setInspectorTab(InspectorTab.FLOW);
                     sourceOffset = commandOffset = 0;
                     expandedGroup = List.of();
-                }).setTooltip(Tooltip.create(Component.literal(stage.command().text())));
+                });
         }
         if (rows > 0 && flow.stages().size() > rows) {
             scrollbar(graphics, area.x() + area.width() - 5, area.y() + 35, Math.max(1, rows * 19 - 2),
