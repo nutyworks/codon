@@ -96,7 +96,7 @@ public final class DebuggerOverlay {
         Font font = client.font;
         if ((!state.isPaused() || snapshot == null) && !interactive) {
             if (!state.blockBreakpoints().isEmpty()) {
-                String text = "CODON · " + tr("codon.ui.ready") + "  [" + input.menuKey.getTranslatedKeyMessage().getString() + "]";
+                String text = "CODON · " + statusText(snapshot) + "  [" + input.menuKey.getTranslatedKeyMessage().getString() + "]";
                 Bounds header = DebuggerLayout.create(graphics.guiWidth(), graphics.guiHeight(), false).header();
                 Bounds badge = new Bounds(header.x(), header.y(),
                     Math.min(graphics.guiWidth() - 2 * header.x(), font.width(text) + 14), header.height());
@@ -136,25 +136,31 @@ public final class DebuggerOverlay {
         return List.copyOf(controls);
     }
 
-    private void renderHeader(GuiGraphicsExtractor graphics, DebuggerLayout layout, InputManager input,
-                              @Nullable PauseSnapshot snapshot) {
-        String status = state.controlPending() ? tr("codon.ui.waiting")
+    private String statusText(@Nullable PauseSnapshot snapshot) {
+        return state.controlPending() ? tr("codon.ui.waiting")
             : snapshot == null ? tr("codon.ui.running")
             : tr(switch (snapshot.reason()) {
                 case BREAKPOINT -> "codon.ui.breakpoint_hit";
                 case STEP -> "codon.ui.step_complete";
                 case EXECUTION_COMPLETE -> "codon.ui.execution_complete";
             });
+    }
+
+    private void renderHeader(GuiGraphicsExtractor graphics, DebuggerLayout layout, InputManager input,
+                              @Nullable PauseSnapshot snapshot) {
+        String status = statusText(snapshot);
+        String prefix = "CODON · ";
+        int prefixWidth = client.font.width(prefix);
         Bounds toolbar = layout.controls();
         Bounds header = new Bounds(layout.header().x(), layout.header().y(),
-            Math.min(layout.header().width(), Math.max(toolbar.width(), 72 + client.font.width(status))),
+            Math.min(layout.header().width(), Math.max(toolbar.width(), 14 + prefixWidth + client.font.width(status))),
             layout.header().height());
         Bounds headerPanel = new Bounds(header.x(), header.y(), Math.max(header.width(), toolbar.width()),
             toolbar.y() + toolbar.height() - header.y());
         panel(graphics, headerPanel);
         graphics.fill(header.x(), header.y(), header.x() + 2, header.y() + headerPanel.height(), TEAL);
-        text(graphics, "CODON", header.x() + 7, header.y() + 5, 52, TEXT);
-        text(graphics, status, header.x() + 64, header.y() + 5, Math.max(0, header.width() - 69),
+        text(graphics, prefix, header.x() + 7, header.y() + 5, Math.max(0, header.width() - 14), TEXT);
+        text(graphics, status, header.x() + 7 + prefixWidth, header.y() + 5, Math.max(0, header.width() - 14 - prefixWidth),
             state.isPaused() ? AMBER : MUTED);
 
         int gap = DebuggerLayout.ICON_BUTTON_GAP;
