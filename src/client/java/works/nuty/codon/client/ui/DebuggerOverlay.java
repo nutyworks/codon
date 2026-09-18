@@ -271,7 +271,7 @@ public final class DebuggerOverlay {
                     sourceOffset = index;
                 }
                 state.preferences().setInspectorVisible(true);
-                state.preferences().setInspectorTab(group ? InspectorTab.SOURCES : InspectorTab.DETAILS);
+                state.preferences().setInspectorTab(InspectorTab.SOURCES);
             }), statusIndex).setTooltip(Tooltip.create(group ? component("codon.ui.group_hint") : worldSourceTooltip(title, index)));
         }
         String legend = tr(state.selectedExecutionFlowStage() == null ? "codon.ui.legend" : "codon.ui.legend_flow");
@@ -360,20 +360,16 @@ public final class DebuggerOverlay {
                 sourceDetailsHeight(), snapshot.callStack().size());
             renderInspectorSection(graphics, sections.flow(), InspectorTab.FLOW, snapshot);
             renderInspectorSection(graphics, sections.sources(), InspectorTab.SOURCES, snapshot);
-            renderInspectorSection(graphics, sections.details(), InspectorTab.DETAILS, snapshot);
             renderInspectorSection(graphics, sections.stack(), InspectorTab.STACK, snapshot);
         } else {
-            int tabCount = 4;
+            int tabCount = 3;
             int tabWidth = (area.width() - 3 * (tabCount + 1)) / tabCount;
             button("tab-sources", new Bounds(area.x() + 3, area.y() + 3, tabWidth, 18), component("codon.ui.contexts"),
-                true, state.preferences().inspectorTab() == InspectorTab.SOURCES, false, false,
+                true, (state.preferences().inspectorTab() == InspectorTab.SOURCES || state.preferences().inspectorTab() == InspectorTab.DETAILS), false, false,
                 () -> state.preferences().setInspectorTab(InspectorTab.SOURCES));
             button("tab-flow", new Bounds(area.x() + 6 + tabWidth, area.y() + 3, tabWidth, 18),
                 component("codon.ui.flow"), true, state.preferences().inspectorTab() == InspectorTab.FLOW, false, false,
                 () -> state.preferences().setInspectorTab(InspectorTab.FLOW));
-            button("tab-detail", new Bounds(area.x() + 9 + tabWidth * 2, area.y() + 3, tabWidth, 18),
-                component("codon.ui.details"), true, state.preferences().inspectorTab() == InspectorTab.DETAILS, false, false,
-                () -> state.preferences().setInspectorTab(InspectorTab.DETAILS));
             button("tab-stack", new Bounds(area.x() + 3 + (tabCount - 1) * (tabWidth + 3), area.y() + 3, tabWidth, 18), component("codon.ui.stack"),
                 true, state.preferences().inspectorTab() == InspectorTab.STACK, false, false,
                 () -> state.preferences().setInspectorTab(InspectorTab.STACK));
@@ -381,11 +377,7 @@ public final class DebuggerOverlay {
             switch (state.preferences().inspectorTab()) {
                 case STACK -> renderStack(graphics, body, snapshot);
                 case FLOW -> renderFlow(graphics, body, snapshot);
-                case DETAILS -> {
-                    if (body.height() >= 155) renderSourcesWithDetails(graphics, body, snapshot);
-                    else renderSourceDetails(graphics, body);
-                }
-                case SOURCES -> renderSourcesWithDetails(graphics, body, snapshot);
+                case SOURCES, DETAILS -> renderSourcesWithDetails(graphics, body, snapshot);
             }
         }
     }
@@ -418,8 +410,8 @@ public final class DebuggerOverlay {
         }
         switch (section) {
             case FLOW -> renderFlow(graphics, area, snapshot, 11);
-            case SOURCES -> renderSources(graphics, area, snapshot, 11);
-            case DETAILS -> renderSourceDetails(graphics, area, 11);
+            case SOURCES -> renderSourcesWithDetails(graphics, area, snapshot, 11);
+            case DETAILS -> renderSourcesWithDetails(graphics, area, snapshot, 11);
             case STACK -> renderStack(graphics, area, snapshot, 11);
         }
     }
@@ -433,10 +425,18 @@ public final class DebuggerOverlay {
 
     private void renderSourcesWithDetails(GuiGraphicsExtractor graphics, Bounds body,
                                           PauseSnapshot snapshot) {
-        int detailHeight = body.height() >= 155 ? 94 : body.height() >= 112 ? 70 : 0;
-        renderSources(graphics, new Bounds(body.x(), body.y(), body.width(), body.height() - detailHeight), snapshot);
+        sectionDivider(graphics, body);
+        renderSourcesWithDetails(graphics, body, snapshot, 0);
+    }
+
+    private void renderSourcesWithDetails(GuiGraphicsExtractor graphics, Bounds body,
+                                          PauseSnapshot snapshot, int headingInset) {
+        // Keep at least one selectable source row and give its details the remaining content budget.
+        int detailHeight = Math.min(sourceDetailsHeight(), Math.max(0, body.height() - 49));
+        int listHeight = body.height() - detailHeight;
+        renderSources(graphics, new Bounds(body.x(), body.y(), body.width(), listHeight), snapshot, headingInset);
         if (detailHeight > 0) renderSourceDetails(graphics,
-            new Bounds(body.x(), body.y() + body.height() - detailHeight, body.width(), detailHeight));
+            new Bounds(body.x(), body.y() + listHeight, body.width(), detailHeight), 0);
     }
 
     private void renderFlow(GuiGraphicsExtractor graphics, Bounds area, PauseSnapshot snapshot) {
@@ -512,11 +512,6 @@ public final class DebuggerOverlay {
         }
     }
 
-    private void renderSources(GuiGraphicsExtractor graphics, Bounds area, PauseSnapshot snapshot) {
-        sectionDivider(graphics, area);
-        renderSources(graphics, area, snapshot, 0);
-    }
-
     private void renderSources(GuiGraphicsExtractor graphics, Bounds area, PauseSnapshot snapshot, int headingInset) {
         String heading = expandedGroup.isEmpty() ? tr("codon.ui.contexts")
             : Component.translatable("codon.ui.group", expandedGroup.size()).getString();
@@ -540,14 +535,17 @@ public final class DebuggerOverlay {
             int index = indices.get(sourceOffset + row);
             PauseSource source = state.displayedSources().get(index);
             String name = sourceLabel(source, index, state.isDisplayedSourceDropped(index));
-            if (!source.dimension().equals(dimension())) name += " · " + shortDimension(source.dimension());
-            colorSourceButton(button("source-" + index, new Bounds(area.x() + 5, area.y() + 21 + row * 19, area.width() - 13, 17),
-                Component.literal(name), true, index == state.selectedSourceIndex(), true, false, () -> {
+            Component title = Component.literal(name);
+            Component tooltip = sourceTooltip(title, index);
+            if (!source.dimension().equals(dimension())) tooltip = tooltip.copy().append("\n" + shortDimension(source.dimension()));
+            int labelWidth = area.width() - 13;
+            colorSourceButton(button("source-" + index, new Bounds(area.x() + 5, area.y() + 21 + row * 19, labelWidth, 17),
+                title, true, index == state.selectedSourceIndex(), true, false, () -> {
                     if (state.inspectionSnapshot() == snapshot) {
                         state.selectSource(index);
-                        state.preferences().setInspectorTab(InspectorTab.DETAILS);
+                        state.preferences().setInspectorTab(InspectorTab.SOURCES);
                     }
-                }), index).setTooltip(Tooltip.create(sourceTooltip(Component.literal(name), index)));
+                }), index).setTooltip(Tooltip.create(tooltip));
         }
         if (rows > 0 && indices.size() > rows) {
             text(graphics, (sourceOffset + 1) + "–" + Math.min(indices.size(), sourceOffset + rows) + " / " + indices.size(),
@@ -557,27 +555,35 @@ public final class DebuggerOverlay {
         }
     }
 
-    private void renderSourceDetails(GuiGraphicsExtractor graphics, Bounds area) {
-        sectionDivider(graphics, area);
-        renderSourceDetails(graphics, area, 0);
-    }
-
     private void renderSourceDetails(GuiGraphicsExtractor graphics, Bounds area, int headingInset) {
         PauseSource source = state.selectedSource();
         if (source == null) return;
         int y = area.y() + 6;
         int accent = sourceColor(state.selectedSourceIndex(), TEAL);
-        text(graphics, "#" + (state.selectedSourceIndex() + 1) + " · " + name(source),
-            area.x() + 7 + headingInset, y, area.width() - 14 - headingInset, sectionHeadingColor(InspectorTab.DETAILS, headingInset, accent));
-        y += 13;
-        if (state.selectedSourceDropped() && y + 9 <= area.y() + area.height()) {
-            text(graphics, tr("codon.ui.flow_excluded"), area.x() + 7, y, area.width() - 14, RED);
-            y += 11;
-        } else {
-            if (state.selectedSourceCreated() && y + 9 <= area.y() + area.height()) {
-                text(graphics, tr("codon.ui.flow_created"), area.x() + 7, y, area.width() - 14, GREEN);
-                y += 11;
-            }
+        int iconX = area.x() + area.width() - 23;
+        if (source.entity() != null) {
+            String uuid = source.entity().uuid().toString();
+            iconButton("copy-uuid", new Bounds(iconX, y - 3, 16, 16),
+                Component.literal("UUID: " + uuid + "\n" + tr("codon.ui.copy")), DebuggerIcon.COPY_UUID,
+                true, () -> client.keyboardHandler.setClipboard(uuid)).withoutChrome();
+            iconX -= 18;
+        }
+        if (!visibleSources.contains(state.selectedSourceIndex())) {
+            sourceStatusIcon(graphics, iconX, y - 3, DebuggerIcon.OUTSIDE_VIEWPORT, AMBER,
+                component(source.dimension().equals(dimension()) ? "codon.ui.offscreen" : "codon.ui.other_dimension"));
+            iconX -= 18;
+        }
+        if (state.selectedSourceDropped() || state.selectedSourceCreated()) {
+            boolean dropped = state.selectedSourceDropped();
+            sourceStatusIcon(graphics, iconX, y - 3,
+                dropped ? DebuggerIcon.SOURCE_EXCLUDED : DebuggerIcon.SOURCE_CREATED,
+                dropped ? RED : GREEN, component(dropped ? "codon.ui.flow_excluded" : "codon.ui.flow_created"));
+            iconX -= 18;
+        }
+        text(graphics, sourceLabel(source, state.selectedSourceIndex(), state.selectedSourceDropped()),
+            area.x() + 7 + headingInset, y, iconX + 16 - area.x() - 9 - headingInset, accent);
+        y += 16;
+        if (!state.selectedSourceDropped()) {
             ExecutionFlowContext parent = state.selectedFlowParent();
             if (parent != null) y = renderFlowChanges(graphics, area, y, parent.source(), source);
         }
@@ -597,28 +603,21 @@ public final class DebuggerOverlay {
                 area.x() + 7, y, area.width() - 14, TEXT);
             y += 11;
         }
-        if (source.entity() != null && y + 16 <= area.y() + area.height()) {
-            String uuid = source.entity().uuid().toString();
-            button("copy-uuid", new Bounds(area.x() + 7, y, area.width() - 14, 16),
-                Component.literal("UUID " + uuid.substring(0, 4) + "..." + uuid.substring(uuid.length() - 4)
-                    + " " + tr("codon.ui.copy")),
-                true, false, true, false, () -> client.keyboardHandler.setClipboard(uuid))
-                .setTooltip(Tooltip.create(Component.literal(uuid)));
-            y += 18;
-        }
-        if (!visibleSources.contains(state.selectedSourceIndex()) && y + 9 <= area.y() + area.height()) {
-            text(graphics, tr(source.dimension().equals(dimension()) ? "codon.ui.offscreen" : "codon.ui.other_dimension"),
-                area.x() + 7, y, area.width() - 14, AMBER);
+    }
+
+    private void sourceStatusIcon(GuiGraphicsExtractor graphics, int x, int y, DebuggerIcon icon,
+                                  int color, Component description) {
+        icon.draw(graphics, x + 2, y + 2, color);
+        if (hoverX >= x && hoverX < x + 16 && hoverY >= y && hoverY < y + 16) {
+            graphics.setTooltipForNextFrame(client.font, description, hoverX, hoverY);
         }
     }
 
     private int sourceDetailsHeight() {
         PauseSource source = state.selectedSource();
         if (source == null) return 20;
-        int height = 6 + 13 + 10 + 11 + 11 + 11 + 5;
-        if (state.selectedSourceDropped()) height += 11;
-        else {
-            if (state.selectedSourceCreated()) height += 11;
+        int height = 6 + 16 + 10 + 11 + 11 + 11 + 5;
+        if (!state.selectedSourceDropped()) {
             ExecutionFlowContext parent = state.selectedFlowParent();
             if (parent != null) {
                 if (!Objects.equals(parent.source().entity(), source.entity())) height += 11;
@@ -626,8 +625,6 @@ public final class DebuggerOverlay {
                 if (!parent.source().anchor().equals(source.anchor())) height += 11;
             }
         }
-        if (source.entity() != null) height += 18;
-        if (!visibleSources.contains(state.selectedSourceIndex())) height += 9;
         return height;
     }
 

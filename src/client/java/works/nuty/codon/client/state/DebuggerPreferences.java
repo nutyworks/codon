@@ -7,6 +7,7 @@ import java.util.Objects;
 /** Client preferences that are retained across worlds and client restarts. */
 public final class DebuggerPreferences {
     public enum InspectorTab {
+        // DETAILS remains readable for existing settings; the UI presents it as SOURCES.
         SOURCES, FLOW, DETAILS, STACK
     }
 

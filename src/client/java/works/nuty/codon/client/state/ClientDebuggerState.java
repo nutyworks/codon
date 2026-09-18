@@ -200,7 +200,7 @@ public final class ClientDebuggerState {
 
     /** Sources currently connected to the inspector and world markers. */
     public List<PauseSource> displayedSources() {
-        ExecutionFlowStage stage = selectedExecutionFlowStage();
+        ExecutionFlowStage stage = sourceStage();
         if (stage != null) {
             List<PauseSource> result = new ArrayList<>();
             for (ExecutionFlowContext context : stage.displayContexts()) result.add(context.source());
@@ -211,7 +211,7 @@ public final class ClientDebuggerState {
     }
 
     public List<ExecutionFlowContext> displayedFlowContexts() {
-        ExecutionFlowStage stage = selectedExecutionFlowStage();
+        ExecutionFlowStage stage = sourceStage();
         return stage == null ? List.of() : stage.displayContexts();
     }
 
@@ -228,7 +228,7 @@ public final class ClientDebuggerState {
     }
 
     public @Nullable ExecutionFlowContext selectedFlowParent() {
-        ExecutionFlowStage stage = selectedExecutionFlowStage();
+        ExecutionFlowStage stage = sourceStage();
         ExecutionFlowContext selected = selectedFlowContext();
         if (stage == null || selected == null) return null;
         long inputId = 0;
@@ -246,13 +246,13 @@ public final class ClientDebuggerState {
     }
 
     public boolean selectedSourceDropped() {
-        ExecutionFlowStage stage = selectedExecutionFlowStage();
+        ExecutionFlowStage stage = sourceStage();
         ExecutionFlowContext selected = selectedFlowContext();
         return stage != null && selected != null && stage.isDroppedContext(selected.id());
     }
 
     public boolean isDisplayedSourceDropped(int index) {
-        ExecutionFlowStage stage = selectedExecutionFlowStage();
+        ExecutionFlowStage stage = sourceStage();
         List<ExecutionFlowContext> contexts = displayedFlowContexts();
         return stage != null && index >= 0 && index < contexts.size()
             && stage.isDroppedContext(contexts.get(index).id());
@@ -263,7 +263,7 @@ public final class ClientDebuggerState {
     }
 
     public boolean isDisplayedSourceCreated(int index) {
-        ExecutionFlowStage stage = selectedExecutionFlowStage();
+        ExecutionFlowStage stage = sourceStage();
         List<ExecutionFlowContext> contexts = displayedFlowContexts();
         return stage != null && index >= 0 && index < contexts.size()
             && stage.isCreatedContext(contexts.get(index).id());
@@ -271,8 +271,8 @@ public final class ClientDebuggerState {
 
     /**
      * Pauses precede execution. For an unexecuted next stage, show the transition which produced
-     * its inputs, including sources just excluded by that transition. The command/inspector
-     * selection remains on the actual current stage until the user selects a world marker.
+     * its inputs, including sources just excluded by that transition. Both source views use
+     * this transition while command selection remains on the actual current stage.
      */
     public @Nullable ExecutionFlowStage worldSourceStage() {
         if (!paused || snapshot == null) return null;
@@ -287,6 +287,10 @@ public final class ClientDebuggerState {
             }
         }
         return current;
+    }
+
+    private @Nullable ExecutionFlowStage sourceStage() {
+        return paused && snapshot != null ? worldSourceStage() : selectedExecutionFlowStage();
     }
 
     public List<PauseSource> worldSources() {
@@ -392,7 +396,7 @@ public final class ClientDebuggerState {
         ExecutionFlowTrace flow = current.executionFlows().get(flowIndex);
         if (flow.stages().isEmpty()) return;
         selectedFlowIndex = flowIndex;
-        selectedFlowStageIndex = flow.stages().size() - 1;
+        selectedFlowStageIndex = latestCompletedStage(flow);
         selectedSourceIndex = displayedSources().isEmpty() ? -1 : 0;
         selectedFrameIndex = -1;
         syncLiveSourceSelection();
@@ -442,6 +446,13 @@ public final class ClientDebuggerState {
         nbt.reset();
     }
 
+    private static int latestCompletedStage(ExecutionFlowTrace flow) {
+        for (int index = flow.stages().size() - 1; index >= 0; index--) {
+            if (flow.stages().get(index).complete()) return index;
+        }
+        return flow.stages().isEmpty() ? -1 : 0;
+    }
+
     private void selectLatestFlow(PauseSnapshot snapshot) {
         selectedFlowIndex = -1;
         selectedFlowStageIndex = -1;
@@ -449,7 +460,7 @@ public final class ClientDebuggerState {
             ExecutionFlowTrace flow = snapshot.executionFlows().get(i);
             if (!flow.stages().isEmpty()) {
                 selectedFlowIndex = i;
-                selectedFlowStageIndex = flow.stages().size() - 1;
+                selectedFlowStageIndex = latestCompletedStage(flow);
                 return;
             }
         }
@@ -479,7 +490,7 @@ public final class ClientDebuggerState {
 
     private @Nullable FlowSelectionHint currentFlowHint() {
         ExecutionFlowTrace flow = selectedExecutionFlow();
-        ExecutionFlowStage stage = selectedExecutionFlowStage();
+        ExecutionFlowStage stage = sourceStage();
         ExecutionFlowContext context = selectedFlowContext();
         return flow == null || stage == null || context == null ? null
             : new FlowSelectionHint(flow.invocationId(), stage.index(), context.id());

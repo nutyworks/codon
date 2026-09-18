@@ -14,6 +14,10 @@ public enum DebuggerIcon {
     DETAILS_OPEN,
     DETAILS_CLOSED,
     PIN,
+    SOURCE_CREATED,
+    SOURCE_EXCLUDED,
+    OUTSIDE_VIEWPORT,
+    COPY_UUID,
     EXPAND,
     COLLAPSE;
 
@@ -31,6 +35,20 @@ public enum DebuggerIcon {
             case DETAILS_OPEN -> details(graphics, x, y, color, true);
             case DETAILS_CLOSED -> details(graphics, x, y, color, false);
             case PIN -> pin(graphics, x, y, color);
+            case SOURCE_CREATED, SOURCE_EXCLUDED -> {
+                graphics.fill(x + 2, y + 5, x + 10, y + 7, color);
+                if (this == SOURCE_CREATED) graphics.fill(x + 5, y + 2, x + 7, y + 10, color);
+            }
+            case OUTSIDE_VIEWPORT -> {
+                outline(graphics, x + 1, y + 3, 7, 8, color);
+                graphics.fill(x + 6, y + 1, x + 11, y + 2, color);
+                graphics.fill(x + 10, y + 1, x + 11, y + 6, color);
+                for (int i = 0; i < 6; i++) graphics.fill(x + 5 + i, y + 6 - i, x + 6 + i, y + 7 - i, color);
+            }
+            case COPY_UUID -> {
+                outline(graphics, x + 1, y + 1, 7, 8, color);
+                outline(graphics, x + 4, y + 4, 7, 8, color);
+            }
             case EXPAND, COLLAPSE -> {
                 for (int step = 0; step < 3; step++) {
                     if (this == EXPAND) {

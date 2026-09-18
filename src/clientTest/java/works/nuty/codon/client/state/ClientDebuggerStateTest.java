@@ -481,7 +481,9 @@ class ClientDebuggerStateTest {
         state.applyPause(snapshotWithFlows(List.of(new ExecutionFlowTrace(96,
             new SourceLocation.Block(new BlockLocation(0, 64, 0, "overworld")), List.of(as, at, next), false))));
 
-        assertSame(next, state.selectedExecutionFlowStage(), "the inspector remains on the paused command");
+        assertSame(at, state.selectedExecutionFlowStage(), "automatically select the last completed stage");
+        assertEquals(state.worldSources(), state.displayedSources());
+        assertTrue(state.isDisplayedSourceDropped(1));
         assertSame(at, state.worldSourceStage());
         assertEquals(List.of(passedSource, droppedSource), state.worldSources());
         assertEquals(0, state.selectedWorldSourceIndex());
@@ -512,7 +514,9 @@ class ClientDebuggerStateTest {
         state.applyPause(snapshotWithFlows(List.of(new ExecutionFlowTrace(105,
             new SourceLocation.Block(new BlockLocation(0, 64, 0, "overworld")), List.of(as, at), false))));
 
-        assertSame(at, state.selectedExecutionFlowStage());
+        assertSame(as, state.selectedExecutionFlowStage());
+        assertEquals(state.worldSources(), state.displayedSources());
+        assertTrue(state.isDisplayedSourceCreated(0));
         assertSame(as, state.worldSourceStage());
         assertEquals(List.of(firstSource, secondSource), state.worldSources());
         assertTrue(state.isWorldSourceCreated(0));
@@ -583,6 +587,8 @@ class ClientDebuggerStateTest {
 
         for (int flowIndex = 0; flowIndex < flows.size(); flowIndex++) {
             state.selectExecutionFlow(flowIndex);
+            assertSame(flows.get(flowIndex).stages().getFirst(), state.selectedExecutionFlowStage());
+            state.selectExecutionFlowStage(1);
             ExecutionFlowStage current = flows.get(flowIndex).stages().get(1);
             assertSame(current, state.worldSourceStage());
             assertEquals(current.displayContexts().stream().map(ExecutionFlowContext::source).toList(), state.worldSources());
