@@ -125,7 +125,7 @@ public final class InputManager implements ClientTickEvents.EndTick {
 
     public void registerKeyMappings() {
         KeyMapping.Category category = new KeyMapping.Category(CATEGORY_ID);
-        this.menuKey = register("key.codon.open_menu", InputConstants.KEY_B, category);
+        this.menuKey = register("key.codon.open_menu", InputConstants.KEY_V, category);
         this.breakpointKey = register("key.codon.breakpoint", InputConstants.KEY_F10, category);
         this.resumeKey = register("key.codon.resume", InputConstants.KEY_F7, category);
         this.stepOverKey = register("key.codon.step_over", InputConstants.KEY_F8, category);
