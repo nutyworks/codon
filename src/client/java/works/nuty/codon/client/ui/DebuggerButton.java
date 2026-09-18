@@ -4,6 +4,7 @@ import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractButton;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.input.InputWithModifiers;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -17,7 +18,10 @@ public final class DebuggerButton extends AbstractButton {
     private boolean selected;
     private boolean leftAligned;
     private boolean subdued;
+    private boolean borderless;
+    private boolean leadingIcon;
     private @Nullable DebuggerIcon icon;
+    private @Nullable Tooltip tooltip;
     private int foregroundColor = DebuggerTheme.TEXT;
     private int accentColor = DebuggerTheme.TEAL;
     private int selectedSurface = DebuggerTheme.TEAL_SURFACE;
@@ -32,10 +36,13 @@ public final class DebuggerButton extends AbstractButton {
         setY(y);
         setSize(width, height);
         setMessage(label);
+        setTooltip(null);
         this.active = active;
         this.selected = selected;
         this.leftAligned = leftAligned;
         this.subdued = subdued;
+        this.borderless = false;
+        this.leadingIcon = false;
         this.action = action;
         this.secondaryAction = null;
         this.icon = null;
@@ -55,6 +62,17 @@ public final class DebuggerButton extends AbstractButton {
 
     public DebuggerButton withIcon(DebuggerIcon icon) {
         this.icon = icon;
+        return this;
+    }
+
+    public DebuggerButton withoutChrome() {
+        this.borderless = true;
+        return this;
+    }
+
+    public DebuggerButton withLeadingIcon(DebuggerIcon icon) {
+        this.icon = icon;
+        this.leadingIcon = true;
         return this;
     }
 
@@ -91,11 +109,15 @@ public final class DebuggerButton extends AbstractButton {
             : (isHovered() || keyboardFocus) && active ? DebuggerTheme.RAISED : DebuggerTheme.SURFACE;
         int foreground = !active || subdued ? DebuggerTheme.MUTED : foregroundColor;
         int outline = active && (selected || keyboardFocus) ? accentColor : DebuggerTheme.BORDER;
-        graphics.fill(getX(), getY(), getRight(), getBottom(), background);
-        graphics.outline(getX(), getY(), width, height, outline);
+        if (borderless) {
+            if (active && (isHovered() || keyboardFocus)) foreground = accentColor;
+        } else {
+            graphics.fill(getX(), getY(), getRight(), getBottom(), background);
+            graphics.outline(getX(), getY(), width, height, outline);
+        }
         if (icon != null) {
             graphics.enableScissor(getX() + 1, getY() + 1, getRight() - 1, getBottom() - 1);
-            icon.draw(graphics, getX() + (width - DebuggerIcon.SIZE) / 2,
+            icon.draw(graphics, getX() + (leadingIcon ? 1 : (width - DebuggerIcon.SIZE) / 2),
                 getY() + (height - DebuggerIcon.SIZE) / 2, foreground);
             graphics.disableScissor();
             return;
@@ -112,7 +134,23 @@ public final class DebuggerButton extends AbstractButton {
     }
 
     @Override
+    public void setTooltip(@Nullable Tooltip tooltip) {
+        this.tooltip = tooltip;
+        super.setTooltip(tooltip);
+    }
+
+    @Override
     protected void extractTooltipForNextRenderPass(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
+        var client = Minecraft.getInstance();
+        if (icon == null && isHovered() && client.font.width(getMessage()) > Math.max(0, width - 10)) {
+            var lines = new java.util.ArrayList<>(Tooltip.splitTooltip(client, getMessage()));
+            if (tooltip != null) {
+                var hint = tooltip.toCharSequence(client);
+                if (!hint.equals(lines)) lines.addAll(hint);
+            }
+            graphics.setTooltipForNextFrame(client.font, lines, mouseX, mouseY);
+            return;
+        }
         // Icon names remain available to narration; visual shortcut hints require an actual hover.
         if (icon == null || isHovered()) super.extractTooltipForNextRenderPass(graphics, mouseX, mouseY);
     }

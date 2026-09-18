@@ -32,8 +32,15 @@ public enum DebuggerIcon {
             case DETAILS_CLOSED -> details(graphics, x, y, color, false);
             case PIN -> pin(graphics, x, y, color);
             case EXPAND, COLLAPSE -> {
-                graphics.fill(x + 2, y + 5, x + 10, y + 7, color);
-                if (this == EXPAND) graphics.fill(x + 5, y + 2, x + 7, y + 10, color);
+                for (int step = 0; step < 3; step++) {
+                    if (this == EXPAND) {
+                        graphics.fill(x + 4 + step, y + 4 + step, x + 5 + step, y + 5 + step, color);
+                        graphics.fill(x + 4 + step, y + 8 - step, x + 5 + step, y + 9 - step, color);
+                    } else {
+                        graphics.fill(x + 3 + step, y + 5 + step, x + 4 + step, y + 6 + step, color);
+                        graphics.fill(x + 7 - step, y + 5 + step, x + 8 - step, y + 6 + step, color);
+                    }
+                }
             }
         }
     }

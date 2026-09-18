@@ -262,11 +262,11 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
         String[] sections = { "Flow", "Sources", "Details", "Call stack" };
         context.runOnClient(client -> {
             for (String section : sections) {
-                DebuggerButton toggle = button(screen, value -> value.equals("− " + section));
+                DebuggerButton toggle = button(screen, value -> value.equals("v " + section));
                 require(toggle.icon() == DebuggerIcon.COLLAPSE,
                     "Collapse is a drawn icon, never ellipsized text");
                 require(toggle.getWidth() >= DebuggerIcon.SIZE + 2
-                    && toggle.getHeight() >= DebuggerIcon.SIZE + 2, "Toggle icon fits inside its border");
+                    && toggle.getHeight() >= DebuggerIcon.SIZE + 2, "Toggle icon fits inside its hit area");
             }
             long sourceRows = screen.children().stream().filter(DebuggerButton.class::isInstance)
                 .map(DebuggerButton.class::cast).filter(b -> b.getMessage().getString().matches("#[0-9]+ Zombie [0-9]+"))
@@ -274,33 +274,33 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
             require(sourceRows > 3, "Tall Sources uses available height beyond the previous three-row cap");
         });
         for (String section : sections) {
-            context.runOnClient(client -> click(screen, button(screen, value -> value.equals("− " + section))));
+            context.runOnClient(client -> click(screen, button(screen, value -> value.equals("v " + section))));
             context.waitTicks(2);
-            context.runOnClient(client -> require(button(screen, value -> value.equals("+ " + section)).icon()
-                == DebuggerIcon.EXPAND, "Collapsed section retains its plus icon"));
+            context.runOnClient(client -> require(button(screen, value -> value.equals("> " + section)).icon()
+                == DebuggerIcon.EXPAND, "Collapsed section retains its right chevron"));
         }
         context.runOnClient(client -> {
             for (int i = 1; i < sections.length; i++) {
-                String previousLabel = "+ " + sections[i - 1];
-                String currentLabel = "+ " + sections[i];
+                String previousLabel = "> " + sections[i - 1];
+                String currentLabel = "> " + sections[i];
                 DebuggerButton previous = button(screen, value -> value.equals(previousLabel));
                 DebuggerButton current = button(screen, value -> value.equals(currentLabel));
                 require(current.getY() - previous.getY() == 20, "Every collapsed section is header-only");
             }
         });
         context.takeScreenshot("codon-inspector-all-collapsed");
-        context.runOnClient(client -> click(screen, button(screen, value -> value.equals("+ Sources"))));
+        context.runOnClient(client -> click(screen, button(screen, value -> value.equals("> Sources"))));
         context.waitTicks(2);
         context.runOnClient(client -> {
             button(screen, value -> value.equals("#8 Zombie 8"));
-            DebuggerButton stack = button(screen, value -> value.equals("+ Call stack"));
+            DebuggerButton stack = button(screen, value -> value.equals("> Call stack"));
             var area = works.nuty.codon.client.ui.layout.DebuggerLayout.create(screen.width, screen.height, true).inspector();
             require(stack.getY() == area.y() + area.height() - 18,
                 "The only open section takes all height down to the final collapsed header");
         });
         context.takeScreenshot("codon-inspector-sources-fill-height");
         for (String section : List.of("Flow", "Details", "Call stack")) {
-            context.runOnClient(client -> click(screen, button(screen, value -> value.equals("+ " + section))));
+            context.runOnClient(client -> click(screen, button(screen, value -> value.equals("> " + section))));
             context.waitTicks(2);
         }
         context.getInput().resizeWindow(1280, 1600);

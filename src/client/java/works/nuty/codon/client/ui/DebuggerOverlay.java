@@ -67,6 +67,8 @@ public final class DebuggerOverlay {
     private Bounds watchSummaryScrollBounds = EMPTY;
     private Bounds flowScrollBounds = EMPTY;
     private boolean showInspector;
+    private int hoverX = -1;
+    private int hoverY = -1;
     private final Set<InspectorTab> collapsedSections = new HashSet<>();
 
     public DebuggerOverlay(ClientDebuggerState state) {
@@ -77,6 +79,8 @@ public final class DebuggerOverlay {
     public List<DebuggerButton> render(GuiGraphicsExtractor graphics, int mouseX, int mouseY,
                                        float partialTick, boolean interactive, InputManager input) {
         controls.clear();
+        hoverX = interactive ? mouseX : -1;
+        hoverY = interactive ? mouseY : -1;
         usedButtons.clear();
         sourceScrollBounds = stackScrollBounds = commandScrollBounds = flowScrollBounds = EMPTY;
         watchSummaryScrollBounds = EMPTY;
@@ -388,6 +392,7 @@ public final class DebuggerOverlay {
 
     private void renderInspectorSection(GuiGraphicsExtractor graphics, Bounds area, InspectorTab section,
                                         PauseSnapshot snapshot) {
+        sectionDivider(graphics, area);
         boolean collapsed = collapsedSections.contains(section);
         String key = switch (section) {
             case FLOW -> "codon.ui.flow";
@@ -395,22 +400,35 @@ public final class DebuggerOverlay {
             case DETAILS -> "codon.ui.details";
             case STACK -> "codon.ui.stack";
         };
-        button("section-" + section.name(), new Bounds(area.x() + 2, area.y() + 2, 15, 15),
-            Component.literal((collapsed ? "+ " : "− ") + tr(key)), true, false, false, false, () -> {
+        int headerEnd = area.x() + area.width() - 5;
+        if (!collapsed && section == InspectorTab.FLOW && state.selectedExecutionFlow() != null) {
+            headerEnd = area.x() + area.width() - 47;
+        } else if (!collapsed && section == InspectorTab.SOURCES && !expandedGroup.isEmpty()) {
+            headerEnd = area.x() + area.width() - 39;
+        }
+        button("section-" + section.name(), new Bounds(area.x() + 2, area.y() + 2,
+                Math.max(15, headerEnd - area.x() - 2), 15),
+            Component.literal((collapsed ? "> " : "v ") + tr(key)), true, false, false, false, () -> {
                 if (!collapsedSections.remove(section)) collapsedSections.add(section);
-            }).withIcon(collapsed ? DebuggerIcon.EXPAND : DebuggerIcon.COLLAPSE)
-            .setTooltip(Tooltip.create(component(key)));
-        Bounds body = new Bounds(area.x() + 18, area.y(), area.width() - 18, area.height());
+            }).withLeadingIcon(collapsed ? DebuggerIcon.EXPAND : DebuggerIcon.COLLAPSE).withoutChrome();
+        Bounds body = new Bounds(area.x() + 11, area.y(), area.width() - 11, area.height());
         if (collapsed) {
-            text(graphics, tr(key), body.x() + 7, body.y() + 6, body.width() - 14, MUTED);
+            text(graphics, tr(key), body.x() + 7, body.y() + 6, body.width() - 14, sectionHeadingColor(section, 11, MUTED));
             return;
         }
         switch (section) {
-            case FLOW -> renderFlow(graphics, body, snapshot);
-            case SOURCES -> renderSources(graphics, body, snapshot);
-            case DETAILS -> renderSourceDetails(graphics, body);
-            case STACK -> renderStack(graphics, body, snapshot);
+            case FLOW -> renderFlow(graphics, area, snapshot, 11);
+            case SOURCES -> renderSources(graphics, area, snapshot, 11);
+            case DETAILS -> renderSourceDetails(graphics, area, 11);
+            case STACK -> renderStack(graphics, area, snapshot, 11);
         }
+    }
+
+    private int sectionHeadingColor(InspectorTab section, int headingInset, int normalColor) {
+        if (headingInset == 0) return normalColor;
+        DebuggerButton toggle = buttonCache.get("section-" + section.name());
+        return toggle != null && (toggle.isMouseOver(hoverX, hoverY)
+            || (toggle.isFocused() && client.getLastInputType().isKeyboard())) ? TEAL : normalColor;
     }
 
     private void renderSourcesWithDetails(GuiGraphicsExtractor graphics, Bounds body,
@@ -422,11 +440,15 @@ public final class DebuggerOverlay {
     }
 
     private void renderFlow(GuiGraphicsExtractor graphics, Bounds area, PauseSnapshot snapshot) {
+        sectionDivider(graphics, area);
+        renderFlow(graphics, area, snapshot, 0);
+    }
+
+    private void renderFlow(GuiGraphicsExtractor graphics, Bounds area, PauseSnapshot snapshot, int headingInset) {
         if (area.height() < 28) return;
-        graphics.fill(area.x() + 5, area.y(), area.x() + area.width() - 5, area.y() + 1, BORDER);
         ExecutionFlowTrace flow = state.selectedExecutionFlow();
         if (flow == null) {
-            text(graphics, tr("codon.ui.flow"), area.x() + 7, area.y() + 6, area.width() - 14, TEXT);
+            text(graphics, tr("codon.ui.flow"), area.x() + 7 + headingInset, area.y() + 6, area.width() - 14 - headingInset, sectionHeadingColor(InspectorTab.FLOW, headingInset, TEXT));
             text(graphics, tr("codon.ui.no_flow"), area.x() + 7, area.y() + 22, area.width() - 14, MUTED);
             return;
         }
@@ -437,7 +459,7 @@ public final class DebuggerOverlay {
             ? Component.translatable("codon.ui.flow_index", flowIndex + 1, flowCount).getString()
             : Component.translatable("codon.ui.last_completed_flow", flowIndex + 1, flowCount).getString();
         text(graphics, flowHeading,
-            area.x() + 7, area.y() + 6, area.width() - 58, TEXT);
+            area.x() + 7 + headingInset, area.y() + 6, area.width() - 58 - headingInset, sectionHeadingColor(InspectorTab.FLOW, headingInset, TEXT));
         button("flow-prev", new Bounds(area.x() + area.width() - 47, area.y() + 2, 20, 15),
             Component.literal("‹"), flowIndex > 0, false, false, false, () -> {
                 state.selectExecutionFlow(flowIndex - 1);
@@ -491,9 +513,14 @@ public final class DebuggerOverlay {
     }
 
     private void renderSources(GuiGraphicsExtractor graphics, Bounds area, PauseSnapshot snapshot) {
+        sectionDivider(graphics, area);
+        renderSources(graphics, area, snapshot, 0);
+    }
+
+    private void renderSources(GuiGraphicsExtractor graphics, Bounds area, PauseSnapshot snapshot, int headingInset) {
         String heading = expandedGroup.isEmpty() ? tr("codon.ui.contexts")
             : Component.translatable("codon.ui.group", expandedGroup.size()).getString();
-        text(graphics, heading, area.x() + 7, area.y() + 6, area.width() - 42, TEXT);
+        text(graphics, heading, area.x() + 7 + headingInset, area.y() + 6, area.width() - 42 - headingInset, sectionHeadingColor(InspectorTab.SOURCES, headingInset, TEXT));
         if (!expandedGroup.isEmpty()) {
             button("all-sources", new Bounds(area.x() + area.width() - 39, area.y() + 2, 35, 15),
                 component("codon.ui.all"), true, false, false, false, () -> { expandedGroup = List.of(); sourceOffset = 0; });
@@ -531,12 +558,17 @@ public final class DebuggerOverlay {
     }
 
     private void renderSourceDetails(GuiGraphicsExtractor graphics, Bounds area) {
+        sectionDivider(graphics, area);
+        renderSourceDetails(graphics, area, 0);
+    }
+
+    private void renderSourceDetails(GuiGraphicsExtractor graphics, Bounds area, int headingInset) {
         PauseSource source = state.selectedSource();
         if (source == null) return;
-        graphics.fill(area.x() + 5, area.y(), area.x() + area.width() - 5, area.y() + 1, BORDER);
         int y = area.y() + 6;
         int accent = sourceColor(state.selectedSourceIndex(), TEAL);
-        text(graphics, "#" + (state.selectedSourceIndex() + 1) + " · " + name(source), area.x() + 7, y, area.width() - 14, accent);
+        text(graphics, "#" + (state.selectedSourceIndex() + 1) + " · " + name(source),
+            area.x() + 7 + headingInset, y, area.width() - 14 - headingInset, sectionHeadingColor(InspectorTab.DETAILS, headingInset, accent));
         y += 13;
         if (state.selectedSourceDropped() && y + 9 <= area.y() + area.height()) {
             text(graphics, tr("codon.ui.flow_excluded"), area.x() + 7, y, area.width() - 14, RED);
@@ -659,9 +691,13 @@ public final class DebuggerOverlay {
     }
 
     private void renderStack(GuiGraphicsExtractor graphics, Bounds area, PauseSnapshot snapshot) {
+        sectionDivider(graphics, area);
+        renderStack(graphics, area, snapshot, 0);
+    }
+
+    private void renderStack(GuiGraphicsExtractor graphics, Bounds area, PauseSnapshot snapshot, int headingInset) {
         if (area.height() < 29) return;
-        graphics.fill(area.x() + 5, area.y(), area.x() + area.width() - 5, area.y() + 1, BORDER);
-        text(graphics, tr("codon.ui.stack"), area.x() + 7, area.y() + 6, area.width() - 14, TEXT);
+        text(graphics, tr("codon.ui.stack"), area.x() + 7 + headingInset, area.y() + 6, area.width() - 14 - headingInset, sectionHeadingColor(InspectorTab.STACK, headingInset, TEXT));
         int rows = Math.max(0, (area.height() - 31) / 28);
         maxStackOffset = Math.max(0, snapshot.callStack().size() - Math.max(1, rows));
         stackOffset = Math.max(0, Math.min(stackOffset, maxStackOffset));
@@ -771,6 +807,10 @@ public final class DebuggerOverlay {
         graphics.enableScissor(x, y, x + width, y + client.font.lineHeight + 1);
         graphics.text(client.font, trimmed(value, width), x, y, color, false);
         graphics.disableScissor();
+        if (client.font.width(value) > width && hoverX >= x && hoverX < x + width
+            && hoverY >= y && hoverY < y + client.font.lineHeight + 1) {
+            graphics.setTooltipForNextFrame(client.font, Component.literal(value), hoverX, hoverY);
+        }
     }
 
     private String trimmed(String value, int width) {
@@ -787,6 +827,10 @@ public final class DebuggerOverlay {
             graphics.text(client.font, line, bounds.x(), y, color, false);
             y += 11;
         }
+    }
+
+    private static void sectionDivider(GuiGraphicsExtractor graphics, Bounds area) {
+        graphics.fill(area.x(), area.y(), area.x() + area.width(), area.y() + 1, BORDER);
     }
 
     private static void panel(GuiGraphicsExtractor graphics, Bounds bounds) {
