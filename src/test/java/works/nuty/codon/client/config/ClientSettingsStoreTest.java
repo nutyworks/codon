@@ -25,14 +25,14 @@ class ClientSettingsStoreTest {
     void roundTripsPreferencesAcrossFreshInstances() {
         Path file = temporaryDirectory.resolve("codon.json");
         DebuggerPreferences first = ClientSettingsStore.open(file, exception -> { throw new AssertionError(exception); });
-        first.setGizmoMode(ClientDebuggerState.GizmoMode.FOCUS);
+        first.setGizmoMode(ClientDebuggerState.GizmoMode.LABELS);
         first.setInspectorVisible(true);
         first.setInspectorTab(DebuggerPreferences.InspectorTab.STACK);
         first.setNbtExpanded(false);
 
         DebuggerPreferences reloaded = ClientSettingsStore.open(file, exception -> { throw new AssertionError(exception); });
 
-        assertEquals(ClientDebuggerState.GizmoMode.FOCUS, reloaded.gizmoMode());
+        assertEquals(ClientDebuggerState.GizmoMode.LABELS, reloaded.gizmoMode());
         assertEquals(Boolean.TRUE, reloaded.inspectorVisible());
         assertEquals(DebuggerPreferences.InspectorTab.STACK, reloaded.inspectorTab());
         assertFalse(reloaded.nbtExpanded());

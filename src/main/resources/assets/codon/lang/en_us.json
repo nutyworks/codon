@@ -29,7 +29,6 @@
   "codon.ui.ready": "Ready",
   "codon.ui.details": "Details",
   "codon.ui.mode.labels": "Labels",
-  "codon.ui.mode.focus": "Focus",
   "codon.ui.mode.grouped": "Grouped",
   "codon.ui.waiting": "Waiting for server…",
   "codon.ui.running": "Running",

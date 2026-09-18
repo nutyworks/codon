@@ -190,7 +190,7 @@ class ClientDebuggerStateTest {
     @Test
     void resetPreservesClientPreferences() {
         DebuggerPreferences preferences = new DebuggerPreferences();
-        preferences.setGizmoMode(ClientDebuggerState.GizmoMode.FOCUS);
+        preferences.setGizmoMode(ClientDebuggerState.GizmoMode.LABELS);
         preferences.setInspectorVisible(true);
         preferences.setInspectorTab(DebuggerPreferences.InspectorTab.STACK);
         ClientDebuggerState state = new ClientDebuggerState(preferences);
@@ -198,7 +198,7 @@ class ClientDebuggerStateTest {
         state.reset();
 
         assertSame(preferences, state.preferences());
-        assertEquals(ClientDebuggerState.GizmoMode.FOCUS, state.gizmoMode());
+        assertEquals(ClientDebuggerState.GizmoMode.LABELS, state.gizmoMode());
         assertEquals(Boolean.TRUE, preferences.inspectorVisible());
         assertEquals(DebuggerPreferences.InspectorTab.STACK, preferences.inspectorTab());
     }

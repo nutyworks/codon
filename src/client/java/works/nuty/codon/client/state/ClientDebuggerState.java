@@ -61,7 +61,7 @@ public final class ClientDebuggerState {
     }
 
     public enum GizmoMode {
-        LABELS, FOCUS, GROUPED;
+        LABELS, GROUPED;
 
         public GizmoMode next() {
             return values()[(ordinal() + 1) % values().length];

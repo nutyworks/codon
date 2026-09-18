@@ -116,11 +116,11 @@ public final class DebugLevelRenderer implements LevelRenderEvents.EndMain {
             }
         }
 
-        boolean focus = state.gizmoMode() != ClientDebuggerState.GizmoMode.LABELS;
+        boolean grouped = state.gizmoMode() != ClientDebuggerState.GizmoMode.LABELS;
         for (SourceMarker marker : markers.values()) {
             boolean selected = marker.selected();
             int color = marker.dropped() ? DROPPED_RED : marker.created() ? CREATED_GREEN
-                : selected ? SELECTED_TEAL : focus ? MUTED_TEAL : SOURCE_TEAL;
+                : selected ? SELECTED_TEAL : grouped ? MUTED_TEAL : SOURCE_TEAL;
             float width = selected ? SELECTED_WIDTH : SOURCE_WIDTH;
             renderSourceMarker(marker, color, width, selected);
         }

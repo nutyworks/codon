@@ -10,7 +10,6 @@ public enum DebuggerIcon {
     STEP_OUT,
     GIZMO_GROUPED,
     GIZMO_LABELS,
-    GIZMO_FOCUS,
     DETAILS_OPEN,
     DETAILS_CLOSED,
     PIN,
@@ -31,7 +30,6 @@ public enum DebuggerIcon {
             case STEP_OUT -> stepOut(graphics, x, y, color);
             case GIZMO_GROUPED -> grouped(graphics, x, y, color);
             case GIZMO_LABELS -> labels(graphics, x, y, color);
-            case GIZMO_FOCUS -> focus(graphics, x, y, color);
             case DETAILS_OPEN -> details(graphics, x, y, color, true);
             case DETAILS_CLOSED -> details(graphics, x, y, color, false);
             case PIN -> pin(graphics, x, y, color);
@@ -107,14 +105,6 @@ public enum DebuggerIcon {
         outline(graphics, x + 1, y + 7, 10, 3, color);
         graphics.fill(x + 3, y + 3, x + 6, y + 4, color);
         graphics.fill(x + 3, y + 8, x + 8, y + 9, color);
-    }
-
-    private static void focus(GuiGraphicsExtractor graphics, int x, int y, int color) {
-        graphics.fill(x + 5, y + 1, x + 7, y + 4, color);
-        graphics.fill(x + 5, y + 8, x + 7, y + 11, color);
-        graphics.fill(x + 1, y + 5, x + 4, y + 7, color);
-        graphics.fill(x + 8, y + 5, x + 11, y + 7, color);
-        outline(graphics, x + 4, y + 4, 4, 4, color);
     }
 
     private static void details(GuiGraphicsExtractor graphics, int x, int y, int color, boolean open) {

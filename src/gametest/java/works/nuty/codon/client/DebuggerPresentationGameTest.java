@@ -120,10 +120,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
                 require(screen.getFocused() == null, "Scrolled-out button loses focus");
                 screen.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, InputConstants.KEYCODE_RETURN, 0));
                 require(state.selectedSourceIndex() == 1, "Enter cannot activate a hidden source");
-                state.setGizmoMode(ClientDebuggerState.GizmoMode.FOCUS);
             });
-            context.waitTicks(2);
-            context.takeScreenshot("codon-focus");
             context.runOnClient(client -> state.setGizmoMode(ClientDebuggerState.GizmoMode.LABELS));
             context.waitTicks(2);
             context.takeScreenshot("codon-labels");
@@ -432,7 +429,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
             PauseSource positionSource = snapshot.pauseSources().get(8);
             BlockLocation active = ((SourceLocation.Block) snapshot.location()).block();
             state.selectSource(8);
-            state.setGizmoMode(ClientDebuggerState.GizmoMode.FOCUS);
+            state.setGizmoMode(ClientDebuggerState.GizmoMode.GROUPED);
             return List.of(BlockPos.containing(positionSource.anchor().x(), positionSource.anchor().y(), positionSource.anchor().z()),
                 new BlockPos(active.x(), active.y(), active.z()), new BlockPos(active.x() + 2, active.y(), active.z()));
         });

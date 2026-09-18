@@ -192,7 +192,6 @@ public final class DebuggerOverlay {
         DebuggerIcon modeIcon = switch (state.gizmoMode()) {
             case GROUPED -> DebuggerIcon.GIZMO_GROUPED;
             case LABELS -> DebuggerIcon.GIZMO_LABELS;
-            case FOCUS -> DebuggerIcon.GIZMO_FOCUS;
         };
         iconButton("mode", new Bounds(x, toolbar.y() + 2, width, DebuggerLayout.ICON_BUTTON_SIZE),
             mode, modeIcon, true, () -> {
@@ -233,8 +232,6 @@ public final class DebuggerOverlay {
             // A transition's output prefix is exactly the current stage's inputs; appended drops
             // are historical markers, not live inspector/Watch/NBT indices.
             if (index < inspectorSourceCount) visibleSources.add(index);
-            if (state.gizmoMode() == ClientDebuggerState.GizmoMode.FOCUS && index != selectedIndex
-                && !state.isWorldSourceCreated(index) && !state.isWorldSourceDropped(index)) continue;
             int labelWidth = Math.min(150,
                 client.font.width(sourceLabel(source, index, state.isWorldSourceDropped(index))) + 14);
             anchors.add(new Anchor(index, x, y, labelWidth));
