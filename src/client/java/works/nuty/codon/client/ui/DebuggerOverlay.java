@@ -38,7 +38,7 @@ import java.util.Set;
 
 import static works.nuty.codon.client.ui.DebuggerTheme.*;
 
-/** Shared HUD/screen presentation. Only the B-key screen registers the rendered controls. */
+/** Shared HUD/screen presentation. Only the menu screen registers the rendered controls. */
 public final class DebuggerOverlay {
     private static final Bounds EMPTY = new Bounds(0, 0, 0, 0);
     private final ClientDebuggerState state;
@@ -305,7 +305,7 @@ public final class DebuggerOverlay {
         text(graphics, title, panelBounds.x() + 5, panelBounds.y() + 5, panelBounds.width() - 45, TEAL);
         int addX = panelBounds.x() + Math.min(client.font.width(title) + 10, panelBounds.width() - 40);
         button("watch-add", new Bounds(addX, panelBounds.y() + 2, 16, 15), Component.literal("+"),
-            true, false, false, false, () -> client.setScreenAndShow(new WatchScreen(input, state, this)))
+            true, false, false, false, () -> client.gui.setScreen(new WatchScreen(input, state, this)))
             .setTooltip(Tooltip.create(component("codon.watch.open")));
         watchSummaryScrollBounds = rows == 0 ? EMPTY : new Bounds(panelBounds.x() + 3, panelBounds.y() + 19,
             panelBounds.width() - 6, rows * 12);
@@ -701,7 +701,7 @@ public final class DebuggerOverlay {
             area.width() - (index == 0 ? 16 : 87) - watchWidth, accent);
         button("watch", new Bounds(area.x() + area.width() - (index > 0 ? 129 : 54), area.y() + 2, 48, 15),
             component("codon.watch.open"), true, false, false, false,
-            () -> client.setScreenAndShow(new WatchScreen(input, state, this)));
+            () -> client.gui.setScreen(new WatchScreen(input, state, this)));
         if (index > 0) button("current-frame", new Bounds(area.x() + area.width() - 75, area.y() + 2, 70, 15),
             component("codon.ui.current_frame"), true, false, false, false, () -> { state.selectFrame(0); stackOffset = commandOffset = 0; });
         Bounds content = new Bounds(area.x() + 8, area.y() + 19, Math.max(1, area.width() - 21), area.height() - 21);

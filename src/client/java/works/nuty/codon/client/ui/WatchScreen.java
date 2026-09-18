@@ -163,7 +163,7 @@ public final class WatchScreen extends Screen {
 
     @Override
     public void onClose() {
-        Minecraft.getInstance().setScreenAndShow(new CodonScreen(input, overlay));
+        Minecraft.getInstance().gui.setScreen(new CodonScreen(input, overlay));
     }
 
     @Override public boolean isPauseScreen() { return false; }

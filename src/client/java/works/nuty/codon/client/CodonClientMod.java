@@ -61,7 +61,7 @@ public final class CodonClientMod implements ClientModInitializer {
         DebuggerOverlay overlay = new DebuggerOverlay(state);
 
         InputManager inputManager = new InputManager(state,
-            im -> Minecraft.getInstance().setScreenAndShow(new CodonScreen(im, overlay)));
+            im -> Minecraft.getInstance().gui.setScreen(new CodonScreen(im, overlay)));
         inputManager.registerKeyMappings();
 
         ClientNetworking.register(state, camera, effects);
