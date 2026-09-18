@@ -89,7 +89,8 @@ public final class DebuggerOverlay {
             buttonCache.clear();
             return List.of();
         }
-        PauseSnapshot snapshot = state.inspectionSnapshot();
+        // The live debugger panels must not present retained history after resume.
+        PauseSnapshot snapshot = state.snapshot();
         if (snapshot != lastSnapshot) {
             expandedGroup = List.of();
             sourceOffset = Math.max(0, state.selectedSourceIndex());
@@ -100,7 +101,7 @@ public final class DebuggerOverlay {
         Font font = client.font;
         if ((!state.isPaused() || snapshot == null) && !interactive) {
             if (!state.blockBreakpoints().isEmpty()) {
-                String text = "CODON · " + statusText(snapshot) + "  [" + input.menuKey.getTranslatedKeyMessage().getString() + "]";
+                String text = "CODON · " + statusText() + "  [" + input.menuKey.getTranslatedKeyMessage().getString() + "]";
                 Bounds header = DebuggerLayout.create(graphics.guiWidth(), graphics.guiHeight(), false).header();
                 Bounds badge = new Bounds(header.x(), header.y(),
                     Math.min(graphics.guiWidth() - 2 * header.x(), font.width(text) + 14), header.height());
@@ -140,19 +141,13 @@ public final class DebuggerOverlay {
         return List.copyOf(controls);
     }
 
-    private String statusText(@Nullable PauseSnapshot snapshot) {
-        return state.controlPending() ? tr("codon.ui.waiting")
-            : snapshot == null ? tr("codon.ui.running")
-            : tr(switch (snapshot.reason()) {
-                case BREAKPOINT -> "codon.ui.breakpoint_hit";
-                case STEP -> "codon.ui.step_complete";
-                case EXECUTION_COMPLETE -> "codon.ui.execution_complete";
-            });
+    private String statusText() {
+        return tr(DebuggerStatus.translationKey(state));
     }
 
     private void renderHeader(GuiGraphicsExtractor graphics, DebuggerLayout layout, InputManager input,
                               @Nullable PauseSnapshot snapshot) {
-        String status = statusText(snapshot);
+        String status = statusText();
         String prefix = "CODON · ";
         int prefixWidth = client.font.width(prefix);
         Bounds toolbar = layout.controls();
@@ -259,7 +254,7 @@ public final class DebuggerOverlay {
             leader(graphics, (int) label.anchorX(), (int) label.anchorY(),
                 bounds.x() + bounds.width() / 2, bounds.y() + bounds.height(), worldSourceColor(statusIndex, selected ? TEAL : MUTED));
             colorWorldSourceButton(button("label-" + index, bounds, title, true, selected, false, false, () -> {
-                if (state.inspectionSnapshot() != snapshot) return;
+                if (state.snapshot() != snapshot) return;
                 state.selectWorldSource(index);
                 if (group) {
                     expandedGroup = List.copyOf(indices);
@@ -539,7 +534,7 @@ public final class DebuggerOverlay {
             int labelWidth = area.width() - 13;
             colorSourceButton(button("source-" + index, new Bounds(area.x() + 5, area.y() + 21 + row * 19, labelWidth, 17),
                 title, true, index == state.selectedSourceIndex(), true, false, () -> {
-                    if (state.inspectionSnapshot() == snapshot) {
+                    if (state.snapshot() == snapshot) {
                         state.selectSource(index);
                         state.preferences().setInspectorTab(InspectorTab.SOURCES);
                     }
@@ -706,7 +701,7 @@ public final class DebuggerOverlay {
             String label = (index == 0 ? "> " : "  ") + location(frame.location());
             button("frame-" + index, new Bounds(area.x() + 5, y, area.width() - 13, 17),
                 Component.literal(label), true, index == state.selectedFrameIndex(), true, false, () -> {
-                    if (state.inspectionSnapshot() == snapshot) { state.selectFrame(index); commandOffset = 0; }
+                    if (state.snapshot() == snapshot) { state.selectFrame(index); commandOffset = 0; }
                 }).setTooltip(Tooltip.create(ClientFormatting.sourceLocation(frame.location())));
             text(graphics, frame.command().text(), area.x() + 10, y + 19, area.width() - 20, MUTED);
         }
