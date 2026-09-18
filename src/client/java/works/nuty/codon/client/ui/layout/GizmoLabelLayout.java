@@ -64,7 +64,7 @@ public final class GizmoLabelLayout {
         }
 
         if (groupOverlaps) {
-            units = mergeIdealOverlaps(units, viewport, selectedSourceIndex);
+            units = mergeIdealOverlaps(units, viewport);
         }
         return place(units, viewport, selectedSourceIndex);
     }
@@ -80,7 +80,7 @@ public final class GizmoLabelLayout {
         return result;
     }
 
-    private static List<Unit> mergeIdealOverlaps(List<Unit> initial, Bounds viewport, int selected) {
+    private static List<Unit> mergeIdealOverlaps(List<Unit> initial, Bounds viewport) {
         List<Unit> units = initial;
         // Group widths can introduce new collisions.  Bound the pathological case by
         // collapsing to one readable group, instead of repeatedly doing pair scans.
@@ -88,7 +88,7 @@ public final class GizmoLabelLayout {
             DisjointSet sets = new DisjointSet(units.size());
             List<Bounds> idealBounds = new ArrayList<>(units.size());
             for (int i = 0; i < units.size(); i++) {
-                idealBounds.add(idealBounds(units.get(i), viewport, selected));
+                idealBounds.add(idealBounds(units.get(i), viewport));
             }
             boolean merged = mergeIntersectingBounds(idealBounds, sets);
             if (!merged) {
@@ -102,7 +102,7 @@ public final class GizmoLabelLayout {
             for (List<Anchor> memberAnchors : members.values()) {
                 next.add(new Unit(memberAnchors));
             }
-            next.sort(unitOrder(selected));
+            next.sort(unitOrder());
             if (next.size() == units.size()) {
                 return units;
             }
@@ -172,17 +172,18 @@ public final class GizmoLabelLayout {
 
     private static List<Label> place(List<Unit> units, Bounds viewport, int selected) {
         List<Unit> ordered = new ArrayList<>(units);
-        ordered.sort(unitOrder(selected));
+        // Give each source its numbered slot; selection only affects label content and styling.
+        ordered.sort(unitOrder());
         SpatialIndex occupied = new SpatialIndex();
         List<Unit> placed = new ArrayList<>();
 
         for (Unit unit : ordered) {
-            Bounds chosen = findOpenBounds(unit, viewport, occupied, selected);
+            Bounds chosen = findOpenBounds(unit, viewport, occupied);
             if (chosen == null) {
                 // There is no readable free slot within the viewport.  A single
                 // aggregate remains clickable and satisfies the no-overlap rule.
                 Unit all = join(ordered);
-                Bounds aggregate = idealBounds(all, viewport, selected);
+                Bounds aggregate = idealBounds(all, viewport);
                 return List.of(toLabel(all, aggregate, selected));
             }
             unit.bounds = chosen;
@@ -197,8 +198,8 @@ public final class GizmoLabelLayout {
         return List.copyOf(result);
     }
 
-    private static Bounds findOpenBounds(Unit unit, Bounds viewport, SpatialIndex occupied, int selected) {
-        int width = labelWidth(unit, viewport, selected);
+    private static Bounds findOpenBounds(Unit unit, Bounds viewport, SpatialIndex occupied) {
+        int width = labelWidth(unit, viewport);
         int idealX = clamp((int) Math.round(unit.anchorX - width / 2.0), viewport.x(), viewport.x() + viewport.width() - width);
         int idealY = clamp((int) Math.round(unit.anchorY - LABEL_HEIGHT - PADDING), viewport.y(), viewport.y() + viewport.height() - LABEL_HEIGHT);
 
@@ -226,25 +227,22 @@ public final class GizmoLabelLayout {
         return null;
     }
 
-    private static Bounds idealBounds(Unit unit, Bounds viewport, int selected) {
-        int width = labelWidth(unit, viewport, selected);
+    private static Bounds idealBounds(Unit unit, Bounds viewport) {
+        int width = labelWidth(unit, viewport);
         int x = clamp((int) Math.round(unit.anchorX - width / 2.0), viewport.x(), viewport.x() + viewport.width() - width);
         int y = clamp((int) Math.round(unit.anchorY - LABEL_HEIGHT - PADDING), viewport.y(), viewport.y() + viewport.height() - LABEL_HEIGHT);
         return new Bounds(x, y, width, LABEL_HEIGHT);
     }
 
-    private static int labelWidth(Unit unit, Bounds viewport, int selected) {
+    private static int labelWidth(Unit unit, Bounds viewport) {
         int raw = unit.anchors.size() == 1
                 ? unit.anchors.get(0).width() + 2 * PADDING
                 : 76 + Integer.toString(unit.anchors.size()).length() * 6;
         if (unit.anchors.size() > 1) {
+            // Reserve every member's name plus "  +N" so selection cannot resize or merge groups.
+            int countWidth = 18 + Integer.toString(unit.anchors.size() - 1).length() * 6;
             for (Anchor anchor : unit.anchors) {
-                if (anchor.sourceIndex() == selected) {
-                    // Preserve the selected source's normal label and reserve room for "  +N".
-                    raw = anchor.width() + 2 * PADDING + 18
-                            + Integer.toString(unit.anchors.size() - 1).length() * 6;
-                    break;
-                }
+                raw = Math.max(raw, anchor.width() + 2 * PADDING + countWidth);
             }
         }
         return Math.min(viewport.width(), Math.max(1, raw));
@@ -277,9 +275,8 @@ public final class GizmoLabelLayout {
         return new Unit(anchors);
     }
 
-    private static Comparator<Unit> unitOrder(int selected) {
-        return Comparator.comparing((Unit unit) -> !unit.contains(selected))
-                .thenComparingInt(Unit::lowestIndex);
+    private static Comparator<Unit> unitOrder() {
+        return Comparator.comparingInt(Unit::lowestIndex);
     }
 
     private static boolean overlaps(Bounds first, Bounds second) {
@@ -311,10 +308,6 @@ public final class GizmoLabelLayout {
 
         private static Unit single(Anchor anchor) {
             return new Unit(List.of(anchor));
-        }
-
-        private boolean contains(int sourceIndex) {
-            return anchors.stream().anyMatch(anchor -> anchor.sourceIndex() == sourceIndex);
         }
 
         private int lowestIndex() {

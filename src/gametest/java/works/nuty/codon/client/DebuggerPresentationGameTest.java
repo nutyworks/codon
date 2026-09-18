@@ -30,8 +30,10 @@ import works.nuty.codon.network.BreakpointSyncPayload;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 import java.util.function.Predicate;
 
@@ -125,6 +127,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
             context.runOnClient(client -> state.setGizmoMode(ClientDebuggerState.GizmoMode.LABELS));
             context.waitTicks(2);
             context.takeScreenshot("codon-labels");
+            checkLabelSlotsStayFixedAfterSourceSelection(context, screen, state);
             context.getInput().resizeWindow(640, 480);
             context.waitTicks(2);
             context.takeScreenshot("codon-compact");
@@ -363,6 +366,55 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
         });
         context.getInput().resizeWindow(1280, 800);
         context.waitTicks(2);
+    }
+
+    /** LABELS mode keeps each source's numbered screen slot stable when the selected source changes. */
+    private static void checkLabelSlotsStayFixedAfterSourceSelection(ClientGameTestContext context, CodonScreen screen,
+                                                                      ClientDebuggerState state) {
+        Map<String, WidgetBounds> before = context.computeOnClient(client -> worldLabelBounds(screen));
+        context.runOnClient(client -> {
+            DebuggerButton fourth = worldLabelButton(screen, "#4 Zombie 4");
+            click(screen, fourth);
+            require(state.selectedSourceIndex() == 3, "Clicking a label selects its numbered source");
+        });
+        context.waitTicks(2);
+        Map<String, WidgetBounds> after = context.computeOnClient(client -> worldLabelBounds(screen));
+        require(after.equals(before), "Selecting a source preserves every LABELS-mode source label slot and membership");
+        context.takeScreenshot("codon-labels-fourth-selected");
+    }
+
+    private static Map<String, WidgetBounds> worldLabelBounds(CodonScreen screen) {
+        var world = works.nuty.codon.client.ui.layout.DebuggerLayout.create(screen.width, screen.height, true).world();
+        Map<String, WidgetBounds> result = new HashMap<>();
+        for (var child : screen.children()) {
+            if (!(child instanceof DebuggerButton button)
+                    || !button.getMessage().getString().matches("(?:#\\d+|\\[\\d+\\]) .*")
+                    || button.getX() < world.x() || button.getY() < world.y()
+                    || button.getRight() > world.x() + world.width() || button.getBottom() > world.y() + world.height()) {
+                continue;
+            }
+            WidgetBounds previous = result.put(button.getMessage().getString(), WidgetBounds.of(button));
+            require(previous == null, "Every LABELS-mode source has one world widget");
+        }
+        require(result.size() == 9, "The fixture exposes all nine same-dimension source labels in LABELS mode");
+        require(result.containsKey("#1 Zombie 1") && result.containsKey("#8 Zombie 8") && result.containsKey("[9] Position source"),
+            "LABELS mode retains numbered entity and position sources as separate widgets");
+        return Map.copyOf(result);
+    }
+
+    private static DebuggerButton worldLabelButton(CodonScreen screen, String title) {
+        var world = works.nuty.codon.client.ui.layout.DebuggerLayout.create(screen.width, screen.height, true).world();
+        return screen.children().stream().filter(DebuggerButton.class::isInstance).map(DebuggerButton.class::cast)
+            .filter(button -> button.getMessage().getString().equals(title)
+                && button.getX() >= world.x() && button.getY() >= world.y()
+                && button.getRight() <= world.x() + world.width() && button.getBottom() <= world.y() + world.height())
+            .findFirst().orElseThrow(() -> new AssertionError("World label missing: " + title));
+    }
+
+    private record WidgetBounds(int x, int y, int width, int height) {
+        private static WidgetBounds of(DebuggerButton button) {
+            return new WidgetBounds(button.getX(), button.getY(), button.getWidth(), button.getHeight());
+        }
     }
 
     /** Like a real pause packet: prior stages are complete, the selected next stage has not run. */

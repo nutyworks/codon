@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -53,6 +54,40 @@ class GizmoLabelLayoutTest {
         assertEquals(Set.of(0, 1), displayed(labels));
         assertTrue(labels.stream().allMatch(label -> label.sourceIndices().size() == 1));
         assertReadableAndInBounds(labels, VIEWPORT);
+    }
+
+    @Test
+    void overlappingLabelsKeepNumberOrderAndPositionsAcrossSelectionChanges() {
+        List<GizmoLabelLayout.Anchor> anchors = List.of(
+                anchor(7, 160, 120), anchor(1, 160, 120), anchor(4, 160, 120));
+        List<GizmoLabelLayout.Label> original = GizmoLabelLayout.layout(anchors, VIEWPORT, -1, false);
+
+        assertEquals(List.of(1, 4, 7), original.stream().map(label -> label.sourceIndices().getFirst()).toList());
+        for (int selected : List.of(7, 4, 1, -1)) {
+            assertEquals(original, GizmoLabelLayout.layout(anchors, VIEWPORT, selected, false),
+                    "Selecting a source must not move it into another source's slot");
+        }
+        assertReadableAndInBounds(original, VIEWPORT);
+    }
+
+    @Test
+    void groupedLabelBoundsAndMembershipStayFixedAcrossDifferentSelectedNameWidths() {
+        GizmoLabelLayout.Bounds viewport = new GizmoLabelLayout.Bounds(0, 0, 800, 240);
+        List<GizmoLabelLayout.Anchor> anchors = List.of(
+                new GizmoLabelLayout.Anchor(0, 180, 125, 24),
+                new GizmoLabelLayout.Anchor(4, 185, 125, 200),
+                new GizmoLabelLayout.Anchor(7, 300, 125, 20),
+                new GizmoLabelLayout.Anchor(9, 700, 125, 24),
+                new GizmoLabelLayout.Anchor(12, 695, 125, 56));
+        List<GizmoLabelLayout.Label> original = GizmoLabelLayout.layout(anchors, viewport, -1, true);
+        assertTrue(original.size() > 1, "The fixture must also exercise placement of separate groups");
+
+        for (int selected : List.of(0, 4, 7, 9, 12, -1)) {
+            List<GizmoLabelLayout.Label> labels = GizmoLabelLayout.layout(anchors, viewport, selected, true);
+            assertEquals(labelBounds(original), labelBounds(labels),
+                    "Group geometry must reserve every member's name before it is selected");
+            assertReadableAndInBounds(labels, viewport);
+        }
     }
 
     @Test
@@ -148,6 +183,11 @@ class GizmoLabelLayoutTest {
 
     private static Set<Integer> displayed(List<GizmoLabelLayout.Label> labels) {
         return labels.stream().flatMap(label -> label.sourceIndices().stream()).collect(Collectors.toSet());
+    }
+
+    private static Map<List<Integer>, GizmoLabelLayout.Bounds> labelBounds(List<GizmoLabelLayout.Label> labels) {
+        return labels.stream().collect(Collectors.toMap(
+                label -> label.sourceIndices().stream().sorted().toList(), GizmoLabelLayout.Label::bounds));
     }
 
     private static void assertReadableAndInBounds(List<GizmoLabelLayout.Label> labels, GizmoLabelLayout.Bounds viewport) {
