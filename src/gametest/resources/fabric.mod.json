@@ -1,28 +1,28 @@
 {
   "schemaVersion": 1,
-  "id": "bastion-ui-test",
+  "id": "codon-ui-test",
   "version": "1.0.0",
   "environment": "client",
   "mixins": [
-    "bastion.gametest.mixins.json"
+    "codon.gametest.mixins.json"
   ],
   "entrypoints": {
     "fabric-client-gametest": [
-      "works.nuty.bastion.client.NbtTreeReaderGameTest",
-      "works.nuty.bastion.client.DebuggerNbtTreeGameTest",
-      "works.nuty.bastion.client.DebuggerWatchChainGameTest",
-      "works.nuty.bastion.client.DebuggerWatchGameTest",
-      "works.nuty.bastion.client.DebuggerPresentationGameTest",
-      "works.nuty.bastion.client.DebuggerChatPauseGameTest",
-      "works.nuty.bastion.client.DebuggerClientPauseGameTest",
-      "works.nuty.bastion.client.DebuggerSoundPauseGameTest",
-      "works.nuty.bastion.client.DebuggerFreecamGameTest",
-      "works.nuty.bastion.client.DebuggerMountedFreecamGameTest",
-      "works.nuty.bastion.client.DebuggerFreecamStepGameTest",
-      "works.nuty.bastion.client.DebuggerFreecamResumeGameTest",
-      "works.nuty.bastion.client.DebuggerWatchPersistenceGameTest",
-      "works.nuty.bastion.client.DebuggerWatchPinGameTest",
-      "works.nuty.bastion.client.DebuggerExecutionFlowGameTest"
+      "works.nuty.codon.client.NbtTreeReaderGameTest",
+      "works.nuty.codon.client.DebuggerNbtTreeGameTest",
+      "works.nuty.codon.client.DebuggerWatchChainGameTest",
+      "works.nuty.codon.client.DebuggerWatchGameTest",
+      "works.nuty.codon.client.DebuggerPresentationGameTest",
+      "works.nuty.codon.client.DebuggerChatPauseGameTest",
+      "works.nuty.codon.client.DebuggerClientPauseGameTest",
+      "works.nuty.codon.client.DebuggerSoundPauseGameTest",
+      "works.nuty.codon.client.DebuggerFreecamGameTest",
+      "works.nuty.codon.client.DebuggerMountedFreecamGameTest",
+      "works.nuty.codon.client.DebuggerFreecamStepGameTest",
+      "works.nuty.codon.client.DebuggerFreecamResumeGameTest",
+      "works.nuty.codon.client.DebuggerWatchPersistenceGameTest",
+      "works.nuty.codon.client.DebuggerWatchPinGameTest",
+      "works.nuty.codon.client.DebuggerExecutionFlowGameTest"
     ]
   }
 }

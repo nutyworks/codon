@@ -1,7 +1,0 @@
-{
-  "required": true,
-  "package": "works.nuty.bastion.client.testmixin",
-  "compatibilityLevel": "JAVA_25",
-  "client": ["WatchPauseTestMixin", "ConnectionMixin", "LevelExtractorMixin", "ItemInHandRendererMixin", "ChatComponentInvoker", "ParticleAccessor", "TextureManagerMixin", "SoundEngineAccessor", "ChannelAccessor", "MusicManagerAccessor", "CommandBlockInvoker"],
-  "injectors": { "defaultRequire": 1 }
-}

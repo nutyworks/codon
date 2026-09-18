@@ -33,10 +33,10 @@ sourceSets {
 loom {
 	splitEnvironmentSourceSets()
 
-	accessWidenerPath = file("src/main/resources/bastion.classtweaker")
+	accessWidenerPath = file("src/main/resources/codon.classtweaker")
 
 	mods {
-		"bastion" {
+		"codon" {
 			sourceSet sourceSets.core
 			sourceSet sourceSets.main
 			sourceSet sourceSets.client
@@ -49,11 +49,11 @@ loom {
 fabricApi {
 	configureTests {
 		createSourceSet = true
-		modId = "bastion-ui-test"
+		modId = "codon-ui-test"
 		enableGameTests = false
 		enableClientGameTests = true
 		clearRunDirectory = true
-		username = "BastionQA"
+		username = "CodonQA"
 	}
 }
 

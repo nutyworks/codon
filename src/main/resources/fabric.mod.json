@@ -1,33 +1,33 @@
 {
 	"schemaVersion": 1,
-	"id": "bastion",
+	"id": "codon",
 	"version": "${version}",
-	"name": "Bastion",
+	"name": "Codon",
 	"description": "An in-game step debugger for Minecraft commands and datapack functions: breakpoints, stepping, call stacks, and in-world visualization.",
 	"authors": [
 		"nutyworks"
 	],
 	"contact": {
-		"homepage": "https://github.com/nutyworks/bastion",
-		"sources": "https://github.com/nutyworks/bastion",
-		"issues": "https://github.com/nutyworks/bastion/issues"
+		"homepage": "https://github.com/nutyworks/codon",
+		"sources": "https://github.com/nutyworks/codon",
+		"issues": "https://github.com/nutyworks/codon/issues"
 	},
 	"license": "MIT",
-	"icon": "assets/bastion/icon.png",
+	"icon": "assets/codon/icon.png",
 	"environment": "*",
 	"entrypoints": {
 		"main": [
-			"works.nuty.bastion.BastionMod"
+			"works.nuty.codon.CodonMod"
 		],
 		"client": [
-			"works.nuty.bastion.client.BastionClientMod"
+			"works.nuty.codon.client.CodonClientMod"
 		]
 	},
-	"accessWidener": "bastion.classtweaker",
+	"accessWidener": "codon.classtweaker",
 	"mixins": [
-		"bastion.mixins.json",
+		"codon.mixins.json",
 		{
-			"config": "bastion.client.mixins.json",
+			"config": "codon.client.mixins.json",
 			"environment": "client"
 		}
 	],

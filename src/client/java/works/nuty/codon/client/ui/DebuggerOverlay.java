@@ -1,0 +1,847 @@
+package works.nuty.codon.client.ui;
+
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.util.FormattedCharSequence;
+import net.minecraft.world.phys.Vec3;
+import org.jspecify.annotations.Nullable;
+import works.nuty.codon.client.input.InputManager;
+import works.nuty.codon.client.state.ClientDebuggerState;
+import works.nuty.codon.client.state.DebuggerPreferences.InspectorTab;
+import works.nuty.codon.client.ui.layout.DebuggerLayout;
+import works.nuty.codon.client.ui.layout.InspectorLayout;
+import works.nuty.codon.client.ui.layout.GizmoLabelLayout;
+import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Anchor;
+import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds;
+import works.nuty.codon.core.model.CallFrame;
+import works.nuty.codon.core.model.CommandSnippet;
+import works.nuty.codon.core.model.ExecutionFlowContext;
+import works.nuty.codon.core.model.ExecutionFlowStage;
+import works.nuty.codon.core.model.ExecutionFlowTrace;
+import works.nuty.codon.core.model.PauseReason;
+import works.nuty.codon.core.model.PauseSnapshot;
+import works.nuty.codon.core.model.PauseSource;
+import works.nuty.codon.core.model.SourceLocation;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+
+import static works.nuty.codon.client.ui.DebuggerTheme.*;
+
+/** Shared HUD/screen presentation. Only the B-key screen registers the rendered controls. */
+public final class DebuggerOverlay {
+    private static final Bounds EMPTY = new Bounds(0, 0, 0, 0);
+    private final ClientDebuggerState state;
+    private final NbtTreePanel nbtPanel;
+    private final Minecraft client = Minecraft.getInstance();
+    private final Map<String, DebuggerButton> buttonCache = new HashMap<>();
+    private final List<DebuggerButton> controls = new ArrayList<>();
+    private final Set<String> usedButtons = new HashSet<>();
+    private final Set<Integer> visibleSources = new HashSet<>();
+    private @Nullable PauseSnapshot lastSnapshot;
+    private List<Integer> expandedGroup = List.of();
+    private int sourceOffset;
+    private int stackOffset;
+    private int commandOffset;
+    private int flowOffset;
+    private int maxSourceOffset;
+    private int maxStackOffset;
+    private int maxCommandOffset;
+    private int watchSummaryHeight;
+    private int watchSummaryOffset;
+    private int maxWatchSummaryOffset;
+    private int maxFlowOffset;
+    private Bounds sourceScrollBounds = EMPTY;
+    private Bounds stackScrollBounds = EMPTY;
+    private Bounds commandScrollBounds = EMPTY;
+    private Bounds watchSummaryScrollBounds = EMPTY;
+    private Bounds flowScrollBounds = EMPTY;
+    private boolean showInspector;
+    private final Set<InspectorTab> collapsedSections = new HashSet<>();
+
+    public DebuggerOverlay(ClientDebuggerState state) {
+        this.state = state;
+        this.nbtPanel = new NbtTreePanel(state);
+    }
+
+    public List<DebuggerButton> render(GuiGraphicsExtractor graphics, int mouseX, int mouseY,
+                                       float partialTick, boolean interactive, InputManager input) {
+        controls.clear();
+        usedButtons.clear();
+        sourceScrollBounds = stackScrollBounds = commandScrollBounds = flowScrollBounds = EMPTY;
+        watchSummaryScrollBounds = EMPTY;
+        nbtPanel.clearBounds();
+        if (client.level == null || client.player == null) {
+            buttonCache.clear();
+            return List.of();
+        }
+        PauseSnapshot snapshot = state.inspectionSnapshot();
+        if (snapshot != lastSnapshot) {
+            expandedGroup = List.of();
+            sourceOffset = Math.max(0, state.selectedSourceIndex());
+            flowOffset = Math.max(0, state.selectedFlowStageIndex());
+            stackOffset = commandOffset = 0;
+            lastSnapshot = snapshot;
+        }
+        Font font = client.font;
+        if ((!state.isPaused() || snapshot == null) && !interactive) {
+            if (!state.blockBreakpoints().isEmpty()) {
+                String text = "CODON · " + tr("codon.ui.ready") + "  [" + input.menuKey.getTranslatedKeyMessage().getString() + "]";
+                graphics.fill(6, 6, Math.min(graphics.guiWidth() - 6, font.width(text) + 18), 23, PANEL);
+                text(graphics, text, 12, 11, Math.max(0, graphics.guiWidth() - 24), MUTED);
+            }
+            buttonCache.clear();
+            return List.of();
+        }
+
+        showInspector = state.preferences().inspectorVisible() != null ? state.preferences().inspectorVisible()
+            : graphics.guiWidth() >= 420 && graphics.guiHeight() >= 220;
+        DebuggerLayout layout = DebuggerLayout.create(graphics.guiWidth(), graphics.guiHeight(), showInspector);
+        renderHeader(graphics, layout, input, snapshot);
+        renderWatchSummary(graphics, layout, mouseX, mouseY, interactive, input);
+        renderWorldLabels(graphics, layout.world(), snapshot);
+        if (showInspector) renderInspector(graphics, layout.inspector(), snapshot);
+        renderCommand(graphics, layout.command(), snapshot, input);
+        if (layout.footer().height() > 0) {
+            Bounds footer = layout.footer();
+            String hint = state.isPaused()
+                ? Component.translatable("codon.ui.freecam_shortcuts", input.menuKey.getTranslatedKeyMessage(),
+                    client.options.keyUp.getTranslatedKeyMessage(), client.options.keyLeft.getTranslatedKeyMessage(),
+                    client.options.keyDown.getTranslatedKeyMessage(), client.options.keyRight.getTranslatedKeyMessage(),
+                    client.options.keyJump.getTranslatedKeyMessage(), client.options.keyShift.getTranslatedKeyMessage(),
+                    client.options.keySprint.getTranslatedKeyMessage(), input.breakpointKey.getTranslatedKeyMessage()).getString()
+                : Component.translatable("codon.ui.shortcuts", input.menuKey.getTranslatedKeyMessage(),
+                    input.breakpointKey.getTranslatedKeyMessage()).getString();
+            text(graphics, hint, footer.x() + 3, footer.y() + 3, footer.width(), MUTED);
+        }
+
+        buttonCache.keySet().retainAll(usedButtons);
+        for (DebuggerButton button : controls) {
+            if (!interactive) button.setFocused(false);
+            button.extractRenderState(graphics, interactive ? mouseX : -1, interactive ? mouseY : -1, partialTick);
+        }
+        return List.copyOf(controls);
+    }
+
+    private void renderHeader(GuiGraphicsExtractor graphics, DebuggerLayout layout, InputManager input,
+                              @Nullable PauseSnapshot snapshot) {
+        String status = state.controlPending() ? tr("codon.ui.waiting")
+            : snapshot == null ? tr("codon.ui.running")
+            : tr(switch (snapshot.reason()) {
+                case BREAKPOINT -> "codon.ui.breakpoint_hit";
+                case STEP -> "codon.ui.step_complete";
+                case EXECUTION_COMPLETE -> "codon.ui.execution_complete";
+            });
+        Bounds toolbar = layout.controls();
+        Bounds header = new Bounds(layout.header().x(), layout.header().y(),
+            Math.min(layout.header().width(), Math.max(toolbar.width(), 72 + client.font.width(status))),
+            layout.header().height());
+        panel(graphics, header);
+        panel(graphics, toolbar);
+        graphics.fill(header.x(), header.y(), header.x() + 2, header.y() + header.height(), TEAL);
+        text(graphics, "CODON", header.x() + 7, header.y() + 5, 52, TEXT);
+        text(graphics, status, header.x() + 64, header.y() + 5, Math.max(0, header.width() - 69),
+            state.isPaused() ? AMBER : MUTED);
+
+        int gap = DebuggerLayout.ICON_BUTTON_GAP;
+        int width = Math.min(DebuggerLayout.ICON_BUTTON_SIZE,
+            Math.max(1, (toolbar.width() - 6 - 4 * gap - DebuggerLayout.ICON_GROUP_GAP) / 6));
+        int x = toolbar.x() + 3;
+        for (InputManager.Control action : InputManager.Control.values()) {
+            DebuggerIcon icon = switch (action) {
+                case RESUME -> DebuggerIcon.CONTINUE;
+                case OVER -> DebuggerIcon.STEP_OVER;
+                case INTO -> DebuggerIcon.STEP_INTO;
+                case OUT -> DebuggerIcon.STEP_OUT;
+            };
+            DebuggerButton control = iconButton("control-" + action,
+                new Bounds(x, toolbar.y() + 2, width, DebuggerLayout.ICON_BUTTON_SIZE),
+                component(action.translationKey()), icon, snapshot != null && state.isPaused() && !state.controlPending(),
+                () -> input.control(action));
+            control.setTooltip(Tooltip.create(component(action.translationKey()).append("  ").append(input.keyLabel(action))));
+            x += width + gap;
+        }
+        x += DebuggerLayout.ICON_GROUP_GAP - gap;
+        graphics.fill(x - 4, toolbar.y() + 5, x - 3, toolbar.y() + toolbar.height() - 5, BORDER);
+        Component mode = Component.literal("Gizmo: ")
+            .append(component("codon.ui.mode." + state.gizmoMode().name().toLowerCase(Locale.ROOT)));
+        DebuggerIcon modeIcon = switch (state.gizmoMode()) {
+            case GROUPED -> DebuggerIcon.GIZMO_GROUPED;
+            case LABELS -> DebuggerIcon.GIZMO_LABELS;
+            case FOCUS -> DebuggerIcon.GIZMO_FOCUS;
+        };
+        iconButton("mode", new Bounds(x, toolbar.y() + 2, width, DebuggerLayout.ICON_BUTTON_SIZE),
+            mode, modeIcon, true, () -> {
+                state.setGizmoMode(state.gizmoMode().next());
+                expandedGroup = List.of();
+                sourceOffset = 0;
+            });
+        iconButton("inspector", new Bounds(x + width + gap, toolbar.y() + 2, width, DebuggerLayout.ICON_BUTTON_SIZE),
+            component("codon.ui.details"), showInspector ? DebuggerIcon.DETAILS_OPEN : DebuggerIcon.DETAILS_CLOSED,
+            true, () -> state.preferences().setInspectorVisible(!showInspector));
+    }
+
+    private void renderWorldLabels(GuiGraphicsExtractor graphics, Bounds world, @Nullable PauseSnapshot snapshot) {
+        visibleSources.clear();
+        if (world.width() <= 0 || world.height() < 30 || snapshot == null || !state.isPaused()) return;
+        var camera = client.gameRenderer.mainCamera();
+        if (!camera.isInitialized()) return;
+        String dimension = dimension();
+        Bounds labelArea = new Bounds(world.x() + 2, world.y() + 2 + watchSummaryHeight,
+            Math.max(0, world.width() - 4), Math.max(0, world.height() - 18 - watchSummaryHeight));
+        List<Anchor> anchors = new ArrayList<>();
+        List<PauseSource> displayedSources = state.worldSources();
+        int selectedIndex = state.selectedWorldSourceIndex();
+        int inspectorSourceCount = state.displayedSources().size();
+        for (int index = 0; index < displayedSources.size(); index++) {
+            PauseSource source = displayedSources.get(index);
+            if (!dimension.equals(source.dimension())) continue;
+            Vec3 point = new Vec3(source.anchor().x(), source.anchor().y(), source.anchor().z());
+            Vec3 relative = point.subtract(camera.position());
+            var forward = camera.forwardVector();
+            if (relative.x * forward.x() + relative.y * forward.y() + relative.z * forward.z() <= 0.05) continue;
+            Vec3 projected = client.gameRenderer.projectPointToScreen(point);
+            if (!Double.isFinite(projected.x) || !Double.isFinite(projected.y) || !Double.isFinite(projected.z)
+                || Math.abs(projected.x) > 1 || Math.abs(projected.y) > 1) continue;
+            double x = (projected.x + 1) * 0.5 * graphics.guiWidth();
+            double y = (1 - projected.y) * 0.5 * graphics.guiHeight();
+            if (!labelArea.contains(x, y)) continue;
+            // A transition's output prefix is exactly the current stage's inputs; appended drops
+            // are historical markers, not live inspector/Watch/NBT indices.
+            if (index < inspectorSourceCount) visibleSources.add(index);
+            if (state.gizmoMode() == ClientDebuggerState.GizmoMode.FOCUS && index != selectedIndex
+                && !state.isWorldSourceCreated(index) && !state.isWorldSourceDropped(index)) continue;
+            int labelWidth = Math.min(150,
+                client.font.width(sourceLabel(source, index, state.isWorldSourceDropped(index))) + 14);
+            anchors.add(new Anchor(index, x, y, labelWidth));
+        }
+        List<GizmoLabelLayout.Label> labels = GizmoLabelLayout.layout(anchors, labelArea,
+            selectedIndex, state.gizmoMode() != ClientDebuggerState.GizmoMode.LABELS);
+        for (GizmoLabelLayout.Label label : labels) {
+            List<Integer> indices = label.sourceIndices();
+            boolean selected = indices.contains(selectedIndex);
+            boolean group = indices.size() > 1;
+            int index = indices.getFirst();
+            // A mixed, unselected group has no single status; a selected group names its selected member.
+            int statusIndex = group && !selected && indices.stream()
+                .anyMatch(member -> worldSourceColor(member, TEXT) != worldSourceColor(index, TEXT)) ? -1 : index;
+            Bounds bounds = label.bounds();
+            String sourceTitle = sourceLabel(displayedSources.get(index), index, state.isWorldSourceDropped(index));
+            Component title;
+            if (group && selected) {
+                String count = "  +" + (indices.size() - 1);
+                title = Component.literal(trimmed(sourceTitle, Math.max(0, bounds.width() - 10 - client.font.width(count))) + count);
+            } else {
+                title = group ? Component.translatable("codon.ui.group", indices.size()) : Component.literal(sourceTitle);
+            }
+            leader(graphics, (int) label.anchorX(), (int) label.anchorY(),
+                bounds.x() + bounds.width() / 2, bounds.y() + bounds.height(), worldSourceColor(statusIndex, selected ? TEAL : MUTED));
+            colorWorldSourceButton(button("label-" + index, bounds, title, true, selected, false, false, () -> {
+                if (state.inspectionSnapshot() != snapshot) return;
+                state.selectWorldSource(index);
+                if (group) {
+                    expandedGroup = List.copyOf(indices);
+                    sourceOffset = 0;
+                } else {
+                    expandedGroup = List.of();
+                    sourceOffset = index;
+                }
+                state.preferences().setInspectorVisible(true);
+                state.preferences().setInspectorTab(group ? InspectorTab.SOURCES : InspectorTab.DETAILS);
+            }), statusIndex).setTooltip(Tooltip.create(group ? component("codon.ui.group_hint") : worldSourceTooltip(title, index)));
+        }
+        String legend = tr(state.selectedExecutionFlowStage() == null ? "codon.ui.legend" : "codon.ui.legend_flow");
+        int legendWidth = Math.min(world.width(), client.font.width(legend) + 10);
+        graphics.fill(world.x(), world.y() + world.height() - 13, world.x() + legendWidth, world.y() + world.height(), PANEL);
+        text(graphics, legend, world.x() + 4, world.y() + world.height() - 10, world.width() - 8, MUTED);
+    }
+
+    /** A passive, compact reminder keeps pinned values visible without taking over the inspector. */
+    private void renderWatchSummary(GuiGraphicsExtractor graphics, DebuggerLayout layout,
+                                    int mouseX, int mouseY, boolean interactive, InputManager input) {
+        watchSummaryHeight = 0;
+        var entries = state.watches().entries();
+        Bounds world = layout.world();
+        if (world.width() < 60 || world.height() < 40) return;
+        // Keep the panel above the world legend while sharing normal-height space with NBT.
+        int availableHeight = Math.max(0, world.height() - 24);
+        int minimumWatchHeight = entries.isEmpty() ? 20 : 32;
+        int nbtCapacity = Math.max(0, Math.min(220, availableHeight - minimumWatchHeight));
+        int nbtPreferred = nbtCapacity >= 18 ? nbtPanel.preferredHeight(nbtCapacity) : 0;
+        int nbtFloor = nbtPreferred > 18 ? 54 : nbtPreferred;
+        int allWatchHeight = entries.isEmpty() ? 20 : 20 + entries.size() * 12;
+        int targetWatchHeight = entries.isEmpty() ? 20 : Math.min(allWatchHeight, 80);
+        int nbtHeight;
+        if (availableHeight >= allWatchHeight + nbtFloor) {
+            // When the viewport has room, retain every watch row before growing the tree.
+            nbtHeight = Math.min(nbtPreferred, availableHeight - allWatchHeight);
+        } else {
+            // Typical viewport: keep a field-sized tree region and 3–5 readable watch rows.
+            nbtHeight = Math.min(nbtPreferred, Math.max(nbtFloor, availableHeight - targetWatchHeight));
+        }
+        int remainingWatchHeight = Math.max(0, availableHeight - nbtHeight);
+        int rows = entries.isEmpty() || remainingWatchHeight < 32 ? 0
+            : Math.max(1, Math.min(entries.size(), (remainingWatchHeight - 20) / 12));
+        int watchHeight = 20 + rows * 12;
+        int panelHeight = watchHeight + nbtHeight;
+        maxWatchSummaryOffset = Math.max(0, entries.size() - rows);
+        watchSummaryOffset = Math.clamp(watchSummaryOffset, 0, maxWatchSummaryOffset);
+        int width = Math.min(270, Math.max(1, world.width() - 8));
+        Bounds panelBounds = new Bounds(world.x() + Math.max(0, world.width() - width - 4), world.y() + 4,
+            width, panelHeight);
+        watchSummaryHeight = panelBounds.height() + 5;
+        panel(graphics, panelBounds);
+        String title = tr("codon.watch.title");
+        text(graphics, title, panelBounds.x() + 5, panelBounds.y() + 5, panelBounds.width() - 45, TEAL);
+        int addX = panelBounds.x() + Math.min(client.font.width(title) + 10, panelBounds.width() - 40);
+        button("watch-add", new Bounds(addX, panelBounds.y() + 2, 16, 15), Component.literal("+"),
+            true, false, false, false, () -> client.setScreenAndShow(new WatchScreen(input, state, this)))
+            .setTooltip(Tooltip.create(component("codon.watch.open")));
+        watchSummaryScrollBounds = rows == 0 ? EMPTY : new Bounds(panelBounds.x() + 3, panelBounds.y() + 19,
+            panelBounds.width() - 6, rows * 12);
+        for (int row = 0; row < rows; row++) {
+            var entry = entries.get(watchSummaryOffset + row);
+            int color = entry.displayedChange().isValueChange() ? AMBER : TEXT;
+            int rowY = panelBounds.y() + 19 + row * 12;
+            WatchRowRenderer.render(graphics, client.font, entry, state.isPaused(), panelBounds.x() + 5,
+                rowY, panelBounds.width() - 10, color, color);
+            if (interactive && mouseX >= panelBounds.x() + 5 && mouseX < panelBounds.x() + panelBounds.width() - 5
+                && mouseY >= rowY && mouseY < rowY + 12) {
+                graphics.setComponentTooltipForNextFrame(Minecraft.getInstance().font,
+                    WatchFormatting.tooltip(entry, state.isPaused()), mouseX, mouseY);
+            }
+        }
+        if (rows > 0 && maxWatchSummaryOffset > 0) scrollbar(graphics,
+            panelBounds.x() + panelBounds.width() - 4, panelBounds.y() + 19, rows * 12,
+            watchSummaryOffset, maxWatchSummaryOffset, rows, entries.size());
+        if (nbtHeight > 0) nbtPanel.render(graphics,
+            new Bounds(panelBounds.x() + 3, panelBounds.y() + watchHeight, panelBounds.width() - 6, nbtHeight),
+            interactive ? mouseX : -1, interactive ? mouseY : -1,
+            (id, bounds, label, active, selected, action) -> button(id, bounds, label, active, selected, true, false, action));
+    }
+
+    private void renderInspector(GuiGraphicsExtractor graphics, Bounds area, @Nullable PauseSnapshot snapshot) {
+        panel(graphics, area);
+        if (area.height() < 40) return;
+        if (snapshot == null) {
+            wrapped(graphics, component("codon.ui.no_snapshot"), new Bounds(area.x() + 8, area.y() + 9,
+                area.width() - 16, area.height() - 18), MUTED);
+            return;
+        }
+        if (area.height() >= 360) {
+            ExecutionFlowTrace flow = state.selectedExecutionFlow();
+            InspectorLayout sections = InspectorLayout.create(area, collapsedSections,
+                flow == null ? 0 : flow.stages().size(),
+                expandedGroup.isEmpty() ? state.displayedSources().size() : expandedGroup.size(),
+                sourceDetailsHeight(), snapshot.callStack().size());
+            renderInspectorSection(graphics, sections.flow(), InspectorTab.FLOW, snapshot);
+            renderInspectorSection(graphics, sections.sources(), InspectorTab.SOURCES, snapshot);
+            renderInspectorSection(graphics, sections.details(), InspectorTab.DETAILS, snapshot);
+            renderInspectorSection(graphics, sections.stack(), InspectorTab.STACK, snapshot);
+        } else {
+            int tabCount = 4;
+            int tabWidth = (area.width() - 3 * (tabCount + 1)) / tabCount;
+            button("tab-sources", new Bounds(area.x() + 3, area.y() + 3, tabWidth, 18), component("codon.ui.contexts"),
+                true, state.preferences().inspectorTab() == InspectorTab.SOURCES, false, false,
+                () -> state.preferences().setInspectorTab(InspectorTab.SOURCES));
+            button("tab-flow", new Bounds(area.x() + 6 + tabWidth, area.y() + 3, tabWidth, 18),
+                component("codon.ui.flow"), true, state.preferences().inspectorTab() == InspectorTab.FLOW, false, false,
+                () -> state.preferences().setInspectorTab(InspectorTab.FLOW));
+            button("tab-detail", new Bounds(area.x() + 9 + tabWidth * 2, area.y() + 3, tabWidth, 18),
+                component("codon.ui.details"), true, state.preferences().inspectorTab() == InspectorTab.DETAILS, false, false,
+                () -> state.preferences().setInspectorTab(InspectorTab.DETAILS));
+            button("tab-stack", new Bounds(area.x() + 3 + (tabCount - 1) * (tabWidth + 3), area.y() + 3, tabWidth, 18), component("codon.ui.stack"),
+                true, state.preferences().inspectorTab() == InspectorTab.STACK, false, false,
+                () -> state.preferences().setInspectorTab(InspectorTab.STACK));
+            Bounds body = new Bounds(area.x(), area.y() + 25, area.width(), area.height() - 25);
+            switch (state.preferences().inspectorTab()) {
+                case STACK -> renderStack(graphics, body, snapshot);
+                case FLOW -> renderFlow(graphics, body, snapshot);
+                case DETAILS -> {
+                    if (body.height() >= 155) renderSourcesWithDetails(graphics, body, snapshot);
+                    else renderSourceDetails(graphics, body);
+                }
+                case SOURCES -> renderSourcesWithDetails(graphics, body, snapshot);
+            }
+        }
+    }
+
+    private void renderInspectorSection(GuiGraphicsExtractor graphics, Bounds area, InspectorTab section,
+                                        PauseSnapshot snapshot) {
+        boolean collapsed = collapsedSections.contains(section);
+        String key = switch (section) {
+            case FLOW -> "codon.ui.flow";
+            case SOURCES -> "codon.ui.contexts";
+            case DETAILS -> "codon.ui.details";
+            case STACK -> "codon.ui.stack";
+        };
+        button("section-" + section.name(), new Bounds(area.x() + 2, area.y() + 2, 15, 15),
+            Component.literal((collapsed ? "+ " : "− ") + tr(key)), true, false, false, false, () -> {
+                if (!collapsedSections.remove(section)) collapsedSections.add(section);
+            }).withIcon(collapsed ? DebuggerIcon.EXPAND : DebuggerIcon.COLLAPSE)
+            .setTooltip(Tooltip.create(component(key)));
+        Bounds body = new Bounds(area.x() + 18, area.y(), area.width() - 18, area.height());
+        if (collapsed) {
+            text(graphics, tr(key), body.x() + 7, body.y() + 6, body.width() - 14, MUTED);
+            return;
+        }
+        switch (section) {
+            case FLOW -> renderFlow(graphics, body, snapshot);
+            case SOURCES -> renderSources(graphics, body, snapshot);
+            case DETAILS -> renderSourceDetails(graphics, body);
+            case STACK -> renderStack(graphics, body, snapshot);
+        }
+    }
+
+    private void renderSourcesWithDetails(GuiGraphicsExtractor graphics, Bounds body,
+                                          PauseSnapshot snapshot) {
+        int detailHeight = body.height() >= 155 ? 94 : body.height() >= 112 ? 70 : 0;
+        renderSources(graphics, new Bounds(body.x(), body.y(), body.width(), body.height() - detailHeight), snapshot);
+        if (detailHeight > 0) renderSourceDetails(graphics,
+            new Bounds(body.x(), body.y() + body.height() - detailHeight, body.width(), detailHeight));
+    }
+
+    private void renderFlow(GuiGraphicsExtractor graphics, Bounds area, PauseSnapshot snapshot) {
+        if (area.height() < 28) return;
+        graphics.fill(area.x() + 5, area.y(), area.x() + area.width() - 5, area.y() + 1, BORDER);
+        ExecutionFlowTrace flow = state.selectedExecutionFlow();
+        if (flow == null) {
+            text(graphics, tr("codon.ui.flow"), area.x() + 7, area.y() + 6, area.width() - 14, TEXT);
+            text(graphics, tr("codon.ui.no_flow"), area.x() + 7, area.y() + 22, area.width() - 14, MUTED);
+            return;
+        }
+
+        int flowIndex = state.selectedFlowIndex();
+        int flowCount = snapshot.executionFlows().size();
+        String flowHeading = state.isPaused()
+            ? Component.translatable("codon.ui.flow_index", flowIndex + 1, flowCount).getString()
+            : Component.translatable("codon.ui.last_completed_flow", flowIndex + 1, flowCount).getString();
+        text(graphics, flowHeading,
+            area.x() + 7, area.y() + 6, area.width() - 58, TEXT);
+        button("flow-prev", new Bounds(area.x() + area.width() - 47, area.y() + 2, 20, 15),
+            Component.literal("‹"), flowIndex > 0, false, false, false, () -> {
+                state.selectExecutionFlow(flowIndex - 1);
+                flowOffset = Math.max(0, state.selectedFlowStageIndex());
+                commandOffset = sourceOffset = 0;
+                expandedGroup = List.of();
+            });
+        button("flow-next", new Bounds(area.x() + area.width() - 24, area.y() + 2, 20, 15),
+            Component.literal("›"), flowIndex + 1 < flowCount, false, false, false, () -> {
+                state.selectExecutionFlow(flowIndex + 1);
+                flowOffset = Math.max(0, state.selectedFlowStageIndex());
+                commandOffset = sourceOffset = 0;
+                expandedGroup = List.of();
+            });
+
+        int firstCount = flow.stages().isEmpty() ? 0 : flow.stages().getFirst().inputCount();
+        String finalCount = !flow.stages().isEmpty() && flow.stages().getLast().terminal()
+            ? Integer.toString(flow.finalContextCount()) : "…";
+        String summary = Component.translatable("codon.ui.flow_summary", firstCount, finalCount,
+            flow.executionCount(), flow.successCount()).getString();
+        if (flow.truncated()) summary += " · " + tr("codon.ui.truncated");
+        text(graphics, summary, area.x() + 7, area.y() + 21, area.width() - 14,
+            flow.truncated() ? AMBER : MUTED);
+
+        int rows = Math.max(0, (area.height() - 43) / 19);
+        maxFlowOffset = Math.max(0, flow.stages().size() - Math.max(1, rows));
+        flowOffset = Math.clamp(flowOffset, 0, maxFlowOffset);
+        flowScrollBounds = area;
+        for (int row = 0; row < rows && flowOffset + row < flow.stages().size(); row++) {
+            int index = flowOffset + row;
+            ExecutionFlowStage stage = flow.stages().get(index);
+            String counts = stage.inputCount() + "→" + (stage.complete() ? stage.outputCount() : "…");
+            if (stage.droppedCount() > 0) counts += "  −" + stage.droppedCount();
+            if (!stage.lineageComplete()) counts += "  ?";
+            String label = (stage.terminal() ? "RUN " : (stage.index() + 1) + "  ") + counts
+                + "  " + stageSegment(stage.command());
+            button("flow-stage-" + flow.invocationId() + "-" + stage.index(),
+                new Bounds(area.x() + 5, area.y() + 35 + row * 19, area.width() - 13, 17),
+                Component.literal(label), true, index == state.selectedFlowStageIndex(), true,
+                !stage.complete() || !stage.lineageComplete(), () -> {
+                    state.selectExecutionFlowStage(index);
+                    state.preferences().setInspectorTab(InspectorTab.FLOW);
+                    sourceOffset = commandOffset = 0;
+                    expandedGroup = List.of();
+                }).setTooltip(Tooltip.create(Component.literal(stage.command().text())));
+        }
+        if (rows > 0 && flow.stages().size() > rows) {
+            scrollbar(graphics, area.x() + area.width() - 5, area.y() + 35, Math.max(1, rows * 19 - 2),
+                flowOffset, maxFlowOffset, rows, flow.stages().size());
+        }
+    }
+
+    private void renderSources(GuiGraphicsExtractor graphics, Bounds area, PauseSnapshot snapshot) {
+        String heading = expandedGroup.isEmpty() ? tr("codon.ui.contexts")
+            : Component.translatable("codon.ui.group", expandedGroup.size()).getString();
+        text(graphics, heading, area.x() + 7, area.y() + 6, area.width() - 42, TEXT);
+        if (!expandedGroup.isEmpty()) {
+            button("all-sources", new Bounds(area.x() + area.width() - 39, area.y() + 2, 35, 15),
+                component("codon.ui.all"), true, false, false, false, () -> { expandedGroup = List.of(); sourceOffset = 0; });
+        }
+        List<Integer> indices = expandedGroup;
+        if (indices.isEmpty()) {
+            List<Integer> all = new ArrayList<>(state.displayedSources().size());
+            for (int i = 0; i < state.displayedSources().size(); i++) all.add(i);
+            indices = all;
+        }
+        int rows = Math.max(0, (area.height() - 30) / 19);
+        maxSourceOffset = Math.max(0, indices.size() - Math.max(1, rows));
+        sourceOffset = Math.max(0, Math.min(sourceOffset, maxSourceOffset));
+        sourceScrollBounds = area;
+        if (indices.isEmpty()) text(graphics, tr("codon.ui.no_sources"), area.x() + 7, area.y() + 24, area.width() - 14, MUTED);
+        for (int row = 0; row < rows && sourceOffset + row < indices.size(); row++) {
+            int index = indices.get(sourceOffset + row);
+            PauseSource source = state.displayedSources().get(index);
+            String name = sourceLabel(source, index, state.isDisplayedSourceDropped(index));
+            if (!source.dimension().equals(dimension())) name += " · " + shortDimension(source.dimension());
+            colorSourceButton(button("source-" + index, new Bounds(area.x() + 5, area.y() + 21 + row * 19, area.width() - 13, 17),
+                Component.literal(name), true, index == state.selectedSourceIndex(), true, false, () -> {
+                    if (state.inspectionSnapshot() == snapshot) {
+                        state.selectSource(index);
+                        state.preferences().setInspectorTab(InspectorTab.DETAILS);
+                    }
+                }), index).setTooltip(Tooltip.create(sourceTooltip(Component.literal(name), index)));
+        }
+        if (rows > 0 && indices.size() > rows) {
+            text(graphics, (sourceOffset + 1) + "–" + Math.min(indices.size(), sourceOffset + rows) + " / " + indices.size(),
+                area.x() + 7, area.y() + area.height() - 8, area.width() - 14, MUTED);
+            scrollbar(graphics, area.x() + area.width() - 5, area.y() + 21, Math.max(1, rows * 19 - 2),
+                sourceOffset, maxSourceOffset, rows, indices.size());
+        }
+    }
+
+    private void renderSourceDetails(GuiGraphicsExtractor graphics, Bounds area) {
+        PauseSource source = state.selectedSource();
+        if (source == null) return;
+        graphics.fill(area.x() + 5, area.y(), area.x() + area.width() - 5, area.y() + 1, BORDER);
+        int y = area.y() + 6;
+        int accent = sourceColor(state.selectedSourceIndex(), TEAL);
+        text(graphics, "#" + (state.selectedSourceIndex() + 1) + " · " + name(source), area.x() + 7, y, area.width() - 14, accent);
+        y += 13;
+        if (state.selectedSourceDropped() && y + 9 <= area.y() + area.height()) {
+            text(graphics, tr("codon.ui.flow_excluded"), area.x() + 7, y, area.width() - 14, RED);
+            y += 11;
+        } else {
+            if (state.selectedSourceCreated() && y + 9 <= area.y() + area.height()) {
+                text(graphics, tr("codon.ui.flow_created"), area.x() + 7, y, area.width() - 14, GREEN);
+                y += 11;
+            }
+            ExecutionFlowContext parent = state.selectedFlowParent();
+            if (parent != null) y = renderFlowChanges(graphics, area, y, parent.source(), source);
+        }
+        if (y + 9 > area.y() + area.height()) return;
+        text(graphics, tr("codon.ui.anchor"), area.x() + 7, y, area.width() - 14, MUTED);
+        y += 10;
+        if (y + 9 > area.y() + area.height()) return;
+        text(graphics, String.format(Locale.ROOT, "%.2f, %.2f, %.2f", source.anchor().x(), source.anchor().y(), source.anchor().z()),
+            area.x() + 7, y, area.width() - 14, TEXT);
+        y += 11;
+        if (y + 9 > area.y() + area.height()) return;
+        text(graphics, shortDimension(source.dimension()), area.x() + 7, y, area.width() - 14,
+            source.dimension().equals(dimension()) ? MUTED : AMBER);
+        y += 11;
+        if (y + 9 < area.y() + area.height()) {
+            text(graphics, String.format(Locale.ROOT, "yaw %.1f° / pitch %.1f°", source.yaw(), source.pitch()),
+                area.x() + 7, y, area.width() - 14, TEXT);
+            y += 11;
+        }
+        if (source.entity() != null && y + 16 <= area.y() + area.height()) {
+            String uuid = source.entity().uuid().toString();
+            button("copy-uuid", new Bounds(area.x() + 7, y, area.width() - 14, 16),
+                Component.literal("UUID " + uuid.substring(0, 4) + "..." + uuid.substring(uuid.length() - 4)
+                    + " " + tr("codon.ui.copy")),
+                true, false, true, false, () -> client.keyboardHandler.setClipboard(uuid))
+                .setTooltip(Tooltip.create(Component.literal(uuid)));
+            y += 18;
+        }
+        if (!visibleSources.contains(state.selectedSourceIndex()) && y + 9 <= area.y() + area.height()) {
+            text(graphics, tr(source.dimension().equals(dimension()) ? "codon.ui.offscreen" : "codon.ui.other_dimension"),
+                area.x() + 7, y, area.width() - 14, AMBER);
+        }
+    }
+
+    private int sourceDetailsHeight() {
+        PauseSource source = state.selectedSource();
+        if (source == null) return 20;
+        int height = 6 + 13 + 10 + 11 + 11 + 11 + 5;
+        if (state.selectedSourceDropped()) height += 11;
+        else {
+            if (state.selectedSourceCreated()) height += 11;
+            ExecutionFlowContext parent = state.selectedFlowParent();
+            if (parent != null) {
+                if (!Objects.equals(parent.source().entity(), source.entity())) height += 11;
+                if (!parent.source().dimension().equals(source.dimension())) height += 11;
+                if (!parent.source().anchor().equals(source.anchor())) height += 11;
+            }
+        }
+        if (source.entity() != null) height += 18;
+        if (!visibleSources.contains(state.selectedSourceIndex())) height += 9;
+        return height;
+    }
+
+    private int sourceColor(int index, int fallback) {
+        return state.isDisplayedSourceDropped(index) ? RED : state.isDisplayedSourceCreated(index) ? GREEN : fallback;
+    }
+
+    private int worldSourceColor(int index, int fallback) {
+        return state.isWorldSourceDropped(index) ? RED : state.isWorldSourceCreated(index) ? GREEN : fallback;
+    }
+
+    private DebuggerButton colorWorldSourceButton(DebuggerButton button, int index) {
+        if (state.isWorldSourceDropped(index)) return button.withStatusColor(RED, RED_SURFACE);
+        if (state.isWorldSourceCreated(index)) return button.withStatusColor(GREEN, GREEN_SURFACE);
+        return button;
+    }
+
+    private Component worldSourceTooltip(Component title, int index) {
+        if (state.isWorldSourceDropped(index)) return title.copy().append("\n").append(component("codon.ui.flow_excluded"));
+        if (state.isWorldSourceCreated(index)) return title.copy().append("\n").append(component("codon.ui.flow_created"));
+        return title;
+    }
+
+    private DebuggerButton colorSourceButton(DebuggerButton button, int index) {
+        if (state.isDisplayedSourceDropped(index)) return button.withStatusColor(RED, RED_SURFACE);
+        if (state.isDisplayedSourceCreated(index)) return button.withStatusColor(GREEN, GREEN_SURFACE);
+        return button;
+    }
+
+    private Component sourceTooltip(Component title, int index) {
+        if (state.isDisplayedSourceDropped(index)) return title.copy().append("\n").append(component("codon.ui.flow_excluded"));
+        if (state.isDisplayedSourceCreated(index)) return title.copy().append("\n").append(component("codon.ui.flow_created"));
+        return title;
+    }
+
+    private int renderFlowChanges(GuiGraphicsExtractor graphics, Bounds area, int y,
+                                  PauseSource before, PauseSource after) {
+        String beforeEntity = before.entity() == null ? tr("codon.ui.position_source") : before.entity().name();
+        String afterEntity = after.entity() == null ? tr("codon.ui.position_source") : after.entity().name();
+        if (!Objects.equals(before.entity(), after.entity()) && y + 9 <= area.y() + area.height()) {
+            text(graphics, Component.translatable("codon.ui.flow_executor_change", beforeEntity, afterEntity).getString(),
+                area.x() + 7, y, area.width() - 14, TEXT);
+            y += 11;
+        }
+        if (!before.dimension().equals(after.dimension()) && y + 9 <= area.y() + area.height()) {
+            text(graphics, Component.translatable("codon.ui.flow_dimension_change",
+                shortDimension(before.dimension()), shortDimension(after.dimension())).getString(),
+                area.x() + 7, y, area.width() - 14, AMBER);
+            y += 11;
+        }
+        if (!before.anchor().equals(after.anchor()) && y + 9 <= area.y() + area.height()) {
+            String from = String.format(Locale.ROOT, "%.1f,%.1f,%.1f",
+                before.anchor().x(), before.anchor().y(), before.anchor().z());
+            String to = String.format(Locale.ROOT, "%.1f,%.1f,%.1f",
+                after.anchor().x(), after.anchor().y(), after.anchor().z());
+            text(graphics, Component.translatable("codon.ui.flow_position_change", from, to).getString(),
+                area.x() + 7, y, area.width() - 14, TEXT);
+            y += 11;
+        }
+        return y;
+    }
+
+    private void renderStack(GuiGraphicsExtractor graphics, Bounds area, PauseSnapshot snapshot) {
+        if (area.height() < 29) return;
+        graphics.fill(area.x() + 5, area.y(), area.x() + area.width() - 5, area.y() + 1, BORDER);
+        text(graphics, tr("codon.ui.stack"), area.x() + 7, area.y() + 6, area.width() - 14, TEXT);
+        int rows = Math.max(0, (area.height() - 31) / 28);
+        maxStackOffset = Math.max(0, snapshot.callStack().size() - Math.max(1, rows));
+        stackOffset = Math.max(0, Math.min(stackOffset, maxStackOffset));
+        stackScrollBounds = area;
+        if (snapshot.callStack().isEmpty()) text(graphics, tr("codon.ui.no_frames"), area.x() + 7,
+            area.y() + 22, area.width() - 14, MUTED);
+        for (int row = 0; row < rows && stackOffset + row < snapshot.callStack().size(); row++) {
+            int index = stackOffset + row;
+            CallFrame frame = snapshot.callStack().get(index);
+            int y = area.y() + 20 + row * 28;
+            String label = (index == 0 ? "> " : "  ") + location(frame.location());
+            button("frame-" + index, new Bounds(area.x() + 5, y, area.width() - 13, 17),
+                Component.literal(label), true, index == state.selectedFrameIndex(), true, false, () -> {
+                    if (state.inspectionSnapshot() == snapshot) { state.selectFrame(index); commandOffset = 0; }
+                }).setTooltip(Tooltip.create(ClientFormatting.sourceLocation(frame.location())));
+            text(graphics, frame.command().text(), area.x() + 10, y + 19, area.width() - 20, MUTED);
+        }
+        if (rows > 0 && snapshot.callStack().size() > rows) {
+            text(graphics, (stackOffset + 1) + "–" + Math.min(snapshot.callStack().size(), stackOffset + rows)
+                    + " / " + snapshot.callStack().size(), area.x() + 7, area.y() + area.height() - 8, area.width() - 14, MUTED);
+            scrollbar(graphics, area.x() + area.width() - 5, area.y() + 20, Math.max(1, rows * 28 - 1),
+                stackOffset, maxStackOffset, rows, snapshot.callStack().size());
+        }
+    }
+
+    private void renderCommand(GuiGraphicsExtractor graphics, Bounds area, @Nullable PauseSnapshot snapshot, InputManager input) {
+        if (area.height() < 20) return;
+        panel(graphics, area);
+        if (snapshot == null) {
+            text(graphics, tr("codon.ui.no_snapshot"), area.x() + 8, area.y() + 9, area.width() - 16, MUTED);
+            return;
+        }
+        int index = state.selectedFrameIndex();
+        CallFrame frame = index >= 0 && index < snapshot.callStack().size() ? snapshot.callStack().get(index) : null;
+        ExecutionFlowStage flowStage = index < 0 ? state.selectedExecutionFlowStage() : null;
+        ExecutionFlowTrace flow = index < 0 ? state.selectedExecutionFlow() : null;
+        SourceLocation location = flowStage != null && flow != null ? flow.location()
+            : frame == null ? snapshot.location() : frame.location();
+        CommandSnippet command = flowStage != null ? flowStage.command()
+            : frame == null ? snapshot.command() : frame.command();
+        String caption = flowStage != null ? location(location) : tr(index != 0 ? "codon.ui.caller_command"
+            : snapshot.reason() == PauseReason.EXECUTION_COMPLETE ? "codon.ui.last_command" : "codon.ui.current_command")
+            + " · " + location(location);
+        int accent = flowStage != null ? TEAL : index == 0 ? AMBER : MUTED;
+        int watchWidth = 48;
+        text(graphics, caption, area.x() + 8, area.y() + 5,
+            area.width() - (index == 0 ? 16 : 87) - watchWidth, accent);
+        button("watch", new Bounds(area.x() + area.width() - (index > 0 ? 129 : 54), area.y() + 2, 48, 15),
+            component("codon.watch.open"), true, false, false, false,
+            () -> client.setScreenAndShow(new WatchScreen(input, state, this)));
+        if (index > 0) button("current-frame", new Bounds(area.x() + area.width() - 75, area.y() + 2, 70, 15),
+            component("codon.ui.current_frame"), true, false, false, false, () -> { state.selectFrame(0); stackOffset = commandOffset = 0; });
+        Bounds content = new Bounds(area.x() + 8, area.y() + 19, Math.max(1, area.width() - 21), area.height() - 21);
+        graphics.fill(area.x() + 4, content.y() - 1, area.x() + area.width() - 4, area.y() + area.height() - 3, AMBER_SURFACE);
+        graphics.fill(area.x() + 4, content.y() - 1, area.x() + 6, area.y() + area.height() - 3, accent);
+        List<FormattedCharSequence> lines = client.font.split(ClientFormatting.command(command), content.width());
+        int rows = Math.max(1, content.height() / 10);
+        maxCommandOffset = Math.max(0, lines.size() - rows);
+        commandOffset = Math.max(0, Math.min(commandOffset, maxCommandOffset));
+        commandScrollBounds = area;
+        graphics.enableScissor(content.x(), content.y(), content.x() + content.width(), area.y() + area.height() - 3);
+        for (int i = 0; i < rows && commandOffset + i < lines.size(); i++) {
+            graphics.text(client.font, lines.get(commandOffset + i), content.x() + 2, content.y() + i * 10, TEXT, false);
+        }
+        graphics.disableScissor();
+        if (maxCommandOffset > 0) scrollbar(graphics, area.x() + area.width() - 7, content.y(), content.height(),
+            commandOffset, maxCommandOffset, rows, lines.size());
+    }
+
+    public boolean scroll(double x, double y, double amount) {
+        if (nbtPanel.scroll(x, y, amount)) return true;
+        int delta = amount > 0 ? -1 : amount < 0 ? 1 : 0;
+        if (delta == 0) return false;
+        if (watchSummaryScrollBounds.contains(x, y)) {
+            watchSummaryOffset = Math.clamp(watchSummaryOffset + delta, 0, maxWatchSummaryOffset);
+        } else if (sourceScrollBounds.contains(x, y)) {
+            sourceOffset = Math.clamp(sourceOffset + delta, 0, maxSourceOffset);
+        } else if (stackScrollBounds.contains(x, y)) {
+            stackOffset = Math.clamp(stackOffset + delta, 0, maxStackOffset);
+        } else if (commandScrollBounds.contains(x, y)) {
+            commandOffset = Math.clamp(commandOffset + delta, 0, maxCommandOffset);
+        } else if (flowScrollBounds.contains(x, y)) {
+            flowOffset = Math.clamp(flowOffset + delta, 0, maxFlowOffset);
+        } else return false;
+        return true;
+    }
+
+    private DebuggerButton button(String id, Bounds bounds, Component label, boolean active, boolean selected,
+                                  boolean leftAligned, boolean subdued, Runnable action) {
+        DebuggerButton button = buttonCache.computeIfAbsent(id, ignored -> new DebuggerButton());
+        button.configure(bounds.x(), bounds.y(), bounds.width(), bounds.height(), label, active,
+            selected, leftAligned, subdued, action);
+        usedButtons.add(id);
+        controls.add(button);
+        return button;
+    }
+
+    private DebuggerButton iconButton(String id, Bounds bounds, Component label, DebuggerIcon icon,
+                                     boolean active, Runnable action) {
+        DebuggerButton button = button(id, bounds, label, active, false, false, false, action).withIcon(icon);
+        button.setTooltip(Tooltip.create(label));
+        return button;
+    }
+
+    private void text(GuiGraphicsExtractor graphics, String value, int x, int y, int width, int color) {
+        if (width <= 0) return;
+        graphics.enableScissor(x, y, x + width, y + client.font.lineHeight + 1);
+        graphics.text(client.font, trimmed(value, width), x, y, color, false);
+        graphics.disableScissor();
+    }
+
+    private String trimmed(String value, int width) {
+        if (client.font.width(value) <= width) return value;
+        if (width < client.font.width("…")) return "";
+        return client.font.plainSubstrByWidth(value, width - client.font.width("…")) + "…";
+    }
+
+    private void wrapped(GuiGraphicsExtractor graphics, Component value, Bounds bounds, int color) {
+        if (bounds.width() <= 0) return;
+        int y = bounds.y();
+        for (FormattedCharSequence line : client.font.split(value, bounds.width())) {
+            if (y + client.font.lineHeight > bounds.y() + bounds.height()) break;
+            graphics.text(client.font, line, bounds.x(), y, color, false);
+            y += 11;
+        }
+    }
+
+    private static void panel(GuiGraphicsExtractor graphics, Bounds bounds) {
+        if (bounds.width() <= 0 || bounds.height() <= 0) return;
+        graphics.fill(bounds.x(), bounds.y(), bounds.x() + bounds.width(), bounds.y() + bounds.height(), PANEL);
+        graphics.outline(bounds.x(), bounds.y(), bounds.width(), bounds.height(), BORDER);
+    }
+
+    private static void leader(GuiGraphicsExtractor graphics, int x1, int y1, int x2, int y2, int color) {
+        int steps = Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1));
+        if (steps < 1) return;
+        // GUI extraction exposes rectangles, not arbitrary lines. One pixel per step is enough.
+        for (int i = 0; i <= steps; i += 2) {
+            int x = x1 + (x2 - x1) * i / steps;
+            int y = y1 + (y2 - y1) * i / steps;
+            graphics.fill(x, y, x + 1, y + 1, color);
+        }
+    }
+
+    private static void scrollbar(GuiGraphicsExtractor graphics, int x, int y, int height,
+                                  int offset, int maxOffset, int rows, int total) {
+        if (height <= 0 || total <= rows || maxOffset <= 0) return;
+        graphics.fill(x, y, x + 2, y + height, BORDER);
+        int thumb = Math.min(height, Math.max(6, height * rows / total));
+        int top = y + (height - thumb) * offset / maxOffset;
+        graphics.fill(x, top, x + 2, top + thumb, TEAL);
+    }
+
+    private String dimension() {
+        return client.level == null ? "" : client.level.dimension().identifier().toString();
+    }
+
+    private static String shortDimension(String dimension) {
+        return dimension.startsWith("minecraft:") ? dimension.substring(10) : dimension;
+    }
+
+    private static String sourceLabel(PauseSource source, int index, boolean dropped) {
+        String prefix = dropped ? "× " : source.entity() == null ? "[" + (index + 1) + "] " : "#" + (index + 1) + " ";
+        return prefix + name(source);
+    }
+
+    private static String stageSegment(CommandSnippet command) {
+        int start = Math.clamp(command.highlightStart(), 0, command.text().length());
+        int end = Math.clamp(command.highlightEnd(), start, command.text().length());
+        String segment = command.text().substring(start, end).strip();
+        return segment.isEmpty() ? command.text() : segment;
+    }
+
+    private static String name(PauseSource source) {
+        return source.entity() == null ? tr("codon.ui.position_source") : source.entity().name();
+    }
+
+    private static String location(SourceLocation location) {
+        return switch (location) {
+            case SourceLocation.Function function -> function.location().function() + ":" + function.location().line();
+            case SourceLocation.Block block -> tr("codon.ui.command_block") + " " + block.block().x() + ", " + block.block().y() + ", " + block.block().z();
+            case SourceLocation.Player player -> player.name();
+        };
+    }
+
+    private static MutableComponent component(String key) {
+        return Component.translatable(key);
+    }
+
+    private static String tr(String key) {
+        return component(key).getString();
+    }
+}

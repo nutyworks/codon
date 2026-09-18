@@ -1,6 +1,6 @@
-# Bastion architecture
+# Codon architecture
 
-Bastion is a step-debugger for Minecraft commands and datapack functions, structured as a
+Codon is a step-debugger for Minecraft commands and datapack functions, structured as a
 **hexagonal (ports & adapters)** application so the debugging logic stays independent of
 Minecraft and runs identically in singleplayer and on dedicated servers.
 
@@ -12,7 +12,7 @@ Minecraft and runs identically in singleplayer and on dedicated servers.
    adapters ───▶ │   (pure Java — no Minecraft, no Fabric)         │ ───▶ adapters
                  │                                                │
   mixins         │   model/    value types (SourceLocation,       │   ExecutionController
-  /bastion cmd   │             Breakpoint locations, CallFrame,    │     → McExecutionController
+  /codon cmd   │             Breakpoint locations, CallFrame,    │     → McExecutionController
   key bindings   │             PauseSnapshot, …)                   │       (debugger task queue)
   sync packets   │   service/  DebuggerEngine, BreakpointRegistry, │   DebuggerEventSink
                  │             StepController, CallStack           │     → NetworkDebuggerEventSink
@@ -21,7 +21,7 @@ Minecraft and runs identically in singleplayer and on dedicated servers.
                  └───────────────────────────────────────────────┘
 ```
 
-### `core` — `works.nuty.bastion.core` (source set `core`)
+### `core` — `works.nuty.codon.core` (source set `core`)
 Pure Java with **no Minecraft/Fabric/Brigadier dependency** (only `jspecify` annotations). The
 build enforces this: the `core` source set's classpath has no Minecraft, so a stray import fails
 to compile. Bundled into the mod jar by the `jar` task.
@@ -36,7 +36,7 @@ to compile. Bundled into the mod jar by the `jar` task.
 Tested in isolation by the `coreTest` source set: `./gradlew coreTest` runs the full domain
 suite in ~1s without Minecraft.
 
-### Minecraft adapters — `works.nuty.bastion.*` (source set `main`)
+### Minecraft adapters — `works.nuty.codon.*` (source set `main`)
 - `mixin/` — `BuildContextsMixin` translates a command stage into a core `CommandStageEvent`.
   `ExecutionContextMixin` passes invocation metadata to deferred continuations and reports queue
   completion. `CommandsMixin`, `ServerGamePacketListenerMixin`, and `DedicatedServerMixin` let
@@ -46,10 +46,10 @@ suite in ~1s without Minecraft.
   order, including repeated variables.
 - `adapter/` — `McExecutionController` (parks on a dedicated `DebuggerTaskQueue`), `SourceMapper`
   (Minecraft types ↔ core value types).
-- `command/BastionCommand` — the `/bastion` tree, delegating to the engine.
+- `command/CodonCommand` — the `/codon` tree, delegating to the engine.
 - `network/` — S2C sync payloads + `NetworkDebuggerEventSink`; this transport is what makes the
   in-game UI work on dedicated servers.
-- `BastionMod` — composition root: constructs the core and wires adapters (constructor injection).
+- `CodonMod` — composition root: constructs the core and wires adapters (constructor injection).
   Exposes the wired engine through a single static accessor, the seam mixins reach through.
 
 Each command invocation receives a unique `CommandTrace` id and original source location.
@@ -76,13 +76,13 @@ excluded from watchdog accounting through the tick-deadline reset. The suspensio
 `RESUMED` or `CANCELLED`; cancellation, failures, and server shutdown clear stale pause state
 while preserving breakpoint definitions.
 
-### Client adapters — `works.nuty.bastion.client.*` (source set `client`)
+### Client adapters — `works.nuty.codon.client.*` (source set `client`)
 - `state/ClientDebuggerState` — authoritative pause/breakpoint mirror, local source/frame selection,
   gizmo mode, and a pending-control latch cleared by server packets or a retry timeout.
 - `network/ClientNetworking` — receivers that update the mirror and clear it on disconnect.
 - `ui/DebuggerOverlay` — shared transparent HUD and cursor-mode presentation: control bar, source
   inspector and call stack on the left (clear of the scoreboard), and scrollable command text.
-  `BastionScreen` registers its native widgets
+  `CodonScreen` registers its native widgets
   for mouse, keyboard, and narration. `ClientFormatting` renders core types as chat components.
   The older `Window` classes are no longer used by the client composition root.
 - `ui/layout/` — Minecraft-free responsive panel and screen-space label placement. Overlapping
@@ -93,7 +93,7 @@ while preserving breakpoint definitions.
   breakpoint outlines, and amber active stops. Sources in other dimensions remain in the inspector
   but are not drawn in the current world. Source anchors are execution reference points, not
   necessarily the attached entity's position.
-- `input/InputManager` — keybinds; control actions go to the server as `/bastion` commands.
+- `input/InputManager` — keybinds; control actions go to the server as `/codon` commands.
 - `camera/DebuggerFreecam` — a client-only camera entity while paused and while advancing the inspected execution.
   Client mixins suspend local player and ridden-vehicle simulation, route mouse look into the
   camera, and block gameplay inputs. The camera never enters the level's entity list or supplies
@@ -105,7 +105,7 @@ while preserving breakpoint definitions.
   rendering; player/vehicle render interpolation is fixed so the pose stays still.
   First-person arms and held items are hidden while freecam is active and return through vanilla
   rendering at execution end; the paused body's third-person arms and equipment remain visible.
-- `BastionClientMod` — client composition root.
+- `CodonClientMod` — client composition root.
 
 `B` opens/closes cursor mode. `F7` continues, `F8` steps over, `F9` steps into, `Shift+F9` steps
 out, and `F10` toggles the targeted block breakpoint; UI hints follow remapped keys. Gizmo modes
@@ -174,7 +174,7 @@ collapse and expanded paths, including across reordered sources and temporary no
 reopening the debugger overlay keeps these preferences. Disconnect clears per-entity presentation state;
 the global NBT expansion preference is saved in client settings and survives world changes and restarts.
 Disabling the tree or collapsing an entity section suppresses its new reads; the existing pause stays intact.
-Requests use the same owner-only `/bastion nbt <pause> <request> <source> <offset> root|path ...` mailbox.
+Requests use the same owner-only `/codon nbt <pause> <request> <source> <offset> root|path ...` mailbox.
 The server reads the loaded source entity across dimensions without loading chunks or mutating NBT.
 Root data is bounded to 1 MiB estimated size, pages to 32 nodes, previews/names to 128 characters,
 and navigation paths to 512 characters. Generated paths quote compound names and index collections;
@@ -204,7 +204,7 @@ final inspection drops comparisons and stale values. An
 unanswered query expires after five seconds, without automatic retry loops. Definitions added at a
 stop get an initial observation; they cannot retroactively sample the preceding step.
 
-The owner-only `/bastion watch <pause-id> <request-id> <source-index>` subcommands (`score
+The owner-only `/codon watch <pause-id> <request-id> <source-index>` subcommands (`score
 <objective>`, `entity <path>`, `storage <id> <path>`) use the existing validated command mailbox.
 `captured <uuid>` can replace the source index for score/entity queries of a pinned executor or the executor just stepped.
 They run on the parked **server thread**, without draining general tasks/packets or changing the
@@ -220,7 +220,7 @@ increasing ID, even across session resets.
 Reads are enqueued when a pause arrives and before a UI step command, preserving request/reply order
 even when the next step is requested before the following client tick.
 
-Parsed `/bastion` commands always execute through the control dispatcher, including just after a
+Parsed `/codon` commands always execute through the control dispatcher, including just after a
 step unpauses the engine. Late watch requests are rejected by pause ID instead of being queued in
 the inspected execution or becoming step targets themselves. `/stop` keeps its pause-only bypass.
 
@@ -230,17 +230,17 @@ as truncated text. NBT output uses vanilla's sorted-key SNBT; multiple matches i
 There is no expression execution, fake-player score target, or NBT mutation.
 
 `WorldWatchPersistence` keeps definitions in the server world save. The singleplayer owner's list
-uses `data/bastion-watches/singleplayer.json`, so a changed development-launch username/UUID does not
+uses `data/codon-watches/singleplayer.json`, so a changed development-launch username/UUID does not
 lose that world's list. LAN guests and dedicated-server players retain separate
-`data/bastion-watches/<player-uuid>.json` files (version 2; version 1 is still read). When the stable owner file is absent,
+`data/codon-watches/<player-uuid>.json` files (version 2; version 1 is still read). When the stable owner file is absent,
 the current owner's legacy UUID file is migrated first, then the previous owner recorded by vanilla
 in `WorldData.getSinglePlayerUUID()`. Migration leaves the legacy file intact and never scans
 unrelated player files. An existing empty owner list stays empty. Only kind, objective/storage ID, NBT path,
 and optional pinned executor UUID are saved; values, display-name hints, captures, and change history
 are session-local. A bound target UUID is never rewritten when the singleplayer owner's UUID changes.
-Join sync (`bastion:watch_definitions_v3`) sends bounded definition pages, assembles the complete
+Join sync (`codon:watch_definitions_v3`) sends bounded definition pages, assembles the complete
 list, then attaches the client edit listener, so initial empty state and disconnect cleanup cannot
-overwrite the save. Adds/removals and pin changes send validated `/bastion watch save_chunk`
+overwrite the save. Adds/removals and pin changes send validated `/codon watch save_chunk`
 commands through the existing owner-only control mailbox, including while paused. Individual pages
 remain bounded to 8,192 JSON characters; the full list has no count or aggregate JSON-length cap.
 Transfers carry an identity and contiguous offsets and replace definitions only after the final page;
@@ -254,19 +254,19 @@ waiting or resuming. Vanilla normally batches these sends until the end of the t
 finish during a debugger pause. Watch replies and control acknowledgements therefore do not wait
 for the separate one-second keepalive. This flush does not tick connections or drain ordinary tasks.
 
-Pause payloads use `bastion:pause_sync_v4` for the completion reason and the stop ID alongside source dimensions.
+Pause payloads use `codon:pause_sync_v4` for the completion reason and the stop ID alongside source dimensions.
 Client and server must both use the updated mod for pause visualization and watches.
 
 ## Persistence
 
 Client preferences are shared across worlds and servers in the Minecraft instance's
-`config/bastion.json`: gizmo mode, inspector visibility, inspector tab, and NBT expansion. Changes save immediately.
+`config/codon.json`: gizmo mode, inspector visibility, inspector tab, and NBT expansion. Changes save immediately.
 An unset (`null`) inspector visibility retains the responsive automatic default. Key bindings
 continue to use Minecraft's own options file. Pause snapshots, source/frame selection, scroll
 positions, and freecam state remain session-local.
 
 Both block and function breakpoints live on the server in each world save's
-`data/bastion-breakpoints.json`. Block entries retain their dimension and coordinates; function
+`data/codon-breakpoints.json`. Block entries retain their dimension and coordinates; function
 entries retain their identifier and one-based line number. `WorldBreakpointPersistence` wraps the
 network event sink, saving both sets after every toggle or clear while forwarding pause, step,
 continue, resume, and breakpoint notifications unchanged. It restores the registry at `SERVER_STARTING`,

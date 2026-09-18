@@ -43,3 +43,6 @@ replay_*.log
 
 tmp/
 .gemini/
+
+# local Photoshop logo source
+/codon-logo.psd

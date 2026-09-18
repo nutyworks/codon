@@ -1,0 +1,13 @@
+package works.nuty.codon.mixin.client;
+
+import net.minecraft.client.sounds.SoundEngine;
+import net.minecraft.client.sounds.SoundManager;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.gen.Accessor;
+
+/** Exposes the manager-owned engine to the debugger pause adapter. */
+@Mixin(SoundManager.class)
+public interface SoundManagerAccessor {
+    @Accessor("soundEngine")
+    SoundEngine codon$soundEngine();
+}

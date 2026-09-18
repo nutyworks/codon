@@ -1,0 +1,26 @@
+{
+	"required": true,
+	"package": "works.nuty.codon.mixin.client",
+	"compatibilityLevel": "JAVA_25",
+	"client": [
+		"CameraMixin",
+		"ChannelMixin",
+		"ClientLevelMixin",
+		"DeltaTrackerAccessor",
+		"DeltaTrackerMixin",
+		"EffectClockMixin",
+		"GameRendererMixin",
+		"LevelExtractorMixin",
+		"LocalPlayerMixin",
+		"MinecraftMixin",
+		"MouseHandlerMixin",
+		"NowPlayingToastMixin",
+		"SoundEngineMixin",
+		"SoundManagerAccessor",
+		"TimedNotificationMixin",
+		"ToggleKeyMappingAccessor"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}
