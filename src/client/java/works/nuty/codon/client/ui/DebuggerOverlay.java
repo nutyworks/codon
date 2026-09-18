@@ -97,8 +97,11 @@ public final class DebuggerOverlay {
         if ((!state.isPaused() || snapshot == null) && !interactive) {
             if (!state.blockBreakpoints().isEmpty()) {
                 String text = "CODON · " + tr("codon.ui.ready") + "  [" + input.menuKey.getTranslatedKeyMessage().getString() + "]";
-                graphics.fill(6, 6, Math.min(graphics.guiWidth() - 6, font.width(text) + 18), 23, PANEL);
-                text(graphics, text, 12, 11, Math.max(0, graphics.guiWidth() - 24), MUTED);
+                Bounds header = DebuggerLayout.create(graphics.guiWidth(), graphics.guiHeight(), false).header();
+                Bounds badge = new Bounds(header.x(), header.y(),
+                    Math.min(graphics.guiWidth() - 2 * header.x(), font.width(text) + 14), header.height());
+                panel(graphics, badge);
+                text(graphics, text, header.x() + 7, header.y() + 5, Math.max(0, badge.width() - 14), MUTED);
             }
             buttonCache.clear();
             return List.of();
@@ -146,9 +149,10 @@ public final class DebuggerOverlay {
         Bounds header = new Bounds(layout.header().x(), layout.header().y(),
             Math.min(layout.header().width(), Math.max(toolbar.width(), 72 + client.font.width(status))),
             layout.header().height());
-        panel(graphics, header);
-        panel(graphics, toolbar);
-        graphics.fill(header.x(), header.y(), header.x() + 2, header.y() + header.height(), TEAL);
+        Bounds headerPanel = new Bounds(header.x(), header.y(), Math.max(header.width(), toolbar.width()),
+            toolbar.y() + toolbar.height() - header.y());
+        panel(graphics, headerPanel);
+        graphics.fill(header.x(), header.y(), header.x() + 2, header.y() + headerPanel.height(), TEAL);
         text(graphics, "CODON", header.x() + 7, header.y() + 5, 52, TEXT);
         text(graphics, status, header.x() + 64, header.y() + 5, Math.max(0, header.width() - 69),
             state.isPaused() ? AMBER : MUTED);
