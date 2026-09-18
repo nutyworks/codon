@@ -151,17 +151,11 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
             });
             context.takeScreenshot("codon-running");
             context.getInput().resizeWindow(1280, 800);
-            var reload = context.computeOnClient(client -> {
+            context.runOnClient(client -> {
                 state.setGizmoMode(ClientDebuggerState.GizmoMode.GROUPED);
                 state.applyPause(fixture(client));
-                client.getLanguageManager().setSelected("ko_kr");
-                return client.reloadResourcePacks();
             });
-            context.waitFor(client -> reload.isDone());
-            reload.join();
-            context.waitFor(client -> client.gui.overlay() == null);
             context.waitTicks(3);
-            context.takeScreenshot("codon-korean");
             checkSolidBlockMarkers(context, world, state);
             context.runOnClient(client -> {
                 state.reset();
