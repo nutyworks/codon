@@ -57,7 +57,7 @@ public final class DebuggerOverlay {
     private int maxSourceOffset;
     private int maxStackOffset;
     private int maxCommandOffset;
-    private int watchSummaryHeight;
+    private Bounds watchSummaryBounds = EMPTY;
     private int watchSummaryOffset;
     private int maxWatchSummaryOffset;
     private int maxFlowOffset;
@@ -211,8 +211,8 @@ public final class DebuggerOverlay {
         var camera = client.gameRenderer.mainCamera();
         if (!camera.isInitialized()) return;
         String dimension = dimension();
-        Bounds labelArea = new Bounds(world.x() + 2, world.y() + 2 + watchSummaryHeight,
-            Math.max(0, world.width() - 4), Math.max(0, world.height() - 18 - watchSummaryHeight));
+        Bounds labelArea = new Bounds(world.x() + 2, world.y() + 2,
+            Math.max(0, world.width() - 4), Math.max(0, world.height() - 18));
         List<Anchor> anchors = new ArrayList<>();
         List<PauseSource> displayedSources = state.worldSources();
         int selectedIndex = state.selectedWorldSourceIndex();
@@ -229,7 +229,7 @@ public final class DebuggerOverlay {
                 || Math.abs(projected.x) > 1 || Math.abs(projected.y) > 1) continue;
             double x = (projected.x + 1) * 0.5 * graphics.guiWidth();
             double y = (1 - projected.y) * 0.5 * graphics.guiHeight();
-            if (!labelArea.contains(x, y)) continue;
+            if (!labelArea.contains(x, y) || watchSummaryBounds.contains(x, y)) continue;
             // A transition's output prefix is exactly the current stage's inputs; appended drops
             // are historical markers, not live inspector/Watch/NBT indices.
             if (index < inspectorSourceCount) visibleSources.add(index);
@@ -240,7 +240,8 @@ public final class DebuggerOverlay {
             anchors.add(new Anchor(index, x, y, labelWidth));
         }
         List<GizmoLabelLayout.Label> labels = GizmoLabelLayout.layout(anchors, labelArea,
-            selectedIndex, state.gizmoMode() != ClientDebuggerState.GizmoMode.LABELS);
+            selectedIndex, state.gizmoMode() != ClientDebuggerState.GizmoMode.LABELS,
+            watchSummaryBounds.width() > 0 ? List.of(watchSummaryBounds) : List.of());
         for (GizmoLabelLayout.Label label : labels) {
             List<Integer> indices = label.sourceIndices();
             boolean selected = indices.contains(selectedIndex);
@@ -283,7 +284,7 @@ public final class DebuggerOverlay {
     /** A passive, compact reminder keeps pinned values visible without taking over the inspector. */
     private void renderWatchSummary(GuiGraphicsExtractor graphics, DebuggerLayout layout,
                                     int mouseX, int mouseY, boolean interactive, InputManager input) {
-        watchSummaryHeight = 0;
+        watchSummaryBounds = EMPTY;
         var entries = state.watches().entries();
         Bounds world = layout.world();
         if (world.width() < 60 || world.height() < 40) return;
@@ -313,7 +314,7 @@ public final class DebuggerOverlay {
         int width = Math.min(270, Math.max(1, world.width() - 8));
         Bounds panelBounds = new Bounds(world.x() + Math.max(0, world.width() - width - 4), world.y() + 4,
             width, panelHeight);
-        watchSummaryHeight = panelBounds.height() + 5;
+        watchSummaryBounds = panelBounds;
         panel(graphics, panelBounds);
         String title = tr("codon.watch.title");
         text(graphics, title, panelBounds.x() + 5, panelBounds.y() + 5, panelBounds.width() - 45, TEAL);

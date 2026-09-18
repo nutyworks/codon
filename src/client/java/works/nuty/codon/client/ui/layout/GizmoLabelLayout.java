@@ -37,8 +37,27 @@ public final class GizmoLabelLayout {
 
     public static List<Label> layout(
             List<Anchor> anchors, Bounds viewport, int selectedSourceIndex, boolean groupOverlaps) {
+        return layout(anchors, viewport, selectedSourceIndex, groupOverlaps, List.of());
+    }
+
+    /**
+     * Places labels in the viewport while leaving the supplied screen rectangles unobscured.
+     * Obstacles outside the viewport, or without area, have no effect.
+     */
+    public static List<Label> layout(
+            List<Anchor> anchors, Bounds viewport, int selectedSourceIndex, boolean groupOverlaps,
+            List<Bounds> obstacles) {
         if (anchors == null || viewport == null || viewport.width() <= 0 || viewport.height() < LABEL_HEIGHT) {
             return List.of();
+        }
+
+        List<Bounds> usableObstacles = new ArrayList<>();
+        if (obstacles != null) {
+            for (Bounds obstacle : obstacles) {
+                if (obstacle != null && obstacle.width() > 0 && obstacle.height() > 0 && overlaps(obstacle, viewport)) {
+                    usableObstacles.add(obstacle);
+                }
+            }
         }
 
         Map<Integer, Anchor> byIndex = new HashMap<>();
@@ -66,7 +85,7 @@ public final class GizmoLabelLayout {
         if (groupOverlaps) {
             units = mergeIdealOverlaps(units, viewport);
         }
-        return place(units, viewport, selectedSourceIndex);
+        return place(units, viewport, selectedSourceIndex, usableObstacles);
     }
 
     private static int anchorOrder(Anchor left, Anchor right) {
@@ -170,7 +189,7 @@ public final class GizmoLabelLayout {
         return left < right && top < bottom ? new Bounds(left, top, right - left, bottom - top) : null;
     }
 
-    private static List<Label> place(List<Unit> units, Bounds viewport, int selected) {
+    private static List<Label> place(List<Unit> units, Bounds viewport, int selected, List<Bounds> obstacles) {
         List<Unit> ordered = new ArrayList<>(units);
         // Give each source its numbered slot; selection only affects label content and styling.
         ordered.sort(unitOrder());
@@ -178,13 +197,13 @@ public final class GizmoLabelLayout {
         List<Unit> placed = new ArrayList<>();
 
         for (Unit unit : ordered) {
-            Bounds chosen = findOpenBounds(unit, viewport, occupied);
+            Bounds chosen = findOpenBounds(unit, viewport, occupied, obstacles);
             if (chosen == null) {
                 // There is no readable free slot within the viewport.  A single
                 // aggregate remains clickable and satisfies the no-overlap rule.
                 Unit all = join(ordered);
-                Bounds aggregate = idealBounds(all, viewport);
-                return List.of(toLabel(all, aggregate, selected));
+                Bounds aggregate = findOpenBounds(all, viewport, new SpatialIndex(), obstacles);
+                return aggregate == null ? List.of() : List.of(toLabel(all, aggregate, selected));
             }
             unit.bounds = chosen;
             placed.add(unit);
@@ -198,7 +217,7 @@ public final class GizmoLabelLayout {
         return List.copyOf(result);
     }
 
-    private static Bounds findOpenBounds(Unit unit, Bounds viewport, SpatialIndex occupied) {
+    private static Bounds findOpenBounds(Unit unit, Bounds viewport, SpatialIndex occupied, List<Bounds> obstacles) {
         int width = labelWidth(unit, viewport);
         int idealX = clamp((int) Math.round(unit.anchorX - width / 2.0), viewport.x(), viewport.x() + viewport.width() - width);
         int idealY = clamp((int) Math.round(unit.anchorY - LABEL_HEIGHT - PADDING), viewport.y(), viewport.y() + viewport.height() - LABEL_HEIGHT);
@@ -219,12 +238,72 @@ public final class GizmoLabelLayout {
                     continue;
                 }
                 Bounds candidate = new Bounds(x, y, width, LABEL_HEIGHT);
-                if (!occupied.collides(candidate)) {
+                if (!occupied.collides(candidate) && !collidesAny(candidate, obstacles)) {
                     return candidate;
                 }
             }
         }
+        return obstacles.isEmpty() ? null : findOpenBoundsAtBoundaries(unit, viewport, occupied, obstacles, width, idealX, idealY);
+    }
+
+    /**
+     * The ring search preserves established placements.  If a large obstruction
+     * blocks every nearby ring, any free rectangle has a position at a viewport,
+     * obstruction, or existing-label edge; try those finite boundary positions.
+     */
+    private static Bounds findOpenBoundsAtBoundaries(
+            Unit unit, Bounds viewport, SpatialIndex occupied, List<Bounds> obstacles,
+            int width, int idealX, int idealY) {
+        Set<Integer> xPositions = new HashSet<>();
+        Set<Integer> yPositions = new HashSet<>();
+        addBoundaryPositions(xPositions, viewport.x(), viewport.x() + viewport.width() - width, width, obstacles, occupied, true);
+        addBoundaryPositions(yPositions, viewport.y(), viewport.y() + viewport.height() - LABEL_HEIGHT, LABEL_HEIGHT, obstacles, occupied, false);
+
+        List<Bounds> candidates = new ArrayList<>(xPositions.size() * yPositions.size());
+        for (int x : xPositions) {
+            for (int y : yPositions) {
+                candidates.add(new Bounds(x, y, width, LABEL_HEIGHT));
+            }
+        }
+        candidates.sort(Comparator.comparingLong(bounds -> squaredDistance(bounds.x(), bounds.y(), idealX, idealY)));
+        for (Bounds candidate : candidates) {
+            if (!occupied.collides(candidate) && !collidesAny(candidate, obstacles)) {
+                return candidate;
+            }
+        }
         return null;
+    }
+
+    private static void addBoundaryPositions(
+            Set<Integer> positions, int minimum, int maximum, int size, List<Bounds> obstacles,
+            SpatialIndex occupied, boolean horizontal) {
+        positions.add(minimum);
+        positions.add(maximum);
+        for (Bounds obstacle : obstacles) {
+            int start = horizontal ? obstacle.x() : obstacle.y();
+            int end = start + (horizontal ? obstacle.width() : obstacle.height());
+            positions.add(clamp(start - size, minimum, maximum));
+            positions.add(clamp(end, minimum, maximum));
+        }
+        for (Bounds occupiedBounds : occupied.bounds()) {
+            int start = horizontal ? occupiedBounds.x() : occupiedBounds.y();
+            int end = start + (horizontal ? occupiedBounds.width() : occupiedBounds.height());
+            positions.add(clamp(start - size, minimum, maximum));
+            positions.add(clamp(end, minimum, maximum));
+        }
+    }
+
+    private static long squaredDistance(int x, int y, int targetX, int targetY) {
+        long dx = (long) x - targetX;
+        long dy = (long) y - targetY;
+        return dx * dx + dy * dy;
+    }
+
+    private static boolean collidesAny(Bounds bounds, List<Bounds> obstacles) {
+        for (Bounds obstacle : obstacles) {
+            if (overlaps(bounds, obstacle)) return true;
+        }
+        return false;
     }
 
     private static Bounds idealBounds(Unit unit, Bounds viewport) {
@@ -317,6 +396,7 @@ public final class GizmoLabelLayout {
 
     private static final class SpatialIndex {
         private final Map<Long, List<Unit>> cells = new HashMap<>();
+        private final List<Bounds> bounds = new ArrayList<>();
 
         private boolean collides(Bounds bounds) {
             Set<Unit> checked = new HashSet<>();
@@ -334,11 +414,16 @@ public final class GizmoLabelLayout {
 
         private void add(Unit unit) {
             Bounds bounds = unit.bounds;
+            this.bounds.add(bounds);
             for (int cellX = Math.floorDiv(bounds.x(), CELL_SIZE); cellX <= Math.floorDiv(bounds.x() + bounds.width() - 1, CELL_SIZE); cellX++) {
                 for (int cellY = Math.floorDiv(bounds.y(), CELL_SIZE); cellY <= Math.floorDiv(bounds.y() + bounds.height() - 1, CELL_SIZE); cellY++) {
                     cells.computeIfAbsent(cellKey(cellX, cellY), ignored -> new ArrayList<>()).add(unit);
                 }
             }
+        }
+
+        private List<Bounds> bounds() {
+            return bounds;
         }
 
         private static long cellKey(int x, int y) {

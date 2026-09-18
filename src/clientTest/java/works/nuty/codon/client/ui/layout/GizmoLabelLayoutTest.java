@@ -124,6 +124,41 @@ class GizmoLabelLayoutTest {
     }
 
     @Test
+    void leavesLabelsLeftOfAnUpperRightWatchAtTheirNormalPosition() {
+        List<GizmoLabelLayout.Anchor> anchors = List.of(anchor(1, 100, 75));
+        GizmoLabelLayout.Bounds watch = new GizmoLabelLayout.Bounds(220, 20, 160, 140);
+
+        List<GizmoLabelLayout.Label> withoutWatch = GizmoLabelLayout.layout(anchors, VIEWPORT, -1, false);
+        List<GizmoLabelLayout.Label> withWatch = GizmoLabelLayout.layout(anchors, VIEWPORT, -1, false, List.of(watch));
+
+        assertEquals(withoutWatch, withWatch);
+        assertNoObstacleOverlap(withWatch, List.of(watch));
+    }
+
+    @Test
+    void canPlaceLabelsInTheAreaBelowAnObstacle() {
+        GizmoLabelLayout.Bounds viewport = new GizmoLabelLayout.Bounds(0, 0, 160, 240);
+        GizmoLabelLayout.Bounds watch = new GizmoLabelLayout.Bounds(0, 0, 160, 150);
+
+        List<GizmoLabelLayout.Label> labels = GizmoLabelLayout.layout(
+                List.of(anchor(1, 80, 70)), viewport, -1, false, List.of(watch));
+
+        assertEquals(1, labels.size());
+        assertTrue(labels.getFirst().bounds().y() >= watch.y() + watch.height());
+        assertReadableAndInBounds(labels, viewport);
+        assertNoObstacleOverlap(labels, List.of(watch));
+    }
+
+    @Test
+    void returnsNoFallbackLabelWhenAnObstacleCoversEveryPossiblePosition() {
+        GizmoLabelLayout.Bounds viewport = new GizmoLabelLayout.Bounds(0, 0, 160, 100);
+
+        assertTrue(GizmoLabelLayout.layout(
+                List.of(anchor(0, 80, 50), anchor(1, 80, 50)), viewport, -1, false,
+                List.of(new GizmoLabelLayout.Bounds(0, 0, 160, 100))).isEmpty());
+    }
+
+    @Test
     void largeSameScreenClusterIsOneStableClickableGroup() {
         List<GizmoLabelLayout.Anchor> anchors = IntStream.range(0, 256)
                 .mapToObj(index -> anchor(index, 160, 100)).collect(Collectors.toList());
@@ -209,5 +244,14 @@ class GizmoLabelLayoutTest {
     private static boolean overlaps(GizmoLabelLayout.Bounds left, GizmoLabelLayout.Bounds right) {
         return left.x() < right.x() + right.width() && left.x() + left.width() > right.x()
                 && left.y() < right.y() + right.height() && left.y() + left.height() > right.y();
+    }
+
+    private static void assertNoObstacleOverlap(
+            List<GizmoLabelLayout.Label> labels, List<GizmoLabelLayout.Bounds> obstacles) {
+        for (GizmoLabelLayout.Label label : labels) {
+            for (GizmoLabelLayout.Bounds obstacle : obstacles) {
+                assertFalse(overlaps(label.bounds(), obstacle));
+            }
+        }
     }
 }
