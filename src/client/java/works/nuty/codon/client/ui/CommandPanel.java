@@ -84,7 +84,11 @@ public final class CommandPanel {
         if (footerHeight > 0) {
             int footerY = area.y() + area.height() - footerHeight;
             graphics.fill(area.x() + 1, footerY - 2, area.x() + area.width() - 1, footerY - 1, BORDER);
-            drawText(graphics, summary(), area.x() + 8, footerY + 1, area.width() - 16, MUTED);
+            ExecutionFlowStage stage = state.selectedExecutionFlowStage();
+            boolean warning = stage != null && hasWarning(stage);
+            drawText(graphics, summary(), area.x() + 8, footerY + 1,
+                area.width() - 16 - (warning ? 17 : 0), MUTED);
+            if (warning) warningButton("flow-warning", new Bounds(area.x() + area.width() - 21, footerY - 1, 16, 14), stage);
         }
         return finish();
     }
@@ -200,7 +204,8 @@ public final class CommandPanel {
             index -> {
                 int stage = displayed.get(index).stageIndex();
                 return stage < 0 ? client.font.width(tr("codon.ui.not_observed")) + 10
-                    : client.font.width(counts(flow.stages().get(stage))) + DebuggerIcon.SIZE + 14;
+                    : client.font.width(counts(flow.stages().get(stage))) + DebuggerIcon.SIZE + 14
+                        + (hasWarning(flow.stages().get(stage)) ? 17 : 0);
             });
         int rowHeight = body.height() < 30 ? 17 : 30;
         int rows = Math.max(1, body.height() / rowHeight);
@@ -235,11 +240,14 @@ public final class CommandPanel {
                         changed();
                     });
                 if (stopped) clause.withStatusColor(AMBER, AMBER_SURFACE);
-                clause.setTooltip(Tooltip.create(Component.literal(part.text().strip() + "\n" + stageSummary(stage))));
+                clause.setTooltip(Tooltip.create(Component.literal(part.text().strip() + "\n" + stageDetails(stage))));
+                if (rowHeight < 30 && hasWarning(stage)) clause.withTextIcon(DebuggerIcon.WARNING);
                 if (cell.first() && rowHeight >= 30) {
                     String count = counts(stage);
                     drawText(graphics, count, x + 4, y + 20,
-                        cell.width() - 5 - (stopped ? DebuggerIcon.SIZE + 3 : 0), stopped ? AMBER : MUTED);
+                        cell.width() - 5 - (stopped ? DebuggerIcon.SIZE + 3 : 0) - (hasWarning(stage) ? 17 : 0), stopped ? AMBER : MUTED);
+                    if (hasWarning(stage)) warningButton("warning-" + flow.invocationId() + "-" + stage.index(),
+                        new Bounds(x + cell.width() - 17, y + 16, 16, 14), stage);
                     if (stopped) DebuggerIcon.PAUSE.draw(graphics,
                         x + 7 + client.font.width(count), y + 17, AMBER);
                 }
@@ -275,25 +283,42 @@ public final class CommandPanel {
     private String summary() {
         ExecutionFlowStage stage = state.selectedExecutionFlowStage();
         if (stage == null) return tr("codon.ui.no_flow");
+        return stageSummary(stage);
+    }
+
+    private boolean hasWarning(ExecutionFlowStage stage) {
         ExecutionFlowTrace flow = state.selectedExecutionFlow();
-        return stageSummary(stage) + (flow != null && flow.truncated() && !stage.truncated()
-            ? " · " + tr("codon.ui.truncated") : "");
+        return !stage.lineageComplete() || stage.truncated() || (flow != null && flow.truncated());
+    }
+
+    private String stageDetails(ExecutionFlowStage stage) {
+        String details = stageSummary(stage) + "\n" + tr("codon.ui.context_explanation");
+        if (!stage.lineageComplete()) details += "\n" + tr("codon.ui.unknown_lineage");
+        ExecutionFlowTrace flow = state.selectedExecutionFlow();
+        if (stage.truncated() || (flow != null && flow.truncated()))
+            details += "\n" + tr("codon.ui.partial_recording_detail");
+        return details;
+    }
+
+    private void warningButton(String key, Bounds bounds, ExecutionFlowStage stage) {
+        button(key, bounds, Component.translatable("codon.ui.recording_warning"), true, false, () -> { })
+            .withIcon(DebuggerIcon.WARNING).withoutChrome().withStatusColor(AMBER, AMBER_SURFACE)
+            .setTooltip(Tooltip.create(Component.literal(stageDetails(stage))));
     }
 
     private static String counts(ExecutionFlowStage stage) {
-        String result = stage.inputCount() + "→" + (stage.complete() ? stage.outputCount() : "…");
+        String result = stage.inputCount() + "→" + (stage.complete() ? stage.outputCount() : tr("codon.ui.flow_pending"));
         if (stage.droppedCount() > 0) result += "  −" + stage.droppedCount();
-        if (!stage.lineageComplete()) result += "  ?";
-        if (stage.truncated()) result += "  …";
         return result;
     }
 
     private static String stageSummary(ExecutionFlowStage stage) {
         String summary = stage.terminal()
             ? Component.translatable("codon.ui.command_results", stage.inputCount(), stage.executionCount(), stage.successCount()).getString()
-            : Component.translatable("codon.ui.command_contexts", counts(stage)).getString();
-        if (!stage.lineageComplete()) summary += " · " + tr("codon.ui.unknown_lineage");
-        if (stage.truncated()) summary += " · " + tr("codon.ui.truncated");
+            : Component.translatable("codon.ui.command_contexts", stage.inputCount(),
+                stage.complete() ? stage.outputCount() : tr("codon.ui.flow_pending")).getString();
+        if (!stage.terminal() && stage.droppedCount() > 0)
+            summary += " · " + tr("codon.ui.flow_dropped", stage.droppedCount());
         return summary;
     }
 

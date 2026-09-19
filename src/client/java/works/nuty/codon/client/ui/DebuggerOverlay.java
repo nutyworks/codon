@@ -153,7 +153,8 @@ public final class DebuggerOverlay {
             };
             iconButton("control-" + action,
                 new Bounds(x, toolbar.y() + 2, width, DebuggerLayout.ICON_BUTTON_SIZE),
-                component(action.translationKey()), icon, snapshot != null && state.isPaused() && !state.controlPending(),
+                component(action.translationKey()).copy().append(" ").append(keybind(input.keyLabel(action))),
+                icon, snapshot != null && state.isPaused() && !state.controlPending(),
                 () -> input.control(action));
 
             x += width + gap;
@@ -438,7 +439,9 @@ public final class DebuggerOverlay {
     private void sourceStatusIcon(GuiGraphicsExtractor graphics, int x, int y, DebuggerIcon icon,
                                   int color, Component description) {
         icon.draw(graphics, x + 2, y + 2, color);
-
+        if (hoverX >= x && hoverX < x + 16 && hoverY >= y && hoverY < y + 16) {
+            graphics.setTooltipForNextFrame(client.font, description, hoverX, hoverY);
+        }
     }
 
     private int sourceDetailsHeight() {

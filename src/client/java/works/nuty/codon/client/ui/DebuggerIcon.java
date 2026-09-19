@@ -5,6 +5,7 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 /** Pixel icons used by the debugger toolbar. */
 public enum DebuggerIcon {
     INFORMATION,
+    WARNING,
     CONTINUE,
     PAUSE,
     STEP_OVER,
@@ -26,6 +27,16 @@ public enum DebuggerIcon {
 
     public void draw(GuiGraphicsExtractor graphics, int x, int y, int color) {
         switch (this) {
+            case WARNING -> {
+                for (int row = 0; row < 10; row++) {
+                    int halfWidth = row / 2;
+                    graphics.fill(x + 5 - halfWidth, y + row + 1, x + 6 - halfWidth, y + row + 2, color);
+                    graphics.fill(x + 6 + halfWidth, y + row + 1, x + 7 + halfWidth, y + row + 2, color);
+                }
+                graphics.fill(x + 1, y + 10, x + 11, y + 11, color);
+                graphics.fill(x + 5, y + 4, x + 7, y + 7, color);
+                graphics.fill(x + 5, y + 8, x + 7, y + 9, color);
+            }
             case INFORMATION -> {
                 // Symmetric pixel-circle silhouette around the central information mark.
                 graphics.fill(x + 4, y, x + 8, y + 1, color);

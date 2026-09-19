@@ -164,6 +164,15 @@ public final class DebuggerButton extends AbstractButton {
     @Override
     protected void extractTooltipForNextRenderPass(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
         var client = Minecraft.getInstance();
+        if (icon != null && !iconWithText && isHovered()) {
+            var lines = new java.util.ArrayList<>(Tooltip.splitTooltip(client, getMessage()));
+            if (tooltip != null) {
+                var hint = tooltip.toCharSequence(client);
+                if (!hint.equals(lines)) lines.addAll(hint);
+            }
+            graphics.setTooltipForNextFrame(client.font, lines, mouseX, mouseY);
+            return;
+        }
         if ((icon == null || iconWithText) && isHovered()
             && client.font.width(getMessage()) > Math.max(0, width - 10 - (iconWithText ? TEXT_ICON_INSET : 0))) {
             var lines = new java.util.ArrayList<>(Tooltip.splitTooltip(client, getMessage()));
@@ -174,7 +183,7 @@ public final class DebuggerButton extends AbstractButton {
             graphics.setTooltipForNextFrame(client.font, lines, mouseX, mouseY);
             return;
         }
-        // Icon names remain available to narration; visual shortcut hints require an actual hover.
+        // Icon tooltips require an actual hover; text buttons retain standard focus behavior.
         if (icon == null || iconWithText || isHovered()) super.extractTooltipForNextRenderPass(graphics, mouseX, mouseY);
     }
 
