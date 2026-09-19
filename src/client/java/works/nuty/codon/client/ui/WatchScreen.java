@@ -80,7 +80,7 @@ public final class WatchScreen extends Screen {
         addControl("close", DebuggerNavigation.Group.WINDOW_HEADER, configure(new DebuggerButton(), x + panelWidth - 48, y + 3, 40, 18,
             Component.translatable("codon.watch.close"), true, false, this::onClose));
 
-        List<ClientWatchState.Entry> entries = state.watches().entries();
+        List<ClientWatchState.Entry> entries = state.watches().displayedEntries();
         displayedIds = entries.stream().map(ClientWatchState.Entry::id).toList();
         offset = Math.clamp(offset, 0, Math.max(0, entries.size() - visibleRows()));
         int listY = editorY + 31;
@@ -88,6 +88,12 @@ public final class WatchScreen extends Screen {
             ClientWatchState.Entry entry = entries.get(offset + index);
             int rowY = listY + index * ROW_HEIGHT;
             int removeX = x + panelWidth - 60;
+            if (entry.automatic()) {
+                addControl("action-" + entry.id(), DebuggerNavigation.Group.WATCH_LIST, configure(new DebuggerButton(), removeX, rowY + 3, 52, 18,
+                    Component.translatable("codon.watch.keep"), true, false,
+                    () -> { state.watches().pinChange(entry.id()); rebuildWidgets(); }));
+                continue;
+            }
             if (supportsExecutorBinding(entry.spec())) {
                 DebuggerButton pin = pinButton(entry.id(), removeX - 22, rowY + 3);
                 addControl("pin-" + entry.id(), DebuggerNavigation.Group.WATCH_LIST, pin);
@@ -128,7 +134,7 @@ public final class WatchScreen extends Screen {
                 int next = DebuggerOverlay.revealRow(row, offset, rows, Math.max(0, entries.size() - rows));
                 if (next != offset) { offset = next; navigationDirty = true; }
             };
-            if (supportsExecutorBinding(entry.spec()) && (entry.spec().isPinned() || selectedExecutor() != null))
+            if (!entry.automatic() && supportsExecutorBinding(entry.spec()) && (entry.spec().isPinned() || pinExecutor(entry) != null))
                 navigation.add("pin-" + entry.id(), DebuggerNavigation.Group.WATCH_LIST, row, 0, reveal);
             navigation.add("action-" + entry.id(), DebuggerNavigation.Group.WATCH_LIST, row, 1, reveal);
         }
@@ -141,7 +147,7 @@ public final class WatchScreen extends Screen {
         int panelWidth = Math.min(500, width - 24);
         int x = (width - panelWidth) / 2;
         int y = Math.max(18, (height - 250) / 2);
-        List<ClientWatchState.Entry> entries = state.watches().entries();
+        List<ClientWatchState.Entry> entries = state.watches().displayedEntries();
         if (navigationDirty || !displayedIds.equals(entries.stream().map(ClientWatchState.Entry::id).toList())) {
             navigationDirty = false;
             rebuildWidgets();
@@ -173,7 +179,7 @@ public final class WatchScreen extends Screen {
             ClientWatchState.Entry entry = entries.get(offset + index);
             boolean changed = entry.displayedChange().isValueChange();
             int valueColor = changed ? AMBER : (entry.displayedResult() != null && entry.displayedResult().status() == WatchResult.Status.VALUE ? TEXT : MUTED);
-            int rowWidth = panelWidth - (supportsExecutorBinding(entry.spec()) ? 100 : 76);
+            int rowWidth = panelWidth - (!entry.automatic() && supportsExecutorBinding(entry.spec()) ? 100 : 76);
             WatchRowRenderer.render(graphics, font, entry, state.isPaused(), x + 8, rowY, rowWidth,
                 changed ? AMBER : TEXT, valueColor);
             if (mouseX >= x + 8 && mouseX < x + 8 + rowWidth && mouseY >= rowY && mouseY < rowY + ROW_HEIGHT) {
@@ -211,7 +217,7 @@ public final class WatchScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
-        List<ClientWatchState.Entry> entries = state.watches().entries();
+        List<ClientWatchState.Entry> entries = state.watches().displayedEntries();
         int maximum = Math.max(0, entries.size() - visibleRows());
         if (maximum == 0 || scrollY == 0) return super.mouseScrolled(x, y, scrollX, scrollY);
         int next = Math.clamp(offset + (scrollY > 0 ? -1 : 1), 0, maximum);
@@ -267,10 +273,10 @@ public final class WatchScreen extends Screen {
     }
 
     private void configurePin(DebuggerButton button, long id, int x, int y, ClientWatchState.Entry entry) {
-        ClientWatchState.Entry current = entry == null ? state.watches().entries().stream()
+        ClientWatchState.Entry current = entry == null ? state.watches().displayedEntries().stream()
             .filter(candidate -> candidate.id() == id).findFirst().orElse(null) : entry;
         boolean pinned = current != null && current.spec().isPinned();
-        EntityRef selected = selectedExecutor();
+        EntityRef selected = pinExecutor(current);
         boolean active = pinned || selected != null;
         Component label = Component.translatable(pinned ? "codon.watch.unpin" : "codon.watch.pin");
         button.configure(x, y, 18, 18, label, active, pinned, false, false, () -> togglePin(id));
@@ -283,13 +289,13 @@ public final class WatchScreen extends Screen {
 
     /** The id is stable, while source and executor are intentionally resolved only at click time. */
     private void togglePin(long id) {
-        ClientWatchState.Entry entry = state.watches().entries().stream().filter(candidate -> candidate.id() == id).findFirst().orElse(null);
+        ClientWatchState.Entry entry = state.watches().displayedEntries().stream().filter(candidate -> candidate.id() == id).findFirst().orElse(null);
         if (entry == null || !supportsExecutorBinding(entry.spec())) return;
         boolean changed;
         if (entry.spec().isPinned()) {
             changed = state.watches().unpin(id);
         } else {
-            EntityRef executor = selectedExecutor();
+            EntityRef executor = pinExecutor(entry);
             if (executor == null) {
                 feedback = tr("codon.watch.feedback.pin_unavailable");
                 return;
@@ -305,6 +311,15 @@ public final class WatchScreen extends Screen {
         if (!state.isPaused()) return null;
         PauseSource source = state.selectedSource();
         return source == null ? null : source.entity();
+    }
+
+    /** A completed outgoing value must be pinned to the entity named by its row. */
+    private EntityRef pinExecutor(ClientWatchState.Entry entry) {
+        if (entry != null && entry.displayedExecutor() != null) {
+            String name = entry.executorName().isBlank() ? entry.displayedExecutor().toString() : entry.executorName();
+            return new EntityRef(entry.displayedExecutor(), name);
+        }
+        return selectedExecutor();
     }
 
     /** Score and entity-NBT queries can follow an executor; storage queries are global. */

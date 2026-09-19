@@ -24,6 +24,7 @@ public final class CodonNetworking {
     public static void registerPayloadTypes() {
         PayloadTypeRegistry.clientboundPlay().register(PauseSyncPayload.TYPE, PauseSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(WatchSyncPayload.TYPE, WatchSyncPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(WatchChangesSyncPayload.TYPE, WatchChangesSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(NbtTreeSyncPayload.TYPE, NbtTreeSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(WatchDefinitionsSyncPayload.TYPE, WatchDefinitionsSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(ResumeSyncPayload.TYPE, ResumeSyncPayload.CODEC);
@@ -33,7 +34,7 @@ public final class CodonNetworking {
         PayloadTypeRegistry.clientboundPlay().register(ExecutionFlowSyncPayload.TYPE, ExecutionFlowSyncPayload.CODEC);
     }
 
-    public static void registerJoinSync(DebuggerEngine engine, WorldWatchPersistence watches) {
+    public static void registerJoinSync(DebuggerEngine engine, WorldWatchPersistence watches, NetworkDebuggerEventSink eventSink) {
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
             ServerPlayer player = handler.getPlayer();
             if (ServerPlayNetworking.canSend(player, WatchDefinitionsSyncPayload.TYPE.id())) {
@@ -55,6 +56,7 @@ public final class CodonNetworking {
             PauseSnapshot snapshot = engine.currentSnapshot();
             if (snapshot != null && ServerPlayNetworking.canSend(player, PauseSyncPayload.TYPE.id())) {
                 ServerPlayNetworking.send(player, new PauseSyncPayload(snapshot));
+                eventSink.sendWatchChanges(player, snapshot.pauseId());
             }
         });
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> watches.resetTransfer(handler.getPlayer().getUUID()));

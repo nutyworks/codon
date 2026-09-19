@@ -14,6 +14,7 @@ import works.nuty.codon.network.ResumeSyncPayload;
 import works.nuty.codon.network.StepSyncPayload;
 import works.nuty.codon.network.ContinueSyncPayload;
 import works.nuty.codon.network.WatchSyncPayload;
+import works.nuty.codon.network.WatchChangesSyncPayload;
 import works.nuty.codon.network.WatchDefinitionsSyncPayload;
 import works.nuty.codon.network.NbtTreeSyncPayload;
 import works.nuty.codon.persistence.WatchDefinitions;
@@ -38,6 +39,8 @@ public final class ClientNetworking {
         ClientTickEvents.END_CLIENT_TICK.register(client -> sendWatchQueries(client, state));
         ClientPlayNetworking.registerGlobalReceiver(WatchSyncPayload.TYPE, (payload, context) ->
             context.client().execute(() -> state.watches().accept(payload.pauseId(), payload.requestId(), payload.result())));
+        ClientPlayNetworking.registerGlobalReceiver(WatchChangesSyncPayload.TYPE, (payload, context) ->
+            context.client().execute(() -> state.watches().acceptChanges(payload.pauseId(), payload.offset(), payload.last(), payload.changes())));
         ClientPlayNetworking.registerGlobalReceiver(NbtTreeSyncPayload.TYPE, (payload, context) ->
             context.client().execute(() -> state.nbt().accept(payload.pauseId(), payload.requestId(), payload.page())));
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {

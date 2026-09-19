@@ -201,12 +201,26 @@ and are restored on rejoin; disconnect clears only the current client session. T
 replaced by a `+N` summary. Both views align values to the right and connect the left-hand entity/field label
 with dot leaders. Long labels and values are clipped independently; full values remain available in tooltips.
 
-The pin icon beside a score/entity-NBT row binds it to the currently selected executor's UUID.
+Every continuous step also captures automatic changes, whether or not their fields were added to Watch.
+The server compares NBT leaves and all score objectives for current and previously observed execution
+entities, plus command storage, against the preceding stop. The first observation establishes a baseline.
+Outgoing executors remain tracked even at an executor-free next stop. Saved watches appear first (UUID-bound
+pins ahead of source-following watches), followed by every unregistered change; both views scroll the entire
+list. Automatic rows last only for that pause, survive source selection, and have a **Pin** action to save the
+actual changed entity/path. Equivalent saved fields suppress duplicate automatic rows. Continue clears the
+visible rows but preserves the comparison for a later breakpoint in the same execution. Execution end,
+disconnect, and world changes clear the automatic comparison session. These read-only captures run on the
+server thread and are sent only to owner-authorized clients in 32-row `watch_changes_v1` pages correlated by
+pause ID and offset. Large values retain exact server-side comparisons and display the existing `too large`
+status; paths beyond the watch format are represented by the nearest valid parent (or the root).
+
+The pin icon beside a score/entity-NBT row binds it to the displayed executor's UUID (the selected
+executor when no value has arrived). An outgoing executor's completed value therefore pins that entity.
 Its value then remains independent of inspector selection and is refreshed at each pause. Pinning
 the same expression to different executors creates distinct rows, with one unpinned row also allowed.
 The pin is highlighted when active; clicking it again restores following the selected executor.
 Binding changes start a fresh comparison for that row and invalidate its old in-flight replies.
-Duplicate bindings are rejected without removing either row. Pinning requires a selected entity;
+Duplicate bindings are rejected without removing either row. Pinning requires a displayed or selected entity;
 unpinning also works while running. Storage has no executor or pin control. Entity rows show the displayed
 executor first: `Pig #abcd1234 · Health ...... 20.0f`. Tooltips retain the full UUID; an unloaded or removed target
 reports `no target`. Unknown names use the UUID alone until the server or a pause source supplies a name.

@@ -61,6 +61,8 @@
   "codon.watch.title": "Watches",
   "codon.watch.open": "Watch",
   "codon.watch.add": "Add",
+  "codon.watch.keep": "Pin",
+  "codon.watch.tooltip.automatic": "Changed at this pause. Pin to keep watching.",
   "codon.watch.remove": "Remove",
   "codon.watch.close": "Close",
   "codon.watch.limit": "Up to %s",

@@ -3,6 +3,7 @@ package works.nuty.codon.client.state;
 import org.jspecify.annotations.Nullable;
 import works.nuty.codon.core.model.WatchResult;
 import works.nuty.codon.core.model.WatchSpec;
+import works.nuty.codon.core.model.WatchChange;
 import works.nuty.codon.core.model.EntityRef;
 import works.nuty.codon.core.model.PauseSource;
 
@@ -31,6 +32,7 @@ public final class ClientWatchState {
         public @Nullable WatchResult displayedResult() { return completedStep == null ? result : completedStep.result(); }
         public Change displayedChange() { return completedStep == null ? change : completedStep.change(); }
         public String displayedPreviousValue() { return completedStep == null ? previousValue : completedStep.previousValue(); }
+        public boolean automatic() { return id < 0; }
     }
     public record Query(long pauseId, long requestId, int sourceIndex, WatchSpec spec, @Nullable UUID capturedEntity) {}
 
@@ -45,6 +47,10 @@ public final class ClientWatchState {
     /** Re-read the executor we just stepped, even if the next command has a different/no executor. */
     private final Map<Long, WatchResult> stepTargets = new LinkedHashMap<>();
     private final Map<UUID, String> executorNames = new LinkedHashMap<>();
+    private final Map<WatchSpec, Entry> automaticChanges = new LinkedHashMap<>();
+    private long nextAutomaticId;
+    private int changesOffset;
+    private boolean changesComplete;
     private List<PauseSource> currentSources = List.of();
     private long nextEntryId;
     private long nextRequestId;
@@ -100,6 +106,77 @@ public final class ClientWatchState {
             return new Entry(e.getKey(), slot.spec, slot.result, change,
                 previousValue(before, change), completed, executor, name);
         }).toList();
+    }
+
+    /** Saved pins lead the list; every automatic change remains visible for the entire stop. */
+    public List<Entry> displayedEntries() {
+        List<Entry> saved = new ArrayList<>();
+        Set<WatchSpec> represented = new LinkedHashSet<>();
+        for (Entry entry : entries()) {
+            Entry displayed = entry;
+            for (Entry automatic : automaticChanges.values()) {
+                if (!sameField(entry.spec(), automatic.spec())
+                    || !java.util.Objects.equals(entry.displayedExecutor(), automatic.displayedExecutor())) continue;
+                represented.add(automatic.spec());
+                // Server captures are available even when a query was not answered before stepping.
+                displayed = new Entry(entry.id(), entry.spec(),
+                    entry.completedStep() == null ? automatic.result() : entry.result(),
+                    entry.completedStep() == null ? automatic.change() : entry.change(),
+                    entry.completedStep() == null ? automatic.previousValue() : entry.previousValue(),
+                    entry.completedStep() == null ? null : new Observation(automatic.result(), automatic.change(), automatic.previousValue()),
+                    automatic.displayedExecutor(), automatic.executorName());
+                break;
+            }
+            saved.add(displayed);
+        }
+        List<Entry> result = new ArrayList<>();
+        saved.stream().filter(entry -> entry.spec().isPinned()).forEach(result::add);
+        saved.stream().filter(entry -> !entry.spec().isPinned() && changed(entry)).forEach(result::add);
+        saved.stream().filter(entry -> !entry.spec().isPinned() && !changed(entry)).forEach(result::add);
+        automaticChanges.values().stream().filter(entry -> !represented.contains(entry.spec())).forEach(result::add);
+        return List.copyOf(result);
+    }
+
+    private static boolean changed(Entry entry) {
+        return entry.displayedChange().isValueChange() || entry.displayedChange() == Change.AVAILABILITY_CHANGED;
+    }
+
+    private static boolean sameField(WatchSpec first, WatchSpec second) {
+        return first.kind() == second.kind() && first.target().equals(second.target())
+            && canonicalPath(first.path()).equals(canonicalPath(second.path()));
+    }
+
+    private static String canonicalPath(String path) {
+        return path.replaceAll("(^|\\.)\"([A-Za-z0-9_+-]+)\"(?=\\.|\\[|$)", "$1$2");
+    }
+
+    /** Pages cannot repopulate another pause, or overwrite a completed transfer. */
+    public void acceptChanges(long id, int offset, boolean last, List<WatchChange> changes) {
+        if (pauseId <= 0 || id != pauseId || changesComplete || offset != changesOffset) return;
+        for (WatchChange delta : changes) {
+            Change change = compare(delta.before(), delta.after());
+            // Oversized before/after values can have the same status while the server detects a real change.
+            if (change == Change.UNCHANGED) change = Change.VALUE_CHANGED;
+            UUID executor = delta.spec().executor();
+            String name = delta.after().targetName().isBlank() ? delta.before().targetName() : delta.after().targetName();
+            Entry existing = automaticChanges.get(delta.spec());
+            automaticChanges.put(delta.spec(), new Entry(existing == null ? --nextAutomaticId : existing.id(),
+                delta.spec(), delta.after(), change, previousValue(delta.before(), change), null, executor, name));
+        }
+        changesOffset += changes.size();
+        changesComplete = last;
+    }
+
+    /** Promote a temporary row without changing its executor or losing this pause's before/after value. */
+    public boolean pinChange(long id) {
+        Entry entry = automaticChanges.values().stream().filter(candidate -> candidate.id() == id).findFirst().orElse(null);
+        return entry != null && add(entry.spec());
+    }
+
+    private void clearChanges() {
+        automaticChanges.clear();
+        changesOffset = 0;
+        changesComplete = false;
     }
 
     public boolean add(WatchSpec spec) {
@@ -231,6 +308,7 @@ public final class ClientWatchState {
         if (!continuingStep) clearHistory();
         continuingStep = false;
         pauseId = id;
+        clearChanges();
         sourceIndex = index;
         currentSources = List.of();
         slots.values().forEach(Slot::clear);
@@ -245,6 +323,7 @@ public final class ClientWatchState {
     }
 
     public void stepping() {
+        clearChanges();
         stepTargets.clear();
         slots.forEach((watchId, slot) -> {
             if (slot.result != null) previous.put(watchId, slot.result);
@@ -261,6 +340,7 @@ public final class ClientWatchState {
     }
 
     public void resumed() {
+        clearChanges();
         pauseId = 0;
         continuingStep = false;
         currentSources = List.of();

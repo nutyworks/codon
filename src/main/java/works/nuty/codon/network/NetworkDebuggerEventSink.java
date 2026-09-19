@@ -4,9 +4,13 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.permissions.Permissions;
+import works.nuty.codon.CodonMod;
+import works.nuty.codon.adapter.PauseWatchChanges;
 import works.nuty.codon.core.model.BlockLocation;
 import works.nuty.codon.core.model.ExecutionFlowTrace;
 import works.nuty.codon.core.model.PauseSnapshot;
+import works.nuty.codon.core.model.WatchChange;
 import works.nuty.codon.core.port.DebuggerEventSink;
 
 import java.util.List;
@@ -20,6 +24,9 @@ import java.util.function.Supplier;
  */
 public final class NetworkDebuggerEventSink implements DebuggerEventSink {
     private final Supplier<MinecraftServer> server;
+    private final PauseWatchChanges watchChanges = new PauseWatchChanges();
+    private long changesPauseId;
+    private List<WatchChange> changes = List.of();
 
     public NetworkDebuggerEventSink(Supplier<MinecraftServer> server) {
         this.server = server;
@@ -27,16 +34,50 @@ public final class NetworkDebuggerEventSink implements DebuggerEventSink {
 
     @Override
     public void paused(PauseSnapshot snapshot) {
+        MinecraftServer s = server.get();
+        changesPauseId = snapshot.pauseId();
+        changes = List.of();
+        if (s != null) {
+            try {
+                changes = watchChanges.capture(s, snapshot);
+            } catch (RuntimeException failure) {
+                watchChanges.reset();
+                CodonMod.LOGGER.warn("Could not capture pause watch changes", failure);
+            }
+        }
         broadcast(new PauseSyncPayload(snapshot));
+        if (s != null) for (ServerPlayer player : s.getPlayerList().getPlayers()) sendWatchChanges(player, snapshot.pauseId());
+    }
+
+    public void sendWatchChanges(ServerPlayer player, long pauseId) {
+        if (pauseId <= 0 || pauseId != changesPauseId
+            || !player.createCommandSourceStack().permissions().hasPermission(Permissions.COMMANDS_OWNER)
+            || !ServerPlayNetworking.canSend(player, WatchChangesSyncPayload.TYPE.id())) return;
+        for (int offset = 0; ; offset += WatchChangesSyncPayload.PAGE_SIZE) {
+            int end = Math.min(changes.size(), offset + WatchChangesSyncPayload.PAGE_SIZE);
+            boolean last = end == changes.size();
+            ServerPlayNetworking.send(player, new WatchChangesSyncPayload(pauseId, offset, last, changes.subList(offset, end)));
+            if (last) break;
+        }
+    }
+
+    public void resetWatchChanges() {
+        watchChanges.reset();
+        changes = List.of();
+        changesPauseId = 0;
     }
 
     @Override
     public void resumed() {
+        resetWatchChanges();
         broadcast(new ResumeSyncPayload());
     }
 
     @Override
     public void continued() {
+        // A later breakpoint in this execution still compares against the preceding stop.
+        changes = List.of();
+        changesPauseId = 0;
         MinecraftServer s = server.get();
         if (s == null) return;
         for (ServerPlayer player : s.getPlayerList().getPlayers()) {
@@ -50,6 +91,8 @@ public final class NetworkDebuggerEventSink implements DebuggerEventSink {
 
     @Override
     public void stepping() {
+        changes = List.of();
+        changesPauseId = 0;
         MinecraftServer s = server.get();
         if (s == null) return;
         for (ServerPlayer player : s.getPlayerList().getPlayers()) {

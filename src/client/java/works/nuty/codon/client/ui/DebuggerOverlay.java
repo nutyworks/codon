@@ -58,6 +58,7 @@ public final class DebuggerOverlay {
     private int lastSelectedSource = -1;
     private Bounds watchSummaryBounds = EMPTY;
     private int watchSummaryOffset;
+    private long watchSummaryPauseId;
     private int maxWatchSummaryOffset;
     private Bounds sourceScrollBounds = EMPTY;
     private Bounds watchSummaryScrollBounds = EMPTY;
@@ -271,11 +272,16 @@ public final class DebuggerOverlay {
 
     }
 
-    /** A passive, compact reminder keeps pinned values visible without taking over the inspector. */
+    /** Saved pins first, followed by every change captured at this stop. */
     private void renderWatchSummary(GuiGraphicsExtractor graphics, DebuggerLayout layout,
                                     int mouseX, int mouseY, boolean interactive, InputManager input) {
         watchSummaryBounds = EMPTY;
-        var entries = state.watches().entries();
+        var entries = state.watches().displayedEntries();
+        long pauseId = state.snapshot() == null ? 0 : state.snapshot().pauseId();
+        if (watchSummaryPauseId != pauseId) {
+            watchSummaryPauseId = pauseId;
+            watchSummaryOffset = 0;
+        }
         Bounds world = layout.world();
         if (world.width() < 60 || world.height() < 40) return;
         int availableHeight = Math.max(0, world.height() - 24);

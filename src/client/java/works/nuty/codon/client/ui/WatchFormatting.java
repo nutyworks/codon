@@ -86,7 +86,9 @@ public final class WatchFormatting {
     public static List<Component> tooltip(ClientWatchState.Entry entry, boolean paused) {
         List<Component> lines = new ArrayList<>(List.of(specification(entry), fullValue(entry, paused)));
         UUID executor = entry.spec().executor();
-        if (entry.spec().kind() != WatchSpec.Kind.STORAGE_NBT) {
+        if (entry.automatic()) {
+            lines.add(Component.translatable("codon.watch.tooltip.automatic"));
+        } else if (entry.spec().kind() != WatchSpec.Kind.STORAGE_NBT) {
             lines.add(executor == null
                 ? Component.translatable("codon.watch.tooltip.follows")
                 : Component.translatable("codon.watch.tooltip.pinned", executor.toString()));

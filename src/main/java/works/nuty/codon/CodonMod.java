@@ -68,6 +68,7 @@ public final class CodonMod implements ModInitializer {
         executionFlows = flows;
 
         ServerLifecycleEvents.SERVER_STARTING.register(s -> {
+            eventSink.resetWatchChanges();
             wiredEngine.resetSession();
             persistence.openWorld(s.getWorldPath(LevelResource.ROOT));
             var owner = s.isSingleplayer() ? s.getSingleplayerProfile() : null;
@@ -79,6 +80,7 @@ public final class CodonMod implements ModInitializer {
         // Finish disk writes while the server still owns the world's session lock.
         ServerLifecycleEvents.SERVER_STOPPING.register(s -> { persistence.closeWorld(); watches.closeWorld(); });
         ServerLifecycleEvents.SERVER_STOPPED.register(s -> {
+            eventSink.resetWatchChanges();
             wiredEngine.resetSession();
             DebuggerTaskQueue.clear(s);
             server = null;
@@ -90,7 +92,7 @@ public final class CodonMod implements ModInitializer {
         });
 
         CodonNetworking.registerPayloadTypes();
-        CodonNetworking.registerJoinSync(wiredEngine, watches);
+        CodonNetworking.registerJoinSync(wiredEngine, watches, eventSink);
 
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
             CodonCommand.register(dispatcher, wiredEngine, watches));

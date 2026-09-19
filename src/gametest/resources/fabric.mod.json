@@ -8,6 +8,8 @@
   ],
   "entrypoints": {
     "fabric-client-gametest": [
+      "works.nuty.codon.client.PauseWatchChangesGameTest",
+      "works.nuty.codon.client.DebuggerAutomaticWatchGameTest",
       "works.nuty.codon.client.DebuggerWorldSyncGameTest",
       "works.nuty.codon.client.NbtTreeReaderGameTest",
       "works.nuty.codon.client.DebuggerNbtTreeGameTest",
