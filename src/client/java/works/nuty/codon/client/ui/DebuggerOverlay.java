@@ -35,6 +35,7 @@ import static works.nuty.codon.client.ui.DebuggerTheme.*;
 /** Shared HUD/screen presentation. Only the menu screen registers the rendered controls. */
 public final class DebuggerOverlay {
     private static final Bounds EMPTY = new Bounds(0, 0, 0, 0);
+    private static final int MAX_WORLD_LABELS = 20;
     private static final int SOURCE_LIST_MIN_HEIGHT = 40;
     private static final int SOURCE_LIST_MAX_HEIGHT = 87;
     private static final int SOURCE_DETAILS_VIEWPORT_HEIGHT = 80;
@@ -241,7 +242,7 @@ public final class DebuggerOverlay {
         }
         List<GizmoLabelLayout.Label> labels = GizmoLabelLayout.layout(anchors, labelArea,
             selectedIndex, state.gizmoMode() != ClientDebuggerState.GizmoMode.LABELS,
-            watchSummaryBounds.width() > 0 ? List.of(watchSummaryBounds) : List.of());
+            watchSummaryBounds.width() > 0 ? List.of(watchSummaryBounds) : List.of(), MAX_WORLD_LABELS);
         for (GizmoLabelLayout.Label label : labels) {
             List<Integer> indices = label.sourceIndices();
             boolean selected = indices.contains(selectedIndex);
@@ -253,11 +254,11 @@ public final class DebuggerOverlay {
             Bounds bounds = label.bounds();
             String sourceTitle = sourceLabel(displayedSources.get(index), index, state.isWorldSourceDropped(index));
             Component title;
-            if (group && selected) {
+            if (group) {
                 String count = "  +" + (indices.size() - 1);
                 title = Component.literal(trimmed(sourceTitle, Math.max(0, bounds.width() - 10 - client.font.width(count))) + count);
             } else {
-                title = group ? Component.translatable("codon.ui.group", indices.size()) : Component.literal(sourceTitle);
+                title = Component.literal(sourceTitle);
             }
             leader(graphics, (int) label.anchorX(), (int) label.anchorY(),
                 bounds.x() + bounds.width() / 2, bounds.y() + bounds.height(), worldSourceColor(statusIndex, selected ? TEAL : MUTED));

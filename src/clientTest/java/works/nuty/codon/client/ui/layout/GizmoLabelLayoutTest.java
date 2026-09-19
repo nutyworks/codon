@@ -16,6 +16,23 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GizmoLabelLayoutTest {
+    @Test
+    void capOf20RetainsAll64SourcesByGroupingNearbyLabelsAndKeepsSelectedMemberFirst() {
+        var anchors = IntStream.range(0, 64)
+                .mapToObj(i -> new GizmoLabelLayout.Anchor(i, 100 + (i % 8) * 200, 100 + (i / 8) * 100, 60))
+                .toList();
+        var viewport = new GizmoLabelLayout.Bounds(0, 0, 1800, 1000);
+        for (boolean grouped : List.of(false, true)) {
+            var labels = GizmoLabelLayout.layout(anchors, viewport, 63, grouped, List.of(), 20);
+            assertEquals(20, labels.size());
+            assertEquals(IntStream.range(0, 64).boxed().collect(Collectors.toSet()), displayed(labels));
+            GizmoLabelLayout.Label selectedGroup = labels.stream()
+                    .filter(label -> label.sourceIndices().contains(63)).findFirst().orElseThrow();
+            assertEquals(63, selectedGroup.sourceIndices().getFirst());
+            assertReadableAndInBounds(labels, viewport);
+        }
+    }
+
     private static final GizmoLabelLayout.Bounds VIEWPORT = new GizmoLabelLayout.Bounds(10, 20, 320, 200);
 
     @Test
@@ -46,9 +63,9 @@ class GizmoLabelLayoutTest {
     }
 
     @Test
-    void keepsOverlappingAnchorsSeparateWhenThereIsRoomAndGroupingIsDisabled() {
+    void keepsOverlappingAnchorsSeparateBelowTheExplicitCapWhenGroupingIsDisabled() {
         List<GizmoLabelLayout.Label> labels = GizmoLabelLayout.layout(
-                List.of(anchor(0, 160, 110), anchor(1, 160, 110)), VIEWPORT, 1, false);
+                List.of(anchor(0, 160, 110), anchor(1, 160, 110)), VIEWPORT, 1, false, List.of(), 20);
 
         assertEquals(2, labels.size());
         assertEquals(Set.of(0, 1), displayed(labels));
@@ -187,6 +204,48 @@ class GizmoLabelLayoutTest {
     }
 
     @Test
+    void cappedLayoutGroupsADenseHighIndexClusterBeforeGroupingSparseLowIndexLabels() {
+        List<GizmoLabelLayout.Anchor> anchors = new ArrayList<>();
+        for (int index = 0; index < 19; index++) {
+            anchors.add(anchor(index, 40 + index * 90, 40));
+        }
+        for (int index = 100; index < 132; index++) {
+            anchors.add(anchor(index, 1_900, 160));
+        }
+        GizmoLabelLayout.Bounds viewport = new GizmoLabelLayout.Bounds(0, 0, 2_100, 240);
+
+        List<GizmoLabelLayout.Label> labels = GizmoLabelLayout.layout(anchors, viewport, 131, false, List.of(), 20);
+
+        assertEquals(20, labels.size());
+        assertEquals(IntStream.concat(IntStream.range(0, 19), IntStream.range(100, 132))
+                .boxed().collect(Collectors.toSet()), displayed(labels));
+        for (int index = 0; index < 19; index++) {
+            int sourceIndex = index;
+            assertTrue(labels.stream().anyMatch(label -> label.sourceIndices().equals(List.of(sourceIndex))),
+                    "Sparse source " + sourceIndex + " must remain independently selectable");
+        }
+        GizmoLabelLayout.Label denseGroup = labels.stream()
+                .filter(label -> label.sourceIndices().contains(131)).findFirst().orElseThrow();
+        assertEquals(32, denseGroup.sourceIndices().size());
+        assertEquals(131, denseGroup.sourceIndices().getFirst());
+        assertReadableAndInBounds(labels, viewport);
+    }
+
+    @Test
+    void cappedLayoutRetainsAllTenThousandDenseSourcesInOneGroup() {
+        List<GizmoLabelLayout.Anchor> anchors = IntStream.range(0, 10_000)
+                .mapToObj(index -> anchor(index, 160, 100)).collect(Collectors.toList());
+
+        List<GizmoLabelLayout.Label> labels = GizmoLabelLayout.layout(anchors, VIEWPORT, 9_999, false, List.of(), 20);
+
+        assertEquals(1, labels.size());
+        assertEquals(10_000, labels.getFirst().sourceIndices().size());
+        assertEquals(9_999, labels.getFirst().sourceIndices().getFirst());
+        assertEquals(IntStream.range(0, 10_000).boxed().collect(Collectors.toSet()), displayed(labels));
+        assertReadableAndInBounds(labels, VIEWPORT);
+    }
+
+    @Test
     void retainsTenThousandSeparatedAnchorsAsSeparateLabels() {
         GizmoLabelLayout.Bounds largeViewport = new GizmoLabelLayout.Bounds(0, 0, 20_000, 20_000);
         List<GizmoLabelLayout.Anchor> anchors = IntStream.range(0, 10_000)
@@ -201,6 +260,23 @@ class GizmoLabelLayoutTest {
     }
 
     @Test
+    void cappedLayoutRetainsAllTenThousandSeparatedSourcesUsingSpatialGroups() {
+        GizmoLabelLayout.Bounds largeViewport = new GizmoLabelLayout.Bounds(0, 0, 20_000, 20_000);
+        List<GizmoLabelLayout.Anchor> anchors = IntStream.range(0, 10_000)
+                .mapToObj(index -> anchor(index, 100 + (index % 100) * 100, 100 + (index / 100) * 100))
+                .collect(Collectors.toList());
+
+        List<GizmoLabelLayout.Label> labels = GizmoLabelLayout.layout(anchors, largeViewport, 9_999, false, List.of(), 20);
+
+        assertTrue(labels.size() <= 20);
+        assertEquals(IntStream.range(0, 10_000).boxed().collect(Collectors.toSet()), displayed(labels));
+        GizmoLabelLayout.Label selectedGroup = labels.stream()
+                .filter(label -> label.sourceIndices().contains(9_999)).findFirst().orElseThrow();
+        assertEquals(9_999, selectedGroup.sourceIndices().getFirst());
+        assertReadableAndInBounds(labels, largeViewport);
+    }
+
+    @Test
     void outputDoesNotDependOnInputOrderAndDoesNotExposeMutableMemberLists() {
         List<GizmoLabelLayout.Anchor> anchors = new ArrayList<>(List.of(
                 anchor(3, 110, 90), anchor(1, 110, 90), anchor(8, 220, 70)));
@@ -210,6 +286,29 @@ class GizmoLabelLayoutTest {
 
         assertEquals(first, reordered);
         assertThrows(UnsupportedOperationException.class, () -> first.getFirst().sourceIndices().add(99));
+    }
+
+    @Test
+    void cappedGroupsKeepMembershipAndGeometryAcrossInputOrderAndSelection() {
+        List<GizmoLabelLayout.Anchor> anchors = new ArrayList<>();
+        for (int index = 0; index < 6; index++) {
+            anchors.add(anchor(index, 70, 80));
+        }
+        for (int index = 6; index < 12; index++) {
+            anchors.add(anchor(index, 250, 140));
+        }
+
+        List<GizmoLabelLayout.Label> original = GizmoLabelLayout.layout(anchors, VIEWPORT, 11, false, List.of(), 2);
+        Collections.reverse(anchors);
+        assertEquals(original, GizmoLabelLayout.layout(anchors, VIEWPORT, 11, false, List.of(), 2));
+
+        List<GizmoLabelLayout.Label> differentSelection = GizmoLabelLayout.layout(anchors, VIEWPORT, 1, false, List.of(), 2);
+        assertEquals(labelBounds(original), labelBounds(differentSelection));
+        assertEquals(displayed(original), displayed(differentSelection));
+        GizmoLabelLayout.Label selectedGroup = differentSelection.stream()
+                .filter(label -> label.sourceIndices().contains(1)).findFirst().orElseThrow();
+        assertEquals(1, selectedGroup.sourceIndices().getFirst());
+        assertReadableAndInBounds(differentSelection, VIEWPORT);
     }
 
     private static GizmoLabelLayout.Anchor anchor(int index, double x, double y) {

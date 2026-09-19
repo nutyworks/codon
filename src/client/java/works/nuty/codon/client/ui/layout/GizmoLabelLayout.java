@@ -47,6 +47,14 @@ public final class GizmoLabelLayout {
     public static List<Label> layout(
             List<Anchor> anchors, Bounds viewport, int selectedSourceIndex, boolean groupOverlaps,
             List<Bounds> obstacles) {
+        return layout(anchors, viewport, selectedSourceIndex, groupOverlaps, obstacles, Integer.MAX_VALUE);
+    }
+
+    /** Limits visible labels by spatial grouping, retaining every source and its selection target. */
+    public static List<Label> layout(
+            List<Anchor> anchors, Bounds viewport, int selectedSourceIndex, boolean groupOverlaps,
+            List<Bounds> obstacles, int maxLabels) {
+        if (maxLabels <= 0) return List.of();
         if (anchors == null || viewport == null || viewport.width() <= 0 || viewport.height() < LABEL_HEIGHT) {
             return List.of();
         }
@@ -85,8 +93,60 @@ public final class GizmoLabelLayout {
         if (groupOverlaps) {
             units = mergeIdealOverlaps(units, viewport);
         }
+        if (units.size() > maxLabels) {
+            // Apply the budget to spatial groups, never to a prefix of source IDs.
+            if (!groupOverlaps) units = mergeIdealOverlaps(units, viewport);
+            if (units.size() > maxLabels) units = mergeToBudget(units, viewport, maxLabels);
+        }
         return place(units, viewport, selectedSourceIndex, usableObstacles);
     }
+
+    private record Neighbor(int left, int right, double distance) {}
+
+    /**
+     * Merge nearby screen-space units first. Two axis sweeps supply a connected, linear-size
+     * neighbor graph, avoiding a quadratic pair table for large execution forks.
+     */
+    private static List<Unit> mergeToBudget(List<Unit> units, Bounds viewport, int maxLabels) {
+        List<Bounds> bounds = units.stream().map(unit -> idealBounds(unit, viewport)).toList();
+        List<Integer> order = new ArrayList<>(units.size());
+        for (int i = 0; i < units.size(); i++) order.add(i);
+        List<Neighbor> neighbors = new ArrayList<>();
+        Comparator<Integer> byX = Comparator.<Integer>comparingDouble(i -> centerX(bounds.get(i)))
+            .thenComparingDouble(i -> centerY(bounds.get(i))).thenComparingInt(i -> units.get(i).lowestIndex());
+        Comparator<Integer> byY = Comparator.<Integer>comparingDouble(i -> centerY(bounds.get(i)))
+            .thenComparingDouble(i -> centerX(bounds.get(i))).thenComparingInt(i -> units.get(i).lowestIndex());
+        for (Comparator<Integer> axis : List.of(byX, byY)) {
+            order.sort(axis);
+            for (int i = 1; i < order.size(); i++) {
+                int left = Math.min(order.get(i - 1), order.get(i));
+                int right = Math.max(order.get(i - 1), order.get(i));
+                double dx = centerX(bounds.get(left)) - centerX(bounds.get(right));
+                double dy = centerY(bounds.get(left)) - centerY(bounds.get(right));
+                neighbors.add(new Neighbor(left, right, dx * dx + dy * dy));
+            }
+        }
+        neighbors.sort(Comparator.comparingDouble(Neighbor::distance)
+            .thenComparingInt(Neighbor::left).thenComparingInt(Neighbor::right));
+        DisjointSet sets = new DisjointSet(units.size());
+        int remaining = units.size();
+        for (Neighbor neighbor : neighbors) {
+            if (remaining <= maxLabels) break;
+            if (sets.find(neighbor.left()) == sets.find(neighbor.right())) continue;
+            sets.union(neighbor.left(), neighbor.right());
+            remaining--;
+        }
+        Map<Integer, List<Anchor>> members = new HashMap<>();
+        for (int i = 0; i < units.size(); i++)
+            members.computeIfAbsent(sets.find(i), ignored -> new ArrayList<>()).addAll(units.get(i).anchors);
+        List<Unit> grouped = new ArrayList<>(members.size());
+        for (List<Anchor> anchors : members.values()) grouped.add(new Unit(anchors));
+        grouped.sort(unitOrder());
+        return grouped;
+    }
+
+    private static double centerX(Bounds bounds) { return bounds.x() + bounds.width() / 2.0; }
+    private static double centerY(Bounds bounds) { return bounds.y() + bounds.height() / 2.0; }
 
     private static int anchorOrder(Anchor left, Anchor right) {
         int result = Double.compare(left.x(), right.x());
