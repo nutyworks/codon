@@ -46,6 +46,8 @@ public final class ClientWatchState {
     private static final int MAX_CAPTURES_PER_WATCH = 256;
     private final LongSupplier clock;
     private final Map<Long, Slot> slots = new LinkedHashMap<>();
+    /** Presentation only: retained rows never satisfy a query or become a comparison baseline. */
+    private final Map<Long, PendingDisplay<Entry>> pendingDisplays = new LinkedHashMap<>();
     /** Last selected result, retained to distinguish a transient availability failure from a later recovery. */
     private final Map<Long, WatchResult> previous = new LinkedHashMap<>();
     /** Last completed-step result for each known target, bounded independently for every watch. */
@@ -123,6 +125,20 @@ public final class ClientWatchState {
 
     /** Saved pins lead the list; every automatic change remains visible for the entire stop. */
     public List<Entry> displayedEntries() {
+        return currentDisplayedEntries().stream().map(entry -> {
+            PendingDisplay<Entry> pending = pendingDisplays.get(entry.id());
+            if (pending == null) return entry;
+            Entry displayed = pending.resolve(entry.displayedResult() == null ? null : entry);
+            if (displayed == null || displayed == entry) {
+                pendingDisplays.remove(entry.id());
+                return entry;
+            }
+            // Retain the identity and change metadata too; never label an old value as a new executor's.
+            return displayed;
+        }).toList();
+    }
+
+    private List<Entry> currentDisplayedEntries() {
         List<Entry> saved = new ArrayList<>();
         Set<WatchSpec> represented = new LinkedHashSet<>();
         for (Entry entry : entries()) {
@@ -147,6 +163,15 @@ public final class ClientWatchState {
         saved.stream().filter(entry -> !entry.spec().isPinned()).forEach(result::add);
         automaticChanges.values().stream().filter(entry -> !represented.contains(entry.spec())).forEach(result::add);
         return List.copyOf(result);
+    }
+
+    /** Start once at invalidation, not on render or on the subsequent pause acknowledgement. */
+    private void retainPendingDisplays() {
+        for (Entry entry : currentDisplayedEntries()) {
+            if (!entry.automatic() && entry.displayedResult() != null) {
+                pendingDisplays.computeIfAbsent(entry.id(), ignored -> new PendingDisplay<>(clock)).retain(entry);
+            }
+        }
     }
 
     private static boolean sameField(WatchSpec first, WatchSpec second) { return WatchIdentity.sameField(first, second); }
@@ -217,6 +242,7 @@ public final class ClientWatchState {
         if (!slots.containsKey(id) || slots.entrySet().stream()
             .anyMatch(entry -> entry.getKey() != id && WatchIdentity.same(entry.getValue().spec, spec))) return false;
         slots.put(id, new Slot(spec));
+        pendingDisplays.remove(id);
         previous.remove(id);
         targetHistory.remove(id);
         stepTargets.remove(id);
@@ -264,6 +290,7 @@ public final class ClientWatchState {
             .map(Map.Entry::getKey).toList();
         for (long id : removed) {
             slots.remove(id);
+            pendingDisplays.remove(id);
             previous.remove(id);
             targetHistory.remove(id);
             stepTargets.remove(id);
@@ -276,6 +303,7 @@ public final class ClientWatchState {
     public void clearDefinitions() {
         if (slots.isEmpty()) return;
         slots.clear();
+        pendingDisplays.clear();
         previous.clear();
         targetHistory.clear();
         stepTargets.clear();
@@ -285,6 +313,7 @@ public final class ClientWatchState {
 
     public void remove(long id) {
         if (slots.remove(id) == null) return;
+        pendingDisplays.remove(id);
         previous.remove(id);
         targetHistory.remove(id);
         stepTargets.remove(id);
@@ -318,6 +347,7 @@ public final class ClientWatchState {
         if (slots.entrySet().stream().anyMatch(entry -> entry.getKey() != id && WatchIdentity.same(entry.getValue().spec, spec))) return false;
         // A new binding is an initial observation; cancel in-flight replies for the old target.
         slots.put(id, new Slot(spec));
+        pendingDisplays.remove(id);
         previous.remove(id);
         targetHistory.remove(id);
         stepTargets.remove(id);
@@ -332,6 +362,7 @@ public final class ClientWatchState {
         Slot slot = slots.get(id);
         if (pauseId <= 0 || slot == null || slot.result == null
             || (slot.result.status() != WatchResult.Status.UNAVAILABLE && slot.result.status() != WatchResult.Status.ERROR)) return;
+        retainPendingDisplays();
         slot.captures.remove(slot.requestSourceIndex);
         slot.requestId = 0;
         slot.requestedAt = 0;
@@ -399,7 +430,10 @@ public final class ClientWatchState {
 
     public void paused(long id, int index) {
         if (pauseId == id && id > 0) { selectSource(index); return; }
-        if (!continuingStep) clearHistory();
+        if (!continuingStep) {
+            clearHistory();
+            pendingDisplays.clear();
+        }
         continuingStep = false;
         pauseId = id;
         clearChanges();
@@ -410,6 +444,7 @@ public final class ClientWatchState {
 
     public void selectSource(int index) {
         if (sourceIndex == index) return;
+        retainPendingDisplays();
         sourceIndex = index;
         // Storage is independent of the selected executor; executor captures remain available on a revisit.
         slots.values().stream().filter(s -> s.spec.kind() != WatchSpec.Kind.STORAGE_NBT && !s.spec.isPinned())
@@ -417,6 +452,7 @@ public final class ClientWatchState {
     }
 
     public void stepping() {
+        retainPendingDisplays();
         clearChanges();
         stepTargets.clear();
         slots.forEach((watchId, slot) -> {
@@ -434,6 +470,7 @@ public final class ClientWatchState {
     }
 
     public void resumed() {
+        pendingDisplays.clear();
         clearChanges();
         pauseId = 0;
         continuingStep = false;

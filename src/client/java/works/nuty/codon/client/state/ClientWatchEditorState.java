@@ -26,10 +26,17 @@ public final class ClientWatchEditorState {
     private @Nullable Query current;
     private @Nullable Query unsent;
     private @Nullable WatchEditorPage page;
+    /** Query identity retained across an invalidation so only compatible displays survive. */
+    private @Nullable WatchEditorQuery invalidatedQuery;
+    /** Presentation-only page retained while a compatible replacement is pending. */
+    private final PendingDisplay<WatchEditorPage> displayed;
     private boolean waiting;
     private boolean timedOut;
 
-    public ClientWatchEditorState(LongSupplier clock) { this.clock = Objects.requireNonNull(clock); }
+    public ClientWatchEditorState(LongSupplier clock) {
+        this.clock = Objects.requireNonNull(clock);
+        displayed = new PendingDisplay<>(clock);
+    }
 
     public WatchSpec.Kind kind() { return kind; }
     public void kind(WatchSpec.Kind kind) { this.kind = kind; }
@@ -39,6 +46,10 @@ public final class ClientWatchEditorState {
     public void request(long pauseId, int sourceIndex, WatchEditorQuery query) {
         if (current != null && current.pauseId() == pauseId && current.sourceIndex() == sourceIndex
             && current.query().equals(query)) return;
+        WatchEditorQuery previous = current == null ? invalidatedQuery : current.query();
+        if (previous != null && compatible(previous, query)) displayed.retain(page);
+        else displayed.clear();
+        invalidatedQuery = null;
         current = new Query(pauseId, ++nextRequest, sourceIndex, query);
         unsent = current;
         requestedAt = clock.getAsLong();
@@ -61,18 +72,41 @@ public final class ClientWatchEditorState {
     }
 
     public @Nullable WatchEditorPage page() { expire(); return page; }
+    /** A visual-only page that may outlive {@link #page()} for at most 250ms. */
+    public @Nullable WatchEditorPage displayedPage() { expire(); return displayed.resolve(page); }
     public boolean waiting() { expire(); return waiting; }
     public boolean timedOut() { expire(); return timedOut; }
 
     public void retry() {
         Query previous = current;
-        cancel();
-        if (previous != null) request(previous.pauseId(), previous.sourceIndex(), previous.query());
+        if (previous == null) return;
+        // Preserve the page only for display; a retry always receives a new request ID.
+        displayed.retain(page);
+        current = new Query(previous.pauseId(), ++nextRequest, previous.sourceIndex(), previous.query());
+        unsent = current;
+        requestedAt = clock.getAsLong();
+        page = null;
+        waiting = true;
+        timedOut = false;
+    }
+
+    /**
+     * Drop authoritative data for a pause transition while retaining a compatible
+     * presentation value for its short grace period.  Late replies cannot match.
+     */
+    public void invalidate() {
+        if (current != null) invalidatedQuery = current.query();
+        displayed.retain(page);
+        current = unsent = null;
+        page = null;
+        waiting = timedOut = false;
     }
 
     public void cancel() {
         current = unsent = null;
         page = null;
+        invalidatedQuery = null;
+        displayed.clear();
         waiting = timedOut = false;
     }
 
@@ -90,5 +124,9 @@ public final class ClientWatchEditorState {
             unsent = null;
             page = new WatchEditorPage(WatchResult.Status.UNAVAILABLE, List.of(), 0, false, null);
         }
+    }
+
+    private static boolean compatible(WatchEditorQuery previous, WatchEditorQuery next) {
+        return previous.mode() == next.mode() && previous.kind() == next.kind();
     }
 }

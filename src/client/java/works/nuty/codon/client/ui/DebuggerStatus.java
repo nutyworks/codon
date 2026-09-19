@@ -7,7 +7,7 @@ final class DebuggerStatus {
     private DebuggerStatus() { }
 
     static String translationKey(ClientDebuggerState state) {
-        if (state.controlPending()) return "codon.ui.waiting";
+        if (state.displayControlWaiting()) return "codon.ui.waiting";
         var snapshot = state.snapshot();
         if (!state.isPaused() || snapshot == null) return "codon.ui.running";
         return switch (snapshot.reason()) {

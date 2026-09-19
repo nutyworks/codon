@@ -45,6 +45,8 @@ public final class WatchPickerScreen extends Screen {
     private EditBox search;
     private DebuggerButton previous, next, up, retry, close;
     private WatchEditorPage presentedPage;
+    /** Exact last-rendered options for a retained page, including its local NBT filter. */
+    private List<WatchEditorPage.Option> presentedOptions = List.of();
 
     public WatchPickerScreen(Screen parent, ClientDebuggerState state, WatchEditorQuery initial,
                              Consumer<WatchEditorPage.Option> selected) {
@@ -88,13 +90,19 @@ public final class WatchPickerScreen extends Screen {
         tabOrder.add(search);
 
         previous = addRenderableWidget(WatchUi.button(left + 8, top + panelHeight - 28, 46, 20,
-            WatchUi.text("picker.previous"), () -> request(Math.max(0, pageOffset - WatchEditorPage.PAGE_SIZE))));
+            WatchUi.text("picker.previous"), () -> {
+                if (interactionAvailable()) request(Math.max(0, pageOffset - WatchEditorPage.PAGE_SIZE));
+            }));
         next = addRenderableWidget(WatchUi.button(left + 56, top + panelHeight - 28, 46, 20,
-            WatchUi.text("picker.next"), () -> request(pageOffset + currentPageSize())));
+            WatchUi.text("picker.next"), () -> {
+                if (interactionAvailable()) request(pageOffset + currentPageSize());
+            }));
         up = addRenderableWidget(WatchUi.button(left + 104, top + panelHeight - 28, 42, 20,
             WatchUi.text("picker.up"), this::up));
         retry = addRenderableWidget(WatchUi.button(left + panelWidth - 112, top + panelHeight - 28, 50, 20,
-            WatchUi.text("retry"), () -> state.watchEditor().retry()));
+            WatchUi.text("retry"), () -> {
+                if (interactionAvailable()) state.watchEditor().retry();
+            }));
         close = addRenderableWidget(WatchUi.button(left + panelWidth - 58, top + 5, 50, 18,
             WatchUi.text("close"), this::onClose));
         tabOrder.add(previous);
@@ -122,9 +130,12 @@ public final class WatchPickerScreen extends Screen {
             new WatchEditorQuery(mode, kind, target, path, executor, querySearch, pageOffset));
     }
 
-    private List<WatchEditorPage.Option> options() {
-        WatchEditorPage page = state.watchEditor().page();
+    private List<WatchEditorPage.Option> options(@org.jspecify.annotations.Nullable WatchEditorPage page,
+                                                  boolean authoritative) {
         if (page == null) return List.of();
+        // A retained page belongs to the preceding query.  Leave it intact until the
+        // new response arrives instead of applying this query's search to it.
+        if (!authoritative) return page == presentedPage ? presentedOptions : page.options();
         if (mode != WatchEditorQuery.Mode.NBT || search.getValue().isBlank()) return page.options();
         String needle = search.getValue().toLowerCase(Locale.ROOT);
         return page.options().stream().filter(option -> option.value().toLowerCase(Locale.ROOT).contains(needle)
@@ -136,24 +147,27 @@ public final class WatchPickerScreen extends Screen {
     private int currentPageSize() { WatchEditorPage page = state.watchEditor().page(); return page == null ? 0 : page.options().size(); }
     private int maxRowOffset(List<WatchEditorPage.Option> options) { return Math.max(0, options.size() - visibleRows()); }
 
-    private void updatePresentation(WatchEditorPage page, List<WatchEditorPage.Option> options) {
+    private boolean interactionAvailable() { return state.watchEditor().page() != null; }
+
+    private void updatePresentation(WatchEditorPage page, List<WatchEditorPage.Option> options, boolean authoritative) {
         if (page != presentedPage) {
             presentedPage = page;
             rowOffset = 0;
             focusedOption = options.isEmpty() ? -1 : 0;
         }
+        if (authoritative) presentedOptions = List.copyOf(options);
         if (focusedOption >= options.size()) focusedOption = options.isEmpty() ? -1 : options.size() - 1;
         rowOffset = Math.clamp(rowOffset, 0, maxRowOffset(options));
-        previous.active = page != null && pageOffset > 0;
-        next.active = page != null && page.hasMore() && currentPageSize() > 0;
-        up.visible = up.active = mode == WatchEditorQuery.Mode.NBT && !pathStack.isEmpty();
+        previous.active = authoritative && pageOffset > 0;
+        next.active = authoritative && page != null && page.hasMore() && currentPageSize() > 0;
+        up.visible = up.active = authoritative && mode == WatchEditorQuery.Mode.NBT && !pathStack.isEmpty();
         retry.visible = retry.active = state.watchEditor().timedOut()
-            || page != null && (page.status() == works.nuty.codon.core.model.WatchResult.Status.ERROR
+            || authoritative && page != null && (page.status() == works.nuty.codon.core.model.WatchResult.Status.ERROR
             || page.status() == works.nuty.codon.core.model.WatchResult.Status.UNAVAILABLE);
     }
 
     private void up() {
-        if (pathStack.isEmpty()) return;
+        if (!interactionAvailable() || pathStack.isEmpty()) return;
         path = pathStack.removeLast();
         search.setValue("");
         request(0);
@@ -164,13 +178,13 @@ public final class WatchPickerScreen extends Screen {
     }
 
     private void choose(WatchEditorPage.Option option) {
-        if (!selectable(option)) return;
+        if (!interactionAvailable() || !selectable(option)) return;
         selected.accept(option);
         Minecraft.getInstance().gui.setScreen(parent);
     }
 
     private void expand(WatchEditorPage.Option option) {
-        if (mode != WatchEditorQuery.Mode.NBT || !option.expandable()) return;
+        if (!interactionAvailable() || mode != WatchEditorQuery.Mode.NBT || !option.expandable()) return;
         pathStack.add(path);
         path = option.value();
         search.setValue("");
@@ -178,7 +192,8 @@ public final class WatchPickerScreen extends Screen {
     }
 
     private void moveFocus(int direction) {
-        List<WatchEditorPage.Option> options = options();
+        if (!interactionAvailable()) return;
+        List<WatchEditorPage.Option> options = options(state.watchEditor().page(), true);
         if (options.isEmpty()) return;
         focusedOption = Math.clamp(focusedOption < 0 ? 0 : focusedOption + direction, 0, options.size() - 1);
         if (focusedOption < rowOffset) rowOffset = focusedOption;
@@ -188,9 +203,11 @@ public final class WatchPickerScreen extends Screen {
 
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         refreshRequest();
-        WatchEditorPage page = state.watchEditor().page();
-        List<WatchEditorPage.Option> options = options();
-        updatePresentation(page, options);
+        WatchEditorPage authoritativePage = state.watchEditor().page();
+        WatchEditorPage page = state.watchEditor().displayedPage();
+        boolean authoritative = authoritativePage != null;
+        List<WatchEditorPage.Option> options = options(page, authoritative);
+        updatePresentation(page, options, authoritative);
         graphics.fill(0, 0, width, height, 0x70000000);
         graphics.fill(left, top, left + panelWidth, top + panelHeight, PANEL);
         graphics.outline(left, top, panelWidth, panelHeight, BORDER);
@@ -206,8 +223,8 @@ public final class WatchPickerScreen extends Screen {
         for (int index = rowOffset; index < Math.min(options.size(), rowOffset + visibleRows()); index++) {
             WatchEditorPage.Option option = options.get(index);
             int y = listTop + (index - rowOffset) * ROW_HEIGHT;
-            boolean focused = index == focusedOption;
-            boolean hovered = mouseX >= left + 8 && mouseX < left + panelWidth - 8 && mouseY >= y && mouseY < y + ROW_HEIGHT - 2;
+            boolean focused = authoritative && index == focusedOption;
+            boolean hovered = authoritative && mouseX >= left + 8 && mouseX < left + panelWidth - 8 && mouseY >= y && mouseY < y + ROW_HEIGHT - 2;
             boolean expandable = option.expandable() && mode == WatchEditorQuery.Mode.NBT;
             int surface = focused || hovered ? RAISED : SURFACE;
             graphics.fill(left + 8, y, left + panelWidth - 8, y + ROW_HEIGHT - 2, surface);
@@ -220,7 +237,7 @@ public final class WatchPickerScreen extends Screen {
                 graphics.fill(left + panelWidth - 28, y + 5, left + panelWidth - 15, y + 18, TEAL_SURFACE);
                 WatchUi.line(graphics, font, ">", left + panelWidth - 24, y + 5, 8, TEAL);
             }
-            if (hovered && !selectable(option)) graphics.setTooltipForNextFrame(font,
+            if (authoritative && hovered && !selectable(option)) graphics.setTooltipForNextFrame(font,
                 WatchUi.text("picker.path_too_long", WatchSpec.MAX_INPUT_LENGTH), mouseX, mouseY);
         }
         graphics.disableScissor();
@@ -231,7 +248,7 @@ public final class WatchPickerScreen extends Screen {
             graphics.fill(left + panelWidth - 5, thumbY, left + panelWidth - 3, thumbY + thumb, TEAL);
         }
         if (options.isEmpty()) {
-            String status = page == null || state.watchEditor().waiting() ? WatchUi.text("picker.loading").getString()
+            String status = page == null ? WatchUi.text("picker.loading").getString()
                 : page.status() == works.nuty.codon.core.model.WatchResult.Status.VALUE
                     ? WatchUi.text("picker.empty").getString() : WatchFormatting.status(page.status()).getString();
             WatchUi.line(graphics, font, status, left + 13, listTop + 8, panelWidth - 26,
@@ -241,8 +258,8 @@ public final class WatchPickerScreen extends Screen {
     }
 
     @Override public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
-            List<WatchEditorPage.Option> options = options();
+        if (interactionAvailable() && event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
+            List<WatchEditorPage.Option> options = options(state.watchEditor().page(), true);
             int listTop = top + 70;
             if (event.x() >= left + 8 && event.x() < left + panelWidth - 8 && event.y() >= listTop
                 && event.y() < listTop + visibleRows() * ROW_HEIGHT) {
@@ -260,7 +277,8 @@ public final class WatchPickerScreen extends Screen {
     }
 
     @Override public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
-        List<WatchEditorPage.Option> options = options();
+        if (!interactionAvailable()) return true;
+        List<WatchEditorPage.Option> options = options(state.watchEditor().page(), true);
         rowOffset = Math.clamp(rowOffset - (int) Math.signum(scrollY) * 3, 0, maxRowOffset(options));
         return true;
     }
@@ -280,9 +298,10 @@ public final class WatchPickerScreen extends Screen {
         }
         if (getFocused() instanceof EditBox) return super.keyPressed(event);
         if (getFocused() == null && (event.key() == InputConstants.KEY_RIGHT || event.key() == InputConstants.KEY_LEFT)) {
+            if (!interactionAvailable()) return true;
             if (event.key() == InputConstants.KEY_LEFT) up();
             else {
-                List<WatchEditorPage.Option> options = options();
+                List<WatchEditorPage.Option> options = options(state.watchEditor().page(), true);
                 if (focusedOption >= 0 && focusedOption < options.size()) expand(options.get(focusedOption));
             }
             return true;
@@ -291,7 +310,8 @@ public final class WatchPickerScreen extends Screen {
         if (event.key() == InputConstants.KEY_DOWN) { moveFocus(1); return true; }
         if (getFocused() == null && (event.key() == InputConstants.KEY_RETURN || event.key() == InputConstants.KEY_NUMPADENTER)
             && focusedOption >= 0) {
-            List<WatchEditorPage.Option> options = options();
+            if (!interactionAvailable()) return true;
+            List<WatchEditorPage.Option> options = options(state.watchEditor().page(), true);
             if (focusedOption < options.size()) choose(options.get(focusedOption));
             return true;
         }

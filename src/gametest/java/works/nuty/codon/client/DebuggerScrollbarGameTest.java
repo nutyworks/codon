@@ -109,7 +109,7 @@ public final class DebuggerScrollbarGameTest implements FabricClientGameTest {
     }
 
     private static void clickNbtTrack(ClientGameTestContext context, CodonScreen screen) {
-        Track nbt = context.computeOnClient(client -> trackStartingWith(screen, "nbt-0-"));
+        Track nbt = context.computeOnClient(client -> trackStartingWith(screen, "nbt-"));
         moveCursor(context, screen, nbt.x() + nbt.thickness() / 2.0, nbt.y() + nbt.length() - 1.0);
         context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_LEFT);
         context.waitTicks(2);
@@ -123,7 +123,7 @@ public final class DebuggerScrollbarGameTest implements FabricClientGameTest {
     }
 
     private static void dragNbtTrack(ClientGameTestContext context, CodonScreen screen) {
-        Track initial = context.computeOnClient(client -> trackStartingWith(screen, "nbt-0-"));
+        Track initial = context.computeOnClient(client -> trackStartingWith(screen, "nbt-"));
         moveCursor(context, screen, initial.x() + initial.thickness() / 2.0, thumbCenter(initial));
         context.getInput().holdMouse(InputConstants.MOUSE_BUTTON_LEFT);
         context.waitTicks(1);
@@ -133,7 +133,7 @@ public final class DebuggerScrollbarGameTest implements FabricClientGameTest {
         context.getInput().releaseMouse(InputConstants.MOUSE_BUTTON_LEFT);
         context.waitTicks(2);
         context.runOnClient(client -> {
-            Track nbt = trackStartingWith(screen, "nbt-0-");
+            Track nbt = trackStartingWith(screen, "nbt-");
             int offset = integerField(nbtPanel(overlay(screen)), "offset");
             require(offset == 0, "Native NBT drag back to the start persists after release");
             require(nbt.offset() == offset, "Rendered NBT thumb agrees with its released tree offset");

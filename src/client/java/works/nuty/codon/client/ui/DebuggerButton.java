@@ -17,6 +17,7 @@ public final class DebuggerButton extends AbstractButton {
     private Runnable action = () -> { };
     private @Nullable Runnable secondaryAction;
     private boolean selected;
+    private boolean inputBlocked;
     private boolean leftAligned;
     private boolean subdued;
     private boolean borderless;
@@ -49,6 +50,7 @@ public final class DebuggerButton extends AbstractButton {
         setTooltip(null);
         this.singleLineTooltip = null;
         this.active = active;
+        this.inputBlocked = false;
         this.selected = selected;
         this.leftAligned = leftAligned;
         this.subdued = subdued;
@@ -143,17 +145,26 @@ public final class DebuggerButton extends AbstractButton {
         return this;
     }
 
+    /** Keep appearance and focus stable during a short data refresh without accepting actions. */
+    public DebuggerButton withInputBlocked(boolean blocked) {
+        this.inputBlocked = blocked;
+        return this;
+    }
+
+    public boolean inputBlocked() { return inputBlocked; }
+
     public @Nullable DebuggerIcon icon() {
         return icon;
     }
 
     @Override
     public void onPress(InputWithModifiers input) {
-        if (active) action.run();
+        if (active && !inputBlocked) action.run();
     }
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        if (inputBlocked) return active && isMouseOver(event.x(), event.y());
         if (secondaryAction != null && active && event.button() == InputConstants.MOUSE_BUTTON_RIGHT && isMouseOver(event.x(), event.y())) {
             playDownSound(Minecraft.getInstance().getSoundManager());
             secondaryAction.run();

@@ -70,7 +70,7 @@ public final class ClientNbtState {
             if (sources.get(i).entity() != null) entities.add(new EntitySource(i, sources.get(i).entity()));
         }
         // A changed stop/source arrangement never reuses pages or in-flight request IDs, but retains UI state.
-        if (pauseId != id || !entitySources.equals(entities)) trees.values().forEach(Tree::clearPages);
+        if (pauseId != id || !entitySources.equals(entities)) trees.values().forEach(this::invalidatePages);
         this.pauseId = id;
         this.sources = List.copyOf(sources);
         entitySources = List.copyOf(entities);
@@ -86,15 +86,39 @@ public final class ClientNbtState {
         sourceIndex = -1;
         sources = List.of();
         entitySources = List.of();
-        trees.values().forEach(Tree::clearPages);
+        trees.values().forEach(this::invalidatePages);
     }
 
     /** Resume invalidates live pages but preserves UUID-keyed expansion preferences. */
-    public void resumed() { stepping(); trimDormantStates(); }
+    public void resumed() {
+        stepping();
+        trees.values().forEach(tree -> tree.pendingPages.clear());
+        trimDormantStates();
+    }
     /** Disconnect drops per-entity UI state; enabled is an independent persisted preference. */
     public void reset() { stepping(); trees.clear(); sourceExpanded.clear(); }
     public void refresh() { if (executor() != null) refresh(executor().uuid()); }
-    public void refresh(UUID executor) { Tree tree = tree(executor); if (tree != null) tree.clearPages(); }
+    public void refresh(UUID executor) { Tree tree = tree(executor); if (tree != null) invalidatePages(tree); }
+
+    /** Retained failure labels must not permit cancelling an already pending retry. */
+    public boolean canRefresh(UUID executor, String path, int offset) {
+        expire();
+        Tree tree = tree(executor);
+        Branch branch = tree == null ? null : tree.branches.get(path);
+        PageRequest request = branch == null ? null : branch.pages.get(offset);
+        return request != null && request.page != null && request.page.status() != WatchResult.Status.VALUE;
+    }
+
+    private void invalidatePages(Tree tree) {
+        // Keep only loaded pages, never materialize sparse placeholder ranges or restart an unanswered hold.
+        tree.pendingPages.values().forEach(pages -> pages.values().removeIf(display -> display.resolve(null) == null));
+        tree.pendingPages.values().removeIf(Map::isEmpty);
+        tree.branches.forEach((path, branch) -> branch.pages.forEach((offset, request) -> {
+            if (request.page != null) tree.pendingPages.computeIfAbsent(path, ignored -> new java.util.TreeMap<>())
+                .computeIfAbsent(offset, ignored -> new PendingDisplay<>(clock)).retain(request.page);
+        }));
+        tree.clearPages();
+    }
 
     public boolean toggle(String path) { return executor() != null && toggle(executor().uuid(), path); }
     public boolean toggle(UUID executor, String path) {
@@ -124,11 +148,18 @@ public final class ClientNbtState {
 
     /** Queue only pages intersecting the viewport; unloaded slots still contribute to scroll extent. */
     public void requestVisible(UUID executor, int first, int count) {
-        List<Row> rows = rows(executor);
+        rows(executor); // Discover only branches justified by current server data.
+        Tree tree = tree(executor);
+        if (tree == null) return;
+        List<Row> rows = displayedRows(executor);
+        if (!(rows instanceof VirtualRows virtual)) return;
         int end = (int) Math.min(rows.size(), (long) Math.max(0, first) + Math.max(0, count));
         for (int i = Math.max(0, first); i < end; i++) {
             Row row = rows.get(i);
-            if (row.kind() == Kind.PLACEHOLDER) page(executor, row.path(), row.targetOffset());
+            VirtualRows.Run run = virtual.runs.floorEntry(i).getValue();
+            String path = run.pagePath();
+            int offset = row.kind() == Kind.PLACEHOLDER ? row.targetOffset() : run.pageOffset();
+            if (tree.visibleBranches.contains(path)) page(executor, path, offset);
         }
     }
 
@@ -141,7 +172,17 @@ public final class ClientNbtState {
         if (tree == null) return List.of();
         tree.visibleBranches.clear();
         VirtualRows rows = new VirtualRows();
-        append(tree, "", 0, rows);
+        append(tree, "", 0, rows, false);
+        return rows;
+    }
+
+    /** Retained pages are display-only and remain isolated by executor, branch path, and page offset. */
+    public List<Row> displayedRows(UUID executor) {
+        expire();
+        Tree tree = tree(executor);
+        if (tree == null) return List.of();
+        VirtualRows rows = new VirtualRows();
+        append(tree, "", 0, rows, true);
         return rows;
     }
 
@@ -230,48 +271,63 @@ public final class ClientNbtState {
         }
     }
 
-    private void append(Tree tree, String path, int depth, VirtualRows rows) {
+    private void append(Tree tree, String path, int depth, VirtualRows rows, boolean display) {
         if (depth > MAX_EXPANDED) {
             rows.add(new Row(Kind.STATUS, path, depth, null, WatchResult.Status.TOO_LARGE, 0, false));
             return;
         }
-        tree.visibleBranches.add(path);
-        Branch branch = tree.branch(path);
-        if (branch.total < 0) {
-            NbtPage initial = branch.pages.get(0).page;
+        if (!display) tree.visibleBranches.add(path);
+        Branch branch = display ? tree.branches.get(path) : tree.branch(path);
+        NbtPage initial = page(tree, branch, path, 0, display);
+        int total = branch == null ? -1 : branch.total;
+        if (display && total < 0 && initial != null && initial.status() == WatchResult.Status.VALUE) total = initial.totalChildren();
+        if (total < 0) {
             rows.add(new Row(Kind.STATUS, path, depth, null, initial == null ? null : initial.status(), 0, false));
             return;
         }
-        if (branch.total == 0) {
+        if (total == 0) {
             rows.add(new Row(Kind.EMPTY, path, depth, null, null, 0, false));
             return;
         }
         int cursor = 0;
-        for (PageRequest pending : branch.pages.values()) {
-            if (pending.offset >= branch.total) break;
-            if (pending.offset > cursor) rows.gap(path, depth, cursor, pending.offset - cursor, null);
-            int end = (int) Math.min(branch.total, (long) pending.offset + NbtPage.PAGE_SIZE);
-            NbtPage page = pending.page;
+        Set<Integer> offsets = new java.util.TreeSet<>();
+        if (branch != null) offsets.addAll(branch.pages.keySet());
+        if (display && tree.pendingPages.containsKey(path)) offsets.addAll(tree.pendingPages.get(path).keySet());
+        for (int offset : offsets) {
+            if (offset >= total) break;
+            if (offset > cursor) rows.gap(path, depth, cursor, offset - cursor, null);
+            int end = (int) Math.min(total, (long) offset + NbtPage.PAGE_SIZE);
+            NbtPage page = page(tree, branch, path, offset, display);
             if (page == null || page.status() != WatchResult.Status.VALUE) {
-                rows.gap(path, depth, pending.offset, end - pending.offset, page == null ? null : page.status());
+                rows.gap(path, depth, offset, end - offset, page == null ? null : page.status());
             } else {
-                int index = pending.offset;
+                int index = offset;
                 for (NbtPage.Node node : page.children()) {
                     if (index++ >= end) break;
                     boolean expanded = node.expandable() && tree.expanded.contains(node.path());
-                    rows.add(new Row(Kind.NODE, node.path(), depth, node, null, 0, expanded));
-                    if (expanded) append(tree, node.path(), depth + 1, rows);
+                    rows.add(new Row(Kind.NODE, node.path(), depth, node, null, 0, expanded), path, offset);
+                    if (expanded) append(tree, node.path(), depth + 1, rows, display);
                 }
                 if (index < end) rows.gap(path, depth, index, end - index, WatchResult.Status.UNAVAILABLE);
             }
             cursor = end;
         }
-        if (cursor < branch.total) rows.gap(path, depth, cursor, branch.total - cursor, null);
+        if (cursor < total) rows.gap(path, depth, cursor, total - cursor, null);
+    }
+
+    private @Nullable NbtPage page(Tree tree, @Nullable Branch branch, String path, int offset, boolean display) {
+        PageRequest request = branch == null ? null : branch.pages.get(offset);
+        NbtPage current = request == null ? null : request.page;
+        var pending = tree.pendingPages.get(path);
+        if (!display || pending == null || !pending.containsKey(offset)) return current;
+        NbtPage result = pending.get(offset).resolve(current);
+        if (current != null || result == null) pending.remove(offset);
+        return result;
     }
 
     /** Sparse row runs keep huge lists cheap even when the scrollbar jumps directly to their end. */
     private static final class VirtualRows extends java.util.AbstractList<Row> {
-        private record Run(Row row, int firstChild) {}
+        private record Run(Row row, int firstChild, String pagePath, int pageOffset) {}
         private final java.util.NavigableMap<Integer, Run> runs = new java.util.TreeMap<>();
         private int size;
         @Override public int size() { return size; }
@@ -286,8 +342,11 @@ public final class ClientNbtState {
                 child / NbtPage.PAGE_SIZE * NbtPage.PAGE_SIZE, false);
         }
         @Override public boolean add(Row row) {
+            return add(row, row.path(), row.targetOffset());
+        }
+        boolean add(Row row, String pagePath, int pageOffset) {
             if (size == Integer.MAX_VALUE) return false;
-            runs.put(size++, new Run(row, 0));
+            runs.put(size++, new Run(row, 0, pagePath, pageOffset));
             return true;
         }
         void gap(String path, int depth, int first, int length, WatchResult.@Nullable Status status) {
@@ -298,7 +357,7 @@ public final class ClientNbtState {
             // Pending pages and unrequested slots form one visible +N marker.
             if (previous == null || !previous.getValue().row().equals(row)
                 || (long) previous.getValue().firstChild() + size - previous.getKey() != first)
-                runs.put(size, new Run(row, first));
+                runs.put(size, new Run(row, first, path, 0));
             size += bounded;
         }
     }
@@ -307,6 +366,7 @@ public final class ClientNbtState {
         final Set<String> expanded = new LinkedHashSet<>();
         final Set<String> visibleBranches = new LinkedHashSet<>();
         final Map<String, Branch> branches = new LinkedHashMap<>();
+        final Map<String, java.util.NavigableMap<Integer, PendingDisplay<NbtPage>>> pendingPages = new LinkedHashMap<>();
         Tree() { clearPages(); }
         void clearPages() { branches.clear(); branches.put("", new Branch()); }
         Branch branch(String path) {

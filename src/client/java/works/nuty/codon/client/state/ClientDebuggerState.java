@@ -78,7 +78,7 @@ public final class ClientDebuggerState {
     }
 
     public void applyPause(PauseSnapshot snapshot) {
-        watchEditor.cancel();
+        watchEditor.invalidate();
         FlowSelectionHint previousFlow = currentFlowHint();
         if (previousFlow == null) previousFlow = flowSelectionHint;
         PauseSource previous = selectedSource() != null ? selectedSource() : selectionHint;
@@ -128,11 +128,12 @@ public final class ClientDebuggerState {
     public void applyResume() {
         watches.resumed();
         nbt.resumed();
-        clearPause();
+        clearPause(false);
     }
 
-    private void clearPause() {
-        watchEditor.cancel();
+    private void clearPause(boolean stepping) {
+        if (stepping) watchEditor.invalidate();
+        else watchEditor.cancel();
         if (selectedSource() != null) selectionHint = selectedSource();
         FlowSelectionHint hint = currentFlowHint();
         if (hint != null) flowSelectionHint = hint;
@@ -153,7 +154,7 @@ public final class ClientDebuggerState {
     public void applyStep() {
         watches.stepping();
         nbt.stepping();
-        clearPause();
+        clearPause(true);
         this.stepping = true;
     }
 
@@ -672,6 +673,11 @@ public final class ClientDebuggerState {
     public boolean controlPending() {
         if (controlPending && clock.getAsLong() - controlRequestedAt >= 2_000_000_000L) controlPending = false;
         return controlPending;
+    }
+
+    /** Delay only the waiting label; controlPending() still disables actions immediately. */
+    public boolean displayControlWaiting() {
+        return controlPending() && clock.getAsLong() - controlRequestedAt >= PendingDisplay.GRACE_NANOS;
     }
 
     public void reset() {

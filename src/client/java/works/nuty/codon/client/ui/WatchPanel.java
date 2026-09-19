@@ -330,7 +330,7 @@ public final class WatchPanel {
     }
 
     private void togglePin(long id) {
-        var entry = state.watches().entries().stream().filter(row -> row.id() == id).findFirst().orElse(null);
+        var entry = state.watches().displayedEntries().stream().filter(row -> row.id() == id).findFirst().orElse(null);
         if (entry == null) return;
         EntityRef target = executor(entry);
         boolean changed = entry.spec().isPinned() ? state.watches().unpin(id) : target != null && state.watches().pin(id, target);

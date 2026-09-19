@@ -226,6 +226,24 @@ and are restored on rejoin; disconnect clears only the current client session. T
 replaced by a `+N` summary. Values align to the right with dot leaders from the field label. Long labels
 and values are clipped independently; click the row to inspect and copy full values.
 
+Saved Watch rows retain their previous display for up to 250 ms while a refreshed value is pending.
+Replies replace it immediately; after the grace period the normal waiting indicator appears.
+The timer starts when the observation is invalidated and is not extended by rendering or another
+unanswered step. This is presentation-only: queries and comparisons still use current observations.
+The retained row keeps its original executor label, and pinning uses that displayed executor.
+Resume and definition/binding changes discard the retained value.
+
+`PendingDisplay` shares this 250 ms rule with NBT pages, Watch editor previews, and picker results.
+NBT retains loaded pages by executor UUID, branch path, and page offset, keeping sparse lists sparse;
+fresh pages replace their own old values immediately while unresolved pages expire independently.
+Displayed pages never satisfy queries or authorize stale node, pin, refresh, or picker actions.
+During the NBT grace period, toggles and pins retain their appearance and keyboard focus while input
+is blocked independently. Button identity and scroll position follow the executor UUID across pauses
+and source reordering. A pending NBT row has no transient disabled Refresh button.
+Editor invalidation across a step preserves only the short display hold; closing, resuming, and
+disconnecting clear it. The server-control waiting label uses the same grace period, while control
+actions lock immediately. Flow `...` counts still mean unmeasured data, not an asynchronous loading state.
+
 Every continuous step also captures automatic changes, whether or not their fields were added to Watch.
 The server compares NBT leaves and all score objectives for current and previously observed execution
 entities, plus command storage, against the preceding stop. The first observation establishes a baseline.

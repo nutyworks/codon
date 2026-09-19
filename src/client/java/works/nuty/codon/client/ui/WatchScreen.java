@@ -307,24 +307,27 @@ public final class WatchScreen extends Screen {
             WatchUi.line(graphics, font, scope, left + 8, y, panelWidth - 16, MUTED);
         }
         retry.visible = retry.active = false;
-        if (!valid || !state.isPaused()) {
+        if (!valid || !state.isPaused() && !state.isStepping()) {
             state.watchEditor().cancel();
             WatchUi.line(graphics, font, text(state.isPaused() ? "editor.preview_hint" : "editor.preview_running").getString(),
                 left + 8, y + 16, panelWidth - 16, MUTED);
             return;
         }
-        var spec = specification();
-        state.watchEditor().request(WatchUi.pause(state), state.selectedPauseSourceIndex(),
-            new WatchEditorQuery(WatchEditorQuery.Mode.PREVIEW, kind, spec.target(), spec.path(), spec.executor(), "", 0));
+        if (state.isPaused()) {
+            var spec = specification();
+            state.watchEditor().request(WatchUi.pause(state), state.selectedPauseSourceIndex(),
+                new WatchEditorQuery(WatchEditorQuery.Mode.PREVIEW, kind, spec.target(), spec.path(), spec.executor(), "", 0));
+        }
         var page = state.watchEditor().page();
+        var displayedPage = state.watchEditor().displayedPage();
         String value;
-        if (page == null) value = text("editor.loading").getString();
+        if (displayedPage == null) value = text("editor.loading").getString();
         else {
-            WatchResult result = page.preview();
+            WatchResult result = displayedPage.preview();
             value = result != null && result.status() == WatchResult.Status.VALUE ? result.value()
-                : WatchFormatting.status(result == null ? page.status() : result.status()).getString();
+                : WatchFormatting.status(result == null ? displayedPage.status() : result.status()).getString();
             retry.visible = retry.active = state.watchEditor().timedOut()
-                || page.status() == WatchResult.Status.ERROR || page.status() == WatchResult.Status.UNAVAILABLE;
+                || page != null && (page.status() == WatchResult.Status.ERROR || page.status() == WatchResult.Status.UNAVAILABLE);
         }
         WatchUi.line(graphics, font, text("editor.preview", value).getString(), left + 8, y + 16,
             panelWidth - (retry.visible ? 76 : 16), TEXT);

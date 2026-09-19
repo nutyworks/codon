@@ -19,6 +19,7 @@
       "works.nuty.codon.client.WatchEditorTransportGameTest",
       "works.nuty.codon.client.DebuggerPresentationGameTest",
       "works.nuty.codon.client.DebuggerScrollbarGameTest",
+      "works.nuty.codon.client.DebuggerNbtPendingButtonsGameTest",
       "works.nuty.codon.client.DebuggerKeyboardNavigationGameTest",
       "works.nuty.codon.client.DebuggerChatPauseGameTest",
       "works.nuty.codon.client.DebuggerClientPauseGameTest",

@@ -30,7 +30,6 @@ public final class NbtTreePanel {
 
     private final ClientDebuggerState state;
     private Bounds scrollBounds = EMPTY;
-    private long boundsPause;
     private ClientNbtState.@Nullable EntitySource boundsSource;
     private int offset;
     private @Nullable String anchorPath;
@@ -45,7 +44,7 @@ public final class NbtTreePanel {
     public boolean hasSelectedSource() { return selectedSource() != null; }
 
     private List<ClientNbtState.Row> displayRows(ClientNbtState.EntitySource source) {
-        return state.nbt().rows(source.executor().uuid());
+        return state.nbt().displayedRows(source.executor().uuid());
     }
 
     private ClientNbtState.@Nullable EntitySource selectedSource() {
@@ -61,13 +60,12 @@ public final class NbtTreePanel {
             return;
         }
         long pauseId = pauseId();
-        if (boundsPause != pauseId || !selectedSource.equals(boundsSource)) {
+        if (boundsSource == null || !selectedSource.executor().uuid().equals(boundsSource.executor().uuid())) {
             offset = 0;
             anchorPath = null;
             anchorViewport = EMPTY;
-            boundsPause = pauseId;
-            boundsSource = selectedSource;
         }
+        boundsSource = selectedSource;
         graphics.fill(area.x(), area.y(), area.x() + area.width(), area.y() + area.height(), SURFACE);
         graphics.outline(area.x(), area.y(), area.width(), area.height(), BORDER);
 
@@ -76,11 +74,17 @@ public final class NbtTreePanel {
             Component.literal("NBT"), false, false, () -> { }).withoutChrome();
 
         List<ClientNbtState.Row> rows = displayRows(selectedSource);
+        List<ClientNbtState.Row> currentRows = state.nbt().rows(selectedSource.executor().uuid());
+        var currentPaths = new HashSet<String>();
+        for (int index : ClientNbtState.loadedIndices(currentRows)) {
+            var row = currentRows.get(index);
+            if (row.kind() == ClientNbtState.Kind.NODE) currentPaths.add(row.path());
+        }
         int visibleRows = Math.max(0, (area.height() - HEADER_HEIGHT - 2) / ROW_HEIGHT);
         scrollBounds = new Bounds(area.x(), area.y() + HEADER_HEIGHT, area.width(), Math.max(0, area.height() - HEADER_HEIGHT - 2));
         applyAnchor(rows, visibleRows);
         offset = Math.clamp(offset, 0, maximumOffset(rows.size(), visibleRows));
-        String idPrefix = "nbt-" + selectedSource.index() + "-" + selectedSource.executor().uuid() + "-";
+        String idPrefix = "nbt-" + selectedSource.executor().uuid() + "-";
         if (visibleRows > 0) {
             for (int index : ClientNbtState.loadedIndices(rows)) {
                 int logicalRow = index;
@@ -107,7 +111,8 @@ public final class NbtTreePanel {
                 if (previous.kind() == row.kind() && previous.path().equals(row.path())
                     && previous.depth() == row.depth() && previous.status() == row.status()) continue;
             }
-            renderRow(graphics, bounds, mouseX, mouseY, controls, row, pauseId, selectedSource.executor(), idPrefix, hidden);
+            renderRow(graphics, bounds, mouseX, mouseY, controls, row, pauseId, selectedSource.executor(), idPrefix, hidden,
+                currentPaths.contains(row.path()));
         }
         int maximumOffset = maximumOffset(rows.size(), visibleRows);
         if (visibleRows > 0 && maximumOffset > 0) {
@@ -139,7 +144,8 @@ public final class NbtTreePanel {
                     navigation.add(prefix + "pin-" + id, DebuggerNavigation.Group.NBT, index, 1, reveal);
             }
             case STATUS -> {
-                if (row.status() != null) navigation.add(prefix + "refresh-" + stable(row.path()),
+                if (row.status() != null)
+                    navigation.add(prefix + "refresh-" + stable(row.path()),
                     DebuggerNavigation.Group.NBT, index, 0, reveal);
             }
             case EMPTY, PLACEHOLDER -> { }
@@ -197,13 +203,13 @@ public final class NbtTreePanel {
     }
 
     private void renderRow(GuiGraphicsExtractor graphics, Bounds bounds, int mouseX, int mouseY, Controls controls,
-                           ClientNbtState.Row row, long pauseId, EntityRef executor, String idPrefix, int hidden) {
+                           ClientNbtState.Row row, long pauseId, EntityRef executor, String idPrefix, int hidden, boolean current) {
         int indent = Math.min(8, Math.max(0, row.depth())) * 8;
         int pinWidth = 18;
         int contentWidth = Math.max(1, bounds.width() - indent - pinWidth - 2);
         Bounds content = new Bounds(bounds.x() + indent, bounds.y(), contentWidth, bounds.height());
         switch (row.kind()) {
-            case NODE -> renderNode(graphics, bounds, content, mouseX, mouseY, controls, row, pauseId, executor, idPrefix);
+            case NODE -> renderNode(graphics, bounds, content, mouseX, mouseY, controls, row, pauseId, executor, idPrefix, current);
             case STATUS -> renderStatus(graphics, content, controls, row, pauseId, executor.uuid(), idPrefix, 0);
             case PLACEHOLDER -> renderStatus(graphics, content, controls, row, pauseId, executor.uuid(),
                 idPrefix + "slot-" + bounds.y() + "-", hidden);
@@ -212,14 +218,14 @@ public final class NbtTreePanel {
     }
 
     private void renderNode(GuiGraphicsExtractor graphics, Bounds bounds, Bounds content, int mouseX, int mouseY,
-                            Controls controls, ClientNbtState.Row row, long pauseId, EntityRef executor, String idPrefix) {
+                            Controls controls, ClientNbtState.Row row, long pauseId, EntityRef executor, String idPrefix, boolean current) {
         NbtPage.Node node = row.node();
         if (node == null) return;
         String prefix = node.expandable() ? (row.expanded() ? "▾ " : "▸ ") : "  ";
         Component label = Component.literal(prefix + node.name() + ": " + node.preview());
         String nodeId = nodeId(node);
         controls.button(idPrefix + "node-" + nodeId, content, label, node.expandable(), false,
-            () -> toggleNode(pauseId, executor.uuid(), node.path()));
+            () -> toggleNode(pauseId, executor.uuid(), node.path())).withInputBlocked(!current);
         if (bounds.contains(mouseX, mouseY)) {
             graphics.setComponentTooltipForNextFrame(Minecraft.getInstance().font,
                 List.of(Component.literal(node.path()), Component.literal(node.preview())), mouseX, mouseY);
@@ -232,7 +238,7 @@ public final class NbtTreePanel {
         boolean active = spec != null;
         Component pinLabel = Component.translatable(present ? "codon.nbt.unpin" : "codon.nbt.pin", executor.name());
         DebuggerButton pin = controls.button(idPrefix + "pin-" + nodeId, pinBounds, pinLabel, active, present,
-            () -> togglePin(pauseId, executor.uuid(), node.path()));
+            () -> togglePin(pauseId, executor.uuid(), node.path())).withInputBlocked(!current);
         pin.withIcon(DebuggerIcon.PIN).withSecondaryAction(() -> toggleAllPins(pauseId, executor.uuid(), node.path()));
         Component pinTooltip;
         if (spec == null) pinTooltip = Component.translatable("codon.nbt.path_unavailable");
@@ -247,7 +253,7 @@ public final class NbtTreePanel {
     }
 
     private void toggleNode(long pauseId, UUID executor, String path) {
-        if (!isCurrent(pauseId, executor)) return;
+        if (currentNode(pauseId, executor, path) == null) return;
         List<ClientNbtState.Row> rows = state.nbt().rows(executor);
         for (int index : ClientNbtState.loadedIndices(rows)) {
             if (path.equals(rows.get(index).path())) {
@@ -265,21 +271,22 @@ public final class NbtTreePanel {
         Component label = row.status() == null ? Component.translatable("codon.nbt.pending") : WatchFormatting.status(row.status());
         if (hidden > 0) label = Component.literal("+" + hidden)
             .append(row.status() == null ? Component.empty() : Component.literal(" · ").append(label));
-        text(graphics, label.getString(), new Bounds(content.x(), content.y(), Math.max(1, content.width() - 48), content.height()),
+        text(graphics, label.getString(), new Bounds(content.x(), content.y(), Math.max(1, content.width() - (row.status() == null ? 0 : 48)), content.height()),
             row.status() == null ? MUTED : RED);
+        if (row.status() == null) return;
         Bounds refresh = new Bounds(content.x() + Math.max(0, content.width() - 44), content.y(), 44, content.height());
-        controls.button(idPrefix + "refresh-" + stable(row.path()), refresh, Component.translatable("codon.nbt.refresh"), row.status() != null, false,
-            () -> { if (isCurrent(pauseId, executor)) state.nbt().refresh(executor); });
+        controls.button(idPrefix + "refresh-" + stable(row.path()), refresh, Component.translatable("codon.nbt.refresh"),
+            true, false,
+            () -> {
+                if (isCurrent(pauseId, executor) && state.nbt().canRefresh(executor, row.path(), row.targetOffset()))
+                    state.nbt().refresh(executor);
+            }).withInputBlocked(!state.nbt().canRefresh(executor, row.path(), row.targetOffset()));
     }
 
     private void togglePin(long pauseId, UUID executor, String path) {
-        if (!isCurrent(pauseId, executor)) return;
-        WatchSpec spec;
-        try {
-            spec = new WatchSpec(WatchSpec.Kind.ENTITY_NBT, "", path, executor);
-        } catch (IllegalArgumentException invalid) {
-            return;
-        }
+        NbtPage.Node node = currentNode(pauseId, executor, path);
+        WatchSpec spec = node == null ? null : pinnableSpec(node, executor);
+        if (spec == null) return;
         long present = existingPin(spec);
         if (present >= 0) {
             state.watches().remove(present);
@@ -293,7 +300,8 @@ public final class NbtTreePanel {
 
     /** Right-click toggles the exact path across the current entity sources as one edit. */
     private void toggleAllPins(long pauseId, UUID executor, String path) {
-        if (!isCurrent(pauseId, executor)) return;
+        NbtPage.Node node = currentNode(pauseId, executor, path);
+        if (node == null || pinnableSpec(node, executor) == null) return;
         List<WatchSpec> specs = allSpecs(path);
         if (!specs.isEmpty()) {
             state.watches().toggleAll(specs);
@@ -330,6 +338,16 @@ public final class NbtTreePanel {
     private boolean isCurrent(long pauseId, UUID executor) {
         var source = selectedSource();
         return pauseId > 0 && pauseId == pauseId() && source != null && source.executor().uuid().equals(executor);
+    }
+
+    private NbtPage.@Nullable Node currentNode(long pauseId, UUID executor, String path) {
+        if (!isCurrent(pauseId, executor)) return null;
+        List<ClientNbtState.Row> rows = state.nbt().rows(executor);
+        for (int index : ClientNbtState.loadedIndices(rows)) {
+            var row = rows.get(index);
+            if (row.kind() == ClientNbtState.Kind.NODE && row.path().equals(path)) return row.node();
+        }
+        return null;
     }
 
     private static String stable(String path) {
