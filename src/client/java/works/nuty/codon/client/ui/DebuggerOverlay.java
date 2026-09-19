@@ -38,7 +38,7 @@ public final class DebuggerOverlay {
     private static final int MAX_WORLD_LABELS = 20;
     private static final int SOURCE_LIST_MIN_HEIGHT = 40;
     private static final int SOURCE_LIST_MAX_HEIGHT = 87;
-    private static final int SOURCE_DETAILS_VIEWPORT_HEIGHT = 80;
+    private static final int SOURCE_DETAILS_VIEWPORT_HEIGHT = 102;
     private static final int NBT_HEADER_VIEWPORT_HEIGHT = 20;
     private static final int NBT_MIN_VIEWPORT_HEIGHT = 54;
     private final ClientDebuggerState state;
@@ -472,25 +472,32 @@ public final class DebuggerOverlay {
             y += 11;
         }
         if (y + 9 > area.y() + area.height()) return;
-        text(graphics, shortDimension(source.dimension()), area.x() + 7, y, area.width() - 14,
-            source.dimension().equals(dimension()) ? MUTED : AMBER);
+        text(graphics, shortDimension(source.dimension()), area.x() + 7, y, area.width() - 14, TEXT);
         y += 11;
         if (before != null && !before.dimension().equals(source.dimension())) {
             if (y + 9 > area.y() + area.height()) return;
             text(graphics, "← " + shortDimension(before.dimension()), area.x() + 7, y, area.width() - 14, MUTED);
             y += 11;
         }
-        String current = SourceDetailsFormatting.transform(source);
-        String previous = SourceDetailsFormatting.previousTransform(before, source);
-        // Keep both rows at the same scale so the before/after values remain comparable.
+        y = sourceValueRows(graphics, area, y, SourceDetailsFormatting.position(source),
+            SourceDetailsFormatting.previousPosition(before, source));
+        sourceValueRows(graphics, area, y, SourceDetailsFormatting.rotation(source),
+            SourceDetailsFormatting.previousRotation(before, source));
+    }
+
+    private int sourceValueRows(GuiGraphicsExtractor graphics, Bounds area, int y,
+                                String current, String previous) {
+        // Keep each pair at the same scale so the before/after values remain comparable.
         int widest = Math.max(client.font.width(current), client.font.width(previous));
         float scale = Math.min(1.0f, Math.max(1, area.width() - 14) / (float) Math.max(1, widest));
-        if (y + 9 > area.y() + area.height()) return;
+        if (y + 9 > area.y() + area.height()) return y;
         sourceTransformText(graphics, current, area, y, scale, TEXT);
         y += 11;
         if (!previous.isEmpty() && y + 9 <= area.y() + area.height()) {
             sourceTransformText(graphics, previous, area, y, scale, MUTED);
+            y += 11;
         }
+        return y;
     }
 
     private void sourceTransformText(GuiGraphicsExtractor graphics, String value, Bounds area,
@@ -501,10 +508,6 @@ public final class DebuggerOverlay {
         graphics.pose().scale(scale, scale);
         graphics.text(client.font, value, 0, 0, color, false);
         graphics.pose().popMatrix();
-        if (hoverX >= x && hoverX < area.x() + area.width() - 7 && hoverY >= y && hoverY < y + 11) {
-            graphics.setTooltipForNextFrame(client.font,
-                Component.literal("X / Y / Z / yaw / pitch\n" + value), hoverX, hoverY);
-        }
     }
 
     private void sourceStatusIcon(GuiGraphicsExtractor graphics, int x, int y, DebuggerIcon icon,
