@@ -105,6 +105,44 @@ class NetworkCodecsTest {
     }
 
     @Test
+    void retainsAndSynchronizesSixtyFourInvocations() {
+        SourceLocation location = new SourceLocation.Block(
+            new BlockLocation(0, 64, 0, "minecraft:overworld"));
+        CommandSnippet command = CommandSnippet.plain("say history");
+        ExecutionFlowHistory history = new ExecutionFlowHistory();
+        for (int invocation = 0; invocation < 64; invocation++) {
+            var recorder = history.start(invocation, location);
+            long context = recorder.createContext(source(invocation));
+            recorder.beginStage(command, List.of(context), 1, true);
+            recorder.executionStarted();
+            recorder.executionResult(true);
+            recorder.finishStage(1, 0);
+            history.recordCallStack(invocation, 0,
+                List.of(new CallFrame(0, location, command, invocation, 0)));
+        }
+        List<ExecutionFlowTrace> flows = history.snapshot();
+        assertEquals(64, flows.size());
+        assertEquals(0, flows.getFirst().invocationId());
+        assertEquals(63, flows.getLast().invocationId());
+        PauseSnapshot snapshot = new PauseSnapshot(location, command, 0,
+            flows.getLast().stages().getFirst().callStack(), List.of(source(63)), flows, PauseReason.STEP, 43);
+        ExecutionFlowSyncPayload completed = new ExecutionFlowSyncPayload(flows);
+
+        FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
+        try {
+            PauseSyncPayload.CODEC.encode(buffer, new PauseSyncPayload(snapshot));
+            assertEquals(snapshot, PauseSyncPayload.CODEC.decode(buffer).snapshot());
+            assertEquals(0, buffer.readableBytes());
+            buffer.clear();
+            ExecutionFlowSyncPayload.CODEC.encode(buffer, completed);
+            assertEquals(completed, ExecutionFlowSyncPayload.CODEC.decode(buffer));
+            assertEquals(0, buffer.readableBytes());
+        } finally {
+            buffer.release();
+        }
+    }
+
+    @Test
     void decoderRejectsAnExecutionTraceListAboveTheProtocolLimit() {
         SourceLocation location = new SourceLocation.Block(
             new BlockLocation(0, 64, 0, "minecraft:overworld"));

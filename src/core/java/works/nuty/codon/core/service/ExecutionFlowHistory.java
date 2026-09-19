@@ -12,7 +12,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /** Recent invocation recorders, scoped to the outer command-execution lifetime. */
 public final class ExecutionFlowHistory {
-    public static final int MAX_TRACES = 6;
+    public static final int MAX_TRACES = 64;
 
     private final Deque<ExecutionFlowRecorder> traces = new ArrayDeque<>();
     private AtomicLong nextObservationOrder = new AtomicLong();
