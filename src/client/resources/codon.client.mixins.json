@@ -6,6 +6,7 @@
 		"CameraMixin",
 		"ChannelMixin",
 		"ClientLevelMixin",
+		"ClientPacketListenerMixin",
 		"DeltaTrackerAccessor",
 		"DeltaTrackerMixin",
 		"EffectClockMixin",

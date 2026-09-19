@@ -17,6 +17,7 @@ import java.util.function.Supplier;
 public final class McExecutionController implements ExecutionController {
     private static final long PARK_NANOS = 5_000_000L;
     private static final long KEEP_ALIVE_INTERVAL_NANOS = 1_000_000_000L;
+    private static final long CHUNK_SYNC_INTERVAL_NANOS = 50_000_000L;
     private static volatile boolean parked;
     private final Supplier<MinecraftServer> server;
 
@@ -36,7 +37,10 @@ public final class McExecutionController implements ExecutionController {
         }
         parked = true;
         try {
+            PausedWorldState.synchronize(s);
+            flushConnections(s);
             long nextKeepAliveNanos = 0L;
+            long nextChunkSyncNanos = System.nanoTime() + CHUNK_SYNC_INTERVAL_NANOS;
             while (s.isRunning() && !resumed.getAsBoolean()) {
                 if (DebuggerTaskQueue.drain(s) > 0) {
                     // Vanilla defers server-thread sends until the tick ends. This tick is parked:
@@ -47,6 +51,11 @@ public final class McExecutionController implements ExecutionController {
                     break;
                 }
                 long now = System.nanoTime();
+                if (now >= nextChunkSyncNanos) {
+                    PausedWorldState.flushChunks(s);
+                    flushConnections(s);
+                    nextChunkSyncNanos = now + CHUNK_SYNC_INTERVAL_NANOS;
+                }
                 if (now >= nextKeepAliveNanos) {
                     keepConnectionsAlive(s);
                     nextKeepAliveNanos = now + KEEP_ALIVE_INTERVAL_NANOS;

@@ -14,7 +14,12 @@
     "ServerCommonPacketListenerAccessor",
     "ServerGamePacketListenerMixin",
     "DedicatedServerMixin",
-    "ServerCommonPacketListenerMixin"
+    "ServerCommonPacketListenerMixin",
+    "ServerChunkCacheMixin",
+    "ChunkMapMixin",
+    "TrackedEntityMixin",
+    "ServerEntityMixin",
+    "ServerPlayerMixin"
   ],
   "injectors": {
     "defaultRequire": 1

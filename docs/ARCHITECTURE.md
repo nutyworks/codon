@@ -94,6 +94,20 @@ excluded from watchdog accounting through the tick-deadline reset. The suspensio
 `RESUMED` or `CANCELLED`; cancellation, failures, and server shutdown clear stale pause state
 while preserving breakpoint definitions.
 
+At each stop, `PausedWorldState` publishes already-applied command changes before the server
+parks: dirty blocks/block-entity update packets, tracked entity poses/metadata/attributes,
+equipment (including cleared slots), passengers/leashes/motion, and player inventory, health,
+experience, advancement and post-effect updates. Vanilla command-generated packets (for example,
+scoreboards, teams, clocks, boss bars and effects) are flushed at the same boundary. Player tracking
+is refreshed and one batch of already-ready destination chunks is sent before entity pairing.
+Completed lighting notifications are also published while parked, without draining the ordinary
+server/chunk task queues. Client pose packets snap during a pause instead of waiting for frozen
+interpolation ticks. Entity tracker counters, physics, AI, effect durations, weather transitions,
+and scheduled block/fluid work do not advance. Inventory snapshots bypass slot listeners so
+advancement reward functions are not triggered by synchronization itself. This synchronizes vanilla
+client-visible state; server-only NBT remains available through Watches/NBT. New chunk generation
+and changes that require subsequent simulation ticks still wait for normal execution.
+
 ### Client adapters — `works.nuty.codon.client.*` (source set `client`)
 - `state/ClientDebuggerState` — authoritative pause/breakpoint mirror, local source/frame selection,
   gizmo mode, and a pending-control latch cleared by server packets or a retry timeout.
@@ -331,6 +345,13 @@ pause/step/resume packets from the integrated server and checks camera identity 
 across both back-to-back and delayed step transitions, plus terminal restoration. Passing these
 checks does not prove server-driven breakpoint/step synchronization or long-running dedicated
 server pause behavior; those require separate end-to-end Minecraft runtime checks.
+
+`DebuggerWorldSyncGameTest` executes a real command-block chain through `setblock`, summon/teleport,
+equipment add/remove, entity name/scale, sign text, glowstone lighting, inventory, experience,
+effects, damage, removal and clock changes. It checks each result in the client at the following
+parked command boundary (or completion), and uses the debugger mailbox to assert unchanged server
+game time and entity tick counts across client frames. It uses loaded chunks and the actual
+production pause loop, with only the same test-harness phaser exemption described below.
 
 `DebuggerFreecamResumeGameTest` powers three connected command blocks with a breakpoint on each,
 then sends real client Resume commands. It checks camera identity and rendered pose at later
