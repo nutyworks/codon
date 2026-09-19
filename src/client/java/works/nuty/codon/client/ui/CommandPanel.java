@@ -306,20 +306,26 @@ public final class CommandPanel {
             .setTooltip(Tooltip.create(Component.literal(stageDetails(stage))));
     }
 
-    private static String counts(ExecutionFlowStage stage) {
-        String result = stage.inputCount() + "→" + (stage.complete() ? stage.outputCount() : tr("codon.ui.flow_pending"));
+    static String counts(ExecutionFlowStage stage) {
+        String result = measuredCount(stage.inputCount()) + "→"
+            + (stage.complete() ? measuredCount(stage.outputCount()) : tr("codon.ui.unmeasured"));
         if (stage.droppedCount() > 0) result += "  −" + stage.droppedCount();
         return result;
     }
 
-    private static String stageSummary(ExecutionFlowStage stage) {
+    static String stageSummary(ExecutionFlowStage stage) {
         String summary = stage.terminal()
-            ? Component.translatable("codon.ui.command_results", stage.inputCount(), stage.executionCount(), stage.successCount()).getString()
-            : Component.translatable("codon.ui.command_contexts", stage.inputCount(),
-                stage.complete() ? stage.outputCount() : tr("codon.ui.flow_pending")).getString();
+            ? Component.translatable("codon.ui.command_results", measuredCount(stage.inputCount()),
+                measuredCount(stage.executionCount()), measuredCount(stage.successCount())).getString()
+            : Component.translatable("codon.ui.command_contexts", measuredCount(stage.inputCount()),
+                stage.complete() ? measuredCount(stage.outputCount()) : tr("codon.ui.unmeasured")).getString();
         if (!stage.terminal() && stage.droppedCount() > 0)
             summary += " · " + tr("codon.ui.flow_dropped", stage.droppedCount());
         return summary;
+    }
+
+    private static String measuredCount(int count) {
+        return count < 0 ? tr("codon.ui.unmeasured") : Integer.toString(count);
     }
 
     public boolean scroll(double x, double y, double scrollX, double amount) {

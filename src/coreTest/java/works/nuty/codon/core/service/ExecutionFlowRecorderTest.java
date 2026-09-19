@@ -98,6 +98,7 @@ class ExecutionFlowRecorderTest {
 
         ExecutionFlowStage inProgress = recorder.snapshot().stages().getFirst();
         assertFalse(inProgress.complete());
+        assertEquals(ExecutionFlowStage.UNMEASURED, inProgress.outputCount());
         assertTrue(inProgress.lineageComplete());
         assertEquals(List.of(input), inProgress.displayContexts().stream().map(c -> c.id()).toList());
 
@@ -108,12 +109,47 @@ class ExecutionFlowRecorderTest {
         assertTrue(completed.isDroppedContext(input));
         assertEquals(0, completed.outputCount());
 
-        recorder.beginStage(CommandSnippet.plain("execute if function test:x run say no"), List.of(), 0, false);
+        recorder.beginStage(CommandSnippet.plain("return run say ok"), List.of(input), 1, false);
         recorder.abandonStage();
         ExecutionFlowStage gap = recorder.snapshot().stages().get(1);
         assertTrue(gap.complete());
         assertFalse(gap.lineageComplete());
+        assertEquals(1, gap.inputCount());
+        assertEquals(ExecutionFlowStage.UNMEASURED, gap.outputCount());
         assertFalse(gap.isDroppedContext(input), "an unobserved continuation is not a condition failure");
+    }
+
+    @Test
+    void distinguishesUnmeasuredTerminalResultsFromObservedFailuresAndSuccesses() {
+        ExecutionFlowRecorder recorder = new ExecutionFlowHistory().start(10, location);
+        assertEquals(ExecutionFlowStage.UNMEASURED, recorder.snapshot().finalContextCount());
+        assertEquals(ExecutionFlowStage.UNMEASURED, recorder.snapshot().executionCount());
+        assertEquals(ExecutionFlowStage.UNMEASURED, recorder.snapshot().successCount());
+        long input = recorder.createContext(source("one", 0, "minecraft:overworld"));
+        recorder.beginStage(CommandSnippet.plain("say ok"), List.of(input), 1, true);
+        assertEquals(1, recorder.snapshot().finalContextCount());
+        assertEquals(ExecutionFlowStage.UNMEASURED, recorder.snapshot().executionCount());
+        assertEquals(ExecutionFlowStage.UNMEASURED, recorder.snapshot().successCount());
+
+        recorder.executionStarted();
+        assertEquals(1, recorder.snapshot().executionCount());
+        assertEquals(ExecutionFlowStage.UNMEASURED, recorder.snapshot().successCount());
+        recorder.executionResult(false);
+        assertEquals(0, recorder.snapshot().successCount());
+
+        recorder.executionStarted();
+        recorder.executionResult(true);
+        assertEquals(2, recorder.snapshot().executionCount());
+        assertEquals(1, recorder.snapshot().successCount());
+    }
+
+    @Test
+    void terminalWithoutInputsHasMeasuredZeroResults() {
+        ExecutionFlowRecorder recorder = new ExecutionFlowHistory().start(10, location);
+        recorder.beginStage(CommandSnippet.plain("say skipped"), List.of(), 0, true);
+        assertEquals(0, recorder.snapshot().finalContextCount());
+        assertEquals(0, recorder.snapshot().executionCount());
+        assertEquals(0, recorder.snapshot().successCount());
     }
 
     @Test
@@ -144,6 +180,7 @@ class ExecutionFlowRecorderTest {
         long input = recorder.createContext(source("one", 0, "minecraft:overworld"));
         recorder.beginStage(CommandSnippet.plain("say ok"), List.of(input), 1, true);
         recorder.executionResult(true);
+        assertEquals(ExecutionFlowStage.UNMEASURED, recorder.snapshot().successCount());
         recorder.executionStarted();
         recorder.executionResult(true);
         recorder.executionResult(true);

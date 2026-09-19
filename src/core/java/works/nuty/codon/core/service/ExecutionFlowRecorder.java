@@ -165,13 +165,14 @@ public final class ExecutionFlowRecorder {
 
     public synchronized void executionStarted() {
         MutableStage terminal = terminalStage();
-        if (terminal != null) terminal.executionCount++;
+        if (terminal != null) terminal.executionCount = Math.max(0, terminal.executionCount) + 1;
     }
 
     public synchronized void executionResult(boolean success) {
         MutableStage terminal = terminalStage();
-        if (terminal != null && success && terminal.successCount < terminal.executionCount) {
-            terminal.successCount++;
+        if (terminal != null && terminal.executionCount > 0) {
+            terminal.successCount = Math.max(0, terminal.successCount);
+            if (success && terminal.successCount < terminal.executionCount) terminal.successCount++;
         }
     }
 
@@ -208,10 +209,10 @@ public final class ExecutionFlowRecorder {
         private final List<Long> droppedInputIds = new ArrayList<>();
         private final int inputCount;
         private final boolean terminal;
-        private int outputCount;
+        private int outputCount = ExecutionFlowStage.UNMEASURED;
         private int droppedCount;
-        private int executionCount;
-        private int successCount;
+        private int executionCount = ExecutionFlowStage.UNMEASURED;
+        private int successCount = ExecutionFlowStage.UNMEASURED;
         private boolean complete;
         private boolean lineageComplete = true;
         private boolean truncated;
@@ -226,6 +227,9 @@ public final class ExecutionFlowRecorder {
             this.inputCount = inputCount;
             this.terminal = terminal;
             this.complete = terminal;
+            if (terminal && inputCount == 0) {
+                executionCount = successCount = 0;
+            }
         }
 
         private ExecutionFlowStage snapshot(Map<Long, ExecutionFlowContext> contexts) {

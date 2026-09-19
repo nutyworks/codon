@@ -14,14 +14,14 @@ public record ExecutionFlowTrace(
     }
 
     public int finalContextCount() {
-        return stages.isEmpty() ? 0 : stages.getLast().outputCount();
+        return stages.isEmpty() ? ExecutionFlowStage.UNMEASURED : stages.getLast().outputCount();
     }
 
     public int executionCount() {
-        return stages.isEmpty() ? 0 : stages.getLast().executionCount();
+        return stages.isEmpty() ? ExecutionFlowStage.UNMEASURED : stages.getLast().executionCount();
     }
 
     public int successCount() {
-        return stages.isEmpty() ? 0 : stages.getLast().successCount();
+        return stages.isEmpty() ? ExecutionFlowStage.UNMEASURED : stages.getLast().successCount();
     }
 }

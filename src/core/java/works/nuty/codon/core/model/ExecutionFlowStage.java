@@ -3,7 +3,7 @@ package works.nuty.codon.core.model;
 import java.util.List;
 import java.util.Set;
 
-/** A bounded, immutable view of one modifier or final-command stage. */
+/** A bounded, immutable view of one modifier or final-command stage. Unobserved counts use {@link #UNMEASURED}. */
 public record ExecutionFlowStage(
     int index,
     CommandSnippet command,
@@ -23,6 +23,8 @@ public record ExecutionFlowStage(
     long observationOrder,
     List<CallFrame> callStack
 ) {
+    public static final int UNMEASURED = -1;
+
     public ExecutionFlowStage {
         inputs = List.copyOf(inputs);
         outputs = List.copyOf(outputs);

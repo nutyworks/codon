@@ -77,8 +77,9 @@ public final class DebuggerExecutionFlowGameTest implements FabricClientGameTest
                     .findFirst().orElseThrow(() -> new AssertionError("the execute flow never reached its terminal stage"));
                 ExecutionFlowTrace completed = flowAt(terminalPause, setup.first());
                 assertCompletedFlow(completed);
-                require(completed.executionCount() == 0 && completed.successCount() == 0,
-                    "the final command has not run while its terminal stage is paused");
+                require(completed.executionCount() == ExecutionFlowStage.UNMEASURED
+                        && completed.successCount() == ExecutionFlowStage.UNMEASURED,
+                    "final command results are unmeasured while its terminal stage is paused");
 
                 PauseSnapshot secondPause = pauses.stream()
                     .filter(snapshot -> at(snapshot, setup.second()))
