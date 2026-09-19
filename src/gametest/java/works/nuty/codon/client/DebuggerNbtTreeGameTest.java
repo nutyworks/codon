@@ -310,10 +310,9 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
             CodonScreen screen = codonScreen(client.gui.screen());
             click(screen, button(screen, message -> message.equals("+")));
             require(client.gui.screen() instanceof WatchScreen, "CodonScreen watch summary plus opens WatchScreen");
-            long pins = client.gui.screen().children().stream().filter(DebuggerButton.class::isInstance)
-                .map(DebuggerButton.class::cast).filter(button -> button.icon() == DebuggerIcon.PIN).count();
-            require(pins == CodonClientMod.state().watches().entries().size(),
-                "the Watch editor still displays the pinned NBT entries");
+            require(client.gui.screen().children().stream().filter(DebuggerButton.class::isInstance).map(DebuggerButton.class::cast)
+                    .noneMatch(button -> button.getMessage().getString().equals("Remove") || button.icon() == DebuggerIcon.PIN),
+                "the Watch editor is add-only; pinned NBT entries are managed in Watches HUD");
             client.gui.screen().onClose();
         });
         context.waitFor(client -> client.gui.screen() instanceof CodonScreen, 50);

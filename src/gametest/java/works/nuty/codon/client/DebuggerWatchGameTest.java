@@ -22,6 +22,7 @@ import works.nuty.codon.adapter.WatchReader;
 import works.nuty.codon.client.input.InputManager;
 import works.nuty.codon.client.state.ClientWatchState;
 import works.nuty.codon.client.ui.DebuggerButton;
+import works.nuty.codon.client.ui.CodonScreen;
 import works.nuty.codon.client.ui.DebuggerOverlay;
 import works.nuty.codon.client.ui.WatchScreen;
 import works.nuty.codon.core.model.*;
@@ -109,6 +110,22 @@ public final class DebuggerWatchGameTest implements FabricClientGameTest {
                 server.execute(() -> ordinaryTask.set(true));
                 context.waitTicks(3);
                 require(!ordinaryTask.get(), "watch reads do not drain ordinary server tasks");
+                context.runOnClient(client -> {
+                    var state = CodonClientMod.state();
+                    state.watchEditor().request(firstPause, state.selectedPauseSourceIndex(),
+                        new works.nuty.codon.core.model.WatchEditorQuery(
+                            works.nuty.codon.core.model.WatchEditorQuery.Mode.PREVIEW,
+                            WatchSpec.Kind.SCORE, "watch_points", "", null, "", 0));
+                    state.watches().retrySave();
+                });
+                context.waitFor(client -> CodonClientMod.state().watchEditor().page() != null, 200);
+                context.waitFor(client -> CodonClientMod.state().watches().saveStatus() == ClientWatchState.SaveStatus.SAVED, 200);
+                context.runOnClient(client -> {
+                    var preview = CodonClientMod.state().watchEditor().page().preview();
+                    require(preview != null && preview.value().equals("10"), "editor preview roundtrip works while server is parked");
+                    CodonClientMod.state().watchEditor().cancel();
+                });
+                require(!ordinaryTask.get(), "editor and save ACK do not drain ordinary server tasks");
                 context.runOnClient(client -> {
                     require(entry(ENTITY).result().status() == WatchResult.Status.VALUE, "entity UUID NBT resolves across execute-in");
                     for (var spec : List.of(SCORE, ENTITY, UNSET, NO_OBJECTIVE)) {
@@ -282,10 +299,7 @@ public final class DebuggerWatchGameTest implements FabricClientGameTest {
                 .filter(b -> b.getMessage().getString().equals("Add")).findFirst().orElseThrow();
             click(screen, add);
             require(CodonClientMod.state().watches().entries().size() == 6, "UI adds a watch");
-            var remove = screen.children().stream().filter(DebuggerButton.class::isInstance).map(DebuggerButton.class::cast)
-                .filter(b -> b.getMessage().getString().equals("Remove")).reduce((a, b) -> b).orElseThrow();
-            click(screen, remove);
-            require(CodonClientMod.state().watches().entries().size() == 5, "UI removes a watch");
+            require(client.gui.screen() instanceof CodonScreen, "Add returns to the shared Watches HUD for management");
         });
         context.getInput().resizeWindow(640, 480);
         context.waitTicks(3);

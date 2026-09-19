@@ -218,20 +218,20 @@ Resume/disconnect restores audio while preserving any ordinary singleplayer menu
 ### Watches
 
 While paused, open **B → Watch** in the command panel. Add scoreboard objectives,
-entity NBT paths, or storage ID/path pairs; remove them in the same editor. Unpinned entity queries follow
+entity NBT paths, or storage ID/path pairs. Edit, remove and pin existing definitions in the Watches panel. Unpinned entity queries follow
 the selected source in the inspector, not the selected caller frame. Examples: score objective
 `points`, entity path `Health` or `Pos[0]`, storage `demo:state` with path `counter`. Storage queries
 are independent of source selection. Definitions are saved per world and player, survive Continue,
-and are restored on rejoin; disconnect clears only the current client session. There is no watch-count limit. Both the HUD and editor scroll through the full list; no entries are
-replaced by a `+N` summary. Both views align values to the right and connect the left-hand entity/field label
-with dot leaders. Long labels and values are clipped independently; full values remain available in tooltips.
+and are restored on rejoin; disconnect clears only the current client session. There is no watch-count limit. The Watches panel scrolls through the full list; no entries are
+replaced by a `+N` summary. Values align to the right with dot leaders from the field label. Long labels
+and values are clipped independently; click the row to inspect and copy full values.
 
 Every continuous step also captures automatic changes, whether or not their fields were added to Watch.
 The server compares NBT leaves and all score objectives for current and previously observed execution
 entities, plus command storage, against the preceding stop. The first observation establishes a baseline.
 Outgoing executors remain tracked even at an executor-free next stop. Saved watches appear first (UUID-bound
-pins ahead of source-following watches), followed by every unregistered change; both views scroll the entire
-list. Automatic rows last only for that pause, survive source selection, and have a **Pin** action to save the
+pins ahead of source-following watches), followed by every unregistered change.
+Automatic rows last only for that pause, survive source selection, and have an **Add to Watches** action to save the
 actual changed entity/path. Equivalent saved fields suppress duplicate automatic rows. Continue clears the
 visible rows but preserves the comparison for a later breakpoint in the same execution. Execution end,
 disconnect, and world changes clear the automatic comparison session. These read-only captures run on the
@@ -245,13 +245,40 @@ Its value then remains independent of inspector selection and is refreshed at ea
 the same expression to different executors creates distinct rows, with one unpinned row also allowed.
 The pin is highlighted when active; clicking it again restores following the selected executor.
 Binding changes start a fresh comparison for that row and invalidate its old in-flight replies.
-Duplicate bindings are rejected without removing either row. Pinning requires a displayed or selected entity;
-unpinning also works while running. Storage has no executor or pin control. Entity rows show the displayed
-executor first: `Pig #abcd1234 · Health ...... 20.0f`. Tooltips retain the full UUID; an unloaded or removed target
+Duplicate pin bindings are rejected without removing either row. Unpinning into an existing equivalent
+context-following watch removes the redundant pin and reveals the existing row, preserving its ID and observations. Pinning requires a displayed or selected entity;
+unpinning also works while running. Storage has no executor or pin control. Ungrouped entity rows with an executor show the expression and current value first, with the binding and executor on a second line. An unloaded or removed target
 reports `no target`. Unknown names use the UUID alone until the server or a pause source supplies a name.
 
 The Watches heading always includes a **+** button to open the definition editor, even when the
-list is empty. The source inspector always shows NBT for its selected live entity source.
+list is empty. The add form contains only expression inputs: direct Score / Entity NBT / Storage tabs,
+separate drafts, inline syntax validation, and optional entity UUID selection. Blank entity follows the
+selected context; a specified UUID stays fixed. Objective, loaded-entity, storage and NBT pickers use
+owner-only read requests, paged at 32 options. NBT search filters the current page. Draft previews use
+pause/request/source correlation and never save definitions. Timeout retries are explicit. Input fields
+handle typing before global shortcuts; Tab changes fields, Enter adds and returns to Watches,
+Ctrl+Enter adds another with focus restored. Watches owns editing, binding and removal controls.
+It uses upper-right whitespace down to the command panel, offers Context / Path / No group display modes, and
+reveals newly added or duplicate entries. Context groups by displayed executor UUID (including outgoing
+observations), falling back to the explicit binding or selected context, and by storage ID for storage rows.
+Small Score / NBT / Storage icons replace type prefixes. Path groups entity fields by kind, objective
+and canonical NBT path across bindings; Storage groups by storage ID in both grouped modes.
+Singletons render without headings. No group removes all group headings. Context rows omit the
+entity/storage identity already in the heading; Path entity rows show the executor instead of repeating
+the path. Grouped rows, Storage rows and rows without an executor occupy one line. Other standalone
+entity rows retain their binding line. Initial or unchanged `unset` and `no executor` rows are gray and
+sort last within their group, or last in Watches when ungrouped; actual changes retain their emphasis.
+Group dividers precede headings, with spacing above and below; a single divider precedes the first
+ungrouped entry in grouped modes. Dot leaders align with the vertical center of the text.
+Binding and previous-executor information is also available in tooltips and the detail view.
+Header and row actions use compact, borderless icons and single-line action tooltips; pinned icons
+retain their accent color. Modes preserve definitions, bindings and observations, and remain selected when
+reopening the overlay during the client session. The heading has no count or persistent Saved footer.
+Simple quoted NBT paths share duplicate identity.
+Row inspection provides scrollable full values and copy actions; current values have priority over
+long previous values in compact rows. Save status follows an explicit server ACK (or timeout), with retry.
+
+The source inspector always shows NBT for its selected live entity source.
 Selecting a non-entity or historical source, or hiding the inspector, hides the tree; pinned values remain
 in Watches. There is one passive NBT heading, with no section toggle or repeated entity heading.
 Inspector regions are sized from the viewport so loading or expanding fields does not move the heading
@@ -453,7 +480,7 @@ all-source pins. Pinned values stay in Watches when the selected source changes 
 Repeated right-clicks remove and re-add the whole current-source group; left-click removal affects only its own UUID.
 Screenshots include four simultaneous watch rows.
 
-`DebuggerWatchPinGameTest` parks the actual server with two executor entities and clicks the editor's
+`DebuggerWatchPinGameTest` parks the actual server with two executor entities and clicks the Watches panel's
 pin/unpin controls. It checks independent score bindings, entity NBT pinning, source switches,
 per-target changes at a stop without an executor, duplicate unpin rejection, and removed-target status.
 Screenshots capture the two pinned rows and a detailed hover tooltip.

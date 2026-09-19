@@ -9,20 +9,38 @@ public final class WatchRowRenderer {
     private WatchRowRenderer() { }
 
     public static void render(GuiGraphicsExtractor graphics, Font font, ClientWatchState.Entry entry,
-                              boolean paused, int x, int y, int width, int labelColor, int valueColor) {
+                              boolean paused, String label, int x, int y, int width, int labelColor, int valueColor) {
         if (width <= 0) return;
-        String label = WatchFormatting.specification(entry).getString();
         String badge = WatchFormatting.changeBadge(entry).getString();
-        if (!badge.isEmpty()) label += " · " + badge;
-        String value = fit(font, WatchFormatting.value(entry, paused).getString(), width / 2);
+        if (!badge.isEmpty()) label += (label.isEmpty() ? "" : " · ") + badge;
+        String value = fitValue(font, entry, paused, label.isEmpty() ? width : width / 2);
         int valueX = x + width - font.width(value);
         int dotWidth = Math.max(1, font.width("."));
         label = fit(font, label, Math.max(0, valueX - x - 8 - 3 * dotWidth));
         int leaderX = x + font.width(label) + 4;
-        int dots = Math.max(0, (valueX - 4 - leaderX) / dotWidth);
+        int dots = label.isEmpty() ? 0 : Math.max(0, (valueX - 4 - leaderX) / dotWidth);
         graphics.text(font, label, x, y, labelColor, false);
-        graphics.text(font, ".".repeat(dots), leaderX, y, DebuggerTheme.MUTED, false);
+        int leaderY = y + (font.lineHeight - 2) / 2;
+        for (int dot = 0; dot < dots; dot++) {
+            int dotX = leaderX + dot * dotWidth;
+            graphics.fill(dotX, leaderY, dotX + 1, leaderY + 1, DebuggerTheme.MUTED);
+        }
         graphics.text(font, value, valueX, y, valueColor, false);
+    }
+
+    private static String fitValue(Font font, ClientWatchState.Entry entry, boolean paused, int width) {
+        String full = WatchFormatting.value(entry, paused).getString();
+        if (font.width(full) <= width) return full;
+        String current = WatchFormatting.latestValue(entry, paused).getString();
+        if (!entry.displayedChange().isValueChange()) return fit(font, current, width);
+        String arrow = " → ";
+        int currentWidth = Math.max(0, width - font.width(arrow) - font.width("…"));
+        String visibleCurrent = fit(font, current, currentWidth);
+        int previousWidth = width - font.width(arrow) - font.width(visibleCurrent);
+        String before = entry.displayedPreviousValue();
+        if (before.isEmpty()) before = net.minecraft.network.chat.Component.translatable("codon.watch.short.value_missing").getString();
+        if (previousWidth < font.width("…")) return fit(font, current, width);
+        return fit(font, before, previousWidth) + arrow + visibleCurrent;
     }
 
     private static String fit(Font font, String value, int width) {

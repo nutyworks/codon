@@ -58,6 +58,11 @@ public final class WatchFormatting {
         return value(entry.displayedResult(), entry.displayedChange(), entry.displayedPreviousValue(), paused, false);
     }
 
+    /** The current side of a comparison always gets space before the older value. */
+    public static Component latestValue(ClientWatchState.Entry entry, boolean paused) {
+        return value(entry.displayedResult(), ClientWatchState.Change.INITIAL, "", paused, true);
+    }
+
     public static Component currentValue(ClientWatchState.Entry entry, boolean paused) {
         return value(entry.result(), entry.change(), entry.previousValue(), paused, false);
     }

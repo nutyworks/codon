@@ -57,6 +57,14 @@ public final class DebuggerNavigation {
         targets.put(id, new Target(id, group, row, column, reveal));
     }
 
+    /** Select the exact logical row after an explicit Add/Edit action, including off-screen rows. */
+    public void requestFocus(String id) {
+        Target target = targets.get(id);
+        if (target == null) return;
+        remember(target);
+        pending = id;
+    }
+
     public void bind(String id, Group group, AbstractWidget button) {
         if (!button.active || !button.visible) {
             targets.remove(id);
@@ -142,7 +150,7 @@ public final class DebuggerNavigation {
             int direction = key == InputConstants.KEY_UP || key == InputConstants.KEY_LEFT ? -1 : 1;
             boolean linear = current.group() == Group.CALL_PATH && !vertical
                 || current.group() == Group.COMMAND && !vertical;
-            boolean rows = vertical && (current.group() == Group.SOURCES || current.group() == Group.NBT
+            boolean rows = vertical && (current.group() == Group.SOURCES || current.group() == Group.NBT || current.group() == Group.WATCH
                 || current.group() == Group.COMMAND || current.group() == Group.WATCH_LIST);
             if (linear || rows) {
                 List<Target> group = ordered.stream().filter(target -> target.group() == current.group()).toList();

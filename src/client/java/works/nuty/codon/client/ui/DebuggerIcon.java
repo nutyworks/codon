@@ -17,7 +17,60 @@ public enum DebuggerIcon {
     GIZMO_LABELS,
     DETAILS_OPEN,
     DETAILS_CLOSED,
-    PIN,
+    WATCH_NBT(new String[]{
+        ".##.##.",
+        ".#...#.",
+        ".#...#.",
+        "##...##",
+        ".#...#.",
+        ".#...#.",
+        ".##.##."
+    }),
+    WATCH_STORAGE(new String[]{
+        ".#####.",
+        "#.....#",
+        "#######",
+        "#.....#",
+        "#######",
+        "#.....#",
+        ".#####."
+    }),
+    WATCH_SCORE(new String[]{
+        "..#.#..",
+        "..#.#..",
+        "#######",
+        "..#.#..",
+        "#######",
+        "..#.#..",
+        "..#.#.."
+    }),
+    PIN(new String[]{
+        ".#####.",
+        "..###..",
+        "..###..",
+        "#######",
+        "...#...",
+        "...#...",
+        "...#..."
+    }),
+    EDIT(new String[]{
+        "....##.",
+        "...#.##",
+        "..#..#.",
+        ".#..#..",
+        "#..#...",
+        "#.#....",
+        "##....."
+    }),
+    REMOVE(new String[]{
+        ".......",
+        ".#...#.",
+        "..#.#..",
+        "...#...",
+        "..#.#..",
+        ".#...#.",
+        "......."
+    }),
     SOURCE_CREATED,
     SOURCE_EXCLUDED,
     OUTSIDE_VIEWPORT,
@@ -26,6 +79,24 @@ public enum DebuggerIcon {
     COLLAPSE;
 
     public static final int SIZE = 12;
+    private final String[] smallPixels;
+
+    DebuggerIcon() { this(new String[0]); }
+    DebuggerIcon(String[] smallPixels) { this.smallPixels = smallPixels; }
+
+    public int smallSize() { return smallPixels.length == 0 ? SIZE : smallPixels.length; }
+
+    /** Dedicated integer-pixel artwork keeps small row actions crisp at every GUI scale. */
+    public void drawSmall(GuiGraphicsExtractor graphics, int x, int y, int color) {
+        if (smallPixels.length == 0) {
+            draw(graphics, x, y, color);
+            return;
+        }
+        for (int row = 0; row < smallPixels.length; row++)
+            for (int column = 0; column < smallPixels[row].length(); column++)
+                if (smallPixels[row].charAt(column) == '#')
+                    graphics.fill(x + column, y + row, x + column + 1, y + row + 1, color);
+    }
 
     public void draw(GuiGraphicsExtractor graphics, int x, int y, int color) {
         switch (this) {
@@ -80,7 +151,27 @@ public enum DebuggerIcon {
             case GIZMO_LABELS -> labels(graphics, x, y, color);
             case DETAILS_OPEN -> details(graphics, x, y, color, true);
             case DETAILS_CLOSED -> details(graphics, x, y, color, false);
+            case WATCH_NBT, WATCH_STORAGE, WATCH_SCORE -> drawSmall(graphics, x + 2, y + 2, color);
             case PIN -> pin(graphics, x, y, color);
+            case EDIT -> {
+                // Outlined diagonal pencil, with a separate eraser and tapered graphite tip.
+                for (int step = 0; step < 5; step++) {
+                    graphics.fill(x + 3 + step, y + 7 - step, x + 4 + step, y + 8 - step, color);
+                    graphics.fill(x + 5 + step, y + 9 - step, x + 6 + step, y + 10 - step, color);
+                }
+                graphics.fill(x + 8, y + 1, x + 10, y + 2, color);
+                graphics.fill(x + 9, y + 2, x + 11, y + 3, color);
+                graphics.fill(x + 10, y + 3, x + 11, y + 4, color);
+                graphics.fill(x + 2, y + 8, x + 3, y + 10, color);
+                graphics.fill(x + 3, y + 9, x + 5, y + 10, color);
+                graphics.fill(x + 1, y + 10, x + 2, y + 11, color);
+            }
+            case REMOVE -> {
+                for (int step = 0; step < 8; step++) {
+                    graphics.fill(x + 2 + step, y + 2 + step, x + 3 + step, y + 3 + step, color);
+                    graphics.fill(x + 9 - step, y + 2 + step, x + 10 - step, y + 3 + step, color);
+                }
+            }
             case SOURCE_CREATED, SOURCE_EXCLUDED -> {
                 graphics.fill(x + 2, y + 5, x + 10, y + 7, color);
                 if (this == SOURCE_CREATED) graphics.fill(x + 5, y + 2, x + 7, y + 10, color);
@@ -164,11 +255,13 @@ public enum DebuggerIcon {
     }
 
     private static void pin(GuiGraphicsExtractor graphics, int x, int y, int color) {
-        graphics.fill(x + 4, y + 1, x + 8, y + 2, color);
-        graphics.fill(x + 3, y + 2, x + 9, y + 7, color);
-        graphics.fill(x + 4, y + 7, x + 8, y + 9, color);
-        graphics.fill(x + 5, y + 9, x + 7, y + 12, color);
-        graphics.fill(x + 5, y + 4, x + 7, y + 6, DebuggerTheme.SURFACE);
+        // Thumbtack: flat cap, narrow neck, flared shoulder and pointed needle.
+        graphics.fill(x + 3, y + 1, x + 9, y + 3, color);
+        graphics.fill(x + 4, y + 3, x + 8, y + 5, color);
+        graphics.fill(x + 3, y + 5, x + 9, y + 6, color);
+        graphics.fill(x + 2, y + 6, x + 10, y + 7, color);
+        graphics.fill(x + 5, y + 7, x + 7, y + 10, color);
+        graphics.fill(x + 5, y + 10, x + 6, y + 12, color);
     }
 
     private static void outline(GuiGraphicsExtractor graphics, int x, int y, int width, int height, int color) {

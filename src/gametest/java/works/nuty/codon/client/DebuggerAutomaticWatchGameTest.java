@@ -8,7 +8,7 @@ import works.nuty.codon.adapter.DebuggerTaskQueue;
 import works.nuty.codon.client.input.InputManager;
 import works.nuty.codon.client.state.ClientWatchState;
 import works.nuty.codon.client.ui.DebuggerOverlay;
-import works.nuty.codon.client.ui.WatchScreen;
+import works.nuty.codon.client.ui.CodonScreen;
 import works.nuty.codon.core.model.BlockLocation;
 import works.nuty.codon.core.model.PauseReason;
 import works.nuty.codon.core.model.SourceLocation;
@@ -135,7 +135,7 @@ public final class DebuggerAutomaticWatchGameTest implements FabricClientGameTes
                     case "key.codon.step_into" -> input.stepIntoKey = key;
                 }
             }
-            client.setScreenAndShow(new WatchScreen(input, state, new DebuggerOverlay(state)));
+            client.setScreenAndShow(new CodonScreen(input, new DebuggerOverlay(state)));
         });
         context.waitTicks(3);
         context.takeScreenshot(name);

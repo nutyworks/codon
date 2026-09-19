@@ -13,10 +13,16 @@ import net.minecraft.commands.arguments.IdentifierArgument;
 import net.minecraft.network.chat.Component;
 import works.nuty.codon.CodonMod;
 import works.nuty.codon.adapter.WatchReader;
+import works.nuty.codon.adapter.WatchEditorReader;
+import works.nuty.codon.core.model.WatchEditorPage;
+import works.nuty.codon.core.model.WatchEditorQuery;
 import works.nuty.codon.core.model.WatchResult;
 import works.nuty.codon.core.model.WatchSpec;
 import works.nuty.codon.core.service.DebuggerEngine;
 import works.nuty.codon.network.WatchSyncPayload;
+import works.nuty.codon.network.WatchEditorQueryCodec;
+import works.nuty.codon.network.WatchEditorSyncPayload;
+import works.nuty.codon.network.WatchSaveSyncPayload;
 import works.nuty.codon.persistence.WatchDefinitions;
 import works.nuty.codon.persistence.WorldWatchPersistence;
 
@@ -33,6 +39,12 @@ final class WatchCommand {
                 .then(Commands.argument("last", BoolArgumentType.bool())
                     .then(Commands.argument("definitions", StringArgumentType.greedyString())
                         .executes(c -> saveChunk(c, watches)))))));
+        watch.then(Commands.literal("editor")
+            .then(Commands.argument("pause", LongArgumentType.longArg(0))
+                .then(Commands.argument("request", LongArgumentType.longArg(1))
+                    .then(Commands.argument("source", IntegerArgumentType.integer(-1))
+                        .then(Commands.argument("query", StringArgumentType.greedyString())
+                            .executes(c -> editor(c, engine)))))));
 
         var source = Commands.argument("source", IntegerArgumentType.integer(-1));
         source.then(Commands.literal("score").then(Commands.argument("target", StringArgumentType.greedyString())
@@ -77,25 +89,60 @@ final class WatchCommand {
     private static int saveChunk(CommandContext<CommandSourceStack> context, WorldWatchPersistence watches) {
         var player = context.getSource().getPlayer();
         if (player == null) return 0;
+        long transferId = LongArgumentType.getLong(context, "transfer");
         try {
             // Ownership is always the authenticated sender; no player or world identity is accepted from the client.
-            WorldWatchPersistence.ChunkSaveResult result = watches.saveChunk(player.getUUID(), LongArgumentType.getLong(context, "transfer"),
+            WorldWatchPersistence.ChunkSaveResult result = watches.saveChunk(player.getUUID(), transferId,
                 IntegerArgumentType.getInteger(context, "offset"), BoolArgumentType.getBool(context, "last"),
                 WatchDefinitions.fromPageJson(StringArgumentType.getString(context, "definitions")));
             if (result == WorldWatchPersistence.ChunkSaveResult.SAVE_FAILED) {
                 context.getSource().sendFailure(Component.translatable("codon.watch.feedback.save_failed"));
+                acknowledge(player, transferId, WatchSaveSyncPayload.Status.FAILED);
                 return 0;
             }
             if (result == WorldWatchPersistence.ChunkSaveResult.INVALID) {
                 context.getSource().sendFailure(Component.translatable("codon.watch.feedback.invalid_saved"));
+                acknowledge(player, transferId, WatchSaveSyncPayload.Status.INVALID);
                 return 0;
             }
+            if (BoolArgumentType.getBool(context, "last")) acknowledge(player, transferId, WatchSaveSyncPayload.Status.SAVED);
             return 1;
         } catch (IllegalArgumentException invalid) {
             watches.resetTransfer(player.getUUID());
             context.getSource().sendFailure(Component.translatable("codon.watch.feedback.invalid_saved"));
+            acknowledge(player, transferId, WatchSaveSyncPayload.Status.INVALID);
             return 0;
         }
+    }
+
+    private static void acknowledge(net.minecraft.server.level.ServerPlayer player, long transferId, WatchSaveSyncPayload.Status status) {
+        if (ServerPlayNetworking.canSend(player, WatchSaveSyncPayload.TYPE.id()))
+            ServerPlayNetworking.send(player, new WatchSaveSyncPayload(transferId, status));
+    }
+
+    private static int editor(CommandContext<CommandSourceStack> context, DebuggerEngine engine) {
+        var player = context.getSource().getPlayer();
+        if (player == null || !ServerPlayNetworking.canSend(player, WatchEditorSyncPayload.TYPE.id())) return 0;
+        long pauseId = LongArgumentType.getLong(context, "pause");
+        long requestId = LongArgumentType.getLong(context, "request");
+        WatchEditorPage page;
+        try {
+            WatchEditorQuery query = WatchEditorQueryCodec.fromJson(StringArgumentType.getString(context, "query"));
+            var snapshot = engine.currentSnapshot();
+            if (pauseId != 0 && (!engine.isPaused() || snapshot == null || snapshot.pauseId() != pauseId)) {
+                page = WatchEditorPage.absent(WatchResult.Status.UNAVAILABLE);
+            } else {
+                page = WatchEditorReader.read(context.getSource().getServer(), pauseId == 0 ? null : snapshot,
+                    IntegerArgumentType.getInteger(context, "source"), query);
+            }
+        } catch (IllegalArgumentException e) {
+            page = WatchEditorPage.absent(WatchResult.Status.INVALID_PATH);
+        } catch (RuntimeException e) {
+            CodonMod.LOGGER.warn("Could not read Watch editor data", e);
+            page = WatchEditorPage.absent(WatchResult.Status.ERROR);
+        }
+        ServerPlayNetworking.send(player, new WatchEditorSyncPayload(pauseId, requestId, page));
+        return 1;
     }
 
     private static int query(CommandContext<CommandSourceStack> context, DebuggerEngine engine, WatchSpec.Kind kind) {

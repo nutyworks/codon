@@ -21,6 +21,35 @@ class ClientWatchPinTest {
     private static final WatchSpec STORAGE = new WatchSpec(WatchSpec.Kind.STORAGE_NBT, "example:data", "value");
 
     @Test
+    void unpinMergesIntoExistingFollowingRowAndIgnoresRemovedPinsLateReply() {
+        for (WatchSpec following : List.of(SCORE, new WatchSpec(WatchSpec.Kind.ENTITY_NBT, "", "Health"))) {
+            UUID executor = UUID.randomUUID();
+            var state = new ClientWatchState(() -> 0);
+            long followingId = state.addOrFind(following);
+            WatchSpec pinned = following.kind() == WatchSpec.Kind.ENTITY_NBT
+                ? new WatchSpec(following.kind(), "", "\"Health\"", executor) : following.withExecutor(executor);
+            long pinnedId = state.addOrFind(pinned);
+            state.paused(1, 0);
+            var requests = state.drainQueries();
+            var live = requests.stream().filter(query -> query.spec().equals(following)).findFirst().orElseThrow();
+            var stale = requests.stream().filter(query -> query.spec().equals(pinned)).findFirst().orElseThrow();
+            state.accept(1, live.requestId(), value("7", executor));
+            var before = entry(state, following);
+            List<List<WatchSpec>> saved = new ArrayList<>();
+            state.setChangeListener(definitions -> saved.add(List.copyOf(definitions)));
+
+            assertTrue(state.unpin(pinnedId));
+            assertEquals(List.of(following), state.definitions());
+            assertEquals(before, entry(state, following), "existing id, value and observation survive the merge");
+            assertEquals(followingId, state.revealId());
+            assertEquals(List.of(List.of(following)), saved, "one atomic persisted update");
+            state.accept(1, stale.requestId(), value("99", executor));
+            assertEquals(before, entry(state, following), "removed pin cannot overwrite the following row");
+            assertFalse(state.unpin(pinnedId));
+        }
+    }
+
+    @Test
     void allowsTheSameExpressionForTwoPinnedExecutorsAndOneFloatingWatch() {
         UUID first = UUID.randomUUID();
         UUID second = UUID.randomUUID();

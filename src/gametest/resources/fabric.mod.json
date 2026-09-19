@@ -15,6 +15,8 @@
       "works.nuty.codon.client.DebuggerNbtTreeGameTest",
       "works.nuty.codon.client.DebuggerWatchChainGameTest",
       "works.nuty.codon.client.DebuggerWatchGameTest",
+      "works.nuty.codon.client.DebuggerWatchEditorGameTest",
+      "works.nuty.codon.client.WatchEditorTransportGameTest",
       "works.nuty.codon.client.DebuggerPresentationGameTest",
       "works.nuty.codon.client.DebuggerScrollbarGameTest",
       "works.nuty.codon.client.DebuggerKeyboardNavigationGameTest",
@@ -29,7 +31,8 @@
       "works.nuty.codon.client.DebuggerWatchPinGameTest",
       "works.nuty.codon.client.DebuggerExecutionFlowGameTest",
       "works.nuty.codon.client.DebuggerConditionalFunctionFlowGameTest",
-      "works.nuty.codon.client.DebuggerContinuationRecordingGameTest"
+      "works.nuty.codon.client.DebuggerContinuationRecordingGameTest",
+      "works.nuty.codon.client.DebuggerWatchGroupingGameTest"
     ]
   }
 }

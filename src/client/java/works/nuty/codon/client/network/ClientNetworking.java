@@ -7,6 +7,7 @@ import net.minecraft.client.Minecraft;
 import works.nuty.codon.client.camera.DebuggerFreecam;
 import works.nuty.codon.client.state.ClientDebuggerState;
 import works.nuty.codon.client.state.ClientPauseEffects;
+import works.nuty.codon.client.state.ClientWatchState;
 import works.nuty.codon.network.BreakpointSyncPayload;
 import works.nuty.codon.network.ExecutionFlowSyncPayload;
 import works.nuty.codon.network.PauseSyncPayload;
@@ -17,6 +18,9 @@ import works.nuty.codon.network.WatchSyncPayload;
 import works.nuty.codon.network.WatchChangesSyncPayload;
 import works.nuty.codon.network.WatchDefinitionsSyncPayload;
 import works.nuty.codon.network.NbtTreeSyncPayload;
+import works.nuty.codon.network.WatchEditorSyncPayload;
+import works.nuty.codon.network.WatchEditorQueryCodec;
+import works.nuty.codon.network.WatchSaveSyncPayload;
 import works.nuty.codon.persistence.WatchDefinitions;
 import works.nuty.codon.persistence.WatchDefinitionTransfer;
 
@@ -26,6 +30,7 @@ import works.nuty.codon.persistence.WatchDefinitionTransfer;
  */
 public final class ClientNetworking {
     private static long nextWatchTransferId;
+    private static ClientWatchState saveState;
     private ClientNetworking() {
     }
 
@@ -37,6 +42,10 @@ public final class ClientNetworking {
                     .ifPresent(definitions -> restoreWatchDefinitions(context.client(), state, definitions));
             }));
         ClientTickEvents.END_CLIENT_TICK.register(client -> sendWatchQueries(client, state));
+        ClientPlayNetworking.registerGlobalReceiver(WatchEditorSyncPayload.TYPE, (payload, context) ->
+            context.client().execute(() -> state.watchEditor().accept(payload.pauseId(), payload.requestId(), payload.page())));
+        ClientPlayNetworking.registerGlobalReceiver(WatchSaveSyncPayload.TYPE, (payload, context) ->
+            context.client().execute(() -> state.watches().saveFinished(payload.transferId(), payload.status() == WatchSaveSyncPayload.Status.SAVED)));
         ClientPlayNetworking.registerGlobalReceiver(WatchSyncPayload.TYPE, (payload, context) ->
             context.client().execute(() -> state.watches().accept(payload.pauseId(), payload.requestId(), payload.result())));
         ClientPlayNetworking.registerGlobalReceiver(WatchChangesSyncPayload.TYPE, (payload, context) ->
@@ -91,13 +100,20 @@ public final class ClientNetworking {
         state.watches().restoreDefinitions(definitions);
         if (state.snapshot() != null) state.watches().paused(state.snapshot().pauseId(), state.selectedPauseSourceIndex());
         // Only attach after every join page arrives; empty startup/reset state must never erase a save.
+        saveState = state.watches();
         state.watches().setChangeListener(ClientNetworking::sendWatchDefinitions);
     }
 
     private static void sendWatchDefinitions(java.util.List<works.nuty.codon.core.model.WatchSpec> definitions) {
+        ClientWatchState watches = saveState;
+        if (watches == null) return;
         Minecraft client = Minecraft.getInstance();
-        if (client.player == null) return;
         long transferId = nextTransferId();
+        watches.saveStarted(transferId);
+        if (client.player == null) {
+            watches.saveFinished(transferId, false);
+            return;
+        }
         int offset = 0;
         var pages = WatchDefinitions.pages(definitions);
         for (int index = 0; index < pages.size(); index++) {
@@ -115,7 +131,12 @@ public final class ClientNetworking {
 
     /** Enqueue reads before a step command so even immediate input retains its before-step capture. */
     public static void sendWatchQueries(Minecraft client, ClientDebuggerState state) {
-        if (client.player == null || !state.isPaused()) return;
+        if (client.player == null) return;
+        for (var query : state.watchEditor().drainQueries()) {
+            client.player.connection.sendCommand("codon watch editor " + query.pauseId() + " " + query.requestId() + " "
+                + query.sourceIndex() + " " + WatchEditorQueryCodec.toJson(query.query()));
+        }
+        if (!state.isPaused()) return;
         for (var query : state.watches().drainQueries()) {
             var spec = query.spec();
             String expression = switch (spec.kind()) {

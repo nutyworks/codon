@@ -38,6 +38,7 @@ public final class ClientDebuggerState {
     private long controlRequestedAt;
     private final LongSupplier clock;
     private final ClientWatchState watches;
+    private final ClientWatchEditorState watchEditor;
     private final ClientNbtState nbt;
     private @Nullable PauseSource selectionHint;
     private @Nullable FlowSelectionHint flowSelectionHint;
@@ -62,6 +63,7 @@ public final class ClientDebuggerState {
         this.clock = Objects.requireNonNull(clock);
         this.preferences = Objects.requireNonNull(preferences);
         this.watches = new ClientWatchState(clock);
+        this.watchEditor = new ClientWatchEditorState(clock);
         this.nbt = new ClientNbtState(clock);
         this.nbt.setEnabled(preferences.nbtExpanded());
         this.nbt.setEnabledListener(preferences::setNbtExpanded);
@@ -76,6 +78,7 @@ public final class ClientDebuggerState {
     }
 
     public void applyPause(PauseSnapshot snapshot) {
+        watchEditor.cancel();
         FlowSelectionHint previousFlow = currentFlowHint();
         if (previousFlow == null) previousFlow = flowSelectionHint;
         PauseSource previous = selectedSource() != null ? selectedSource() : selectionHint;
@@ -119,6 +122,7 @@ public final class ClientDebuggerState {
     }
 
     public ClientWatchState watches() { return watches; }
+    public ClientWatchEditorState watchEditor() { return watchEditor; }
     public ClientNbtState nbt() { return nbt; }
 
     public void applyResume() {
@@ -128,6 +132,7 @@ public final class ClientDebuggerState {
     }
 
     private void clearPause() {
+        watchEditor.cancel();
         if (selectedSource() != null) selectionHint = selectedSource();
         FlowSelectionHint hint = currentFlowHint();
         if (hint != null) flowSelectionHint = hint;
@@ -680,6 +685,7 @@ public final class ClientDebuggerState {
         flowSelectionHint = null;
         blockBreakpoints = List.of();
         watches.reset();
+        watchEditor.reset();
         nbt.reset();
     }
 

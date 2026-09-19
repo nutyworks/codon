@@ -13,7 +13,7 @@ import works.nuty.codon.client.input.InputManager;
 import works.nuty.codon.client.state.ClientWatchState;
 import works.nuty.codon.client.ui.DebuggerOverlay;
 import works.nuty.codon.client.ui.WatchFormatting;
-import works.nuty.codon.client.ui.WatchScreen;
+import works.nuty.codon.client.ui.CodonScreen;
 import works.nuty.codon.client.ui.layout.DebuggerLayout;
 import works.nuty.codon.core.model.BlockLocation;
 import works.nuty.codon.core.model.PauseReason;
@@ -216,25 +216,25 @@ public final class DebuggerWatchChainGameTest implements FabricClientGameTest {
     private static void checkHover(ClientGameTestContext context) {
         double[] cursor = context.computeOnClient(client -> {
             var screen = client.gui.screen();
-            int panelWidth = Math.min(500, screen.width - 24);
-            return new double[] {
-                ((screen.width - panelWidth) / 2.0 + 16) * client.getWindow().getScreenWidth() / screen.width,
-                (Math.max(18, (screen.height - 250) / 2) + 99.0) * client.getWindow().getScreenHeight() / screen.height
-            };
+            var row = screen.children().stream().filter(works.nuty.codon.client.ui.DebuggerButton.class::isInstance)
+                .map(works.nuty.codon.client.ui.DebuggerButton.class::cast)
+                .filter(button -> button.getMessage().getString().startsWith("Inspect watch:")).findFirst().orElseThrow();
+            return new double[]{(row.getX() + 4.0) * client.getWindow().getScreenWidth() / screen.width,
+                (row.getY() + 4.0) * client.getWindow().getScreenHeight() / screen.height};
         });
         context.getInput().setCursorPos(cursor[0], cursor[1]);
         context.waitTicks(3);
         context.takeScreenshot("codon-watch-previous-executor-hover");
-        context.runOnClient(client -> client.gui.screen().onClose());
-        cursor = context.computeOnClient(client -> {
-            var screen = client.gui.screen();
-            var layout = DebuggerLayout.create(screen.width, screen.height, true);
-            return new double[] {
-                (screen.width - 40.0) * client.getWindow().getScreenWidth() / screen.width,
-                (layout.world().y() + 22.0) * client.getWindow().getScreenHeight() / screen.height
-            };
+        context.runOnClient(client -> {
+            var row = client.gui.screen().children().stream().filter(works.nuty.codon.client.ui.DebuggerButton.class::isInstance)
+                .map(works.nuty.codon.client.ui.DebuggerButton.class::cast)
+                .filter(button -> button.getMessage().getString().startsWith("Inspect watch:")).findFirst().orElseThrow();
+            row.onPress(new net.minecraft.client.input.KeyEvent(InputConstants.KEY_RETURN, InputConstants.KEYCODE_RETURN, 0));
+            require(client.gui.screen() instanceof works.nuty.codon.client.ui.WatchDetailsScreen, "row opens full value details");
         });
-        context.getInput().setCursorPos(cursor[0], cursor[1]);
+        context.waitTicks(3);
+        context.takeScreenshot("codon-watch-previous-executor-details");
+        context.runOnClient(client -> client.gui.screen().onClose());
         context.waitTicks(3);
         context.takeScreenshot("codon-watch-summary-hover");
         context.getInput().setCursorPos(1100, 400);
@@ -256,7 +256,7 @@ public final class DebuggerWatchChainGameTest implements FabricClientGameTest {
                     case "key.codon.step_into" -> input.stepIntoKey = key;
                 }
             }
-            client.setScreenAndShow(new WatchScreen(input, state, new DebuggerOverlay(state)));
+            client.setScreenAndShow(new CodonScreen(input, new DebuggerOverlay(state)));
         });
         context.waitTicks(3);
         context.takeScreenshot(name);

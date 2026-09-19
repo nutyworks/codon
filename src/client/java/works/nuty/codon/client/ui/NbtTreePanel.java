@@ -239,7 +239,7 @@ public final class NbtTreePanel {
         else {
             Component left = Component.translatable(present ? "codon.nbt.click_unpin" : "codon.nbt.click_pin", executor.name());
             List<WatchSpec> all = allSpecs(node.path());
-            boolean allPinned = !all.isEmpty() && new HashSet<>(state.watches().definitions()).containsAll(all);
+            boolean allPinned = !all.isEmpty() && all.stream().allMatch(specification -> state.watches().findId(specification) > 0);
             Component right = Component.translatable(allPinned ? "codon.nbt.click_all_remove" : "codon.nbt.click_all", all.size());
             pinTooltip = left.copy().append("\n").append(right);
         }
@@ -313,8 +313,7 @@ public final class NbtTreePanel {
 
     private long existingPin(@Nullable WatchSpec spec) {
         if (spec == null) return -1;
-        return state.watches().entries().stream().filter(entry -> entry.spec().equals(spec)).mapToLong(ClientWatchState.Entry::id)
-            .findFirst().orElse(-1);
+        return state.watches().findId(spec);
     }
 
     private static @Nullable WatchSpec pinnableSpec(NbtPage.Node node, UUID executor) {

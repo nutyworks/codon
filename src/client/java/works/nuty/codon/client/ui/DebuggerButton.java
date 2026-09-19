@@ -20,6 +20,7 @@ public final class DebuggerButton extends AbstractButton {
     private boolean leftAligned;
     private boolean subdued;
     private boolean borderless;
+    private boolean hitSurface;
     private boolean leadingIcon;
     private boolean iconWithText;
     private boolean openLeft;
@@ -27,7 +28,9 @@ public final class DebuggerButton extends AbstractButton {
     private int contentOffset;
     private int contentWidth;
     private @Nullable DebuggerIcon icon;
+    private boolean smallIcon;
     private @Nullable Tooltip tooltip;
+    private @Nullable Component singleLineTooltip;
     private int foregroundColor = DebuggerTheme.TEXT;
     private int accentColor = DebuggerTheme.TEAL;
     private int selectedSurface = DebuggerTheme.TEAL_SURFACE;
@@ -43,11 +46,13 @@ public final class DebuggerButton extends AbstractButton {
         setSize(width, height);
         setMessage(label);
         setTooltip(null);
+        this.singleLineTooltip = null;
         this.active = active;
         this.selected = selected;
         this.leftAligned = leftAligned;
         this.subdued = subdued;
         this.borderless = false;
+        this.hitSurface = false;
         this.leadingIcon = false;
         this.iconWithText = false;
         this.openLeft = false;
@@ -57,6 +62,7 @@ public final class DebuggerButton extends AbstractButton {
         this.action = action;
         this.secondaryAction = null;
         this.icon = null;
+        this.smallIcon = false;
         this.foregroundColor = DebuggerTheme.TEXT;
         this.accentColor = DebuggerTheme.TEAL;
         this.selectedSurface = DebuggerTheme.TEAL_SURFACE;
@@ -76,8 +82,25 @@ public final class DebuggerButton extends AbstractButton {
         return this;
     }
 
+    public DebuggerButton withSmallIcon(DebuggerIcon icon) {
+        this.icon = icon;
+        this.smallIcon = true;
+        return this;
+    }
+
     public DebuggerButton withoutChrome() {
         this.borderless = true;
+        return this;
+    }
+
+    public DebuggerButton withSingleLineTooltip(Component text) {
+        this.singleLineTooltip = text;
+        return this;
+    }
+
+    /** Keyboard/narration target for content rendered by the owning panel. */
+    public DebuggerButton asHitSurface() {
+        this.hitSurface = true;
         return this;
     }
 
@@ -136,6 +159,10 @@ public final class DebuggerButton extends AbstractButton {
     protected void extractContents(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         var client = Minecraft.getInstance();
         boolean keyboardFocus = isFocused() && client.getLastInputType().isKeyboard();
+        if (hitSurface) {
+            if (keyboardFocus || isHovered()) graphics.outline(getX(), getY(), getWidth(), getHeight(), DebuggerTheme.TEAL);
+            return;
+        }
         int background = selected && active ? selectedSurface
             : (isHovered() || keyboardFocus) && active ? DebuggerTheme.RAISED : DebuggerTheme.SURFACE;
         int foreground = !active || subdued ? DebuggerTheme.MUTED : foregroundColor;
@@ -151,8 +178,11 @@ public final class DebuggerButton extends AbstractButton {
         }
         if (icon != null) {
             graphics.enableScissor(getX() + 1, getY() + 1, getRight() - 1, getBottom() - 1);
-            icon.draw(graphics, getX() - contentOffset + (iconWithText ? 3 : leadingIcon ? 1 : (contentWidth - DebuggerIcon.SIZE) / 2),
-                getY() + (height - DebuggerIcon.SIZE) / 2, foreground);
+            int iconSize = smallIcon ? icon.smallSize() : DebuggerIcon.SIZE;
+            int iconX = getX() - contentOffset + (iconWithText ? 3 : leadingIcon ? 1 : (contentWidth - iconSize) / 2);
+            int iconY = getY() + (height - iconSize) / 2;
+            if (smallIcon) icon.drawSmall(graphics, iconX, iconY, foreground);
+            else icon.draw(graphics, iconX, iconY, foreground);
             graphics.disableScissor();
             if (!iconWithText) return;
         }
@@ -178,6 +208,11 @@ public final class DebuggerButton extends AbstractButton {
     @Override
     protected void extractTooltipForNextRenderPass(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
         var client = Minecraft.getInstance();
+        if (singleLineTooltip != null) {
+            if (isHovered()) graphics.setTooltipForNextFrame(client.font,
+                java.util.List.of(singleLineTooltip.getVisualOrderText()), mouseX, mouseY);
+            return;
+        }
         if (icon != null && !iconWithText && isHovered()) {
             var lines = new java.util.ArrayList<>(Tooltip.splitTooltip(client, getMessage()));
             if (tooltip != null) {

@@ -60,11 +60,8 @@ public final class DebuggerOverlay {
     private int lastSourceRows = -1;
     private int lastSelectedSource = -1;
     private Bounds watchSummaryBounds = EMPTY;
-    private int watchSummaryOffset;
-    private long watchSummaryPauseId;
-    private int maxWatchSummaryOffset;
+    private final WatchPanel watchPanel;
     private Bounds sourceScrollBounds = EMPTY;
-    private Bounds watchSummaryScrollBounds = EMPTY;
     private boolean showInspector;
     private int hoverX = -1;
     private int hoverY = -1;
@@ -72,12 +69,14 @@ public final class DebuggerOverlay {
     public DebuggerOverlay(ClientDebuggerState state) {
         this.state = state;
         this.nbtPanel = new NbtTreePanel(state);
+        this.watchPanel = new WatchPanel(state);
         this.commandPanel = new CommandPanel(state, () -> { sourceOffset = 0; expandedGroup = List.of(); });
     }
 
     ScrollbarInput scrollbars() { return scrollbars; }
 
     public DebuggerNavigation navigation() { return navigation; }
+    public WatchPanel watchPanel() { return watchPanel; }
 
     public List<DebuggerButton> render(GuiGraphicsExtractor graphics, int mouseX, int mouseY,
                                        float partialTick, boolean interactive, InputManager input) {
@@ -89,7 +88,7 @@ public final class DebuggerOverlay {
         usedButtons.clear();
         sourceScrollBounds = EMPTY;
         commandPanel.clearBounds();
-        watchSummaryScrollBounds = EMPTY;
+        watchPanel.clearBounds();
         nbtPanel.clearBounds();
         if (client.level == null || client.player == null) {
             buttonCache.clear();
@@ -293,48 +292,8 @@ public final class DebuggerOverlay {
     /** Saved pins first, followed by every change captured at this stop. */
     private void renderWatchSummary(GuiGraphicsExtractor graphics, DebuggerLayout layout,
                                     int mouseX, int mouseY, boolean interactive, InputManager input) {
-        watchSummaryBounds = EMPTY;
-        var entries = state.watches().displayedEntries();
-        long pauseId = state.snapshot() == null ? 0 : state.snapshot().pauseId();
-        if (watchSummaryPauseId != pauseId) {
-            watchSummaryPauseId = pauseId;
-            watchSummaryOffset = 0;
-        }
-        Bounds world = layout.world();
-        if (world.width() < 60 || world.height() < 40) return;
-        int availableHeight = Math.max(0, world.height() - 24);
-        int rows = entries.isEmpty() || availableHeight < 32 ? 0
-            : Math.max(1, Math.min(entries.size(), (availableHeight - 20) / 12));
-        int panelHeight = 20 + rows * 12;
-        maxWatchSummaryOffset = Math.max(0, entries.size() - rows);
-        watchSummaryOffset = Math.clamp(watchSummaryOffset, 0, maxWatchSummaryOffset);
-        int width = Math.min(270, Math.max(1, world.width() - 8));
-        Bounds panelBounds = new Bounds(world.x() + Math.max(0, world.width() - width - 4), world.y() + 4,
-            width, panelHeight);
-        watchSummaryBounds = panelBounds;
-        panel(graphics, panelBounds);
-        String title = tr("codon.watch.title");
-        text(graphics, title, panelBounds.x() + 5, panelBounds.y() + 5, panelBounds.width() - 45, TEAL);
-        int addX = panelBounds.x() + Math.min(client.font.width(title) + 10, panelBounds.width() - 40);
-        button("watch-add", new Bounds(addX, panelBounds.y() + 2, 16, 15), Component.literal("+"),
-            true, false, false, false, () -> client.gui.setScreen(new WatchScreen(input, state, this)));
-        watchSummaryScrollBounds = rows == 0 ? EMPTY : new Bounds(panelBounds.x() + 3, panelBounds.y() + 19,
-            panelBounds.width() - 6, rows * 12);
-        for (int row = 0; row < rows; row++) {
-            var entry = entries.get(watchSummaryOffset + row);
-            int color = entry.displayedChange().isValueChange() ? AMBER : TEXT;
-            int rowY = panelBounds.y() + 19 + row * 12;
-            WatchRowRenderer.render(graphics, client.font, entry, state.isPaused(), panelBounds.x() + 5,
-                rowY, panelBounds.width() - 10, color, color);
-            if (interactive && mouseX >= panelBounds.x() + 5 && mouseX < panelBounds.x() + panelBounds.width() - 5
-                && mouseY >= rowY && mouseY < rowY + 12) {
-                graphics.setComponentTooltipForNextFrame(Minecraft.getInstance().font,
-                    WatchFormatting.tooltip(entry, state.isPaused()), mouseX, mouseY);
-            }
-        }
-        if (rows > 0 && maxWatchSummaryOffset > 0) scrollbar(graphics, "watch", value -> watchSummaryOffset = value,
-            panelBounds.x() + panelBounds.width() - 4, panelBounds.y() + 19, rows * 12,
-            watchSummaryOffset, maxWatchSummaryOffset, rows, entries.size());
+        controls.addAll(watchPanel.render(graphics, layout, mouseX, mouseY, interactive, input, this, navigation, scrollbars));
+        watchSummaryBounds = watchPanel.bounds();
     }
 
     private void renderInspector(GuiGraphicsExtractor graphics, Bounds area, @Nullable PauseSnapshot snapshot) {
@@ -565,12 +524,11 @@ public final class DebuggerOverlay {
     }
 
     public boolean scroll(double x, double y, double scrollX, double amount) {
+        if (watchPanel.scroll(x, y, amount)) return true;
         if (commandPanel.scroll(x, y, scrollX, amount) || nbtPanel.scroll(x, y, amount)) return true;
         int delta = amount > 0 ? -1 : amount < 0 ? 1 : 0;
         if (delta == 0) return false;
-        if (watchSummaryScrollBounds.contains(x, y)) {
-            watchSummaryOffset = Math.clamp(watchSummaryOffset + delta, 0, maxWatchSummaryOffset);
-        } else if (sourceScrollBounds.contains(x, y)) {
+        if (sourceScrollBounds.contains(x, y)) {
             sourceOffset = Math.clamp(sourceOffset + delta, 0, maxSourceOffset);
         } else return false;
         return true;

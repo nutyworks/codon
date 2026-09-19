@@ -294,7 +294,6 @@ public final class DebuggerKeyboardNavigationGameTest implements FabricClientGam
 
     private static void checkWatchContainers(ClientGameTestContext context, ClientDebuggerState state) {
         WatchScreen watch = context.computeOnClient(client -> {
-            for (int i = 0; i < 16; i++) state.watches().add(new WatchSpec(WatchSpec.Kind.SCORE, "keyboard_" + i, ""));
             var result = new WatchScreen(DebuggerPresentationGameTest.input(client, state), state, new DebuggerOverlay(state));
             client.setScreenAndShow(result);
             return result;
@@ -303,45 +302,18 @@ public final class DebuggerKeyboardNavigationGameTest implements FabricClientGam
         context.runOnClient(client -> {
             EditBox field = watch.children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast)
                 .filter(EditBox::isVisible).findFirst().orElseThrow();
-            field.setValue("sample");
-            field.setCursorPosition(0);
+            require(watch.getFocused() == field, "Watch editor starts at the expression field");
+            field.setValue("keyboard_watch");
             watch.setFocused(field);
-            press(client, watch, InputConstants.KEY_RIGHT, InputConstants.KEYCODE_RIGHT, 0, InputType.KEYBOARD_ARROW);
-            require(watch.getFocused() == field && field.getCursorPosition() == 1, "Watch field arrows move the caret");
-            field.setCursorPosition(field.getValue().length());
-            press(client, watch, InputConstants.KEY_RIGHT, InputConstants.KEYCODE_RIGHT, 0, InputType.KEYBOARD_ARROW);
-            require(focusedLabel(watch).equals("Add"), "Right at the field edge reaches the next editor control");
-            var add = watch.getFocused();
-            press(client, watch, InputConstants.KEY_DOWN, InputConstants.KEYCODE_DOWN, 0, InputType.KEYBOARD_ARROW);
-            require(watch.getFocused() == add, "Watch editor arrows cannot enter the list");
             press(client, watch, InputConstants.KEY_TAB, InputConstants.KEYCODE_TAB, 0, InputType.KEYBOARD_TAB);
-            require(focusedLabel(watch).equals("Pin executor") || focusedLabel(watch).equals("Remove"),
-                "Watch Tab enters the list container: " + focusedLabel(watch));
-            // Use the action column so the final activation identifies the actual logical row.
-            var firstRemove = watch.children().stream().filter(DebuggerButton.class::isInstance).map(DebuggerButton.class::cast)
-                .filter(button -> button.getMessage().getString().equals("Remove"))
-                .min(java.util.Comparator.comparingInt(DebuggerButton::getY)).orElseThrow();
-            watch.setFocused(firstRemove);
-        });
-        for (int i = 0; i < 15; i++) {
-            context.runOnClient(client -> press(client, watch, InputConstants.KEY_DOWN, InputConstants.KEYCODE_DOWN, 0, InputType.KEYBOARD_ARROW));
-            context.waitTicks(2);
-        }
-        context.runOnClient(client -> {
-            press(client, watch, InputConstants.KEY_TAB, InputConstants.KEYCODE_TAB, 0, InputType.KEYBOARD_TAB);
-            require(focusedLabel(watch).equals("Close"), "Watch list Tab enters the header container");
-            press(client, watch, InputConstants.KEY_TAB, InputConstants.KEYCODE_TAB, InputConstants.MOD_SHIFT, InputType.KEYBOARD_TAB);
-        });
-        context.waitTicks(2);
-        context.runOnClient(client -> {
-            require(focusedLabel(watch).equals("Remove"), "Watch list restores its remembered action column");
+            require(watch.getFocused() != null && watch.getFocused() != field,
+                "Tab moves through the form instead of into Watch management");
+            watch.setFocused(field);
             press(client, watch, InputConstants.KEY_RETURN, InputConstants.KEYCODE_RETURN, 0, InputType.KEYBOARD_ARROW);
-            require(state.watches().definitions().stream().noneMatch(spec -> spec.target().equals("keyboard_15")),
-                "Watch Down reaches and activates the last off-screen row");
-            require(state.watches().definitions().stream().anyMatch(spec -> spec.target().equals("keyboard_0")),
-                "Watch navigation never activates an earlier row");
+            require(state.watches().definitions().stream().anyMatch(spec -> spec.target().equals("keyboard_watch")),
+                "Enter saves a Watch expression without keyboard access to management rows");
         });
-        context.takeScreenshot("codon-keyboard-watch-container");
+        context.takeScreenshot("codon-keyboard-watch-editor");
     }
 
     private static void press(Minecraft client, net.minecraft.client.gui.screens.Screen screen,

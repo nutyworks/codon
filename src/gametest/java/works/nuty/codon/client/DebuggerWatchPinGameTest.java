@@ -4,7 +4,6 @@ import com.mojang.blaze3d.platform.InputConstants;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
-import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.input.MouseButtonInfo;
@@ -21,7 +20,7 @@ import works.nuty.codon.client.state.ClientWatchState;
 import works.nuty.codon.client.ui.DebuggerButton;
 import works.nuty.codon.client.ui.DebuggerIcon;
 import works.nuty.codon.client.ui.DebuggerOverlay;
-import works.nuty.codon.client.ui.WatchScreen;
+import works.nuty.codon.client.ui.CodonScreen;
 import works.nuty.codon.core.model.BlockLocation;
 import works.nuty.codon.core.model.CommandSnippet;
 import works.nuty.codon.core.model.PauseSource;
@@ -37,7 +36,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
-/** Exercises WatchScreen pin controls against a real parked server and two execution entities. */
+/** Exercises Watches-HUD pin controls against a real parked server and two execution entities. */
 @SuppressWarnings("UnstableApiUsage")
 public final class DebuggerWatchPinGameTest implements FabricClientGameTest {
     private static final WatchSpec SCORE = new WatchSpec(WatchSpec.Kind.SCORE, "pin_points", "");
@@ -106,20 +105,24 @@ public final class DebuggerWatchPinGameTest implements FabricClientGameTest {
                 });
 
                 context.waitFor(client -> ready(3), 200);
-                openWatchScreen(context);
+                openWatchHud(context);
                 context.runOnClient(client -> {
-                    WatchScreen screen = screen(client);
-                    require(pinButtons(screen).size() == 2, "score and entity NBT have pin controls while storage does not");
+                    CodonScreen screen = screen(client);
+                    require(pinButtons(screen).size() == 2, "Watches HUD exposes pin controls for Score and Entity NBT, not Storage");
                     click(screen, pinButtons(screen).getFirst()); // score -> player A
-                    require(score(firstId.get()).spec().isPinned(), "WatchScreen pins score to selected player A");
-                    click(screen, pinButtons(screen).stream().filter(button -> hasLabel(button, "codon.watch.pin")).findFirst().orElseThrow()); // entity NBT -> player A
-                    require(entity(firstId.get()).spec().isPinned(), "WatchScreen also pins entity NBT");
-                    addSecondScore(screen);
+                    require(score(firstId.get()).spec().isPinned(), "Watches HUD pins score to selected player A");
+                    click(screen, pinButtons(screen).get(1)); // entity NBT -> player A (same rendered frame)
+                    require(entity(firstId.get()).spec().isPinned(), "Watches HUD also pins entity NBT");
+                    require(CodonClientMod.state().watches().add(SCORE), "state fixture adds a second floating score for HUD pinning");
                     CodonClientMod.state().selectSource(1);
-                    screen.tick();
-                    DebuggerButton secondScorePin = pinButtons(screen).stream().max(Comparator.comparingInt(DebuggerButton::getY)).orElseThrow();
+                });
+                context.waitTicks(3);
+                context.runOnClient(client -> {
+                    CodonScreen screen = screen(client);
+                    DebuggerButton secondScorePin = pinButtons(screen).stream().filter(button -> hasLabel(button, "codon.watch.pin"))
+                        .max(Comparator.comparingInt(DebuggerButton::getY)).orElseThrow();
                     click(screen, secondScorePin); // second score -> armour stand B
-                    require(score(secondId.get()).spec().isPinned(), "same score expression pins independently to B");
+                    require(score(secondId.get()).spec().isPinned(), "same score expression pins independently to B through Watches HUD");
                 });
 
                 context.waitFor(client -> pinnedScoresReady(firstId.get(), secondId.get())
@@ -146,16 +149,22 @@ public final class DebuggerWatchPinGameTest implements FabricClientGameTest {
                     ClientWatchState.Entry b = score(secondId.get());
                     require(a.result().value().equals("11") && a.previousValue().equals("10"), "A retains its own score history");
                     require(b.result().value().equals("22") && b.previousValue().equals("20"), "B retains its own score history");
-                    WatchScreen screen = screen(client);
+                    CodonScreen screen = screen(client);
                     require(CodonClientMod.state().selectedSource().entity() == null, "both pinned values refresh even without a current executor");
                     DebuggerButton unpinA = pinButtons(screen).stream().filter(button -> hasLabel(button, "codon.watch.unpin"))
                         .min(Comparator.comparingInt(DebuggerButton::getY)).orElseThrow();
                     click(screen, unpinA);
-                    require(!score(null).spec().isPinned(), "WatchScreen unpins A");
-                    DebuggerButton rejectedDuplicateUnpin = pinButtons(screen).stream().filter(button -> hasLabel(button, "codon.watch.unpin"))
+                    require(!score(null).spec().isPinned(), "Watches HUD unpins A");
+                    DebuggerButton mergeUnpin = pinButtons(screen).stream().filter(button -> hasLabel(button, "codon.watch.unpin"))
                         .max(Comparator.comparingInt(DebuggerButton::getY)).orElseThrow();
-                    click(screen, rejectedDuplicateUnpin);
-                    require(score(secondId.get()).spec().isPinned(), "UI refuses a second identical floating score definition");
+                    click(screen, mergeUnpin);
+                    require(CodonClientMod.state().watches().definitions().stream().filter(SCORE::equals).count() == 1,
+                        "unpin into an existing floating definition merges without a duplicate");
+                    require(CodonClientMod.state().watches().definitions().stream().noneMatch(SCORE.withExecutor(secondId.get())::equals),
+                        "the redundant pinned row is removed");
+                    require(CodonClientMod.state().watches().revealId() == score(null).id(), "the existing following row is revealed");
+                    require(CodonClientMod.state().watches().add(SCORE.withExecutor(secondId.get())),
+                        "restore B binding for subsequent removed-entity coverage");
                 });
                 long secondPause = context.computeOnClient(client -> CodonClientMod.state().snapshot().pauseId());
                 context.runOnClient(client -> client.player.connection.sendCommand("codon stepover"));
@@ -210,28 +219,22 @@ public final class DebuggerWatchPinGameTest implements FabricClientGameTest {
 
     private static String entityKey(UUID uuid) { return "entity:" + uuid; }
 
-    private static WatchScreen screen(net.minecraft.client.Minecraft client) {
-        if (!(client.gui.screen() instanceof WatchScreen screen)) throw new AssertionError("watch editor is open");
+    private static CodonScreen screen(net.minecraft.client.Minecraft client) {
+        if (!(client.gui.screen() instanceof CodonScreen screen)) throw new AssertionError("Watches HUD is open");
         return screen;
     }
 
-    private static List<DebuggerButton> pinButtons(WatchScreen screen) {
+    private static List<DebuggerButton> pinButtons(CodonScreen screen) {
         return screen.children().stream().filter(DebuggerButton.class::isInstance).map(DebuggerButton.class::cast)
-            .filter(button -> button.icon() == DebuggerIcon.PIN).sorted(Comparator.comparingInt(DebuggerButton::getY)).toList();
+            .filter(button -> button.icon() == DebuggerIcon.PIN
+                && (hasLabel(button, "codon.watch.pin") || hasLabel(button, "codon.watch.unpin"))).sorted(Comparator.comparingInt(DebuggerButton::getY)).toList();
     }
 
-    private static void addSecondScore(WatchScreen screen) {
-        EditBox field = screen.children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast)
-            .filter(EditBox::isVisible).findFirst().orElseThrow();
-        field.setValue("pin_points");
-        DebuggerButton add = screen.children().stream().filter(DebuggerButton.class::isInstance).map(DebuggerButton.class::cast)
-            .filter(button -> hasLabel(button, "codon.watch.add")).findFirst().orElseThrow();
-        click(screen, add);
-    }
-
-    private static void openWatchScreen(ClientGameTestContext context) {
+    private static void openWatchHud(ClientGameTestContext context) {
         context.getInput().resizeWindow(1280, 800);
         context.runOnClient(client -> {
+            client.options.guiScale().set(2);
+            client.resizeGui();
             var input = new InputManager(CodonClientMod.state(), ignored -> {});
             for (var key : client.options.keyMappings) {
                 switch (key.getName()) {
@@ -240,9 +243,10 @@ public final class DebuggerWatchPinGameTest implements FabricClientGameTest {
                     case "key.codon.breakpoint" -> input.breakpointKey = key;
                     case "key.codon.resume" -> input.resumeKey = key;
                     case "key.codon.step_over" -> input.stepOverKey = key;
+                    case "key.codon.step_into" -> input.stepIntoKey = key;
                 }
             }
-            client.setScreenAndShow(new WatchScreen(input, CodonClientMod.state(), new DebuggerOverlay(CodonClientMod.state())));
+            client.setScreenAndShow(new CodonScreen(input, new DebuggerOverlay(CodonClientMod.state())));
         });
         context.waitTicks(3);
     }

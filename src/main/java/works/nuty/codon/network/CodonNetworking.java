@@ -27,6 +27,8 @@ public final class CodonNetworking {
         PayloadTypeRegistry.clientboundPlay().register(WatchChangesSyncPayload.TYPE, WatchChangesSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(NbtTreeSyncPayload.TYPE, NbtTreeSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(WatchDefinitionsSyncPayload.TYPE, WatchDefinitionsSyncPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(WatchEditorSyncPayload.TYPE, WatchEditorSyncPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(WatchSaveSyncPayload.TYPE, WatchSaveSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(ResumeSyncPayload.TYPE, ResumeSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(StepSyncPayload.TYPE, StepSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(ContinueSyncPayload.TYPE, ContinueSyncPayload.CODEC);

@@ -6,6 +6,7 @@ import works.nuty.codon.core.model.WatchSpec;
 import works.nuty.codon.core.model.WatchChange;
 import works.nuty.codon.core.model.EntityRef;
 import works.nuty.codon.core.model.PauseSource;
+import works.nuty.codon.core.model.WatchIdentity;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -35,6 +36,11 @@ public final class ClientWatchState {
         public boolean automatic() { return id < 0; }
     }
     public record Query(long pauseId, long requestId, int sourceIndex, WatchSpec spec, @Nullable UUID capturedEntity) {}
+    private WatchGrouping.Mode grouping = WatchGrouping.Mode.CONTEXT;
+    public WatchGrouping.Mode grouping() { return grouping; }
+    public void grouping(WatchGrouping.Mode mode) { grouping = java.util.Objects.requireNonNull(mode); }
+
+    public enum SaveStatus { IDLE, SAVING, SAVED, FAILED }
 
     private static final long TIMEOUT_NANOS = 5_000_000_000L;
     private static final int MAX_CAPTURES_PER_WATCH = 256;
@@ -58,6 +64,11 @@ public final class ClientWatchState {
     private int sourceIndex = -1;
     private boolean continuingStep;
     private Consumer<List<WatchSpec>> changeListener = ignored -> {};
+    private SaveStatus saveStatus = SaveStatus.IDLE;
+    private long saveTransferId;
+    private long saveStartedAt;
+    private long revealId = -1;
+    private long revealRevision;
 
     public ClientWatchState(LongSupplier clock) { this.clock = clock; }
 
@@ -76,7 +87,9 @@ public final class ClientWatchState {
             throw new IllegalArgumentException("Invalid watch definitions");
         }
         reset();
-        checked.forEach(spec -> slots.put(++nextEntryId, new Slot(spec)));
+        for (WatchSpec spec : checked) {
+            if (findId(spec) < 0) slots.put(++nextEntryId, new Slot(spec));
+        }
     }
 
     public List<Entry> entries() {
@@ -131,24 +144,12 @@ public final class ClientWatchState {
         }
         List<Entry> result = new ArrayList<>();
         saved.stream().filter(entry -> entry.spec().isPinned()).forEach(result::add);
-        saved.stream().filter(entry -> !entry.spec().isPinned() && changed(entry)).forEach(result::add);
-        saved.stream().filter(entry -> !entry.spec().isPinned() && !changed(entry)).forEach(result::add);
+        saved.stream().filter(entry -> !entry.spec().isPinned()).forEach(result::add);
         automaticChanges.values().stream().filter(entry -> !represented.contains(entry.spec())).forEach(result::add);
         return List.copyOf(result);
     }
 
-    private static boolean changed(Entry entry) {
-        return entry.displayedChange().isValueChange() || entry.displayedChange() == Change.AVAILABILITY_CHANGED;
-    }
-
-    private static boolean sameField(WatchSpec first, WatchSpec second) {
-        return first.kind() == second.kind() && first.target().equals(second.target())
-            && canonicalPath(first.path()).equals(canonicalPath(second.path()));
-    }
-
-    private static String canonicalPath(String path) {
-        return path.replaceAll("(^|\\.)\"([A-Za-z0-9_+-]+)\"(?=\\.|\\[|$)", "$1$2");
-    }
+    private static boolean sameField(WatchSpec first, WatchSpec second) { return WatchIdentity.sameField(first, second); }
 
     /** Pages cannot repopulate another pause, or overwrite a completed transfer. */
     public void acceptChanges(long id, int offset, boolean last, List<WatchChange> changes) {
@@ -170,7 +171,13 @@ public final class ClientWatchState {
     /** Promote a temporary row without changing its executor or losing this pause's before/after value. */
     public boolean pinChange(long id) {
         Entry entry = automaticChanges.values().stream().filter(candidate -> candidate.id() == id).findFirst().orElse(null);
-        return entry != null && add(entry.spec());
+        if (entry == null) return false;
+        long existing = findId(entry.spec());
+        if (existing >= 0) {
+            reveal(existing);
+            return true;
+        }
+        return add(entry.spec());
     }
 
     private void clearChanges() {
@@ -180,38 +187,80 @@ public final class ClientWatchState {
     }
 
     public boolean add(WatchSpec spec) {
-        if (slots.values().stream().anyMatch(s -> s.spec.equals(spec))) return false;
-        slots.put(++nextEntryId, new Slot(spec));
+        if (findId(spec) >= 0) return false;
+        long id = ++nextEntryId;
+        slots.put(id, new Slot(spec));
         changeListener.accept(definitions());
+        reveal(id);
+        return true;
+    }
+
+    /** Returns the stable saved row ID, adding this expression only when it is not already present. */
+    public long addOrFind(WatchSpec spec) {
+        long existing = findId(spec);
+        if (existing >= 0) {
+            reveal(existing);
+            return existing;
+        }
+        add(spec);
+        return nextEntryId;
+    }
+
+    /** Finds a saved equivalent expression, including a matching executor binding. */
+    public long findId(WatchSpec spec) {
+        return slots.entrySet().stream().filter(entry -> WatchIdentity.same(entry.getValue().spec, spec))
+            .mapToLong(Map.Entry::getKey).findFirst().orElse(-1);
+    }
+
+    /** Replaces a saved definition in place and cancels all replies for its old expression. */
+    public boolean update(long id, WatchSpec spec) {
+        if (!slots.containsKey(id) || slots.entrySet().stream()
+            .anyMatch(entry -> entry.getKey() != id && WatchIdentity.same(entry.getValue().spec, spec))) return false;
+        slots.put(id, new Slot(spec));
+        previous.remove(id);
+        targetHistory.remove(id);
+        stepTargets.remove(id);
+        pruneExecutorNames();
+        changeListener.accept(definitions());
+        reveal(id);
         return true;
     }
 
     /** Adds a deduplicated group atomically; callers can treat an already-present group as successful. */
     public boolean addAll(List<WatchSpec> specs) {
         List<WatchSpec> requested = List.copyOf(specs);
-        Set<WatchSpec> known = slots.values().stream().map(slot -> slot.spec)
-            .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        List<WatchSpec> known = new ArrayList<>(slots.values().stream().map(slot -> slot.spec).toList());
         List<WatchSpec> missing = new ArrayList<>();
         for (WatchSpec spec : requested) {
-            if (known.add(spec)) missing.add(spec);
+            if (known.stream().noneMatch(existing -> WatchIdentity.same(existing, spec))) {
+                known.add(spec);
+                missing.add(spec);
+            }
         }
         if (missing.isEmpty()) return true;
-        missing.forEach(spec -> slots.put(++nextEntryId, new Slot(spec)));
+        long lastAdded = -1;
+        for (WatchSpec spec : missing) {
+            lastAdded = ++nextEntryId;
+            slots.put(lastAdded, new Slot(spec));
+        }
         changeListener.accept(definitions());
+        reveal(lastAdded);
         return true;
     }
 
     /** Fills a partially pinned group, or removes the complete group in one persisted edit. */
     public void toggleAll(List<WatchSpec> specs) {
-        Set<WatchSpec> requested = new LinkedHashSet<>(List.copyOf(specs));
+        List<WatchSpec> requested = new ArrayList<>();
+        for (WatchSpec spec : List.copyOf(specs)) {
+            if (requested.stream().noneMatch(existing -> WatchIdentity.same(existing, spec))) requested.add(spec);
+        }
         if (requested.isEmpty()) return;
-        Set<WatchSpec> known = slots.values().stream().map(slot -> slot.spec)
-            .collect(java.util.stream.Collectors.toSet());
-        if (!known.containsAll(requested)) {
-            addAll(List.copyOf(requested));
+        if (requested.stream().anyMatch(spec -> findId(spec) < 0)) {
+            addAll(requested);
             return;
         }
-        List<Long> removed = slots.entrySet().stream().filter(entry -> requested.contains(entry.getValue().spec))
+        List<Long> removed = slots.entrySet().stream().filter(entry -> requested.stream()
+                .anyMatch(spec -> WatchIdentity.same(entry.getValue().spec, spec)))
             .map(Map.Entry::getKey).toList();
         for (long id : removed) {
             slots.remove(id);
@@ -253,11 +302,20 @@ public final class ClientWatchState {
 
     public boolean unpin(long id) {
         Slot slot = slots.get(id);
-        return slot != null && slot.spec.isPinned() && rebind(id, slot.spec.withExecutor(null));
+        if (slot == null || !slot.spec.isPinned()) return false;
+        WatchSpec following = slot.spec.withExecutor(null);
+        long existing = findId(following);
+        if (existing > 0 && existing != id) {
+            // Keep the existing context-following row and its observations; discard only the pin.
+            remove(id);
+            reveal(existing);
+            return true;
+        }
+        return rebind(id, following);
     }
 
     private boolean rebind(long id, WatchSpec spec) {
-        if (slots.values().stream().anyMatch(slot -> slot.spec.equals(spec))) return false;
+        if (slots.entrySet().stream().anyMatch(entry -> entry.getKey() != id && WatchIdentity.same(entry.getValue().spec, spec))) return false;
         // A new binding is an initial observation; cancel in-flight replies for the old target.
         slots.put(id, new Slot(spec));
         previous.remove(id);
@@ -265,7 +323,43 @@ public final class ClientWatchState {
         stepTargets.remove(id);
         pruneExecutorNames();
         changeListener.accept(definitions());
+        reveal(id);
         return true;
+    }
+
+    /** Reissues a timed-out or failed primary query while retaining the active pause and definition. */
+    public void retry(long id) {
+        Slot slot = slots.get(id);
+        if (pauseId <= 0 || slot == null || slot.result == null
+            || (slot.result.status() != WatchResult.Status.UNAVAILABLE && slot.result.status() != WatchResult.Status.ERROR)) return;
+        slot.captures.remove(slot.requestSourceIndex);
+        slot.requestId = 0;
+        slot.requestedAt = 0;
+        slot.result = null;
+    }
+
+    public void retrySave() { changeListener.accept(definitions()); }
+
+    public void saveStarted(long transferId) {
+        saveTransferId = transferId;
+        saveStartedAt = clock.getAsLong();
+        saveStatus = SaveStatus.SAVING;
+    }
+
+    public void saveFinished(long transferId, boolean success) {
+        expire();
+        if (saveStatus != SaveStatus.SAVING || transferId != saveTransferId) return;
+        saveStatus = success ? SaveStatus.SAVED : SaveStatus.FAILED;
+    }
+
+    public SaveStatus saveStatus() { expire(); return saveStatus; }
+
+    public long revealId() { return revealId; }
+    public long revealRevision() { return revealRevision; }
+    public void reveal(long id) {
+        if (!slots.containsKey(id)) return;
+        revealId = id;
+        revealRevision++;
     }
 
     public void rememberExecutors(List<PauseSource> sources) {
@@ -353,6 +447,10 @@ public final class ClientWatchState {
         resumed();
         slots.clear();
         executorNames.clear();
+        saveStatus = SaveStatus.IDLE;
+        saveTransferId = 0;
+        saveStartedAt = 0;
+        revealId = -1;
         // Keep counters monotonic so responses from a disconnected session cannot match.
     }
 
@@ -397,6 +495,7 @@ public final class ClientWatchState {
 
     private void expire() {
         long now = clock.getAsLong();
+        if (saveStatus == SaveStatus.SAVING && now - saveStartedAt >= TIMEOUT_NANOS) saveStatus = SaveStatus.FAILED;
         slots.values().forEach(slot -> {
             if (slot.requestId != 0 && slot.result == null && now - slot.requestedAt >= TIMEOUT_NANOS) {
                 slot.result = WatchResult.absent(WatchResult.Status.UNAVAILABLE, "");
