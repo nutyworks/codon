@@ -54,7 +54,7 @@ public final class NbtTreePanel {
     }
 
     public void render(GuiGraphicsExtractor graphics, Bounds area, int mouseX, int mouseY,
-                       DebuggerNavigation navigation, Controls controls) {
+                       DebuggerNavigation navigation, ScrollbarInput scrollbars, Controls controls) {
         var selectedSource = selectedSource();
         if (selectedSource == null || area.width() <= 0 || area.height() <= 0) {
             clearBounds();
@@ -105,6 +105,13 @@ public final class NbtTreePanel {
             int height = visibleRows * ROW_HEIGHT;
             int thumb = Math.max(8, height * visibleRows / (visibleRows + maximumOffset));
             int top = area.y() + HEADER_HEIGHT + (height - thumb) * offset / maximumOffset;
+            scrollbars.add(idPrefix + "scroll", false, area.x() + area.width() - 3,
+                area.y() + HEADER_HEIGHT, height, 2, thumb, offset, maximumOffset, value -> {
+                    // A branch's click anchor must not undo explicit pointer scrolling next frame.
+                    anchorPath = null;
+                    anchorViewport = EMPTY;
+                    offset = Math.clamp(value, 0, Math.max(0, rows.size() - visibleRows));
+                });
             graphics.fill(area.x() + area.width() - 3, area.y() + HEADER_HEIGHT,
                 area.x() + area.width() - 1, area.y() + HEADER_HEIGHT + height, BORDER);
             graphics.fill(area.x() + area.width() - 3, top, area.x() + area.width() - 1, top + thumb, TEAL);

@@ -1,9 +1,12 @@
 package works.nuty.codon.client.ui;
 
+import com.mojang.blaze3d.platform.InputConstants;
+
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import works.nuty.codon.client.input.InputManager;
 
@@ -22,7 +25,7 @@ public final class CodonScreen extends Screen {
     }
 
     @Override
-    protected void init() { registered = List.of(); }
+    protected void init() { registered = List.of(); overlay.scrollbars().release(); }
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
@@ -41,6 +44,33 @@ public final class CodonScreen extends Screen {
     @Override
     public void extractBackground(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         // No world dimming/blur: markers must retain their scene context.
+    }
+
+    @Override
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && overlay.scrollbars().click(event.x(), event.y())) {
+            overlay.navigation().mouseScrolled();
+            return true;
+        }
+        return super.mouseClicked(event, doubleClick);
+    }
+
+    @Override
+    public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
+        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && overlay.scrollbars().drag(event.x(), event.y())) return true;
+        return super.mouseDragged(event, dx, dy);
+    }
+
+    @Override
+    public boolean mouseReleased(MouseButtonEvent event) {
+        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && overlay.scrollbars().release()) return true;
+        return super.mouseReleased(event);
+    }
+
+    @Override
+    public void removed() {
+        overlay.scrollbars().release();
+        super.removed();
     }
 
     @Override

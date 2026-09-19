@@ -46,6 +46,7 @@ public final class CommandPanel {
     private @Nullable StackSelection lastStackSelection;
     private @Nullable PauseSnapshot renderedSnapshot;
     private DebuggerNavigation navigation;
+    private ScrollbarInput scrollbars;
     private DebuggerNavigation.Group navigationGroup = DebuggerNavigation.Group.ACTIONS;
 
     public CommandPanel(ClientDebuggerState state, Runnable selectionChanged) {
@@ -64,6 +65,7 @@ public final class CommandPanel {
                                        @Nullable PauseSnapshot snapshot, InputManager input, DebuggerOverlay overlay,
                                        DebuggerNavigation navigation) {
         this.navigation = navigation;
+        this.scrollbars = overlay.scrollbars();
         used.clear();
         buttons.clear();
         renderedSnapshot = snapshot;
@@ -163,7 +165,9 @@ public final class CommandPanel {
             x += 8;
         }
         if (maxStackOffset > 0) {
-            int thumb = Math.max(5, available * available / total);
+            int thumb = Math.min(available, Math.max(5, available * available / total));
+            scrollbars.add("path", true, left, area.y() + 16, available, 1, thumb, stackOffset, maxStackOffset,
+                value -> stackOffset = value);
             int thumbX = left + (available - thumb) * stackOffset / maxStackOffset;
             graphics.fill(left, area.y() + 16, left + available, area.y() + 17, BORDER);
             graphics.fill(thumbX, area.y() + 16, thumbX + thumb, area.y() + 17, TEAL);
@@ -428,10 +432,11 @@ public final class CommandPanel {
         graphics.disableScissor();
     }
 
-    private static void scrollbar(GuiGraphicsExtractor graphics, int x, int y, int height, int offset, int max, int rows) {
+    private void scrollbar(GuiGraphicsExtractor graphics, int x, int y, int height, int offset, int max, int rows) {
         if (max <= 0 || height <= 0) return;
         graphics.fill(x, y, x + 2, y + height, BORDER);
         int thumb = Math.min(height, Math.max(5, height * rows / (rows + max)));
+        scrollbars.add("command", false, x, y, height, 2, thumb, offset, max, value -> commandOffset = value);
         int top = y + (height - thumb) * offset / max;
         graphics.fill(x, top, x + 2, top + thumb, TEAL);
     }

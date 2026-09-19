@@ -43,6 +43,7 @@ public final class DebuggerOverlay {
     private final ClientDebuggerState state;
     private final NbtTreePanel nbtPanel;
     private final CommandPanel commandPanel;
+    private final ScrollbarInput scrollbars = new ScrollbarInput();
     private final DebuggerNavigation navigation = new DebuggerNavigation();
     private DebuggerNavigation.Group navigationGroup = DebuggerNavigation.Group.TOOLBAR;
     private final Minecraft client = Minecraft.getInstance();
@@ -72,11 +73,14 @@ public final class DebuggerOverlay {
         this.commandPanel = new CommandPanel(state, () -> { sourceOffset = 0; expandedGroup = List.of(); });
     }
 
+    ScrollbarInput scrollbars() { return scrollbars; }
+
     public DebuggerNavigation navigation() { return navigation; }
 
     public List<DebuggerButton> render(GuiGraphicsExtractor graphics, int mouseX, int mouseY,
                                        float partialTick, boolean interactive, InputManager input) {
         controls.clear();
+        scrollbars.beginFrame();
         navigation.beginFrame(interactive && client.getLastInputType().isKeyboard());
         hoverX = interactive ? mouseX : -1;
         hoverY = interactive ? mouseY : -1;
@@ -88,6 +92,7 @@ public final class DebuggerOverlay {
         if (client.level == null || client.player == null) {
             buttonCache.clear();
             navigation.endFrame();
+            scrollbars.endFrame();
             return List.of();
         }
         // The live debugger panels must not present retained history after resume.
@@ -113,6 +118,7 @@ public final class DebuggerOverlay {
             }
             buttonCache.clear();
             navigation.endFrame();
+            scrollbars.endFrame();
             return List.of();
         }
 
@@ -131,6 +137,7 @@ public final class DebuggerOverlay {
 
         buttonCache.keySet().retainAll(usedButtons);
         navigation.endFrame();
+        scrollbars.endFrame();
         for (DebuggerButton button : controls) {
             if (!interactive) button.setFocused(false);
             button.extractRenderState(graphics, interactive ? mouseX : -1, interactive ? mouseY : -1, partialTick);
@@ -314,7 +321,7 @@ public final class DebuggerOverlay {
                     WatchFormatting.tooltip(entry, state.isPaused()), mouseX, mouseY);
             }
         }
-        if (rows > 0 && maxWatchSummaryOffset > 0) scrollbar(graphics,
+        if (rows > 0 && maxWatchSummaryOffset > 0) scrollbar(graphics, "watch", value -> watchSummaryOffset = value,
             panelBounds.x() + panelBounds.width() - 4, panelBounds.y() + 19, rows * 12,
             watchSummaryOffset, maxWatchSummaryOffset, rows, entries.size());
     }
@@ -360,7 +367,7 @@ public final class DebuggerOverlay {
         navigationGroup = DebuggerNavigation.Group.NBT;
         if (nbtHeight > 0) nbtPanel.render(graphics,
             new Bounds(body.x() + 3, body.y() + listHeight + detailHeight, body.width() - 6, nbtHeight),
-            hoverX, hoverY, navigation,
+            hoverX, hoverY, navigation, scrollbars,
             (id, bounds, label, active, selected, action) -> button(id, bounds, label, active, selected, true, false, action));
     }
 
@@ -423,7 +430,7 @@ public final class DebuggerOverlay {
                 text(graphics, (sourceOffset + 1) + "–" + Math.min(indices.size(), sourceOffset + rows) + " / " + indices.size(),
                     area.x() + 7, area.y() + area.height() - 8, area.width() - 14, MUTED);
             }
-            scrollbar(graphics, area.x() + area.width() - 5, area.y() + 21, Math.max(1, rows * 19 - 2),
+            scrollbar(graphics, "sources", value -> sourceOffset = value, area.x() + area.width() - 5, area.y() + 21, Math.max(1, rows * 19 - 2),
                 sourceOffset, maxSourceOffset, rows, indices.size());
         }
     }
@@ -624,11 +631,12 @@ public final class DebuggerOverlay {
         }
     }
 
-    private static void scrollbar(GuiGraphicsExtractor graphics, int x, int y, int height,
+    private void scrollbar(GuiGraphicsExtractor graphics, String id, java.util.function.IntConsumer setter, int x, int y, int height,
                                   int offset, int maxOffset, int rows, int total) {
         if (height <= 0 || total <= rows || maxOffset <= 0) return;
         graphics.fill(x, y, x + 2, y + height, BORDER);
         int thumb = Math.min(height, Math.max(6, height * rows / total));
+        scrollbars.add(id, false, x, y, height, 2, thumb, offset, maxOffset, setter);
         int top = y + (height - thumb) * offset / maxOffset;
         graphics.fill(x, top, x + 2, top + thumb, TEAL);
     }
