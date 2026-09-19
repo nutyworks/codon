@@ -323,6 +323,7 @@ public final class DebuggerContinuationRecordingGameTest implements FabricClient
             state.applyPause(snapshot);
             state.selectExecutionFlow(indexOfFlow(snapshot, cappedId));
             InputManager input = new InputManager(state, ignored -> { });
+            input.keepFreecamKey = Arrays.stream(client.options.keyMappings).filter(key -> key.getName().equals("key.codon.keep_freecam")).findFirst().orElseThrow();
             input.menuKey = Arrays.stream(client.options.keyMappings).filter(key -> key.getName().equals("key.codon.open_menu"))
                 .findFirst().orElseThrow();
             input.breakpointKey = Arrays.stream(client.options.keyMappings).filter(key -> key.getName().equals("key.codon.breakpoint"))

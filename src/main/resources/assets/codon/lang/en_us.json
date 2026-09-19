@@ -1,5 +1,6 @@
 {
   "key.category.codon.debugger": "Codon Debugger",
+  "key.codon.keep_freecam": "Toggle Keep Freecam While Running",
   "key.codon.open_menu": "Open Menu",
   "key.codon.breakpoint": "Toggle Block Breakpoint",
   "key.codon.resume": "Resume",
@@ -22,6 +23,8 @@
   "codon.ui.window.title": "Window",
   "codon.ui.callstack.title": "Call Stack",
   "codon.ui.information": "Information",
+  "codon.ui.keep_freecam.on": "Keep freecam while running: ON (click to disable)",
+  "codon.ui.keep_freecam.off": "Keep freecam while running: OFF (click to enable)",
   "codon.ui.title": "Codon debugger",
   "codon.ui.control.resume": "Continue",
   "codon.ui.control.stepover": "Step over",

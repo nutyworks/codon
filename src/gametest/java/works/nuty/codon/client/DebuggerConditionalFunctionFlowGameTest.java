@@ -204,6 +204,7 @@ public final class DebuggerConditionalFunctionFlowGameTest implements FabricClie
         CodonScreen screen = context.computeOnClient(client -> {
             state.applyPause(insideFunction);
             InputManager input = new InputManager(state, ignored -> { });
+            input.keepFreecamKey = Arrays.stream(client.options.keyMappings).filter(key -> key.getName().equals("key.codon.keep_freecam")).findFirst().orElseThrow();
             input.menuKey = Arrays.stream(client.options.keyMappings).filter(key -> key.getName().equals("key.codon.open_menu")).findFirst().orElseThrow();
             input.breakpointKey = Arrays.stream(client.options.keyMappings).filter(key -> key.getName().equals("key.codon.breakpoint")).findFirst().orElseThrow();
             input.resumeKey = Arrays.stream(client.options.keyMappings).filter(key -> key.getName().equals("key.codon.resume")).findFirst().orElseThrow();

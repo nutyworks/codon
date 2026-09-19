@@ -73,7 +73,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
             });
             context.waitTicks(3);
             context.takeScreenshot("codon-command-integrated");
-            checkIconToolbar(context, screen);
+            checkIconToolbar(context, screen, state);
             checkCommandPanel(context, screen, state);
             checkStableCommandActions(context, screen, state);
             checkVisibleClauseSelection(context, screen, state);
@@ -183,15 +183,36 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
         }
     }
 
-    private static void checkIconToolbar(ClientGameTestContext context, CodonScreen screen) {
+    private static void checkIconToolbar(ClientGameTestContext context, CodonScreen screen, ClientDebuggerState state) {
         context.runOnClient(client -> {
             List<DebuggerButton> icons = screen.children().stream().filter(DebuggerButton.class::isInstance)
                 .map(DebuggerButton.class::cast).filter(button -> button.icon() != null && button.getY() < 50).toList();
-            require(icons.size() == 7, "Main toolbar retains execution, gizmo, details, and information icons");
+            require(icons.size() == 8, "Main toolbar includes execution, gizmo, details, information, and freecam icons");
             require(icons.stream().allMatch(button -> button.getWidth() == 20 && button.getHeight() == 20),
                 "Toolbar icons keep compact square hit targets");
             require(icons.stream().map(DebuggerButton::getY).distinct().count() == 1, "All icons share one row");
         });
+        context.runOnClient(client -> {
+            DebuggerButton info = button(screen, value -> value.equals("Information"));
+            DebuggerButton keep = button(screen, value -> value.startsWith("Keep freecam"));
+            require(keep.getX() == info.getX() + info.getWidth() + 3,
+                "Freecam toggle sits immediately beside Information");
+            click(screen, keep);
+            require(state.preferences().keepFreecam(), "Toolbar click enables retention");
+        });
+        context.waitTicks(2);
+        context.takeScreenshot("codon-keep-freecam-enabled");
+        context.runOnClient(client -> {
+            click(screen, button(screen, value -> value.startsWith("Keep freecam")));
+            require(!state.preferences().keepFreecam(), "Second click disables retention");
+            require(screen.keyPressed(new KeyEvent(InputConstants.KEY_G, 0, 0)),
+                "Freecam shortcut is handled in the debugger screen");
+            require(state.preferences().keepFreecam(), "G enables retention in cursor mode");
+            screen.keyPressed(new KeyEvent(InputConstants.KEY_G, 0, 0));
+            require(!state.preferences().keepFreecam(), "G disables retention in cursor mode");
+
+        });
+        context.waitTicks(2);
         for (InputManager.Control action : InputManager.Control.values()) {
             double[] cursor = context.computeOnClient(client -> {
                 DebuggerButton control = button(screen, value -> value.startsWith(
@@ -600,6 +621,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
 
     static InputManager input(Minecraft client, ClientDebuggerState state) {
         InputManager result = new InputManager(state, ignored -> {});
+        result.keepFreecamKey = key(client, "key.codon.keep_freecam");
         result.menuKey = key(client, "key.codon.open_menu");
         result.breakpointKey = key(client, "key.codon.breakpoint");
         result.resumeKey = key(client, "key.codon.resume");

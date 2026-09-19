@@ -5,6 +5,7 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 /** Pixel icons used by the debugger toolbar. */
 public enum DebuggerIcon {
     INFORMATION,
+    FREECAM,
     WARNING,
     LINE_WRAP,
     CONTINUE,
@@ -28,6 +29,11 @@ public enum DebuggerIcon {
 
     public void draw(GuiGraphicsExtractor graphics, int x, int y, int color) {
         switch (this) {
+            case FREECAM -> {
+                outline(graphics, x + 1, y + 3, 10, 8, color);
+                graphics.fill(x + 3, y + 1, x + 7, y + 3, color);
+                outline(graphics, x + 4, y + 5, 4, 4, color);
+            }
             case LINE_WRAP -> {
                 graphics.fill(x + 9, y + 2, x + 10, y + 7, color);
                 graphics.fill(x + 2, y + 6, x + 10, y + 7, color);

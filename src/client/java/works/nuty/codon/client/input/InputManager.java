@@ -26,6 +26,7 @@ public final class InputManager implements ClientTickEvents.EndTick {
     private final OpenScreen openScreen;
 
     public KeyMapping menuKey;
+    public KeyMapping keepFreecamKey;
     public KeyMapping breakpointKey;
     public KeyMapping resumeKey;
     public KeyMapping stepOverKey;
@@ -70,9 +71,17 @@ public final class InputManager implements ClientTickEvents.EndTick {
             toggleTargetBreakpoint();
         }
 
+        while (keepFreecamKey.consumeClick()) {
+            toggleKeepFreecam();
+        }
+
         while (menuKey.consumeClick()) {
             openScreen.open(this);
         }
+    }
+
+    public void toggleKeepFreecam() {
+        state.preferences().setKeepFreecam(!state.preferences().keepFreecam());
     }
 
     public void control(Control action) {
@@ -104,6 +113,11 @@ public final class InputManager implements ClientTickEvents.EndTick {
             control(action);
             return true;
         }
+        if (keepFreecamKey.matches(event)) {
+            while (keepFreecamKey.consumeClick()) { }
+            toggleKeepFreecam();
+            return true;
+        }
         if (breakpointKey.matches(event)) {
             while (breakpointKey.consumeClick()) { }
             toggleTargetBreakpoint();
@@ -125,6 +139,7 @@ public final class InputManager implements ClientTickEvents.EndTick {
 
     public void registerKeyMappings() {
         KeyMapping.Category category = new KeyMapping.Category(CATEGORY_ID);
+        this.keepFreecamKey = register("key.codon.keep_freecam", InputConstants.KEY_G, category);
         this.menuKey = register("key.codon.open_menu", InputConstants.KEY_V, category);
         this.breakpointKey = register("key.codon.breakpoint", InputConstants.KEY_F10, category);
         this.resumeKey = register("key.codon.resume", InputConstants.KEY_F7, category);

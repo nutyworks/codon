@@ -169,7 +169,7 @@ public final class DebuggerOverlay {
 
         int gap = DebuggerLayout.ICON_BUTTON_GAP;
         int width = Math.min(DebuggerLayout.ICON_BUTTON_SIZE,
-            Math.max(1, (toolbar.width() - 6 - 5 * gap - DebuggerLayout.ICON_GROUP_GAP) / 7));
+            Math.max(1, (toolbar.width() - 6 - 6 * gap - DebuggerLayout.ICON_GROUP_GAP) / 8));
         int x = toolbar.x() + 3;
         for (InputManager.Control action : InputManager.Control.values()) {
             DebuggerIcon icon = switch (action) {
@@ -206,6 +206,15 @@ public final class DebuggerOverlay {
         iconButton("information", new Bounds(x + 2 * (width + gap), toolbar.y() + 2, width, DebuggerLayout.ICON_BUTTON_SIZE),
             component("codon.ui.information"), DebuggerIcon.INFORMATION, true,
             () -> client.gui.setScreen(new DebuggerHelpScreen(new CodonScreen(input, this), input)));
+        boolean keepFreecam = state.preferences().keepFreecam();
+        button("keep-freecam", new Bounds(x + 3 * (width + gap), toolbar.y() + 2,
+                width, DebuggerLayout.ICON_BUTTON_SIZE),
+            component(keepFreecam ? "codon.ui.keep_freecam.on" : "codon.ui.keep_freecam.off")
+                .copy().append(" ").append(keybind(input.keepFreecamKey.getTranslatedKeyMessage())),
+            true, keepFreecam, false, false,
+            input::toggleKeepFreecam)
+            .withIcon(DebuggerIcon.FREECAM);
+
     }
 
     private void renderWorldLabels(GuiGraphicsExtractor graphics, Bounds world, @Nullable PauseSnapshot snapshot) {

@@ -199,6 +199,37 @@ public final class DebuggerFreecamGameTest implements FabricClientGameTest {
                     require(!client.options.keyAttack.isDown() && !client.options.keyUse.isDown()
                             && !client.options.keyShift.isDown() && !client.options.keySprint.isDown(),
                         "resume clears toggle states including pending screen-close restoration");
+                    fixture.state().preferences().setKeepFreecam(true);
+                    try {
+                        fixture.state().applyPause(pauseFixture(fixture.player()));
+                        fixture.freecam().synchronize(client);
+                        Entity retained = client.getCameraEntity();
+                        Vec3 retainedPosition = retained.position();
+                        fixture.state().applyResume();
+                        fixture.freecam().synchronize(client);
+                        require(fixture.freecam().isActive() && client.getCameraEntity() == retained,
+                            "enabled preference retains the camera after terminal resume");
+                        require(retained.position().equals(retainedPosition),
+                            "terminal resume preserves the freecam position");
+                        fixture.state().preferences().setKeepFreecam(false);
+                        fixture.freecam().synchronize(client);
+                        require(!fixture.freecam().isActive() && client.getCameraEntity() == fixture.player(),
+                            "disabling retention while running restores the player camera");
+
+                        fixture.state().preferences().setKeepFreecam(true);
+                        fixture.state().applyPause(pauseFixture(fixture.player()));
+                        fixture.freecam().synchronize(client);
+                        fixture.state().applyResume();
+                        fixture.freecam().synchronize(client);
+                        fixture.state().reset();
+                        fixture.freecam().synchronize(client);
+                        require(!fixture.freecam().isActive(),
+                            "session reset releases retained freecam even when preference is enabled");
+                    } finally {
+                        fixture.state().preferences().setKeepFreecam(false);
+                        fixture.state().applyResume();
+                        fixture.freecam().synchronize(client);
+                    }
                     client.options.setCameraType(CameraType.FIRST_PERSON);
                     FreecamRenderProbe.resetHandSubmissions();
                 });

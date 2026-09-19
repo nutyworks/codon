@@ -32,8 +32,10 @@ public final class DebuggerFreecam {
     public void synchronize(Minecraft client) {
         if (!state.isPaused() || state.snapshot() == null) {
             // Step and Continue can reach another pause within this execution. Only its terminal
-            // resume ends inspection; retain an existing camera in the same player/world meanwhile.
-            if ((state.isStepping() || state.isContinuing()) && isActive()) return;
+            // resume normally ends inspection. The preference also retains it after completion.
+            if ((state.isStepping() || state.isContinuing()
+                    || (state.preferences().keepFreecam() && state.inspectionSnapshot() != null))
+                    && isActive()) return;
             stop(client);
             abandonedSnapshot = null;
             return;

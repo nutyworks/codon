@@ -71,6 +71,13 @@ public final class ClientSettingsStore {
         if (json.has("inspectorTab")) {
             preferences.setInspectorTab(enumValue(json.get("inspectorTab"), DebuggerPreferences.InspectorTab.class, "inspectorTab"));
         }
+        if (json.has("keepFreecam")) {
+            JsonElement keep = json.get("keepFreecam");
+            if (!keep.isJsonPrimitive() || !keep.getAsJsonPrimitive().isBoolean()) {
+                throw new IOException("Invalid keepFreecam in Codon client settings");
+            }
+            preferences.setKeepFreecam(keep.getAsBoolean());
+        }
         if (json.has("nbtExpanded")) {
             JsonElement expanded = json.get("nbtExpanded");
             if (!expanded.isJsonPrimitive() || !expanded.getAsJsonPrimitive().isBoolean()) {
@@ -113,6 +120,7 @@ public final class ClientSettingsStore {
         }
         json.addProperty("inspectorTab", preferences.inspectorTab().name());
         json.addProperty("nbtExpanded", preferences.nbtExpanded());
+        json.addProperty("keepFreecam", preferences.keepFreecam());
         return json;
     }
 }

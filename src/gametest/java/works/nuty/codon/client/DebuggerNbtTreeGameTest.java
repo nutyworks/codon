@@ -543,6 +543,7 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
         InputManager input = new InputManager(CodonClientMod.state(), ignored -> {});
         for (var key : net.minecraft.client.Minecraft.getInstance().options.keyMappings) {
             switch (key.getName()) {
+                case "key.codon.keep_freecam" -> input.keepFreecamKey = key;
                 case "key.codon.open_menu" -> input.menuKey = key;
                 case "key.codon.breakpoint" -> input.breakpointKey = key;
                 case "key.codon.resume" -> input.resumeKey = key;

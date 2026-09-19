@@ -15,6 +15,7 @@ public final class DebuggerPreferences {
     private @Nullable Boolean inspectorVisible;
     private InspectorTab inspectorTab = InspectorTab.SOURCES;
     private boolean nbtExpanded = true;
+    private boolean keepFreecam;
     private Runnable changeListener = () -> { };
 
     public ClientDebuggerState.GizmoMode gizmoMode() {
@@ -48,6 +49,15 @@ public final class DebuggerPreferences {
         tab = Objects.requireNonNull(tab);
         if (inspectorTab != tab) {
             inspectorTab = tab;
+            changed();
+        }
+    }
+
+    public boolean keepFreecam() { return keepFreecam; }
+
+    public void setKeepFreecam(boolean keep) {
+        if (keepFreecam != keep) {
+            keepFreecam = keep;
             changed();
         }
     }
