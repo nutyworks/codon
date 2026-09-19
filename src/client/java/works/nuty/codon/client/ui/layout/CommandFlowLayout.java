@@ -88,6 +88,11 @@ public final class CommandFlowLayout {
      */
     public static Layout layout(List<Part> parts, int width, ToIntFunction<String> measure,
                                 IntUnaryOperator minimumWidth) {
+        return layout(parts, width, measure, minimumWidth, ignored -> 0);
+    }
+
+    public static Layout layout(List<Part> parts, int width, ToIntFunction<String> measure,
+                                IntUnaryOperator minimumWidth, IntUnaryOperator leadingInset) {
         int available = Math.max(0, width);
         if (available == 0 || parts == null || parts.isEmpty()) return new Layout(List.of(), 0);
 
@@ -100,12 +105,13 @@ public final class CommandFlowLayout {
 
             int requestedMinimum = Math.max(0, minimumWidth.applyAsInt(partIndex));
             int clampedMinimum = Math.min(available, requestedMinimum);
-            List<String> fragments = wrap(part.text(), Math.max(1, available - CELL_HORIZONTAL_PADDING), measure);
+            int inset = Math.clamp(leadingInset.applyAsInt(partIndex), 0, available);
+            List<String> fragments = wrap(part.text(), Math.max(1, available - CELL_HORIZONTAL_PADDING - inset), measure);
             boolean first = true;
             for (String fragment : fragments) {
                 int measured = Math.max(0, measure.applyAsInt(fragment));
                 int cellWidth = Math.min(available,
-                    Math.max(clampedMinimum, saturatedAdd(measured, CELL_HORIZONTAL_PADDING)));
+                    Math.max(clampedMinimum, saturatedAdd(measured, CELL_HORIZONTAL_PADDING + inset)));
                 if (x > 0 && x + GAP + cellWidth > available) {
                     row++;
                     x = 0;

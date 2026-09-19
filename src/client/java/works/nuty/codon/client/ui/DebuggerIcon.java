@@ -6,6 +6,7 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 public enum DebuggerIcon {
     INFORMATION,
     WARNING,
+    LINE_WRAP,
     CONTINUE,
     PAUSE,
     STEP_OVER,
@@ -27,6 +28,13 @@ public enum DebuggerIcon {
 
     public void draw(GuiGraphicsExtractor graphics, int x, int y, int color) {
         switch (this) {
+            case LINE_WRAP -> {
+                graphics.fill(x + 9, y + 2, x + 10, y + 7, color);
+                graphics.fill(x + 2, y + 6, x + 10, y + 7, color);
+                graphics.fill(x + 3, y + 5, x + 4, y + 8, color);
+                graphics.fill(x + 4, y + 4, x + 5, y + 5, color);
+                graphics.fill(x + 4, y + 8, x + 5, y + 9, color);
+            }
             case WARNING -> {
                 for (int row = 0; row < 10; row++) {
                     int halfWidth = row / 2;

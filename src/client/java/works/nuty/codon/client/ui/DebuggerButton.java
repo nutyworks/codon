@@ -22,6 +22,8 @@ public final class DebuggerButton extends AbstractButton {
     private boolean borderless;
     private boolean leadingIcon;
     private boolean iconWithText;
+    private boolean openLeft;
+    private boolean openRight;
     private int contentOffset;
     private int contentWidth;
     private @Nullable DebuggerIcon icon;
@@ -48,6 +50,8 @@ public final class DebuggerButton extends AbstractButton {
         this.borderless = false;
         this.leadingIcon = false;
         this.iconWithText = false;
+        this.openLeft = false;
+        this.openRight = false;
         this.contentOffset = 0;
         this.contentWidth = width;
         this.action = action;
@@ -74,6 +78,13 @@ public final class DebuggerButton extends AbstractButton {
 
     public DebuggerButton withoutChrome() {
         this.borderless = true;
+        return this;
+    }
+
+    /** Open edges connect fragments of the same wrapped command clause. */
+    public DebuggerButton withOpenEdges(boolean left, boolean right) {
+        this.openLeft = left;
+        this.openRight = right;
         return this;
     }
 
@@ -133,7 +144,10 @@ public final class DebuggerButton extends AbstractButton {
             if (active && (isHovered() || keyboardFocus)) foreground = accentColor;
         } else {
             graphics.fill(getX(), getY(), getRight(), getBottom(), background);
-            graphics.outline(getX(), getY(), width, height, outline);
+            graphics.fill(getX(), getY(), getRight(), getY() + 1, outline);
+            graphics.fill(getX(), getBottom() - 1, getRight(), getBottom(), outline);
+            if (!openLeft) graphics.fill(getX(), getY(), getX() + 1, getBottom(), outline);
+            if (!openRight) graphics.fill(getRight() - 1, getY(), getRight(), getBottom(), outline);
         }
         if (icon != null) {
             graphics.enableScissor(getX() + 1, getY() + 1, getRight() - 1, getBottom() - 1);

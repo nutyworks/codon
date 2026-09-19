@@ -17,6 +17,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CommandFlowLayoutTest {
     @Test
+    void reservesIconSpaceWithoutDroppingWrappedCommandText() {
+        String command = "tellraw @a abcdefghijklmnopqrstuvwxyz";
+        CommandFlowLayout.Layout layout = CommandFlowLayout.layout(
+            List.of(new CommandFlowLayout.Part(command, 0)), 40,
+            CommandFlowLayoutTest::codePoints, ignored -> 0, ignored -> 14);
+
+        assertEquals(command, joinCells(layout));
+        assertTrue(layout.rows() > 1);
+        assertTrue(layout.cells().stream().allMatch(cell -> codePoints(cell.text()) + 24 <= cell.width()));
+        assertGeometry(layout, 40);
+    }
+
+    @Test
     void partitionsAValidTraceWithoutLosingTheUnobservedSuffix() {
         String text = "execute as @e run say hello";
         CommandFlowLayout.Content content = CommandFlowLayout.content(CommandSnippet.plain(text), trace(

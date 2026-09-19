@@ -223,13 +223,25 @@ public final class CommandPanel {
             parts.addFirst(new Part(content.command(), -1));
         }
         List<Part> displayed = parts;
-        CommandFlowLayout.Layout layout = CommandFlowLayout.layout(parts, body.width() - 4, client.font::width,
-            index -> {
+        java.util.function.IntUnaryOperator minimumWidth = index -> {
                 int stage = displayed.get(index).stageIndex();
                 return stage < 0 ? client.font.width(tr("codon.ui.not_observed")) + 10
                     : client.font.width(counts(flow.stages().get(stage))) + DebuggerIcon.SIZE + 14
                         + (hasWarning(flow.stages().get(stage)) ? 17 : 0);
-            });
+            };
+        java.util.function.IntUnaryOperator leadingInset = index -> {
+            int stage = displayed.get(index).stageIndex();
+            boolean stopped = state.selectedFlowIndex() == state.pausedFlowIndex()
+                && stage == state.pausedFlowStageIndex();
+            return stage >= 0 && (stopped || (body.height() < 30 && hasWarning(flow.stages().get(stage))))
+                ? DebuggerButton.TEXT_ICON_INSET : 0;
+        };
+        CommandFlowLayout.Layout layout = CommandFlowLayout.layout(parts, body.width() - 4,
+            client.font::width, minimumWidth, leadingInset);
+        if (layout.rows() > 1) {
+            layout = CommandFlowLayout.layout(parts, body.width() - 4 - DebuggerIcon.SIZE,
+                client.font::width, minimumWidth, leadingInset);
+        }
         int rowHeight = body.height() < 30 ? 17 : 30;
         int rows = Math.max(1, body.height() / rowHeight);
         maxCommandOffset = Math.max(0, layout.rows() - rows);
@@ -265,13 +277,19 @@ public final class CommandPanel {
             }
         }
         navigation.revealFocus(DebuggerNavigation.Group.COMMAND);
-        for (CommandFlowLayout.Cell cell : layout.cells()) {
+        for (int cellIndex = 0; cellIndex < layout.cells().size(); cellIndex++) {
+            CommandFlowLayout.Cell cell = layout.cells().get(cellIndex);
             Part part = parts.get(cell.partIndex());
             int stageIndex = part.stageIndex();
             int row = cell.row() - commandOffset;
             if (row < 0 || row >= rows) continue;
             int x = body.x() + cell.x();
             int y = body.y() + row * rowHeight;
+            if (cellIndex + 1 < layout.cells().size()
+                    && layout.cells().get(cellIndex + 1).row() > cell.row()
+                    && (content.inline() || layout.cells().get(cellIndex + 1).partIndex() == cell.partIndex())) {
+                DebuggerIcon.LINE_WRAP.draw(graphics, x + cell.width(), y + 2, MUTED);
+            }
             if (stageIndex >= 0 && flow != null) {
                 ExecutionFlowStage stage = flow.stages().get(stageIndex);
                 boolean stopped = state.selectedFlowIndex() == state.pausedFlowIndex() && stageIndex == state.pausedFlowStageIndex();
@@ -283,16 +301,17 @@ public final class CommandPanel {
                         changed();
                     });
                 if (stopped) clause.withStatusColor(AMBER, AMBER_SURFACE);
+                clause.withOpenEdges(!cell.first(), cellIndex + 1 < layout.cells().size()
+                    && layout.cells().get(cellIndex + 1).partIndex() == cell.partIndex());
                 clause.setTooltip(Tooltip.create(Component.literal(part.text().strip() + "\n" + stageDetails(stage))));
                 if (rowHeight < 30 && hasWarning(stage)) clause.withTextIcon(DebuggerIcon.WARNING);
+                if (stopped && cell.first()) clause.withTextIcon(DebuggerIcon.PAUSE);
                 if (cell.first() && rowHeight >= 30) {
                     String count = counts(stage);
                     drawText(graphics, count, x + 4, y + 20,
-                        cell.width() - 5 - (stopped ? DebuggerIcon.SIZE + 3 : 0) - (hasWarning(stage) ? 17 : 0), stopped ? AMBER : MUTED);
+                        cell.width() - 5 - (hasWarning(stage) ? 17 : 0), stopped ? AMBER : MUTED);
                     if (hasWarning(stage)) warningButton("warning-" + flow.invocationId() + "-" + stage.index(),
                         new Bounds(x + cell.width() - 17, y + 16, 16, 14), stage);
-                    if (stopped) DebuggerIcon.PAUSE.draw(graphics,
-                        x + 7 + client.font.width(count), y + 17, AMBER);
                 }
             } else {
                 drawText(graphics, cell.text(), x + 5, y + 4, cell.width() - 10, flow == null ? TEXT : MUTED);
@@ -306,6 +325,10 @@ public final class CommandPanel {
 
     private void renderRawCommand(GuiGraphicsExtractor graphics, Bounds body, CommandSnippet command, PauseSnapshot snapshot) {
         var lines = client.font.split(ClientFormatting.command(command), Math.max(1, body.width() - 12));
+        if (lines.size() > 1) {
+            lines = client.font.split(ClientFormatting.command(command),
+                Math.max(1, body.width() - 12 - DebuggerIcon.SIZE));
+        }
         int rows = Math.max(1, body.height() / 11);
         maxCommandOffset = Math.max(0, lines.size() - rows);
         Selection selection = new Selection(snapshot, state.selectedCallFrameIndex(), state.selectedFlowIndex(), -1,
@@ -318,6 +341,10 @@ public final class CommandPanel {
         graphics.enableScissor(body.x() + 4, body.y(), body.x() + body.width() - 4, body.y() + body.height());
         for (int i = 0; i < rows && commandOffset + i < lines.size(); i++) {
             graphics.text(client.font, lines.get(commandOffset + i), body.x() + 5, body.y() + i * 11, TEXT, false);
+            if (commandOffset + i + 1 < lines.size()) {
+                DebuggerIcon.LINE_WRAP.draw(graphics,
+                    body.x() + 5 + client.font.width(lines.get(commandOffset + i)), body.y() + i * 11 - 1, MUTED);
+            }
         }
         graphics.disableScissor();
         scrollbar(graphics, body.x() + body.width() - 1, body.y(), body.height(), commandOffset, maxCommandOffset, rows);
