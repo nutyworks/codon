@@ -130,6 +130,14 @@ and changes that require subsequent simulation ticks still wait for normal execu
   invocation, live source mapping follows the paused stage's occurrence IDs and source ordering.
   `CodonScreen` registers its native widgets
   for mouse, keyboard, and narration. `ClientFormatting` renders core types as chat components.
+  `DebuggerNavigation` keeps a logical focus order separate from rendering order: toolbar, source
+  list, source details, NBT, world controls, call path, command clauses, and bottom actions. Tab and
+  Shift+Tab switch directly between containers and remember each container's last focused item.
+  Arrows traverse items, including off-screen rows, but never leave their container. Revealing a hidden control restores focus by its stable
+  ID after rendering. Mouse scrolling clears focus from hidden controls without arming a replacement;
+  returning to the container restores the remembered logical position. Watch and Help use the same
+  container boundary rule; Watch fields retain caret movement, with unshifted arrows at a text edge
+  navigating to the adjacent editor control.
   The older `Window` classes are no longer used by the client composition root.
 - `ui/layout/` — Minecraft-free responsive panel and screen-space label placement. Overlapping
   labels can be grouped; crowded ungrouped labels move into free slots or one aggregate. Clicking

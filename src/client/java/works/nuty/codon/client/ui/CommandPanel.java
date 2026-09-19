@@ -45,6 +45,8 @@ public final class CommandPanel {
     private @Nullable Selection lastSelection;
     private @Nullable StackSelection lastStackSelection;
     private @Nullable PauseSnapshot renderedSnapshot;
+    private DebuggerNavigation navigation;
+    private DebuggerNavigation.Group navigationGroup = DebuggerNavigation.Group.ACTIONS;
 
     public CommandPanel(ClientDebuggerState state, Runnable selectionChanged) {
         this.state = state;
@@ -59,7 +61,9 @@ public final class CommandPanel {
     }
 
     public List<DebuggerButton> render(GuiGraphicsExtractor graphics, Bounds area,
-                                       @Nullable PauseSnapshot snapshot, InputManager input, DebuggerOverlay overlay) {
+                                       @Nullable PauseSnapshot snapshot, InputManager input, DebuggerOverlay overlay,
+                                       DebuggerNavigation navigation) {
+        this.navigation = navigation;
         used.clear();
         buttons.clear();
         renderedSnapshot = snapshot;
@@ -87,6 +91,7 @@ public final class CommandPanel {
             boolean warning = stage != null && hasWarning(stage);
             int summaryX = area.x() + 8;
             if (warning && actionLeft - summaryX >= 17) {
+                navigationGroup = DebuggerNavigation.Group.ACTIONS;
                 warningButton("flow-warning", new Bounds(summaryX, actionY, 16, 14), stage);
                 summaryX += 18;
             }
@@ -96,6 +101,7 @@ public final class CommandPanel {
     }
 
     private void renderPath(GuiGraphicsExtractor graphics, Bounds area, PauseSnapshot snapshot) {
+        navigationGroup = DebuggerNavigation.Group.CALL_PATH;
         List<CallFrame> frames = state.displayedCallStack();
         int titleWidth = Math.min(client.font.width(tr("codon.ui.call_stack", frames.size())) + 10,
             Math.max(0, area.width() / 2));
@@ -113,6 +119,16 @@ public final class CommandPanel {
         for (int i = frames.size() - 1; i >= 0; i--) {
             int width = client.font.width(frameLabel(snapshot, i)) + 10 + frameIconWidth(i);
             if (i == state.selectedCallFrameIndex()) { selectedStart = total; selectedEnd = total + width; }
+            int start = total;
+            int end = total + width;
+            navigation.add("path-" + i + "-" + frames.get(i).invocationId(), navigationGroup, 0, frames.size() - 1 - i,
+                () -> {
+                    if (end - start > available) {
+                        if (end <= stackOffset || start >= stackOffset + available) stackOffset = start;
+                    } else if (start < stackOffset) stackOffset = start;
+                    else if (end > stackOffset + available) stackOffset = Math.max(start, end - available);
+                    stackOffset = Math.clamp(stackOffset, 0, maxStackOffset);
+                });
             total += width + (i > 0 ? 8 : 0);
         }
         maxStackOffset = Math.max(0, total - available);
@@ -124,6 +140,7 @@ public final class CommandPanel {
             lastStackSelection = selection;
         }
         stackOffset = Math.clamp(stackOffset, 0, maxStackOffset);
+        navigation.revealFocus(DebuggerNavigation.Group.CALL_PATH);
         stackBounds = area;
         int x = left - stackOffset;
         for (int i = frames.size() - 1; i >= 0; i--) {
@@ -155,6 +172,7 @@ public final class CommandPanel {
 
     private int renderActions(Bounds area, PauseSnapshot snapshot,
                                InputManager input, DebuggerOverlay overlay) {
+        navigationGroup = DebuggerNavigation.Group.ACTIONS;
         int right = area.x() + area.width();
         button("expand", new Bounds(right - 17, area.y(), 17, 16),
             Component.translatable(expanded ? "codon.ui.collapse_command" : "codon.ui.expand_command"), true, false,
@@ -185,6 +203,7 @@ public final class CommandPanel {
     }
 
     private void renderClauses(GuiGraphicsExtractor graphics, Bounds body, PauseSnapshot snapshot) {
+        navigationGroup = DebuggerNavigation.Group.COMMAND;
         if (body.height() < 15 || body.width() < 10) return;
         CommandSnippet snippet = state.selectedCommand();
         if (snippet == null) return;
@@ -229,12 +248,26 @@ public final class CommandPanel {
         commandOffset = Math.clamp(commandOffset, 0, maxCommandOffset);
         commandBounds = body;
         for (CommandFlowLayout.Cell cell : layout.cells()) {
+            Part part = parts.get(cell.partIndex());
+            int stageIndex = part.stageIndex();
+            if (stageIndex >= 0) {
+                Runnable reveal = () -> commandOffset = DebuggerOverlay.revealRow(cell.row(), commandOffset, rows, maxCommandOffset);
+                navigation.add("clause-" + flow.invocationId() + "-" + stageIndex + "-" + cell.row(),
+                    navigationGroup, cell.row() * 2, cell.x(), reveal);
+                if (cell.first() && rowHeight >= 30 && hasWarning(flow.stages().get(stageIndex))) {
+                    navigation.add("warning-" + flow.invocationId() + "-" + stageIndex,
+                        navigationGroup, cell.row() * 2 + 1, cell.x(), reveal);
+                }
+            }
+        }
+        navigation.revealFocus(DebuggerNavigation.Group.COMMAND);
+        for (CommandFlowLayout.Cell cell : layout.cells()) {
+            Part part = parts.get(cell.partIndex());
+            int stageIndex = part.stageIndex();
             int row = cell.row() - commandOffset;
             if (row < 0 || row >= rows) continue;
-            Part part = parts.get(cell.partIndex());
             int x = body.x() + cell.x();
             int y = body.y() + row * rowHeight;
-            int stageIndex = part.stageIndex();
             if (stageIndex >= 0 && flow != null) {
                 ExecutionFlowStage stage = flow.stages().get(stageIndex);
                 boolean stopped = state.selectedFlowIndex() == state.pausedFlowIndex() && stageIndex == state.pausedFlowStageIndex();
@@ -377,6 +410,7 @@ public final class CommandPanel {
             active, selected, true, false, () -> { if (state.snapshot() == expected) action.run(); });
         used.add(id);
         buttons.add(button);
+        navigation.bind(id, navigationGroup, button);
         return button;
     }
 

@@ -53,7 +53,8 @@ public final class NbtTreePanel {
         return state.nbt().entitySources().stream().filter(source -> source.index() == index).findFirst().orElse(null);
     }
 
-    public void render(GuiGraphicsExtractor graphics, Bounds area, int mouseX, int mouseY, Controls controls) {
+    public void render(GuiGraphicsExtractor graphics, Bounds area, int mouseX, int mouseY,
+                       DebuggerNavigation navigation, Controls controls) {
         var selectedSource = selectedSource();
         if (selectedSource == null || area.width() <= 0 || area.height() <= 0) {
             clearBounds();
@@ -79,11 +80,24 @@ public final class NbtTreePanel {
         scrollBounds = new Bounds(area.x(), area.y() + HEADER_HEIGHT, area.width(), Math.max(0, area.height() - HEADER_HEIGHT - 2));
         applyAnchor(rows, visibleRows);
         offset = Math.clamp(offset, 0, maximumOffset(rows.size(), visibleRows));
+        String idPrefix = "nbt-" + selectedSource.index() + "-" + selectedSource.executor().uuid() + "-";
+        if (visibleRows > 0) {
+            for (int index = 0; index < rows.size(); index++) {
+                int logicalRow = index;
+                registerRow(navigation, rows.get(index), idPrefix, selectedSource.executor(), index, () -> {
+                    if (logicalRow < offset || logicalRow >= offset + visibleRows) {
+                        anchorPath = null;
+                        anchorViewport = EMPTY;
+                        offset = DebuggerOverlay.revealRow(logicalRow, offset, visibleRows, Math.max(0, rows.size() - visibleRows));
+                    }
+                });
+            }
+        }
+        navigation.revealFocus(DebuggerNavigation.Group.NBT);
         for (int index = 0; index < visibleRows && offset + index < rows.size(); index++) {
             Bounds bounds = new Bounds(area.x() + 3, area.y() + HEADER_HEIGHT + index * ROW_HEIGHT,
                 Math.max(1, area.width() - 9), ROW_HEIGHT);
             ClientNbtState.Row row = rows.get(offset + index);
-            String idPrefix = "nbt-" + selectedSource.index() + "-" + selectedSource.executor().uuid() + "-";
             renderRow(graphics, bounds, mouseX, mouseY, controls, row, pauseId, selectedSource.executor(), idPrefix);
         }
         int maximumOffset = maximumOffset(rows.size(), visibleRows);
@@ -95,6 +109,31 @@ public final class NbtTreePanel {
                 area.x() + area.width() - 1, area.y() + HEADER_HEIGHT + height, BORDER);
             graphics.fill(area.x() + area.width() - 3, top, area.x() + area.width() - 1, top + thumb, TEAL);
         }
+    }
+
+    private void registerRow(DebuggerNavigation navigation, ClientNbtState.Row row, String prefix,
+                             EntityRef executor, int index, Runnable reveal) {
+        switch (row.kind()) {
+            case NODE -> {
+                NbtPage.Node node = row.node();
+                if (node == null) return;
+                String id = nodeId(node);
+                if (node.expandable()) navigation.add(prefix + "node-" + id, DebuggerNavigation.Group.NBT, index, 0, reveal);
+                if (pinnableSpec(node, executor.uuid()) != null)
+                    navigation.add(prefix + "pin-" + id, DebuggerNavigation.Group.NBT, index, 1, reveal);
+            }
+            case STATUS -> {
+                if (row.status() != null) navigation.add(prefix + "refresh-" + stable(row.path()),
+                    DebuggerNavigation.Group.NBT, index, 0, reveal);
+            }
+            case PREVIOUS, NEXT -> navigation.add(prefix + "page-" + stable(row.path()) + "-" + row.targetOffset(),
+                DebuggerNavigation.Group.NBT, index, 0, reveal);
+            case EMPTY -> { }
+        }
+    }
+
+    private static String nodeId(NbtPage.Node node) {
+        return stable(node.path().isEmpty() ? node.name() : node.path());
     }
 
     public boolean scroll(double x, double y, double amount) {
@@ -168,7 +207,7 @@ public final class NbtTreePanel {
         if (node == null) return;
         String prefix = node.expandable() ? (row.expanded() ? "▾ " : "▸ ") : "  ";
         Component label = Component.literal(prefix + node.name() + ": " + node.preview());
-        String nodeId = stable(node.path().isEmpty() ? node.name() + ":" + bounds.y() : node.path());
+        String nodeId = nodeId(node);
         controls.button(idPrefix + "node-" + nodeId, content, label, node.expandable(), false,
             () -> toggleNode(pauseId, executor.uuid(), node.path()));
         if (bounds.contains(mouseX, mouseY)) {

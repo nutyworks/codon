@@ -598,7 +598,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
         context.takeScreenshot("codon-angled-block-markers");
     }
 
-    private static InputManager input(Minecraft client, ClientDebuggerState state) {
+    static InputManager input(Minecraft client, ClientDebuggerState state) {
         InputManager result = new InputManager(state, ignored -> {});
         result.menuKey = key(client, "key.codon.open_menu");
         result.breakpointKey = key(client, "key.codon.breakpoint");
@@ -612,7 +612,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
         return Arrays.stream(client.options.keyMappings).filter(key -> key.getName().equals(name)).findFirst().orElseThrow();
     }
 
-    private static PauseSnapshot fixture(Minecraft client) {
+    static PauseSnapshot fixture(Minecraft client) {
         return fixture(client, false);
     }
 

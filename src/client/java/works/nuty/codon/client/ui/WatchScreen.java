@@ -1,8 +1,10 @@
 package works.nuty.codon.client.ui;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
@@ -16,6 +18,8 @@ import works.nuty.codon.core.model.WatchResult;
 import works.nuty.codon.core.model.WatchSpec;
 
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import static works.nuty.codon.client.ui.DebuggerTheme.*;
 
@@ -32,6 +36,11 @@ public final class WatchScreen extends Screen {
     private EditBox target;
     private EditBox path;
     private final List<PinControl> pinControls = new java.util.ArrayList<>();
+    private List<Long> displayedIds = List.of();
+    private final DebuggerNavigation navigation = new DebuggerNavigation();
+    private record FocusControl(String id, DebuggerNavigation.Group group) { }
+    private final Map<AbstractWidget, FocusControl> focusControls = new LinkedHashMap<>();
+    private boolean navigationDirty;
 
     public WatchScreen(InputManager input, ClientDebuggerState state, DebuggerOverlay overlay) {
         super(Component.translatable("codon.watch.title"));
@@ -45,32 +54,34 @@ public final class WatchScreen extends Screen {
         rememberDrafts();
         clearWidgets();
         pinControls.clear();
+        focusControls.clear();
         int panelWidth = Math.min(500, width - 24);
         int x = (width - panelWidth) / 2;
         int y = Math.max(18, (height - 250) / 2);
         int editorY = y + 44;
         int buttonWidth = 78;
 
-        addRenderableWidget(configure(new DebuggerButton(), x + 8, editorY, buttonWidth, 20,
+        addControl("kind", DebuggerNavigation.Group.EDITOR, configure(new DebuggerButton(), x + 8, editorY, buttonWidth, 20,
             typeLabel(), true, false, () -> { kind = WatchSpec.Kind.values()[(kind.ordinal() + 1) % WatchSpec.Kind.values().length]; rebuildWidgets(); }));
         int fieldX = x + 16 + buttonWidth;
         int addX = x + panelWidth - 56;
         int combinedWidth = Math.max(32, addX - 6 - fieldX);
         int fieldWidth = Math.max(16, (combinedWidth - 6) / 2);
-        target = addRenderableWidget(field(fieldX, editorY,
+        target = addControl("target", DebuggerNavigation.Group.EDITOR, field(fieldX, editorY,
             kind == WatchSpec.Kind.STORAGE_NBT ? fieldWidth : combinedWidth, targetHint()));
-        path = addRenderableWidget(field(kind == WatchSpec.Kind.STORAGE_NBT ? fieldX + fieldWidth + 6 : fieldX, editorY,
+        path = addControl("path", DebuggerNavigation.Group.EDITOR, field(kind == WatchSpec.Kind.STORAGE_NBT ? fieldX + fieldWidth + 6 : fieldX, editorY,
             kind == WatchSpec.Kind.STORAGE_NBT ? fieldWidth : combinedWidth, pathHint()));
         if (kind == WatchSpec.Kind.SCORE) path.setVisible(false);
         if (kind == WatchSpec.Kind.ENTITY_NBT) target.setVisible(false);
         target.setValue(targetDraft);
         path.setValue(pathDraft);
-        addRenderableWidget(configure(new DebuggerButton(), addX, editorY, 48, 20,
+        addControl("add", DebuggerNavigation.Group.EDITOR, configure(new DebuggerButton(), addX, editorY, 48, 20,
             Component.translatable("codon.watch.add"), true, false, this::addWatch));
-        addRenderableWidget(configure(new DebuggerButton(), x + panelWidth - 48, y + 3, 40, 18,
+        addControl("close", DebuggerNavigation.Group.WINDOW_HEADER, configure(new DebuggerButton(), x + panelWidth - 48, y + 3, 40, 18,
             Component.translatable("codon.watch.close"), true, false, this::onClose));
 
         List<ClientWatchState.Entry> entries = state.watches().entries();
+        displayedIds = entries.stream().map(ClientWatchState.Entry::id).toList();
         offset = Math.clamp(offset, 0, Math.max(0, entries.size() - visibleRows()));
         int listY = editorY + 31;
         for (int index = 0; index < visibleRows() && offset + index < entries.size(); index++) {
@@ -79,14 +90,50 @@ public final class WatchScreen extends Screen {
             int removeX = x + panelWidth - 60;
             if (supportsExecutorBinding(entry.spec())) {
                 DebuggerButton pin = pinButton(entry.id(), removeX - 22, rowY + 3);
-                addRenderableWidget(pin);
+                addControl("pin-" + entry.id(), DebuggerNavigation.Group.WATCH_LIST, pin);
                 pinControls.add(new PinControl(entry.id(), pin));
             }
             DebuggerButton remove = configure(new DebuggerButton(), removeX, rowY + 3, 52, 18,
                 Component.translatable("codon.watch.remove"), true, false,
                 () -> { state.watches().remove(entry.id()); rebuildWidgets(); });
-            addRenderableWidget(remove);
+            addControl("action-" + entry.id(), DebuggerNavigation.Group.WATCH_LIST, remove);
         }
+        refreshNavigation(entries);
+    }
+
+    private <T extends AbstractWidget> T addControl(String id, DebuggerNavigation.Group group, T widget) {
+        focusControls.put(widget, new FocusControl(id, group));
+        return addRenderableWidget(widget);
+    }
+
+    @Override
+    protected void rebuildWidgets() {
+        navigation.rememberFocus(getFocused());
+        super.rebuildWidgets();
+    }
+
+    @Override
+    protected void setInitialFocus() {
+        setFocused(navigation.restoreFocus(null, minecraft.getLastInputType().isKeyboard()));
+    }
+
+    private void refreshNavigation(List<ClientWatchState.Entry> entries) {
+        navigation.rememberFocus(getFocused());
+        navigation.beginFrame(minecraft.getLastInputType().isKeyboard());
+        int rows = visibleRows();
+        for (int index = 0; index < entries.size(); index++) {
+            int row = index;
+            var entry = entries.get(index);
+            Runnable reveal = () -> {
+                int next = DebuggerOverlay.revealRow(row, offset, rows, Math.max(0, entries.size() - rows));
+                if (next != offset) { offset = next; navigationDirty = true; }
+            };
+            if (supportsExecutorBinding(entry.spec()) && (entry.spec().isPinned() || selectedExecutor() != null))
+                navigation.add("pin-" + entry.id(), DebuggerNavigation.Group.WATCH_LIST, row, 0, reveal);
+            navigation.add("action-" + entry.id(), DebuggerNavigation.Group.WATCH_LIST, row, 1, reveal);
+        }
+        focusControls.forEach((widget, control) -> navigation.bind(control.id(), control.group(), widget));
+        navigation.endFrame();
     }
 
     @Override
@@ -95,7 +142,13 @@ public final class WatchScreen extends Screen {
         int x = (width - panelWidth) / 2;
         int y = Math.max(18, (height - 250) / 2);
         List<ClientWatchState.Entry> entries = state.watches().entries();
+        if (navigationDirty || !displayedIds.equals(entries.stream().map(ClientWatchState.Entry::id).toList())) {
+            navigationDirty = false;
+            rebuildWidgets();
+        }
         updatePinControls(entries);
+        refreshNavigation(entries);
+        setFocused(navigation.restoreFocus(getFocused(), minecraft.getLastInputType().isKeyboard()));
         offset = Math.clamp(offset, 0, Math.max(0, entries.size() - visibleRows()));
         int panelHeight = Math.min(height - y - 12, 88 + Math.max(1, Math.min(visibleRows(), entries.size())) * ROW_HEIGHT);
         graphics.fill(x, y, x + panelWidth, y + panelHeight, PANEL);
@@ -146,7 +199,14 @@ public final class WatchScreen extends Screen {
             onClose();
             return true;
         }
-        return super.keyPressed(event);
+        if (getFocused() instanceof EditBox field) {
+            int key = event.key();
+            boolean edge = !event.hasShiftDown() && (key == InputConstants.KEY_LEFT && field.getCursorPosition() == 0
+                || key == InputConstants.KEY_RIGHT && field.getCursorPosition() == field.getValue().length());
+            if (!edge && (key == InputConstants.KEY_LEFT || key == InputConstants.KEY_RIGHT
+                || key == InputConstants.KEY_UP || key == InputConstants.KEY_DOWN) && field.keyPressed(event)) return true;
+        }
+        return navigation.keyPressed(event, getFocused(), this::setFocused) || super.keyPressed(event);
     }
 
     @Override
@@ -156,6 +216,8 @@ public final class WatchScreen extends Screen {
         if (maximum == 0 || scrollY == 0) return super.mouseScrolled(x, y, scrollX, scrollY);
         int next = Math.clamp(offset + (scrollY > 0 ? -1 : 1), 0, maximum);
         if (next == offset) return true;
+        navigation.rememberFocus(getFocused());
+        navigation.mouseScrolled();
         offset = next;
         rebuildWidgets();
         return true;

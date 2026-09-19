@@ -43,6 +43,8 @@ public final class DebuggerOverlay {
     private final ClientDebuggerState state;
     private final NbtTreePanel nbtPanel;
     private final CommandPanel commandPanel;
+    private final DebuggerNavigation navigation = new DebuggerNavigation();
+    private DebuggerNavigation.Group navigationGroup = DebuggerNavigation.Group.TOOLBAR;
     private final Minecraft client = Minecraft.getInstance();
     private final Map<String, DebuggerButton> buttonCache = new HashMap<>();
     private final List<DebuggerButton> controls = new ArrayList<>();
@@ -69,9 +71,12 @@ public final class DebuggerOverlay {
         this.commandPanel = new CommandPanel(state, () -> { sourceOffset = 0; expandedGroup = List.of(); });
     }
 
+    public DebuggerNavigation navigation() { return navigation; }
+
     public List<DebuggerButton> render(GuiGraphicsExtractor graphics, int mouseX, int mouseY,
                                        float partialTick, boolean interactive, InputManager input) {
         controls.clear();
+        navigation.beginFrame(interactive && client.getLastInputType().isKeyboard());
         hoverX = interactive ? mouseX : -1;
         hoverY = interactive ? mouseY : -1;
         usedButtons.clear();
@@ -81,6 +86,7 @@ public final class DebuggerOverlay {
         nbtPanel.clearBounds();
         if (client.level == null || client.player == null) {
             buttonCache.clear();
+            navigation.endFrame();
             return List.of();
         }
         // The live debugger panels must not present retained history after resume.
@@ -105,6 +111,7 @@ public final class DebuggerOverlay {
                 graphics.disableScissor();
             }
             buttonCache.clear();
+            navigation.endFrame();
             return List.of();
         }
 
@@ -112,13 +119,17 @@ public final class DebuggerOverlay {
             : graphics.guiWidth() >= 420 && graphics.guiHeight() >= 220;
         DebuggerLayout layout = DebuggerLayout.create(graphics.guiWidth(), graphics.guiHeight(), showInspector,
             commandPanel.preferredHeight(graphics.guiWidth(), graphics.guiHeight(), snapshot));
+        navigationGroup = DebuggerNavigation.Group.TOOLBAR;
         renderHeader(graphics, layout, input, snapshot);
+        navigationGroup = DebuggerNavigation.Group.WATCH;
         renderWatchSummary(graphics, layout, mouseX, mouseY, interactive, input);
+        navigationGroup = DebuggerNavigation.Group.WORLD;
         renderWorldLabels(graphics, layout.world(), snapshot);
         if (showInspector) renderInspector(graphics, layout.inspector(), snapshot);
-        controls.addAll(commandPanel.render(graphics, layout.command(), snapshot, input, this));
+        controls.addAll(commandPanel.render(graphics, layout.command(), snapshot, input, this, navigation));
 
         buttonCache.keySet().retainAll(usedButtons);
+        navigation.endFrame();
         for (DebuggerButton button : controls) {
             if (!interactive) button.setFocused(false);
             button.extractRenderState(graphics, interactive ? mouseX : -1, interactive ? mouseY : -1, partialTick);
@@ -242,7 +253,8 @@ public final class DebuggerOverlay {
             }
             leader(graphics, (int) label.anchorX(), (int) label.anchorY(),
                 bounds.x() + bounds.width() / 2, bounds.y() + bounds.height(), worldSourceColor(statusIndex, selected ? TEAL : MUTED));
-            colorWorldSourceButton(button("label-" + index, bounds, title, true, selected, false, false, () -> {
+            int groupId = indices.stream().mapToInt(Integer::intValue).min().orElse(index);
+            colorWorldSourceButton(button("label-" + groupId, bounds, title, true, selected, false, false, () -> {
                 if (state.snapshot() != snapshot) return;
                 state.selectWorldSource(index);
                 if (group) {
@@ -334,12 +346,15 @@ public final class DebuggerOverlay {
             Math.max(0, remainingHeight - nbtMinimum));
         if (detailHeight < 22) detailHeight = 0;
         int nbtHeight = Math.max(0, remainingHeight - detailHeight);
+        navigationGroup = DebuggerNavigation.Group.SOURCES;
         renderSources(graphics, new Bounds(body.x(), body.y(), body.width(), listHeight), snapshot, headingInset);
+        navigationGroup = DebuggerNavigation.Group.SOURCE_DETAILS;
         if (detailHeight > 0) renderSourceDetails(graphics,
             new Bounds(body.x(), body.y() + listHeight, body.width(), detailHeight), 0);
+        navigationGroup = DebuggerNavigation.Group.NBT;
         if (nbtHeight > 0) nbtPanel.render(graphics,
             new Bounds(body.x() + 3, body.y() + listHeight + detailHeight, body.width() - 6, nbtHeight),
-            hoverX, hoverY,
+            hoverX, hoverY, navigation,
             (id, bounds, label, active, selected, action) -> button(id, bounds, label, active, selected, true, false, action));
     }
 
@@ -348,6 +363,7 @@ public final class DebuggerOverlay {
             : Component.translatable("codon.ui.group", expandedGroup.size()).getString();
         text(graphics, heading, area.x() + 7 + headingInset, area.y() + 6, area.width() - 42 - headingInset, TEXT);
         if (!expandedGroup.isEmpty()) {
+            navigation.add("all-sources", DebuggerNavigation.Group.SOURCES, -1, 0, () -> { });
             button("all-sources", new Bounds(area.x() + area.width() - 39, area.y() + 2, 35, 15),
                 component("codon.ui.all"), true, false, false, false, () -> { expandedGroup = List.of(); sourceOffset = 0; });
         }
@@ -371,6 +387,14 @@ public final class DebuggerOverlay {
         lastSelectedSource = selectedSource;
         sourceOffset = Math.max(0, Math.min(sourceOffset, maxSourceOffset));
         sourceScrollBounds = area;
+        if (rows > 0) {
+            for (int row = 0; row < indices.size(); row++) {
+                int logicalRow = row;
+                navigation.add("source-" + indices.get(row), DebuggerNavigation.Group.SOURCES, row, 0,
+                    () -> sourceOffset = revealRow(logicalRow, sourceOffset, rows, maxSourceOffset));
+            }
+        }
+        navigation.revealFocus(DebuggerNavigation.Group.SOURCES);
         if (indices.isEmpty()) text(graphics, tr("codon.ui.no_sources"), area.x() + 7, area.y() + 24, area.width() - 14, MUTED);
         for (int row = 0; row < rows && sourceOffset + row < indices.size(); row++) {
             int index = indices.get(sourceOffset + row);
@@ -530,7 +554,14 @@ public final class DebuggerOverlay {
             selected, leftAligned, subdued, action);
         usedButtons.add(id);
         controls.add(button);
+        navigation.bind(id, navigationGroup, button);
         return button;
+    }
+
+    static int revealRow(int row, int offset, int rows, int maximum) {
+        if (row < offset) offset = row;
+        else if (row >= offset + rows) offset = row - rows + 1;
+        return Math.clamp(offset, 0, maximum);
     }
 
     private DebuggerButton iconButton(String id, Bounds bounds, Component label, DebuggerIcon icon,

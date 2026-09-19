@@ -26,15 +26,16 @@ public final class CodonScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+        GuiEventListener focused = getFocused();
+        overlay.navigation().rememberFocus(focused);
         List<DebuggerButton> buttons = overlay.render(graphics, mouseX, mouseY, partialTick, true, input);
         if (!registered.equals(buttons)) {
-            GuiEventListener focused = getFocused();
             setFocused(null);
             clearWidgets();
             buttons.forEach(this::addWidget);
-            if (focused != null && buttons.contains(focused)) setFocused(focused);
             registered = buttons;
         }
+        setFocused(overlay.navigation().restoreFocus(focused, minecraft.getLastInputType().isKeyboard()));
     }
 
     @Override
@@ -44,7 +45,11 @@ public final class CodonScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
-        return overlay.scroll(x, y, scrollX, scrollY) || super.mouseScrolled(x, y, scrollX, scrollY);
+        if (overlay.scroll(x, y, scrollX, scrollY)) {
+            overlay.navigation().mouseScrolled();
+            return true;
+        }
+        return super.mouseScrolled(x, y, scrollX, scrollY);
     }
 
     @Override
@@ -54,7 +59,9 @@ public final class CodonScreen extends Screen {
             onClose();
             return true;
         }
-        return input.handleScreenKey(event) || super.keyPressed(event);
+        return input.handleScreenKey(event)
+            || overlay.navigation().keyPressed(event, getFocused(), this::setFocused)
+            || super.keyPressed(event);
     }
 
     @Override

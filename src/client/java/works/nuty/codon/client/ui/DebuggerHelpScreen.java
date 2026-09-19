@@ -1,5 +1,6 @@
 package works.nuty.codon.client.ui;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
@@ -27,6 +28,10 @@ public final class DebuggerHelpScreen extends Screen {
     private int top;
     private int panelWidth;
     private int panelHeight;
+    private @Nullable DebuggerButton selectedTopicTab;
+    private final List<DebuggerButton> topicTabs = new ArrayList<>();
+    private DebuggerButton closeButton;
+    private int focusedTopic;
 
     public DebuggerHelpScreen(@Nullable Screen parent, InputManager input) {
         super(Component.translatable("codon.ui.information"));
@@ -42,13 +47,17 @@ public final class DebuggerHelpScreen extends Screen {
         top = (height - panelHeight) / 2;
         lines.clear();
         int tabWidth = Math.max(1, (panelWidth - 16) / TOPICS.length);
+        selectedTopicTab = null;
+        topicTabs.clear();
         for (int index = 0; index < TOPICS.length; index++) {
             final int selected = index;
             var tab = new DebuggerButton();
             tab.configure(left + 8 + index * tabWidth, top + 27, tabWidth - 2, 20,
                 help("tab." + TOPICS[index]), true, topic == index, false, false,
-                () -> { topic = selected; offset = 0; rebuildWidgets(); });
+                () -> selectTopic(selected, tab));
             addRenderableWidget(tab);
+            topicTabs.add(tab);
+            if (topic == index) selectedTopicTab = tab;
         }
         var client = Minecraft.getInstance();
         switch (topic) {
@@ -102,7 +111,7 @@ public final class DebuggerHelpScreen extends Screen {
         var close = new DebuggerButton();
         close.configure(left + panelWidth - 56, top + 4, 50, 18,
             Component.translatable("gui.done"), true, false, false, false, this::onClose);
-        addRenderableWidget(close);
+        closeButton = addRenderableWidget(close);
     }
 
     private static Component help(String key, Object... args) {
@@ -127,6 +136,15 @@ public final class DebuggerHelpScreen extends Screen {
 
     private int visibleLines() { return Math.max(1, (panelHeight - 78) / (font.lineHeight + 3)); }
     private int maxOffset() { return Math.max(0, lines.size() - visibleLines()); }
+
+    private void selectTopic(int selected, DebuggerButton tab) {
+        boolean restoreKeyboardFocus = getFocused() == tab && Minecraft.getInstance().getLastInputType().isKeyboard();
+        topic = selected;
+        focusedTopic = selected;
+        offset = 0;
+        rebuildWidgets();
+        if (restoreKeyboardFocus && selectedTopicTab != null) setFocused(selectedTopicTab);
+    }
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
@@ -160,22 +178,32 @@ public final class DebuggerHelpScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
-        if (event.key() == 268 || event.key() == 269) {
-            offset = event.key() == 268 ? 0 : maxOffset();
+        if (event.key() == InputConstants.KEY_TAB) {
+            int current = topicTabs.indexOf(getFocused());
+            if (current >= 0) {
+                focusedTopic = current;
+                setFocused(closeButton);
+            } else setFocused(topicTabs.get(focusedTopic));
+            return true;
+        }
+        if (event.key() == InputConstants.KEY_HOME || event.key() == InputConstants.KEY_END) {
+            offset = event.key() == InputConstants.KEY_HOME ? 0 : maxOffset();
             return true;
         }
         int delta = switch (event.key()) {
-            case 265 -> -1;
-            case 264 -> 1;
-            case 266 -> -visibleLines();
-            case 267 -> visibleLines();
+            case InputConstants.KEY_UP -> -1;
+            case InputConstants.KEY_DOWN -> 1;
+            case InputConstants.KEY_PAGEUP -> -visibleLines();
+            case InputConstants.KEY_PAGEDOWN -> visibleLines();
             default -> 0;
         };
         if (delta != 0) {
             offset = Math.clamp(offset + delta, 0, maxOffset());
             return true;
         }
-        return super.keyPressed(event);
+        return DebuggerNavigation.navigateWithin(event,
+            topicTabs.contains(getFocused()) ? topicTabs : List.of(closeButton), getFocused(), this::setFocused)
+            || super.keyPressed(event);
     }
 
     @Override
