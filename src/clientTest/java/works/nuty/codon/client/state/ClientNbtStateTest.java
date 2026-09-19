@@ -210,7 +210,7 @@ class ClientNbtStateTest {
     }
 
     @Test
-    void enabledPreferenceSurvivesResumeAndResetWithoutDuplicateNotifications() {
+    void enabledPreferenceSurvivesResumeAndResetWithoutHidingCurrentNbt() {
         EntityRef a = entity("a");
         ClientNbtState state = new ClientNbtState(() -> 0);
         AtomicInteger notifications = new AtomicInteger();
@@ -219,10 +219,10 @@ class ClientNbtStateTest {
         state.setEnabled(false);
         assertEquals(1, notifications.get());
         state.paused(1, List.of(source(a)), 0);
-        assertTrue(state.drainQueries().isEmpty());
+        ClientNbtState.Query pending = onlyQuery(state);
         state.setEnabled(true);
         assertTrue(state.enabled());
-        onlyQuery(state);
+        state.accept(1, pending.requestId(), page("root", "\"root\"", false));
         state.resumed();
         assertTrue(state.enabled());
         state.setEnabled(false);
@@ -243,6 +243,7 @@ class ClientNbtStateTest {
         assertTrue(state.toggle(a.uuid(), branch.path()));
         assertTrue(state.toggleSource(a.uuid()));
         assertFalse(state.sourceExpanded(a.uuid()));
+        assertFalse(state.rows(a.uuid()).isEmpty(), "legacy source collapse cannot hide active NBT rows");
 
         state.stepping();
         state.paused(2, List.of(source(null), source(b), source(a)), 0);

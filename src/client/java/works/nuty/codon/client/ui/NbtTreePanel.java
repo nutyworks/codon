@@ -16,7 +16,6 @@ import works.nuty.codon.core.model.WatchSpec;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.UUID;
@@ -33,29 +32,20 @@ public final class NbtTreePanel {
     private Bounds scrollBounds = EMPTY;
     private long boundsPause;
     private ClientNbtState.@Nullable EntitySource boundsSource;
-    private record DisplayRow(ClientNbtState.EntitySource source, ClientNbtState.@Nullable Row row) {}
     private int offset;
+    private @Nullable String anchorPath;
+    private int anchorRow;
+    private Bounds anchorViewport = EMPTY;
 
     public NbtTreePanel(ClientDebuggerState state) {
         this.state = state;
     }
 
-    public int preferredHeight(int maximum) {
-        if (selectedSource() == null || maximum < HEADER_HEIGHT) return 0;
-        if (!state.nbt().enabled()) return Math.min(maximum, HEADER_HEIGHT);
-        return Math.min(maximum, 22 + displayRows().size() * ROW_HEIGHT);
-    }
+    /** The overlay reserves this panel from the inspector viewport, independent of tree content. */
+    public boolean hasSelectedSource() { return selectedSource() != null; }
 
-    private List<DisplayRow> displayRows() {
-        List<DisplayRow> rows = new ArrayList<>();
-        var source = selectedSource();
-        if (source != null) {
-            rows.add(new DisplayRow(source, null));
-            if (state.nbt().sourceExpanded(source.executor().uuid())) {
-                for (var row : state.nbt().rows(source.executor().uuid())) rows.add(new DisplayRow(source, row));
-            }
-        }
-        return rows;
+    private List<ClientNbtState.Row> displayRows(ClientNbtState.EntitySource source) {
+        return state.nbt().rows(source.executor().uuid());
     }
 
     private ClientNbtState.@Nullable EntitySource selectedSource() {
@@ -72,48 +62,35 @@ public final class NbtTreePanel {
         long pauseId = pauseId();
         if (boundsPause != pauseId || !selectedSource.equals(boundsSource)) {
             offset = 0;
+            anchorPath = null;
+            anchorViewport = EMPTY;
             boundsPause = pauseId;
             boundsSource = selectedSource;
         }
         graphics.fill(area.x(), area.y(), area.x() + area.width(), area.y() + area.height(), SURFACE);
         graphics.outline(area.x(), area.y(), area.width(), area.height(), BORDER);
 
-        boolean enabled = state.nbt().enabled();
-        Component title = Component.literal(enabled ? "▾ NBT · 1" : "▸ NBT · 1");
-        controls.button("nbt-header", new Bounds(area.x() + 2, area.y() + 1, Math.max(1, area.width() - 4), HEADER_HEIGHT - 2),
-            title, true, enabled, () -> {
-                if (isCurrent(pauseId, selectedSource.executor().uuid())) state.nbt().setEnabled(!enabled);
-            }).setTooltip(Tooltip.create(Component.translatable(enabled ? "codon.nbt.collapse" : "codon.nbt.expand")));
-        if (!enabled) {
-            clearBounds();
-            return;
-        }
+        // This is an inert heading, registered only so the screen can retain its stable bounds.
+        controls.button("nbt-heading", new Bounds(area.x() + 2, area.y() + 1, Math.max(1, area.width() - 4), HEADER_HEIGHT - 2),
+            Component.literal("NBT"), false, false, () -> { }).withoutChrome();
 
-        List<DisplayRow> rows = displayRows();
+        List<ClientNbtState.Row> rows = displayRows(selectedSource);
         int visibleRows = Math.max(0, (area.height() - HEADER_HEIGHT - 2) / ROW_HEIGHT);
-        offset = Math.clamp(offset, 0, Math.max(0, rows.size() - visibleRows));
         scrollBounds = new Bounds(area.x(), area.y() + HEADER_HEIGHT, area.width(), Math.max(0, area.height() - HEADER_HEIGHT - 2));
+        applyAnchor(rows, visibleRows);
+        offset = Math.clamp(offset, 0, maximumOffset(rows.size(), visibleRows));
         for (int index = 0; index < visibleRows && offset + index < rows.size(); index++) {
-            DisplayRow display = rows.get(offset + index);
             Bounds bounds = new Bounds(area.x() + 3, area.y() + HEADER_HEIGHT + index * ROW_HEIGHT,
                 Math.max(1, area.width() - 9), ROW_HEIGHT);
-            String idPrefix = "nbt-" + display.source().index() + "-" + display.source().executor().uuid() + "-";
-            if (display.row() == null) {
-                var source = display.source();
-                boolean expanded = state.nbt().sourceExpanded(source.executor().uuid());
-                Component label = Component.literal((expanded ? "▾ #" : "▸ #") + (source.index() + 1) + " · " + source.executor().name());
-                controls.button(idPrefix + "source", bounds, label, true, expanded, () -> {
-                    if (!isCurrent(pauseId, source.executor().uuid())) return;
-                    state.nbt().toggleSource(source.executor().uuid());
-                }).setTooltip(Tooltip.create(Component.literal(source.executor().name() + "\n" + source.executor().uuid())));
-            } else {
-                renderRow(graphics, bounds, mouseX, mouseY, controls, display.row(), pauseId, display.source().executor(), idPrefix);
-            }
+            ClientNbtState.Row row = rows.get(offset + index);
+            String idPrefix = "nbt-" + selectedSource.index() + "-" + selectedSource.executor().uuid() + "-";
+            renderRow(graphics, bounds, mouseX, mouseY, controls, row, pauseId, selectedSource.executor(), idPrefix);
         }
-        if (visibleRows > 0 && rows.size() > visibleRows) {
+        int maximumOffset = maximumOffset(rows.size(), visibleRows);
+        if (visibleRows > 0 && maximumOffset > 0) {
             int height = visibleRows * ROW_HEIGHT;
-            int thumb = Math.max(8, height * visibleRows / rows.size());
-            int top = area.y() + HEADER_HEIGHT + (height - thumb) * offset / (rows.size() - visibleRows);
+            int thumb = Math.max(8, height * visibleRows / (visibleRows + maximumOffset));
+            int top = area.y() + HEADER_HEIGHT + (height - thumb) * offset / maximumOffset;
             graphics.fill(area.x() + area.width() - 3, area.y() + HEADER_HEIGHT,
                 area.x() + area.width() - 1, area.y() + HEADER_HEIGHT + height, BORDER);
             graphics.fill(area.x() + area.width() - 3, top, area.x() + area.width() - 1, top + thumb, TEAL);
@@ -121,15 +98,49 @@ public final class NbtTreePanel {
     }
 
     public boolean scroll(double x, double y, double amount) {
-        if (!scrollBounds.contains(x, y) || amount == 0 || !state.nbt().enabled()) return false;
-        int rows = displayRows().size();
+        if (!scrollBounds.contains(x, y) || amount == 0) return false;
+        var source = selectedSource();
+        if (source == null) return false;
+        int rows = displayRows(source).size();
         int visibleRows = Math.max(0, scrollBounds.height() / ROW_HEIGHT);
+        anchorPath = null;
+        anchorViewport = EMPTY;
         offset = Math.clamp(offset + (amount > 0 ? -1 : 1), 0, Math.max(0, rows - visibleRows));
         return true;
     }
 
     public void clearBounds() {
         scrollBounds = EMPTY;
+    }
+
+    private void applyAnchor(List<ClientNbtState.Row> rows, int visibleRows) {
+        if (anchorPath == null) return;
+        if (anchorViewport.width() != scrollBounds.width() || anchorViewport.height() != scrollBounds.height()) {
+            anchorPath = null;
+            anchorViewport = EMPTY;
+            return;
+        }
+        int index = -1;
+        for (int row = 0; row < rows.size(); row++) {
+            if (anchorPath.equals(rows.get(row).path())) {
+                index = row;
+                break;
+            }
+        }
+        if (index >= 0) offset = Math.max(0, index - anchorRow);
+        else {
+            anchorPath = null;
+            anchorViewport = EMPTY;
+        }
+        offset = Math.clamp(offset, 0, maximumOffset(rows.size(), visibleRows));
+    }
+
+    private int maximumOffset(int rowCount, int visibleRows) {
+        // An anchored branch may keep a short trailing viewport after collapse so its click target
+        // remains at the same row. Ordinary wheel scrolling still stops at the last full page.
+        int fullPageMaximum = Math.max(0, rowCount - visibleRows);
+        return anchorPath == null ? fullPageMaximum
+            : Math.max(fullPageMaximum, Math.clamp(offset, 0, Math.max(0, rowCount - 1)));
     }
 
     private void renderRow(GuiGraphicsExtractor graphics, Bounds bounds, int mouseX, int mouseY, Controls controls,
@@ -158,8 +169,8 @@ public final class NbtTreePanel {
         String prefix = node.expandable() ? (row.expanded() ? "▾ " : "▸ ") : "  ";
         Component label = Component.literal(prefix + node.name() + ": " + node.preview());
         String nodeId = stable(node.path().isEmpty() ? node.name() + ":" + bounds.y() : node.path());
-        controls.button(idPrefix + "node-" + nodeId, content, label, node.expandable(), row.expanded(),
-            () -> { if (isCurrent(pauseId, executor.uuid())) state.nbt().toggle(executor.uuid(), node.path()); });
+        controls.button(idPrefix + "node-" + nodeId, content, label, node.expandable(), false,
+            () -> toggleNode(pauseId, executor.uuid(), node.path()));
         if (bounds.contains(mouseX, mouseY)) {
             graphics.setComponentTooltipForNextFrame(Minecraft.getInstance().font,
                 List.of(Component.literal(node.path()), Component.literal(node.preview())), mouseX, mouseY);
@@ -184,6 +195,20 @@ public final class NbtTreePanel {
             pinTooltip = left.copy().append("\n").append(right);
         }
         pin.setTooltip(Tooltip.create(pinTooltip.copy().append("\n").append(node.path())));
+    }
+
+    private void toggleNode(long pauseId, UUID executor, String path) {
+        if (!isCurrent(pauseId, executor)) return;
+        List<ClientNbtState.Row> rows = state.nbt().rows(executor);
+        for (int index = 0; index < rows.size(); index++) {
+            if (path.equals(rows.get(index).path())) {
+                anchorPath = path;
+                anchorRow = index - offset;
+                anchorViewport = scrollBounds;
+                break;
+            }
+        }
+        state.nbt().toggle(executor, path);
     }
 
     private void renderStatus(GuiGraphicsExtractor graphics, Bounds content, Controls controls, ClientNbtState.Row row,

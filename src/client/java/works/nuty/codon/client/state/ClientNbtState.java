@@ -123,7 +123,9 @@ public final class ClientNbtState {
     public List<Row> rows() { return executor() == null ? List.of() : rows(executor().uuid()); }
     public List<Row> rows(UUID executor) {
         expire();
-        Tree tree = enabled ? tree(executor) : null;
+        // The inspector always exposes the current source. Retain enabled/sourceExpanded for older
+        // persisted settings and callers, but never let them hide current NBT or suppress its data.
+        Tree tree = tree(executor);
         if (tree == null) return List.of();
         List<Row> rows = new ArrayList<>();
         append(tree, "", 0, rows);
@@ -131,11 +133,10 @@ public final class ClientNbtState {
     }
 
     public List<Query> drainQueries() {
-        if (!enabled || pauseId <= 0) return List.of();
+        if (pauseId <= 0) return List.of();
         List<Query> queries = new ArrayList<>();
         for (EntitySource source : entitySources) {
             UUID uuid = source.executor().uuid();
-            if (!sourceExpanded(uuid)) continue;
             Tree tree = tree(uuid);
             for (Row row : rows(uuid)) {
                 if (row.kind() != Kind.STATUS || row.status() != null) continue;

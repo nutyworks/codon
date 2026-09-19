@@ -35,6 +35,11 @@ import static works.nuty.codon.client.ui.DebuggerTheme.*;
 /** Shared HUD/screen presentation. Only the menu screen registers the rendered controls. */
 public final class DebuggerOverlay {
     private static final Bounds EMPTY = new Bounds(0, 0, 0, 0);
+    private static final int SOURCE_LIST_MIN_HEIGHT = 40;
+    private static final int SOURCE_LIST_MAX_HEIGHT = 87;
+    private static final int SOURCE_DETAILS_VIEWPORT_HEIGHT = 80;
+    private static final int NBT_HEADER_VIEWPORT_HEIGHT = 20;
+    private static final int NBT_MIN_VIEWPORT_HEIGHT = 54;
     private final ClientDebuggerState state;
     private final NbtTreePanel nbtPanel;
     private final CommandPanel commandPanel;
@@ -47,6 +52,8 @@ public final class DebuggerOverlay {
     private List<Integer> expandedGroup = List.of();
     private int sourceOffset;
     private int maxSourceOffset;
+    private int lastSourceRows = -1;
+    private int lastSelectedSource = -1;
     private Bounds watchSummaryBounds = EMPTY;
     private int watchSummaryOffset;
     private int maxWatchSummaryOffset;
@@ -313,16 +320,20 @@ public final class DebuggerOverlay {
 
     private void renderSourcesWithDetails(GuiGraphicsExtractor graphics, Bounds body,
                                           PauseSnapshot snapshot, int headingInset) {
-        // Keep source selection accessible while its details and NBT share the inspector.
-        int sourceCount = expandedGroup.isEmpty() ? state.displayedSources().size() : expandedGroup.size();
-        int preferredListHeight = 30 + Math.clamp(sourceCount, 1, 3) * 19;
-        int nbtPreferred = nbtPanel.preferredHeight(Math.min(220, Math.max(0, body.height() - 49 - 22)));
-        int nbtFloor = nbtPreferred > 18 ? 54 : nbtPreferred;
-        int nbtHeight = Math.min(nbtPreferred, Math.max(nbtFloor,
-            body.height() - preferredListHeight - sourceDetailsHeight()));
-        int detailHeight = Math.min(sourceDetailsHeight(), Math.max(0, body.height() - 49 - nbtHeight));
+        // Inspector regions are viewport allocations. Tree loading and expansion must never move controls.
+        boolean hasNbt = nbtPanel.hasSelectedSource();
+        int listHeight = Math.min(body.height(),
+            Math.max(SOURCE_LIST_MIN_HEIGHT, Math.min(SOURCE_LIST_MAX_HEIGHT, body.height() / 3)));
+        int remainingHeight = body.height() - listHeight;
+        if (hasNbt && remainingHeight < NBT_HEADER_VIEWPORT_HEIGHT) {
+            listHeight = body.height();
+            remainingHeight = 0;
+        }
+        int nbtMinimum = hasNbt ? NBT_MIN_VIEWPORT_HEIGHT : 0;
+        int detailHeight = Math.min(SOURCE_DETAILS_VIEWPORT_HEIGHT,
+            Math.max(0, remainingHeight - nbtMinimum));
         if (detailHeight < 22) detailHeight = 0;
-        int listHeight = body.height() - detailHeight - nbtHeight;
+        int nbtHeight = Math.max(0, remainingHeight - detailHeight);
         renderSources(graphics, new Bounds(body.x(), body.y(), body.width(), listHeight), snapshot, headingInset);
         if (detailHeight > 0) renderSourceDetails(graphics,
             new Bounds(body.x(), body.y() + listHeight, body.width(), detailHeight), 0);
@@ -346,8 +357,18 @@ public final class DebuggerOverlay {
             for (int i = 0; i < state.displayedSources().size(); i++) all.add(i);
             indices = all;
         }
-        int rows = Math.max(0, (area.height() - 30) / 19);
+        int rows = Math.max(0, (area.height() - 21) / 19);
         maxSourceOffset = Math.max(0, indices.size() - Math.max(1, rows));
+        int selectedSource = state.selectedSourceIndex();
+        if (rows > 0 && (rows != lastSourceRows || selectedSource != lastSelectedSource)) {
+            int selectedRow = indices.indexOf(selectedSource);
+            // Keep the inspected entity identifiable after a resize or an external selection.
+            // Clicking an already visible row and ordinary wheel scrolling keep their positions.
+            if (selectedRow >= 0 && selectedRow < sourceOffset) sourceOffset = selectedRow;
+            else if (selectedRow >= sourceOffset + rows) sourceOffset = selectedRow - rows + 1;
+        }
+        lastSourceRows = rows;
+        lastSelectedSource = selectedSource;
         sourceOffset = Math.max(0, Math.min(sourceOffset, maxSourceOffset));
         sourceScrollBounds = area;
         if (indices.isEmpty()) text(graphics, tr("codon.ui.no_sources"), area.x() + 7, area.y() + 24, area.width() - 14, MUTED);
@@ -368,8 +389,10 @@ public final class DebuggerOverlay {
                 }), index).setTooltip(Tooltip.create(tooltip));
         }
         if (rows > 0 && indices.size() > rows) {
-            text(graphics, (sourceOffset + 1) + "–" + Math.min(indices.size(), sourceOffset + rows) + " / " + indices.size(),
-                area.x() + 7, area.y() + area.height() - 8, area.width() - 14, MUTED);
+            if (area.height() - (21 + rows * 19) >= 9) {
+                text(graphics, (sourceOffset + 1) + "–" + Math.min(indices.size(), sourceOffset + rows) + " / " + indices.size(),
+                    area.x() + 7, area.y() + area.height() - 8, area.width() - 14, MUTED);
+            }
             scrollbar(graphics, area.x() + area.width() - 5, area.y() + 21, Math.max(1, rows * 19 - 2),
                 sourceOffset, maxSourceOffset, rows, indices.size());
         }
@@ -431,21 +454,6 @@ public final class DebuggerOverlay {
         if (hoverX >= x && hoverX < x + 16 && hoverY >= y && hoverY < y + 16) {
             graphics.setTooltipForNextFrame(client.font, description, hoverX, hoverY);
         }
-    }
-
-    private int sourceDetailsHeight() {
-        PauseSource source = state.selectedSource();
-        if (source == null) return 20;
-        int height = 6 + 16 + 10 + 11 + 11 + 11 + 5;
-        if (!state.selectedSourceDropped()) {
-            ExecutionFlowContext parent = state.selectedFlowParent();
-            if (parent != null) {
-                if (!Objects.equals(parent.source().entity(), source.entity())) height += 11;
-                if (!parent.source().dimension().equals(source.dimension())) height += 11;
-                if (!parent.source().anchor().equals(source.anchor())) height += 11;
-            }
-        }
-        return height;
     }
 
     private int sourceColor(int index, int fallback) {

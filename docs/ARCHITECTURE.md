@@ -115,10 +115,15 @@ and changes that require subsequent simulation ticks still wait for normal execu
 - `ui/DebuggerOverlay` — shared transparent HUD and cursor-mode presentation: control bar and source
   inspector on the left (clear of the scoreboard). `CommandPanel` combines a single horizontally
   scrollable call path (trackpad or mouse wheel, with clipped hit boxes and selected-frame visibility) and recorded command
-  clauses with context counts below the world. Navigation, Current, Watch, and panel expansion share
-  the call-path header; there is no duplicate location/invocation caption above the command. Frame and
+  clauses with context counts below the world. Navigation, Current, Watch, and panel expansion occupy
+  fixed slots in the bottom action row; Current remains visible but disabled at the live stop.
+  The panel expands upward while its actions remain at the same screen coordinates. The call path
+  stays above the clauses without a duplicate location/invocation caption. Frame and
   clause navigation share the explicit invocation/stage selection; the actual stop remains marked
   separately, and Current returns to it. Long commands wrap and scroll, with an expanded-height mode.
+  Selecting an already visible clause preserves the scroll position; automatic scrolling only reveals
+  an off-screen selection. The bottom row adds terminal run/success counts or recording warnings,
+  without repeating each nonterminal clause's context counts.
   Unobserved command suffixes stay visible without invented counts. Repeated or nonordered ranges
   preserve the original command and show each recorded stage separately inside the same panel.
   Historical invocations and caller frames cannot supply live Watch/NBT executors. For the current
@@ -199,9 +204,13 @@ executor first: `Pig #abcd1234 · Health ...... 20.0f`. Tooltips retain the full
 reports `no target`. Unknown names use the UUID alone until the server or a pause source supplies a name.
 
 The Watches heading always includes a **+** button to open the definition editor, even when the
-list is empty. The source inspector shows a collapsible NBT section for its selected live entity source.
+list is empty. The source inspector always shows NBT for its selected live entity source.
 Selecting a non-entity or historical source, or hiding the inspector, hides the tree; pinned values remain
-in Watches. New entity sections start expanded. Compound fields and list/array elements expand lazily; each tree pages
+in Watches. There is one passive NBT heading, with no section toggle or repeated entity heading.
+Inspector regions are sized from the viewport so loading or expanding fields does not move the heading
+or source details. Compact layouts prioritize the selected source row and NBT data over secondary details.
+Expanding or collapsing a field preserves that field's screen row, including at the tree's bottom;
+wheel scrolling releases this anchor. Compound fields and list/array elements expand lazily; each tree pages
 through 32 immediate children at a time. Left-clicking a field pin adds its exact path bound to that
 source's UUID; an active pin removes only that binding. Right-clicking fills the same path for every
 current entity source, skipping existing bindings and duplicate UUIDs. If all current entities already
@@ -210,11 +219,10 @@ and entities outside the current sources are preserved.
 Both mouse actions are explained on hover. Non-entity sources have no NBT section.
 
 `ClientNbtState` caches pages by executor UUID within one pause and correlates every reply with its
-pause/request IDs. Steps and Continue discard pages and late requests while retaining each UUID's section
-collapse and expanded paths, including across reordered sources and temporary non-entity stops. Closing and
-reopening the debugger overlay keeps these preferences. Disconnect clears per-entity presentation state;
-the global NBT expansion preference is saved in client settings and survives world changes and restarts.
-Disabling the tree or collapsing an entity section suppresses its new reads; the existing pause stays intact.
+pause/request IDs. Steps and Continue discard pages and late requests while retaining each UUID's
+expanded field paths, including across reordered sources and temporary non-entity stops. Closing and
+reopening the debugger overlay keeps these preferences. Disconnect clears per-entity presentation state.
+Legacy whole-tree and entity-section collapse settings no longer suppress NBT rows or reads.
 Requests use the same owner-only `/codon nbt <pause> <request> <source> <offset> root|path ...` mailbox.
 The server reads the loaded source entity across dimensions without loading chunks or mutating NBT.
 Root data is bounded to 1 MiB estimated size, pages to 32 nodes, previews/names to 128 characters,
@@ -301,7 +309,8 @@ Client and server must both use the updated mod for pause visualization and watc
 ## Persistence
 
 Client preferences are shared across worlds and servers in the Minecraft instance's
-`config/codon.json`: gizmo mode, inspector visibility, inspector tab, and NBT expansion. Changes save immediately.
+`config/codon.json`: gizmo mode, inspector visibility, and inspector tab. Changes save immediately.
+The legacy whole-NBT expansion setting is accepted for compatibility but no longer hides NBT.
 An unset (`null`) inspector visibility retains the responsive automatic default. Key bindings
 continue to use Minecraft's own options file. Pause snapshots, source/frame selection, scroll
 positions, and freecam state remain session-local.
@@ -387,7 +396,7 @@ the combined response must stay below 750 ms, including the outgoing executor's 
 compound/list/array paging, size limits, and the reply codec in the Minecraft runtime.
 `DebuggerNbtTreeGameTest` parks the integrated server and exercises the empty Watches **+** button,
 the selected live source's NBT tree inside the source inspector (absent for non-entity sources and a hidden inspector),
-NBT collapse/expand retained across F9, Continue, reordered/temporarily absent sources, and a recreated overlay,
+always-visible NBT and field expansion retained across F9, Continue, reordered/temporarily absent sources, and a recreated overlay,
 scrolling and pagination, individual left-click array-element pins and right-click
 all-source pins. Pinned values stay in Watches when the selected source changes or the inspector is hidden.
 Repeated right-clicks remove and re-add the whole current-source group; left-click removal affects only its own UUID.

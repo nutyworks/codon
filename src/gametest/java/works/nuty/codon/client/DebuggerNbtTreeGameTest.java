@@ -23,6 +23,7 @@ import works.nuty.codon.client.ui.DebuggerOverlay;
 import works.nuty.codon.client.ui.WatchScreen;
 import works.nuty.codon.client.ui.WatchFormatting;
 import works.nuty.codon.client.ui.layout.DebuggerLayout;
+import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds;
 import works.nuty.codon.core.model.BlockLocation;
 import works.nuty.codon.core.model.CommandSnippet;
 import works.nuty.codon.core.model.PauseSource;
@@ -104,15 +105,16 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
                 assertNoNbtControls(context);
                 setInspectorVisible(context, true);
                 assertNbtHeaderIsInsideInspector(context);
-                collapseAndExpandHeader(context);
+                assertPermanentNbtHeading(context);
+                assertNbtHeadingStableDuringReload(context, first.get().getUUID());
+                assertCompactNbtRemainsUsable(context, first.get().getUUID());
                 expandAndPinUuidLeaf(context, first.get().getUUID(), "A");
                 context.runOnClient(client -> require(CodonClientMod.state().watches().definitions().size() == 1,
                     "left-click adds only the field's own source"));
                 expandPosBranch(context, first.get().getUUID());
 
-                collapseSource(context, 2);
-                selectSource(context, 2);
-                expandSource(context, 3);
+                collapseSelectedSourcePreference(context);
+                switchSourceAndAssertNbtHeadingStable(context, 2);
                 expandAndPinUuidLeaf(context, second.get().getUUID(), "B", true);
                 context.waitFor(client -> pinsReady(first.get().getUUID(), second.get().getUUID()), 200);
                 selectSource(context, 0);
@@ -205,25 +207,20 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
         context.runOnClient(client -> {
             require(!CodonClientMod.state().nbt().sourceExpanded(a), "A starts collapsed");
             require(CodonClientMod.state().nbt().sourceExpanded(b), "B starts expanded");
-            CodonScreen screen = codonScreen(client.gui.screen());
-            click(screen, button(screen, label -> label.startsWith("▾ NBT · ")));
+            CodonClientMod.state().nbt().setEnabled(false);
         });
         openCodonScreen(context);
-        context.runOnClient(client -> require(findButton(codonScreen(client.gui.screen()),
-            label -> label.startsWith("▸ NBT · ")) != null, "a recreated overlay keeps NBT collapsed"));
+        assertPermanentNbtHeading(context);
         advance(context, false);
         context.runOnClient(client -> {
             var state = CodonClientMod.state();
             require(state.snapshot().pauseSources().get(1).entity().uuid().equals(b), "sources actually reordered");
-            require(!state.nbt().enabled(), "global NBT collapse survives F9");
+            require(!state.nbt().enabled(), "legacy global NBT preference survives F9");
             require(!state.nbt().sourceExpanded(a) && state.nbt().sourceExpanded(b), "collapse follows UUID after reorder");
         });
         context.waitTicks(3);
-        context.takeScreenshot("codon-nbt-collapsed-after-step");
-        context.runOnClient(client -> {
-            CodonScreen screen = codonScreen(client.gui.screen());
-            click(screen, button(screen, label -> label.startsWith("▸ NBT · ")));
-        });
+        context.takeScreenshot("codon-nbt-visible-with-legacy-collapse-after-step");
+        assertPermanentNbtHeading(context);
         showNode(context, b, "▾ UUID:");
         advance(context, true);
         context.runOnClient(client -> require(CodonClientMod.state().nbt().entitySources().isEmpty(),
@@ -233,12 +230,11 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
         selectSource(context, 1);
         context.runOnClient(client -> {
             var nbt = CodonClientMod.state().nbt();
-            require(nbt.enabled(), "global NBT expansion survives Continue and the next F9");
+            require(!nbt.enabled(), "legacy global NBT preference survives Continue and the next F9");
             require(!nbt.sourceExpanded(a) && nbt.sourceExpanded(b), "returning entities retain distinct collapse states");
         });
         openCodonScreen(context);
-        context.runOnClient(client -> require(findButton(codonScreen(client.gui.screen()),
-            label -> label.startsWith("▸ #2 · ")) != null, "returning A is visibly collapsed"));
+        assertPermanentNbtHeading(context);
         context.takeScreenshot("codon-nbt-expansion-preserved");
         selectSource(context, 2);
         showNode(context, b, "▾ UUID:");
@@ -281,7 +277,7 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
     private static void assertNoNbtControls(ClientGameTestContext context) {
         context.runOnClient(client -> {
             CodonScreen screen = codonScreen(client.gui.screen());
-            require(findButton(screen, message -> message.startsWith("▾ NBT · ") || message.startsWith("▸ NBT · ")) == null,
+            require(findButton(screen, message -> message.equals("NBT")) == null,
                 "a non-entity source does not render NBT controls");
         });
     }
@@ -289,7 +285,7 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
     private static void assertNbtHeaderIsInsideInspector(ClientGameTestContext context) {
         context.runOnClient(client -> {
             CodonScreen screen = codonScreen(client.gui.screen());
-            DebuggerButton header = button(screen, message -> message.startsWith("▾ NBT · ") || message.startsWith("▸ NBT · "));
+            DebuggerButton header = button(screen, message -> message.equals("NBT"));
             var inspector = DebuggerLayout.create(screen.width, screen.height, true).inspector();
             require(header.getX() >= inspector.x() && header.getX() + header.getWidth() <= inspector.x() + inspector.width()
                     && header.getY() >= inspector.y() && header.getY() + header.getHeight() <= inspector.y() + inspector.height(),
@@ -324,21 +320,75 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
         context.waitTicks(3);
     }
 
-    private static void collapseAndExpandHeader(ClientGameTestContext context) {
+    private static void assertPermanentNbtHeading(ClientGameTestContext context) {
         context.runOnClient(client -> {
             CodonScreen screen = codonScreen(client.gui.screen());
-            click(screen, button(screen, message -> message.startsWith("▾ NBT · ")));
-            require(!CodonClientMod.state().nbt().enabled(), "NBT header collapses the tree");
+            DebuggerButton heading = button(screen, message -> message.equals("NBT"));
+            require(!heading.active, "NBT heading is passive and cannot collapse selected-source data");
+            require(findButton(screen, message -> message.startsWith("▾ #") || message.startsWith("▸ #")) == null,
+                "the selected source identity is not repeated inside NBT");
+        });
+    }
+
+    private static void assertNbtHeadingStableDuringReload(ClientGameTestContext context, UUID executor) {
+        AtomicReference<Bounds> before = new AtomicReference<>();
+        context.runOnClient(client -> {
+            DebuggerButton heading = button(codonScreen(client.gui.screen()), message -> message.equals("NBT"));
+            before.set(bounds(heading));
+            CodonClientMod.state().nbt().refresh(executor);
+            // Hold this request before transport so a fast local server cannot skip the pending render.
+            require(CodonClientMod.state().nbt().drainQueries().stream().anyMatch(query -> query.executor().equals(executor)),
+                "The fixture holds the selected source's pending root read");
         });
         context.waitTicks(3);
-        context.takeScreenshot("codon-nbt-tree-collapsed");
+        context.runOnClient(client -> require(CodonClientMod.state().nbt().rows(executor).stream()
+            .allMatch(row -> row.kind() == ClientNbtState.Kind.STATUS && row.status() == null),
+            "NBT is still pending when its heading is measured"));
+        assertNbtHeadingBounds(context, before.get(), "pending NBT keeps its heading fixed");
+        context.takeScreenshot("codon-nbt-heading-pending");
+        context.runOnClient(client -> CodonClientMod.state().nbt().refresh(executor));
+        context.waitFor(client -> CodonClientMod.state().nbt().rows(executor).stream()
+            .anyMatch(row -> row.kind() == ClientNbtState.Kind.NODE), 200);
+        assertNbtHeadingBounds(context, before.get(), "loaded NBT keeps its heading fixed");
+        context.takeScreenshot("codon-nbt-heading-loaded");
+    }
+
+    private static void switchSourceAndAssertNbtHeadingStable(ClientGameTestContext context, int index) {
+        AtomicReference<Bounds> before = new AtomicReference<>();
+        context.runOnClient(client -> {
+            before.set(bounds(button(codonScreen(client.gui.screen()), message -> message.equals("NBT"))));
+            CodonClientMod.state().selectSource(index);
+        });
+        context.waitTicks(3);
+        assertNbtHeadingBounds(context, before.get(), "switching selected entity keeps the NBT heading fixed");
+        context.takeScreenshot("codon-nbt-heading-source-switch");
+    }
+
+    private static void assertCompactNbtRemainsUsable(ClientGameTestContext context, UUID executor) {
+        context.getInput().resizeWindow(640, 480);
+        context.waitTicks(3);
         context.runOnClient(client -> {
             CodonScreen screen = codonScreen(client.gui.screen());
-            click(screen, button(screen, message -> message.startsWith("▸ NBT · ")));
-            require(CodonClientMod.state().nbt().enabled(), "collapsed NBT header expands the tree");
+            DebuggerButton heading = button(screen, label -> label.equals("NBT"));
+            button(screen, label -> label.startsWith("#2 "));
+            require(CodonClientMod.state().nbt().rows(executor).stream()
+                .filter(row -> row.kind() == ClientNbtState.Kind.NODE)
+                .anyMatch(row -> findButton(screen, label -> label.equals(rowLabel(row))) != null),
+                "A compact inspector displays NBT data, not only its heading");
+            require(heading.getY() >= 0 && heading.getBottom() <= screen.height,
+                "The compact NBT heading stays inside the screen");
         });
-        context.waitFor(client -> CodonClientMod.state().nbt().entitySources().stream().allMatch(source ->
-            !CodonClientMod.state().nbt().rows(source.executor().uuid()).isEmpty()), 100);
+        context.takeScreenshot("codon-nbt-compact");
+        context.getInput().resizeWindow(1280, 900);
+        context.waitTicks(3);
+    }
+
+    private static void assertNbtHeadingBounds(ClientGameTestContext context, Bounds expected, String message) {
+        context.runOnClient(client -> require(bounds(button(codonScreen(client.gui.screen()), label -> label.equals("NBT"))).equals(expected), message));
+    }
+
+    private static Bounds bounds(DebuggerButton button) {
+        return new Bounds(button.getX(), button.getY(), button.getWidth(), button.getHeight());
     }
 
     private static void expandAndPinUuidLeaf(ClientGameTestContext context, UUID executor, String sourceName) {
@@ -347,12 +397,50 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
 
     private static void expandAndPinUuidLeaf(ClientGameTestContext context, UUID executor, String sourceName, boolean rightClick) {
         showNode(context, executor, "▸ UUID:");
+        AtomicReference<Bounds> uuidBounds = new AtomicReference<>();
+        AtomicReference<Double> clickX = new AtomicReference<>();
+        AtomicReference<Double> clickY = new AtomicReference<>();
         context.runOnClient(client -> {
             CodonScreen screen = codonScreen(client.gui.screen());
-            click(screen, button(screen, message -> message.startsWith("▸ UUID:")));
+            DebuggerButton uuid = button(screen, message -> message.startsWith("▸ UUID:"));
+            uuidBounds.set(bounds(uuid));
+            clickX.set(uuid.getX() + uuid.getWidth() / 2.0);
+            clickY.set(uuid.getY() + uuid.getHeight() / 2.0);
+            click(screen, clickX.get(), clickY.get(), InputConstants.MOUSE_BUTTON_LEFT);
         });
         context.waitFor(client -> CodonClientMod.state().nbt().rows(executor).stream()
             .anyMatch(row -> row.kind() == ClientNbtState.Kind.NODE && row.path().equals(UUID_LEAF)), 200);
+        context.waitTicks(3);
+        context.runOnClient(client -> require(bounds(button(codonScreen(client.gui.screen()), message -> message.startsWith("▾ UUID:"))).equals(uuidBounds.get()),
+            "expanding a branch keeps its fixed click coordinate after the child load"));
+        context.runOnClient(client -> {
+            CodonScreen screen = codonScreen(client.gui.screen());
+            DebuggerButton heading = button(screen, message -> message.equals("NBT"));
+            for (int i = 0; i < 80; i++) screen.mouseScrolled(heading.getX() + 4, heading.getY() + 28, 0, -1);
+        });
+        context.waitTicks(2);
+        showNode(context, executor, "▾ UUID:");
+        context.runOnClient(client -> {
+            CodonScreen screen = codonScreen(client.gui.screen());
+            DebuggerButton uuid = button(screen, message -> message.startsWith("▾ UUID:"));
+            DebuggerButton heading = button(screen, message -> message.equals("NBT"));
+            require(uuid.getY() < heading.getBottom() + 17,
+                "The expanded tail branch starts at the top row before collapse");
+            uuidBounds.set(bounds(uuid));
+            clickX.set(uuid.getX() + uuid.getWidth() / 2.0);
+            clickY.set(uuid.getY() + uuid.getHeight() / 2.0);
+        });
+        context.takeScreenshot("codon-nbt-branch-expanded-fixed-coordinate");
+        context.runOnClient(client -> click(codonScreen(client.gui.screen()), clickX.get(), clickY.get(), InputConstants.MOUSE_BUTTON_LEFT));
+        context.waitTicks(3);
+        context.runOnClient(client -> require(bounds(button(codonScreen(client.gui.screen()), message -> message.startsWith("▸ UUID:"))).equals(uuidBounds.get()),
+            "collapsing the same branch preserves its fixed click coordinate"));
+        context.takeScreenshot("codon-nbt-branch-collapsed-fixed-coordinate");
+        context.runOnClient(client -> click(codonScreen(client.gui.screen()), clickX.get(), clickY.get(), InputConstants.MOUSE_BUTTON_LEFT));
+        context.waitFor(client -> findButton(codonScreen(client.gui.screen()), message -> message.startsWith("▾ UUID:")) != null, 100);
+        context.waitTicks(3);
+        context.runOnClient(client -> require(bounds(button(codonScreen(client.gui.screen()), message -> message.startsWith("▾ UUID:"))).equals(uuidBounds.get()),
+            "re-expanding at the original coordinate keeps the branch in place"));
         showNode(context, executor, "  [0]:");
         context.runOnClient(client -> {
             CodonScreen screen = codonScreen(client.gui.screen());
@@ -367,38 +455,13 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
         });
     }
 
-    private static void collapseSource(ClientGameTestContext context, int number) {
-        showSource(context, number);
+    private static void collapseSelectedSourcePreference(ClientGameTestContext context) {
         context.runOnClient(client -> {
-            CodonScreen screen = codonScreen(client.gui.screen());
-            click(screen, button(screen, message -> message.startsWith("▾ #" + number)));
+            var executor = CodonClientMod.state().nbt().executor();
+            require(executor != null && CodonClientMod.state().nbt().toggleSource(executor.uuid()),
+                "legacy source expansion preference remains UUID-keyed");
         });
         context.waitTicks(2);
-    }
-
-    private static void expandSource(ClientGameTestContext context, int number) {
-        showSource(context, number);
-        context.runOnClient(client -> {
-            CodonScreen screen = codonScreen(client.gui.screen());
-            DebuggerButton collapsed = findButton(screen, message -> message.startsWith("▸ #" + number + " · "));
-            if (collapsed != null) click(screen, collapsed);
-        });
-        context.waitFor(client -> findButton(codonScreen(client.gui.screen()), message -> message.startsWith("▾ #" + number)) != null, 100);
-    }
-
-    private static void showSource(ClientGameTestContext context, int number) {
-        for (int attempt = 0; attempt < 80; attempt++) {
-            AtomicBoolean found = new AtomicBoolean();
-            context.runOnClient(client -> {
-                CodonScreen screen = codonScreen(client.gui.screen());
-                if (findButton(screen, message -> (message.startsWith("▾ #" + number + " · ") || message.startsWith("▸ #" + number + " · "))) != null) { found.set(true); return; }
-                DebuggerButton header = findButton(screen, message -> message.startsWith("▾ NBT · "));
-                if (header != null) screen.mouseScrolled(header.getX() + 4, header.getY() + 20, 0, number == 2 ? 1 : -1);
-            });
-            if (found.get()) return;
-            context.waitTicks(1);
-        }
-        throw new AssertionError("NBT source header never became visible: #" + number);
     }
 
     private static void expandPosBranch(ClientGameTestContext context, UUID executor) {
@@ -448,7 +511,7 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
                     String label = rowLabel(rows.get(i));
                     if (!label.isEmpty() && findButton(screen, message -> message.equals(label)) != null) { firstVisible = i; break; }
                 }
-                DebuggerButton header = button(screen, message -> message.startsWith("▾ NBT · "));
+                DebuggerButton header = button(screen, message -> message.equals("NBT"));
                 screen.mouseScrolled(header.getX() + 4, header.getY() + 28, 0, target >= 0 && target < firstVisible ? 1 : -1);
             });
             if (visible.get()) return;
@@ -531,6 +594,14 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
     private static void click(Screen screen, DebuggerButton button, int mouseButton) {
         var event = new MouseButtonEvent(button.getX() + button.getWidth() / 2.0, button.getY() + button.getHeight() / 2.0,
             new MouseButtonInfo(mouseButton, 0));
+        click(screen, event);
+    }
+
+    private static void click(Screen screen, double x, double y, int mouseButton) {
+        click(screen, new MouseButtonEvent(x, y, new MouseButtonInfo(mouseButton, 0)));
+    }
+
+    private static void click(Screen screen, MouseButtonEvent event) {
         require(screen.mouseClicked(event, false), "NBT tree control accepts click");
         screen.mouseReleased(event);
     }

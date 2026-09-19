@@ -75,6 +75,8 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
             context.takeScreenshot("codon-command-integrated");
             checkIconToolbar(context, screen);
             checkCommandPanel(context, screen, state);
+            checkStableCommandActions(context, screen, state);
+            checkVisibleClauseSelection(context, screen, state);
             checkHorizontalCallPath(context, screen, state);
             checkSourceColors(context, screen, state);
             context.runOnClient(client -> {
@@ -161,8 +163,8 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
                     && button.icon() == DebuggerIcon.PAUSE),
                     "Resumed command history does not display an active stop marker");
                 for (InputManager.Control action : InputManager.Control.values()) {
-                    DebuggerButton control = button(screen, value -> value.equals(
-                        Component.translatable(action.translationKey()).getString()));
+                    DebuggerButton control = button(screen, value -> value.startsWith(
+                        Component.translatable(action.translationKey()).getString() + " "));
                     require(!control.active, "Every execution icon disables on resume");
                 }
             });
@@ -189,14 +191,11 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
             require(icons.stream().allMatch(button -> button.getWidth() == 20 && button.getHeight() == 20),
                 "Toolbar icons keep compact square hit targets");
             require(icons.stream().map(DebuggerButton::getY).distinct().count() == 1, "All icons share one row");
-            require(icons.stream().noneMatch(button -> button.getMessage().getString().contains("F7")
-                || button.getMessage().getString().contains("F8") || button.getMessage().getString().contains("F9")),
-                "Execution button labels do not include key bindings");
         });
         for (InputManager.Control action : InputManager.Control.values()) {
             double[] cursor = context.computeOnClient(client -> {
-                DebuggerButton control = button(screen, value -> value.equals(
-                    Component.translatable(action.translationKey()).getString()));
+                DebuggerButton control = button(screen, value -> value.startsWith(
+                    Component.translatable(action.translationKey()).getString() + " "));
                 return new double[] {
                     (control.getX() + control.getWidth() / 2.0) * client.getWindow().getScreenWidth() / screen.width,
                     (control.getY() + control.getHeight() / 2.0) * client.getWindow().getScreenHeight() / screen.height
@@ -209,7 +208,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
         context.getInput().setCursorPos(1100, 400);
         context.runOnClient(client -> {
             client.setLastInputType(InputType.KEYBOARD_TAB);
-            screen.setFocused(button(screen, value -> value.equals("Continue")));
+            screen.setFocused(button(screen, value -> value.startsWith("Continue ")));
         });
         context.waitTicks(3);
         context.takeScreenshot("codon-icon-keyboard-focus-no-shortcut");
@@ -331,6 +330,130 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
             click(screen, button(screen, value -> value.equals("Current")));
             state.selectSource(0);
         });
+    }
+
+    private static void checkStableCommandActions(ClientGameTestContext context, CodonScreen screen,
+                                                   ClientDebuggerState state) {
+        context.waitTicks(2);
+        Map<String, WidgetBounds> original = context.computeOnClient(client -> {
+            require(!button(screen, value -> value.equals("Current")).active,
+                "Current keeps its slot while the live command is selected");
+            Map<String, WidgetBounds> result = new HashMap<>();
+            for (String label : List.of("‹", "›", "Current", "Watch", "Expand command panel"))
+                result.put(label, WidgetBounds.of(button(screen, value -> value.equals(label))));
+            clickAt(screen, result.get("‹"));
+            return result;
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            require(state.selectedExecutionFlow().invocationId() == 76, "Previous enters recorded history");
+            for (String label : List.of("‹", "›", "Current", "Watch"))
+                require(original.get(label).equals(WidgetBounds.of(button(screen, value -> value.equals(label)))),
+                    "History keeps the action slot fixed: " + label);
+            // Reuse the actual pointer position, including at the disabled history boundary.
+            clickAt(screen, original.get("‹"));
+            require(!state.isViewingCurrentCommand(), "A repeated Previous click never activates Current");
+        });
+        context.waitTicks(2);
+        context.takeScreenshot("codon-stable-history-actions");
+        context.runOnClient(client -> clickAt(screen, original.get("›")));
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            require(state.selectedExecutionFlow().invocationId() == 77 && state.selectedFlowStageIndex() == 0,
+                "Next selects the first stage of the next recorded command visit");
+            require(original.get("›").equals(WidgetBounds.of(button(screen, value -> value.equals("›")))),
+                "Navigating forward does not move Next");
+            require(clickAt(screen, original.get("Current")), "The fixed Current slot accepts its click");
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            require(state.isViewingCurrentCommand(), "Current returns to the authoritative stopped stage");
+            require(original.get("Current").equals(WidgetBounds.of(button(screen, value -> value.equals("Current")))),
+                "Returning to current does not move Current");
+            clickAt(screen, original.get("Expand command panel"));
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            require(original.get("Expand command panel").equals(WidgetBounds.of(
+                button(screen, value -> value.equals("Collapse command panel")))),
+                "Expansion keeps its own toggle under the pointer");
+            for (String label : List.of("‹", "›", "Current", "Watch"))
+                require(original.get(label).equals(WidgetBounds.of(button(screen, value -> value.equals(label)))),
+                    "Expansion keeps the action row fixed: " + label);
+        });
+        context.takeScreenshot("codon-stable-expanded-actions");
+        context.runOnClient(client -> clickAt(screen, original.get("Expand command panel")));
+        context.waitTicks(2);
+        context.runOnClient(client -> require(original.get("Expand command panel").equals(WidgetBounds.of(
+            button(screen, value -> value.equals("Expand command panel")))),
+            "Two clicks at one coordinate expand and collapse the panel"));
+        context.takeScreenshot("codon-stable-collapsed-actions");
+    }
+
+    private static void checkVisibleClauseSelection(ClientGameTestContext context, CodonScreen screen,
+                                                     ClientDebuggerState state) {
+        context.runOnClient(client -> state.applyPause(longCommandFixture(client)));
+        context.waitTicks(2);
+        context.runOnClient(client -> click(screen, button(screen, value -> value.equals("Expand command panel"))));
+        context.waitTicks(2);
+        String label = context.computeOnClient(client -> screen.children().stream()
+            .filter(DebuggerButton.class::isInstance).map(DebuggerButton.class::cast)
+            .filter(button -> button.getMessage().getString().contains("positioned"))
+            .min(java.util.Comparator.comparingInt(DebuggerButton::getY).thenComparingInt(DebuggerButton::getX))
+            .orElseThrow().getMessage().getString());
+        int expectedStage = context.computeOnClient(client -> state.selectedExecutionFlow().stages().stream()
+            .filter(stage -> stage.command().text().substring(stage.command().highlightStart(),
+                stage.command().highlightEnd()).strip().equals(label.strip()))
+            .findFirst().orElseThrow().index());
+        WidgetBounds original = context.computeOnClient(client -> {
+            require(!screen.children().stream().filter(DebuggerButton.class::isInstance).map(DebuggerButton.class::cast)
+                .anyMatch(button -> button.getMessage().getString().startsWith("execute positioned")),
+                "The long command is scrolled past its first row before the click");
+            var clause = button(screen, value -> value.equals(label));
+            WidgetBounds bounds = WidgetBounds.of(clause);
+            require(state.selectedFlowStageIndex() != expectedStage, "The visible target is not already selected");
+            require(clickAt(screen, bounds), "The visible clause accepts the fixed-coordinate click");
+            require(state.selectedFlowStageIndex() == expectedStage, "Click selects the intended earlier clause");
+            return bounds;
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            require(original.equals(WidgetBounds.of(button(screen, value -> value.equals(label)))),
+                "Selecting an already visible clause preserves its screen position");
+            require(clickAt(screen, original), "The same coordinate still reaches the selected clause");
+            require(state.selectedFlowStageIndex() == expectedStage, "A repeated click keeps the same clause selected");
+        });
+        context.waitTicks(2);
+        context.takeScreenshot("codon-visible-clause-stays-put");
+        context.runOnClient(client -> {
+            click(screen, button(screen, value -> value.equals("Collapse command panel")));
+            state.applyPause(fixture(client));
+        });
+        context.waitTicks(2);
+    }
+
+    private static PauseSnapshot longCommandFixture(Minecraft client) {
+        PauseSnapshot base = fixture(client);
+        StringBuilder text = new StringBuilder();
+        List<int[]> ranges = new ArrayList<>();
+        for (int i = 0; i < 24; i++) {
+            int start = text.length();
+            text.append(i == 0 ? "execute positioned " : " positioned ")
+                .append(10000 + i).append(" 64 ").append(20000 + i);
+            ranges.add(new int[]{start, text.length()});
+        }
+        SourceLocation location = base.callStack().getFirst().location();
+        ExecutionFlowContext source = new ExecutionFlowContext(1, base.pauseSources().getFirst());
+        List<ExecutionFlowStage> stages = new ArrayList<>();
+        for (int i = 0; i < ranges.size(); i++) {
+            CommandSnippet command = new CommandSnippet(text.toString(), ranges.get(i)[0], ranges.get(i)[1]);
+            stages.add(new ExecutionFlowStage(i, command, List.of(source), List.of(source), List.of(), List.of(),
+                1, 1, 0, false, 0, 0, true, true, false, i,
+                List.of(new CallFrame(0, location, command, 77, i))));
+        }
+        ExecutionFlowStage last = stages.getLast();
+        return new PauseSnapshot(location, last.command(), 0, last.callStack(), List.of(source.source()),
+            List.of(new ExecutionFlowTrace(77, location, stages, false)), PauseReason.STEP, base.pauseId());
     }
 
     private static void checkSourceColors(ClientGameTestContext context, CodonScreen screen,
@@ -587,12 +710,17 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
     }
 
     private static void click(CodonScreen screen, DebuggerButton button) {
+        require(clickAt(screen, WidgetBounds.of(button)), "Widget accepts click");
+    }
+
+    private static boolean clickAt(CodonScreen screen, WidgetBounds bounds) {
         // This fixture calls the screen directly, so mirror MouseHandler's input classification.
         Minecraft.getInstance().setLastInputType(InputType.MOUSE);
-        MouseButtonEvent event = new MouseButtonEvent(button.getX() + button.getWidth() / 2.0,
-            button.getY() + button.getHeight() / 2.0, new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
-        require(screen.mouseClicked(event, false), "Widget accepts click");
+        MouseButtonEvent event = new MouseButtonEvent(bounds.x() + bounds.width() / 2.0,
+            bounds.y() + bounds.height() / 2.0, new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
+        boolean accepted = screen.mouseClicked(event, false);
         screen.mouseReleased(event);
+        return accepted;
     }
 
     private static void checkBreakpointCodec() {

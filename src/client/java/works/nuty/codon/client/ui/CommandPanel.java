@@ -53,7 +53,8 @@ public final class CommandPanel {
 
     public int preferredHeight(int width, int height, @Nullable PauseSnapshot snapshot) {
         if (snapshot == null) return 36;
-        int base = state.selectedExecutionFlow() == null ? 47 : height < 240 ? 57 : 71;
+        // Selection and recording availability must not move the panel's controls.
+        int base = height < 240 ? 64 : 76;
         return expanded ? Math.max(120, height / 2) : base;
     }
 
@@ -72,23 +73,24 @@ public final class CommandPanel {
             return finish();
         }
 
-        boolean compact = area.height() < 59;
-        int y = area.y() + 3;
-        int pathRight = renderActions(new Bounds(area.x() + 4, y, area.width() - 8, 17), snapshot, input, overlay);
-        renderPath(graphics, new Bounds(area.x() + 4, y, Math.max(0, pathRight - area.x() - 8), 17), snapshot);
-        y += 19;
-        int footerHeight = !compact && area.y() + area.height() - y >= 43 ? 14 : 0;
-        Bounds body = new Bounds(area.x() + 5, y, area.width() - 12,
-            Math.max(0, area.y() + area.height() - 4 - footerHeight - y));
-        renderClauses(graphics, body, snapshot);
-        if (footerHeight > 0) {
-            int footerY = area.y() + area.height() - footerHeight;
-            graphics.fill(area.x() + 1, footerY - 2, area.x() + area.width() - 1, footerY - 1, BORDER);
+        // The action row is anchored to the screen's bottom, independently of expansion.
+        int actionY = Math.max(area.y() + 1, area.y() + area.height() - 20);
+        int actionLeft = renderActions(new Bounds(area.x() + 4, actionY, area.width() - 8, 17), snapshot, input, overlay);
+        if (area.height() >= 40) {
+            int y = area.y() + 3;
+            renderPath(graphics, new Bounds(area.x() + 4, y, area.width() - 8, 17), snapshot);
+            y += 19;
+            Bounds body = new Bounds(area.x() + 5, y, area.width() - 12, Math.max(0, actionY - 4 - y));
+            renderClauses(graphics, body, snapshot);
+            graphics.fill(area.x() + 1, actionY - 3, area.x() + area.width() - 1, actionY - 2, BORDER);
             ExecutionFlowStage stage = state.selectedExecutionFlowStage();
             boolean warning = stage != null && hasWarning(stage);
-            drawText(graphics, summary(), area.x() + 8, footerY + 1,
-                area.width() - 16 - (warning ? 17 : 0), MUTED);
-            if (warning) warningButton("flow-warning", new Bounds(area.x() + area.width() - 21, footerY - 1, 16, 14), stage);
+            int summaryX = area.x() + 8;
+            if (warning && actionLeft - summaryX >= 17) {
+                warningButton("flow-warning", new Bounds(summaryX, actionY, 16, 14), stage);
+                summaryX += 18;
+            }
+            drawText(graphics, summary(), summaryX, actionY + 4, Math.max(0, actionLeft - summaryX - 6), MUTED);
         }
         return finish();
     }
@@ -164,13 +166,11 @@ public final class CommandPanel {
                 true, false, () -> client.gui.setScreen(new WatchScreen(input, state, overlay)));
             right -= width + 3;
         }
-        if (!state.isViewingCurrentCommand()) {
-            int width = labelWidth("codon.ui.return_current");
-            button("current", new Bounds(right - width, area.y(), width, 16), Component.translatable("codon.ui.return_current"),
-                true, false, () -> { state.selectCurrentCommand(); changed(); });
-            right -= width + 3;
-        }
-        if (snapshot.executionFlows().size() > 1 && right - area.x() >= 100) {
+        int width = labelWidth("codon.ui.return_current");
+        button("current", new Bounds(right - width, area.y(), width, 16), Component.translatable("codon.ui.return_current"),
+            !state.isViewingCurrentCommand(), false, () -> { state.selectCurrentCommand(); changed(); });
+        right -= width + 3;
+        if (right - area.x() >= 38) {
             button("flow-next", new Bounds(right - 16, area.y(), 16, 16), Component.literal("›"),
                 state.hasAdjacentExecutionVisit(1), false,
                 () -> { state.selectAdjacentExecutionVisit(1); changed(); })
@@ -214,10 +214,16 @@ public final class CommandPanel {
             state.selectedFlowStageIndex(), body.width(), body.height());
         if (!selection.equals(lastSelection)) {
             int selectedStage = state.selectedFlowStageIndex();
-            int selectedRow = layout.cells().stream()
+            var selectedRows = layout.cells().stream()
                 .filter(cell -> displayed.get(cell.partIndex()).stageIndex() == selectedStage)
-                .mapToInt(CommandFlowLayout.Cell::row).findFirst().orElse(0);
-            commandOffset = Math.clamp(selectedRow - rows + 1, 0, maxCommandOffset);
+                .mapToInt(CommandFlowLayout.Cell::row).summaryStatistics();
+            int firstRow = selectedRows.getCount() == 0 ? 0 : selectedRows.getMin();
+            int lastRow = selectedRows.getCount() == 0 ? 0 : selectedRows.getMax();
+            // A visible fragment is already reachable. In particular, clicking it must not
+            // scroll that same clause away from the pointer, even when it spans several rows.
+            if (lastRow < commandOffset) commandOffset = firstRow;
+            else if (firstRow >= commandOffset + rows) commandOffset = firstRow - rows + 1;
+            commandOffset = Math.clamp(commandOffset, 0, maxCommandOffset);
             lastSelection = selection;
         }
         commandOffset = Math.clamp(commandOffset, 0, maxCommandOffset);
@@ -283,7 +289,11 @@ public final class CommandPanel {
     private String summary() {
         ExecutionFlowStage stage = state.selectedExecutionFlowStage();
         if (stage == null) return tr("codon.ui.no_flow");
-        return stageSummary(stage);
+        if (stage.terminal()) return Component.translatable("codon.ui.terminal_results",
+            measuredCount(stage.executionCount()), measuredCount(stage.successCount())).getString();
+        // Per-clause counts already describe input/output contexts. Keep this fixed row
+        // for additional information, rather than repeating those counts below them.
+        return hasWarning(stage) ? tr("codon.ui.recording_warning") : "";
     }
 
     private boolean hasWarning(ExecutionFlowStage stage) {

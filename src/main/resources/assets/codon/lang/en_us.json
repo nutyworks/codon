@@ -139,6 +139,7 @@
   "codon.ui.recorded_flow": "Recorded flow",
   "codon.ui.not_observed": "Not observed",
   "codon.ui.command_results": "Execution contexts: %s · Runs: %s · Successes: %s",
+  "codon.ui.terminal_results": "Runs: %s · Successes: %s",
   "codon.ui.command_contexts": "Execution contexts: %s in → %s out",
   "codon.ui.unmeasured": "...",
   "codon.ui.recording_warning": "Incomplete recording",
@@ -205,7 +206,7 @@
   "codon.ui.help.values.title": "Read watch values",
   "codon.ui.help.values.body": "An arrow shows a previous value changing to the current value. Hover a value for details, including executor changes or unavailable values. Running and pending indicators are not numeric values; do not interpret them as zero.",
   "codon.ui.help.nbt.title": "Explore entity NBT",
-  "codon.ui.help.nbt.body": "Select an entity source to browse its NBT in the source inspector. Expand NBT, then the entity row and compound or list fields to inspect children. Use Previous fields / More fields for additional entries and Refresh NBT when offered. Hover a field for its path and preview. Pinned fields remain in Watches when you switch sources.",
+  "codon.ui.help.nbt.body": "Select an entity source to browse its NBT in the source inspector. NBT is always shown for the selected live entity. Expand compound or list fields to inspect children. Use Previous fields / More fields for additional entries and Refresh NBT when offered. Hover a field for its path and preview. Pinned fields remain in Watches when you switch sources.",
   "codon.ui.help.nbt_pin.title": "Pin directly from NBT",
   "codon.ui.help.nbt_pin.body": "Left-click a field pin to add or remove a watch for that entity. Right-click to add the same path for all available entity sources, or remove those watches when all are already pinned. Unsupported paths cannot be pinned."
 }
