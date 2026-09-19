@@ -157,7 +157,7 @@ public class BuildContextsMixin<T extends ExecutionCommandSource<T>> implements 
         CommandSnippet command = new CommandSnippet(commandInput, range.getStart(), range.getEnd());
         List<CommandSourceStack> current = (List<CommandSourceStack>) sources;
         engine.onCommandStage(new CommandStageEvent(trace.id, frame.depth(), trace.location, command,
-            () -> SourceMapper.toPauseSources(current)));
+            () -> SourceMapper.toPauseSources(current), trace.flowStageIndex()));
     }
 
     @Unique

@@ -201,6 +201,11 @@ public final class DebuggerExecutionFlowGameTest implements FabricClientGameTest
             if (!at(pause, first)) continue;
             ClientDebuggerState presentation = new ClientDebuggerState();
             presentation.applyPause(pause);
+            require(presentation.isViewingCurrentCommand(), "every real pause opens on its actual frame and stage");
+            require(pause.callStack().getFirst().invocationId() == presentation.selectedExecutionFlow().invocationId(),
+                "the production pause payload preserves the frame's exact invocation ID");
+            require(pause.callStack().getFirst().flowStageIndex() == presentation.selectedExecutionFlowStage().index(),
+                "the production pause payload preserves the frame's exact stage ID");
             ExecutionFlowStage worldStage = presentation.worldSourceStage();
             ExecutionFlowStage current = presentation.selectedExecutionFlowStage();
             if (worldStage == null || worldStage == current) continue;
@@ -212,8 +217,8 @@ public final class DebuggerExecutionFlowGameTest implements FabricClientGameTest
                 sawCreated = true;
             }
             if (worldStage.inputCount() == 4 && worldStage.outputCount() == 3 && worldStage.droppedCount() == 1) {
-                require(presentation.displayedSources().size() == 3 && presentation.worldSources().size() == 4,
-                    "the world retains the just-removed source alongside the three live ones");
+                require(presentation.displayedSources().size() == 4 && presentation.worldSources().size() == 4,
+                    "the inspector and world retain the just-removed source alongside the three live ones");
                 require(presentation.isWorldSourceDropped(3), "removed input is red at the next pause by default");
                 for (int index = 0; index < 3; index++) require(!presentation.isWorldSourceCreated(index),
                     "if survivors remain unchanged");

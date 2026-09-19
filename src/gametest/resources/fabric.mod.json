@@ -22,7 +22,8 @@
       "works.nuty.codon.client.DebuggerFreecamResumeGameTest",
       "works.nuty.codon.client.DebuggerWatchPersistenceGameTest",
       "works.nuty.codon.client.DebuggerWatchPinGameTest",
-      "works.nuty.codon.client.DebuggerExecutionFlowGameTest"
+      "works.nuty.codon.client.DebuggerExecutionFlowGameTest",
+      "works.nuty.codon.client.DebuggerConditionalFunctionFlowGameTest"
     ]
   }
 }

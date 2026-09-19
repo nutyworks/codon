@@ -36,6 +36,9 @@ final class NetworkCodecs {
     private static final StreamCodec<FriendlyByteBuf, List<CallFrame>> CALL_STACK_CODEC =
         StreamCodec.<FriendlyByteBuf, CallFrame>of(NetworkCodecs::writeCallFrame, NetworkCodecs::readCallFrame)
             .apply(ByteBufCodecs.list());
+    private static final StreamCodec<FriendlyByteBuf, List<CallFrame>> FLOW_CALL_STACK_CODEC =
+        StreamCodec.<FriendlyByteBuf, CallFrame>of(NetworkCodecs::writeCallFrame, NetworkCodecs::readCallFrame)
+            .apply(ByteBufCodecs.list(ExecutionFlowRecorder.MAX_STACK_FRAMES));
     private static final StreamCodec<FriendlyByteBuf, List<PauseSource>> PAUSE_SOURCES_CODEC =
         StreamCodec.<FriendlyByteBuf, PauseSource>of(NetworkCodecs::writePauseSource, NetworkCodecs::readPauseSource)
             .apply(ByteBufCodecs.list());
@@ -125,10 +128,13 @@ final class NetworkCodecs {
         buf.writeVarInt(frame.depth());
         writeSourceLocation(buf, frame.location());
         writeCommandSnippet(buf, frame.command());
+        buf.writeVarLong(frame.invocationId());
+        buf.writeVarInt(frame.flowStageIndex());
     }
 
     static CallFrame readCallFrame(FriendlyByteBuf buf) {
-        return new CallFrame(buf.readVarInt(), readSourceLocation(buf), readCommandSnippet(buf));
+        return new CallFrame(buf.readVarInt(), readSourceLocation(buf), readCommandSnippet(buf),
+            buf.readVarLong(), buf.readVarInt());
     }
 
     static void writePauseSource(FriendlyByteBuf buf, PauseSource source) {
@@ -188,6 +194,8 @@ final class NetworkCodecs {
         buf.writeBoolean(stage.complete());
         buf.writeBoolean(stage.lineageComplete());
         buf.writeBoolean(stage.truncated());
+        buf.writeVarLong(stage.observationOrder());
+        FLOW_CALL_STACK_CODEC.encode(buf, stage.callStack());
     }
 
     static ExecutionFlowStage readFlowStage(FriendlyByteBuf buf) {
@@ -206,8 +214,11 @@ final class NetworkCodecs {
         boolean complete = buf.readBoolean();
         boolean lineageComplete = buf.readBoolean();
         boolean truncated = buf.readBoolean();
+        long observationOrder = buf.readVarLong();
+        List<CallFrame> callStack = FLOW_CALL_STACK_CODEC.decode(buf);
         return new ExecutionFlowStage(index, command, inputs, outputs, edges, droppedContextIds, inputCount, outputCount,
-            droppedCount, terminal, executionCount, successCount, complete, lineageComplete, truncated);
+            droppedCount, terminal, executionCount, successCount, complete, lineageComplete, truncated, observationOrder,
+            callStack);
     }
 
     static void writeFlowTrace(FriendlyByteBuf buf, ExecutionFlowTrace trace) {

@@ -126,6 +126,8 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
                     }
                 });
                 assertInitialSource(context);
+                // Additional pinned rows resize the NBT viewport; reveal the leaf again before clicking it.
+                showNode(context, second.get().getUUID(), "  [0]:");
                 context.runOnClient(client -> {
                     CodonScreen screen = codonScreen(client.gui.screen());
                     DebuggerButton leaf = button(screen, message -> message.startsWith("  [0]:"));

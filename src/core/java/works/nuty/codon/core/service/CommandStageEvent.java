@@ -23,6 +23,12 @@ public record CommandStageEvent(
     int depth,
     SourceLocation location,
     CommandSnippet command,
-    Supplier<List<PauseSource>> pauseSources
+    Supplier<List<PauseSource>> pauseSources,
+    int flowStageIndex
 ) {
+    /** Compatibility constructor for adapters that do not record execution flow. */
+    public CommandStageEvent(long chainId, int depth, SourceLocation location, CommandSnippet command,
+                             Supplier<List<PauseSource>> pauseSources) {
+        this(chainId, depth, location, command, pauseSources, -1);
+    }
 }

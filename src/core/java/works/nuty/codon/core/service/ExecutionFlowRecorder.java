@@ -1,6 +1,7 @@
 package works.nuty.codon.core.service;
 
 import org.jspecify.annotations.Nullable;
+import works.nuty.codon.core.model.CallFrame;
 import works.nuty.codon.core.model.CommandSnippet;
 import works.nuty.codon.core.model.ExecutionFlowContext;
 import works.nuty.codon.core.model.ExecutionFlowEdge;
@@ -13,6 +14,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
+import java.util.function.LongSupplier;
 
 /**
  * Mutable, bounded recorder for one invocation. Its adapter caller supplies only relationships
@@ -22,9 +25,12 @@ public final class ExecutionFlowRecorder {
     public static final int MAX_STAGES = 24;
     public static final int MAX_CONTEXTS = 128;
     public static final int MAX_EDGES = 256;
+    public static final int MAX_STACK_FRAMES = 32;
 
     private final long invocationId;
     private final SourceLocation location;
+    private final LongSupplier observationOrders;
+    private final Consumer<ExecutionFlowRecorder> onStageObserved;
     private final List<MutableStage> stages = new ArrayList<>();
     private final Map<Long, ExecutionFlowContext> contexts = new LinkedHashMap<>();
     private long nextContextId = 1;
@@ -33,8 +39,19 @@ public final class ExecutionFlowRecorder {
     private @Nullable MutableStage activeStage;
 
     ExecutionFlowRecorder(long invocationId, SourceLocation location) {
+        this(invocationId, location, () -> -1, ignored -> { });
+    }
+
+    ExecutionFlowRecorder(long invocationId, SourceLocation location, LongSupplier observationOrders) {
+        this(invocationId, location, observationOrders, ignored -> { });
+    }
+
+    ExecutionFlowRecorder(long invocationId, SourceLocation location, LongSupplier observationOrders,
+                            Consumer<ExecutionFlowRecorder> onStageObserved) {
         this.invocationId = invocationId;
         this.location = location;
+        this.observationOrders = observationOrders;
+        this.onStageObserved = onStageObserved;
     }
 
     /** Creates a context occurrence. Zero is returned when only aggregate counts can be retained. */
@@ -63,21 +80,42 @@ public final class ExecutionFlowRecorder {
     }
 
     /** Starts a stage with occurrence ids that already correspond to its actual input list. */
-    public synchronized boolean beginStage(CommandSnippet command, List<Long> inputIds,
-                                           int inputCount, boolean terminal) {
-        if (stages.size() >= MAX_STAGES) {
-            truncated = true;
-            activeStage = null;
-            return false;
+    public boolean beginStage(CommandSnippet command, List<Long> inputIds, int inputCount, boolean terminal) {
+        synchronized (this) {
+            if (stages.size() >= MAX_STAGES) {
+                truncated = true;
+                activeStage = null;
+                return false;
+            }
+            MutableStage stage = new MutableStage(stages.size(), observationOrders.getAsLong(), command,
+                retained(inputIds), inputCount, terminal);
+            if (terminal) {
+                stage.outputIds.addAll(stage.inputIds);
+                stage.outputCount = inputCount;
+            }
+            stages.add(stage);
+            activeStage = stage;
         }
-        MutableStage stage = new MutableStage(stages.size(), command, retained(inputIds), inputCount, terminal);
-        if (terminal) {
-            stage.outputIds.addAll(stage.inputIds);
-            stage.outputCount = inputCount;
-        }
-        stages.add(stage);
-        activeStage = stage;
+        onStageObserved.accept(this);
         return true;
+    }
+
+    /** Index of the stage currently being recorded, or -1 when no stage was retained. */
+    public synchronized int activeStageIndex() {
+        return activeStage == null ? -1 : activeStage.index;
+    }
+
+    /** Stores the exact top-first stack observed for a retained stage, within the stage cap. */
+    public synchronized void recordCallStack(int stageIndex, List<CallFrame> callStack) {
+        if (stageIndex < 0 || stageIndex >= stages.size() || callStack.isEmpty()) return;
+        MutableStage stage = stages.get(stageIndex);
+        CallFrame top = callStack.getFirst();
+        if (top.invocationId() != invocationId || top.flowStageIndex() != stageIndex) return;
+        if (callStack.size() > MAX_STACK_FRAMES) {
+            truncated = true;
+            stage.truncated = true;
+        }
+        stage.callStack = List.copyOf(callStack.subList(0, Math.min(callStack.size(), MAX_STACK_FRAMES)));
     }
 
     /** Adds one accepted modifier output and returns its occurrence id, or zero when truncated. */
@@ -143,6 +181,10 @@ public final class ExecutionFlowRecorder {
         return new ExecutionFlowTrace(invocationId, location, result, truncated);
     }
 
+    synchronized long invocationId() {
+        return invocationId;
+    }
+
     private @Nullable MutableStage terminalStage() {
         if (stages.isEmpty()) return null;
         MutableStage stage = stages.getLast();
@@ -158,6 +200,7 @@ public final class ExecutionFlowRecorder {
 
     private static final class MutableStage {
         private final int index;
+        private final long observationOrder;
         private final CommandSnippet command;
         private final List<Long> inputIds;
         private final List<Long> outputIds = new ArrayList<>();
@@ -172,10 +215,12 @@ public final class ExecutionFlowRecorder {
         private boolean complete;
         private boolean lineageComplete = true;
         private boolean truncated;
+        private List<CallFrame> callStack = List.of();
 
-        private MutableStage(int index, CommandSnippet command, List<Long> inputIds,
+        private MutableStage(int index, long observationOrder, CommandSnippet command, List<Long> inputIds,
                              int inputCount, boolean terminal) {
             this.index = index;
+            this.observationOrder = observationOrder;
             this.command = command;
             this.inputIds = inputIds;
             this.inputCount = inputCount;
@@ -186,7 +231,7 @@ public final class ExecutionFlowRecorder {
         private ExecutionFlowStage snapshot(Map<Long, ExecutionFlowContext> contexts) {
             return new ExecutionFlowStage(index, command, values(inputIds, contexts), values(outputIds, contexts),
                 edges, droppedInputIds, inputCount, outputCount, droppedCount, terminal, executionCount, successCount, complete,
-                lineageComplete, truncated);
+                lineageComplete, truncated, observationOrder, callStack);
         }
 
         private static List<ExecutionFlowContext> values(List<Long> ids,

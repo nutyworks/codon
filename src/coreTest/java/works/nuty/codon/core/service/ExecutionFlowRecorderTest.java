@@ -2,6 +2,7 @@ package works.nuty.codon.core.service;
 
 import org.junit.jupiter.api.Test;
 import works.nuty.codon.core.model.BlockLocation;
+import works.nuty.codon.core.model.CallFrame;
 import works.nuty.codon.core.model.CommandSnippet;
 import works.nuty.codon.core.model.EntityRef;
 import works.nuty.codon.core.model.ExecutionFlowStage;
@@ -10,12 +11,14 @@ import works.nuty.codon.core.model.PauseSource;
 import works.nuty.codon.core.model.SourceLocation;
 import works.nuty.codon.core.model.Vec3d;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ExecutionFlowRecorderTest {
@@ -146,6 +149,107 @@ class ExecutionFlowRecorderTest {
         recorder.executionResult(true);
         assertEquals(1, recorder.snapshot().successCount());
         assertEquals(1, recorder.snapshot().executionCount());
+    }
+
+    @Test
+    void assignsChronologicalOrdersAcrossNestedAndRepeatedInvocations() {
+        ExecutionFlowHistory history = new ExecutionFlowHistory();
+        ExecutionFlowRecorder parent = history.start(11, location);
+        parent.beginStage(CommandSnippet.plain("execute if function test:child run say parent"), List.of(), 0, false);
+        parent.finishStage(0, 0);
+
+        ExecutionFlowRecorder child = history.start(12, location);
+        child.beginStage(CommandSnippet.plain("say child first"), List.of(), 0, true);
+        child.beginStage(CommandSnippet.plain("say child second"), List.of(), 0, true);
+
+        parent.beginStage(CommandSnippet.plain("say parent"), List.of(), 0, true);
+
+        ExecutionFlowRecorder repeatedIdSibling = history.start(12, location);
+        repeatedIdSibling.beginStage(CommandSnippet.plain("say sibling"), List.of(), 0, true);
+
+        List<ExecutionFlowTrace> traces = history.snapshot();
+        assertEquals(List.of(12L, 11L, 12L), traces.stream().map(ExecutionFlowTrace::invocationId).toList(),
+            "history retains recently observed recorder identities even when invocation IDs repeat");
+        assertEquals(List.of(0L, 3L), traces.get(1).stages().stream()
+            .map(ExecutionFlowStage::observationOrder).toList());
+        assertEquals(List.of(1L, 2L), traces.get(0).stages().stream()
+            .map(ExecutionFlowStage::observationOrder).toList());
+        assertEquals(4L, traces.get(2).stages().getFirst().observationOrder());
+    }
+
+    @Test
+    void clearStartsANewObservationLifetimeWithoutLettingOldRecordersConsumeIt() {
+        ExecutionFlowHistory history = new ExecutionFlowHistory();
+        ExecutionFlowRecorder oldRecorder = history.start(1, location);
+        oldRecorder.beginStage(CommandSnippet.plain("say before clear"), List.of(), 0, true);
+
+        history.clear();
+        ExecutionFlowRecorder currentRecorder = history.start(2, location);
+        currentRecorder.beginStage(CommandSnippet.plain("say new first"), List.of(), 0, true);
+        oldRecorder.beginStage(CommandSnippet.plain("say old continuation"), List.of(), 0, true);
+        currentRecorder.beginStage(CommandSnippet.plain("say new second"), List.of(), 0, true);
+
+        assertEquals(List.of(0L, 1L), oldRecorder.snapshot().stages().stream()
+            .map(ExecutionFlowStage::observationOrder).toList());
+        assertEquals(List.of(0L, 1L), currentRecorder.snapshot().stages().stream()
+            .map(ExecutionFlowStage::observationOrder).toList());
+        assertEquals(List.of(2L), history.snapshot().stream().map(ExecutionFlowTrace::invocationId).toList());
+    }
+
+    @Test
+    void anEvictedParentContinuationKeepsTheOriginalHistoryCounter() {
+        ExecutionFlowHistory history = new ExecutionFlowHistory();
+        ExecutionFlowRecorder parent = history.start(1, location);
+        long root = parent.createContext(source("parent", 0, "minecraft:overworld"));
+        parent.beginStage(CommandSnippet.plain("execute if function test:child run say parent"), List.of(root), 1, true);
+        for (int index = 0; index < ExecutionFlowHistory.MAX_TRACES; index++) {
+            ExecutionFlowRecorder child = history.start(100 + index, location);
+            child.beginStage(CommandSnippet.plain("say child " + index), List.of(), 0, true);
+        }
+
+        parent.beginStage(CommandSnippet.plain("say resumed parent"), List.of(root), 1, true);
+        history.recordCallStack(1, 1, List.of(
+            new CallFrame(0, location, CommandSnippet.plain("say resumed parent"), 1, 1)));
+
+        List<ExecutionFlowStage> parentStages = parent.snapshot().stages();
+        assertEquals(List.of(0L, (long) ExecutionFlowHistory.MAX_TRACES + 1), parentStages.stream()
+            .map(ExecutionFlowStage::observationOrder).toList());
+        assertEquals(1, parentStages.getLast().inputCount());
+        assertEquals(1, parentStages.getLast().outputCount());
+        assertEquals(1, parentStages.getLast().callStack().size());
+        List<ExecutionFlowTrace> traces = history.snapshot();
+        assertEquals(ExecutionFlowHistory.MAX_TRACES, traces.size());
+        assertEquals(1L, traces.getLast().invocationId());
+        assertEquals(parentStages, traces.getLast().stages());
+    }
+
+    @Test
+    void retainsImmutableHistoricalStacksAndBoundsOverflow() {
+        ExecutionFlowHistory history = new ExecutionFlowHistory();
+        ExecutionFlowRecorder recorder = history.start(44, location);
+        recorder.beginStage(CommandSnippet.plain("say stack"), List.of(), 0, true);
+        List<CallFrame> mutable = new ArrayList<>(List.of(
+            new CallFrame(0, location, CommandSnippet.plain("say stack"), 44, 0)));
+        history.recordCallStack(44, 0, mutable);
+        mutable.clear();
+
+        ExecutionFlowStage saved = recorder.snapshot().stages().getFirst();
+        assertEquals(1, saved.callStack().size());
+        assertThrows(UnsupportedOperationException.class, () -> saved.callStack().clear());
+
+        ExecutionFlowRecorder overflow = history.start(45, location);
+        overflow.beginStage(CommandSnippet.plain("say overflow"), List.of(), 0, true);
+        List<CallFrame> frames = new ArrayList<>();
+        frames.add(new CallFrame(0, location, CommandSnippet.plain("say overflow"), 45, 0));
+        for (int depth = 1; depth <= ExecutionFlowRecorder.MAX_STACK_FRAMES; depth++) {
+            frames.add(new CallFrame(depth, location, CommandSnippet.plain("say older"), -1, -1));
+        }
+        history.recordCallStack(45, 0, frames);
+
+        ExecutionFlowTrace overflowTrace = overflow.snapshot();
+        assertEquals(ExecutionFlowRecorder.MAX_STACK_FRAMES, overflowTrace.stages().getFirst().callStack().size());
+        assertTrue(overflowTrace.stages().getFirst().truncated());
+        assertTrue(overflowTrace.truncated());
     }
 
     private static CommandSnippet snippet(String text, int start, int end) {

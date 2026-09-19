@@ -68,6 +68,24 @@ nested scope cancels the pending step without another pause; vanilla-handled com
 quota exhaustion still count as normal Java returns. The tick boundary remains a cleanup fallback
 when no scope is active. Normal Continue runs without the additional completion stop.
 The call stack and stepping still use observed depth, not exact function/frame lifecycle events.
+Each observed frame also retains the trace's invocation ID and the exact recorded stage index.
+These identifiers travel in the pause payload, including invocation zero; `-1` means unavailable.
+The stage index is captured at observation time, including for continuations, and is unavailable
+when the recorder reaches its stage limit. Matching command text, depth, or entity identity never
+establishes a frame-to-flow relationship. Each retained stage also carries a shared observation
+order from its actual entry. Conditional functions can interleave their commands between two
+stages of the same parent invocation; trace creation order is not execution order. History
+navigation follows consecutive visits in observation order, including returning to a previously
+visited invocation. Unknown observation order disables chronological navigation instead of
+guessing from trace storage order. History retains recently observed invocations, so a resumed
+parent returns to the bounded history after a long child function has evicted its earlier visit.
+Each stage preserves its observed top-first call stack, bounded to 32 frames and marked truncated
+when deeper. These immutable caller records survive returns and parent-trace eviction. Historical
+selection displays that stack, while selecting a caller keeps the originating stack available.
+Missing caller flow data still permits viewing its captured command, without borrowing live sources.
+Only the exact authoritative invocation/stage receives the pause icon; Current restores the live stack.
+This format uses `pause_sync_v8` and `execution_flow_sync_v3`, so client and
+server must use matching versions.
 
 While paused, the server services only debugger mailbox work and bounded connection maintenance
 (keepalive, flush, and disconnection cleanup). It does not drain the general server task/packet
@@ -80,8 +98,17 @@ while preserving breakpoint definitions.
 - `state/ClientDebuggerState` — authoritative pause/breakpoint mirror, local source/frame selection,
   gizmo mode, and a pending-control latch cleared by server packets or a retry timeout.
 - `network/ClientNetworking` — receivers that update the mirror and clear it on disconnect.
-- `ui/DebuggerOverlay` — shared transparent HUD and cursor-mode presentation: control bar, source
-  inspector and call stack on the left (clear of the scoreboard), and scrollable command text.
+- `ui/DebuggerOverlay` — shared transparent HUD and cursor-mode presentation: control bar and source
+  inspector on the left (clear of the scoreboard). `CommandPanel` combines a single horizontally
+  scrollable call path (trackpad or mouse wheel, with clipped hit boxes and selected-frame visibility) and recorded command
+  clauses with context counts below the world. Navigation, Current, Watch, and panel expansion share
+  the call-path header; there is no duplicate location/invocation caption above the command. Frame and
+  clause navigation share the explicit invocation/stage selection; the actual stop remains marked
+  separately, and Current returns to it. Long commands wrap and scroll, with an expanded-height mode.
+  Unobserved command suffixes stay visible without invented counts. Repeated or nonordered ranges
+  preserve the original command and show each recorded stage separately inside the same panel.
+  Historical invocations and caller frames cannot supply live Watch/NBT executors. For the current
+  invocation, live source mapping follows the paused stage's occurrence IDs and source ordering.
   `CodonScreen` registers its native widgets
   for mouse, keyboard, and narration. `ClientFormatting` renders core types as chat components.
   The older `Window` classes are no longer used by the client composition root.

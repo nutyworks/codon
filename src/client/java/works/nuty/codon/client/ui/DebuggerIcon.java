@@ -4,7 +4,9 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 
 /** Pixel icons used by the debugger toolbar. */
 public enum DebuggerIcon {
+    INFORMATION,
     CONTINUE,
+    PAUSE,
     STEP_OVER,
     STEP_INTO,
     STEP_OUT,
@@ -24,7 +26,28 @@ public enum DebuggerIcon {
 
     public void draw(GuiGraphicsExtractor graphics, int x, int y, int color) {
         switch (this) {
+            case INFORMATION -> {
+                // Symmetric pixel-circle silhouette around the central information mark.
+                graphics.fill(x + 4, y, x + 8, y + 1, color);
+                graphics.fill(x + 4, y + 11, x + 8, y + 12, color);
+                graphics.fill(x, y + 4, x + 1, y + 8, color);
+                graphics.fill(x + 11, y + 4, x + 12, y + 8, color);
+                for (int step = 0; step < 3; step++) {
+                    int dx = 3 - step;
+                    int dy = 1 + step;
+                    graphics.fill(x + dx, y + dy, x + dx + 1, y + dy + 1, color);
+                    graphics.fill(x + 11 - dx, y + dy, x + 12 - dx, y + dy + 1, color);
+                    graphics.fill(x + dx, y + 11 - dy, x + dx + 1, y + 12 - dy, color);
+                    graphics.fill(x + 11 - dx, y + 11 - dy, x + 12 - dx, y + 12 - dy, color);
+                }
+                graphics.fill(x + 5, y + 3, x + 7, y + 4, color);
+                graphics.fill(x + 5, y + 5, x + 7, y + 9, color);
+            }
             case CONTINUE -> play(graphics, x, y, color);
+            case PAUSE -> {
+                graphics.fill(x + 2, y + 2, x + 5, y + 10, color);
+                graphics.fill(x + 7, y + 2, x + 10, y + 10, color);
+            }
             case STEP_OVER -> stepOver(graphics, x, y, color);
             case STEP_INTO -> stepInto(graphics, x, y, color);
             case STEP_OUT -> stepOut(graphics, x, y, color);

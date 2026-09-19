@@ -4,6 +4,7 @@ import io.netty.buffer.Unpooled;
 import net.minecraft.network.FriendlyByteBuf;
 import org.junit.jupiter.api.Test;
 import works.nuty.codon.core.model.BlockLocation;
+import works.nuty.codon.core.model.CallFrame;
 import works.nuty.codon.core.model.CommandSnippet;
 import works.nuty.codon.core.model.ExecutionFlowContext;
 import works.nuty.codon.core.model.ExecutionFlowEdge;
@@ -28,16 +29,18 @@ class NetworkCodecsTest {
             new BlockLocation(2, 70, -4, "minecraft:overworld"));
         PauseSource before = source(0);
         PauseSource after = source(5);
+        CommandSnippet modifierCommand = new CommandSnippet("execute at @s run say ok", 8, 13);
         ExecutionFlowContext input = new ExecutionFlowContext(1, before);
         ExecutionFlowContext output = new ExecutionFlowContext(2, after);
-        ExecutionFlowStage modifier = new ExecutionFlowStage(0, new CommandSnippet(
-            "execute at @s run say ok", 8, 13), List.of(input), List.of(output),
+        ExecutionFlowStage modifier = new ExecutionFlowStage(0, modifierCommand, List.of(input), List.of(output),
             List.of(new ExecutionFlowEdge(1, 2)), List.of(), 1, 1, 0, false,
-            0, 0, true, true, false);
+            0, 0, true, true, false, 0,
+            List.of(new CallFrame(0, location, modifierCommand, 19, 0)));
         ExecutionFlowStage terminal = new ExecutionFlowStage(1, new CommandSnippet(
             "execute at @s run say ok", 18, 24), List.of(output), List.of(output),
             List.of(), List.of(), 1, 1, 0, true, 1, 1, true, true, false);
-        PauseSnapshot expected = new PauseSnapshot(location, terminal.command(), 0, List.of(), List.of(after),
+        CallFrame frame = new CallFrame(0, location, terminal.command(), 0, 1);
+        PauseSnapshot expected = new PauseSnapshot(location, terminal.command(), 0, List.of(frame), List.of(after),
             List.of(new ExecutionFlowTrace(19, location, List.of(modifier, terminal), false)),
             PauseReason.STEP, 43);
 

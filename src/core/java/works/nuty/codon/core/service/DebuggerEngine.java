@@ -149,7 +149,9 @@ public final class DebuggerEngine {
         if (breakpoints.isEmpty() && !step.isStepping()) {
             return;
         }
-        callStack.push(new CallFrame(event.depth(), event.location(), event.command()));
+        callStack.push(new CallFrame(event.depth(), event.location(), event.command(), event.chainId(),
+            event.flowStageIndex()));
+        executionFlows.recordCallStack(event.chainId(), event.flowStageIndex(), callStack.frames());
         lastStage = event;
 
         if (skippedChainIds.contains(event.chainId())) {

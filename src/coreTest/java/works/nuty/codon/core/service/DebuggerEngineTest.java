@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import works.nuty.codon.core.model.BlockLocation;
 import works.nuty.codon.core.model.CallFrame;
 import works.nuty.codon.core.model.CommandSnippet;
+import works.nuty.codon.core.model.ExecutionFlowTrace;
 import works.nuty.codon.core.model.FunctionId;
 import works.nuty.codon.core.model.FunctionLocation;
 import works.nuty.codon.core.model.PauseReason;
@@ -96,6 +97,22 @@ class DebuggerEngineTest {
 
         assertTrue(engine.isPaused());
         assertEquals(1, sink.pauses.size());
+    }
+
+    @Test
+    void pauseFramesRetainInvocationAndFlowStageForNestedIdenticalCommands() {
+        breakpoints.toggleFunction(tick(3));
+        CommandSnippet command = CommandSnippet.plain("say same");
+        engine.onCommandStage(new CommandStageEvent(0, 0, new SourceLocation.Function(tick(2)), command,
+            List::of, 4));
+        engine.onCommandStage(new CommandStageEvent(1, 1, new SourceLocation.Function(tick(3)), command,
+            List::of, 7));
+
+        List<CallFrame> frames = sink.lastPause().callStack();
+        assertEquals(1, frames.get(0).invocationId());
+        assertEquals(7, frames.get(0).flowStageIndex());
+        assertEquals(0, frames.get(1).invocationId());
+        assertEquals(4, frames.get(1).flowStageIndex());
     }
 
     @Test
@@ -652,6 +669,36 @@ class DebuggerEngineTest {
         assertEquals(1, sink.completedFlows.getFirst().getFirst().executionCount());
         assertEquals(1, sink.completedFlows.getFirst().getFirst().successCount());
         assertTrue(flows.snapshot().isEmpty());
+    }
+
+    @Test
+    void eachFlowStageKeepsTheHistoricalStackFromItsOwnObservation() {
+        ExecutionFlowHistory flows = new ExecutionFlowHistory();
+        DebuggerEngine local = new DebuggerEngine(breakpoints, step, callStack, controller, sink, flows);
+        ExecutionFlowRecorder parent = flows.start(701, new SourceLocation.Function(tick(2)));
+        parent.beginStage(CommandSnippet.plain("execute if function test:child run say parent"), List.of(), 0, true);
+        ExecutionFlowRecorder child = flows.start(702, new SourceLocation.Function(tick(2)));
+        child.beginStage(CommandSnippet.plain("say child"), List.of(), 0, true);
+        parent.beginStage(CommandSnippet.plain("say parent"), List.of(), 0, true);
+        breakpoints.toggleFunction(tick(3));
+
+        local.onCommandStage(new CommandStageEvent(701, 0, new SourceLocation.Function(tick(2)),
+            CommandSnippet.plain("execute if function test:child run say parent"), List::of, 0));
+        local.onCommandStage(new CommandStageEvent(702, 1, new SourceLocation.Function(tick(2)),
+            CommandSnippet.plain("say child"), List::of, 0));
+        local.onCommandStage(new CommandStageEvent(701, 0, new SourceLocation.Function(tick(3)),
+            CommandSnippet.plain("say parent"), List::of, 1));
+
+        List<ExecutionFlowTrace> traces = local.currentSnapshot().executionFlows();
+        ExecutionFlowTrace savedParent = traces.stream().filter(trace -> trace.invocationId() == 701).findFirst().orElseThrow();
+        ExecutionFlowTrace savedChild = traces.stream().filter(trace -> trace.invocationId() == 702).findFirst().orElseThrow();
+        assertEquals(List.of(701L), savedParent.stages().get(0).callStack().stream()
+            .map(CallFrame::invocationId).toList());
+        assertEquals(List.of(702L, 701L), savedChild.stages().getFirst().callStack().stream()
+            .map(CallFrame::invocationId).toList());
+        assertEquals(List.of(701L), savedParent.stages().get(1).callStack().stream()
+            .map(CallFrame::invocationId).toList());
+        assertEquals(1, savedParent.stages().get(1).callStack().getFirst().flowStageIndex());
     }
 
     @Test

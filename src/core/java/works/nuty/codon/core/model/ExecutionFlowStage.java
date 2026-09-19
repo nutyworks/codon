@@ -19,13 +19,36 @@ public record ExecutionFlowStage(
     int successCount,
     boolean complete,
     boolean lineageComplete,
-    boolean truncated
+    boolean truncated,
+    long observationOrder,
+    List<CallFrame> callStack
 ) {
     public ExecutionFlowStage {
         inputs = List.copyOf(inputs);
         outputs = List.copyOf(outputs);
         edges = List.copyOf(edges);
         droppedContextIds = List.copyOf(droppedContextIds);
+        callStack = List.copyOf(callStack);
+    }
+
+    /** Compatibility constructor for stages decoded or built before observation order existed. */
+    public ExecutionFlowStage(int index, CommandSnippet command, List<ExecutionFlowContext> inputs,
+                              List<ExecutionFlowContext> outputs, List<ExecutionFlowEdge> edges,
+                              List<Long> droppedContextIds, int inputCount, int outputCount, int droppedCount,
+                              boolean terminal, int executionCount, int successCount, boolean complete,
+                              boolean lineageComplete, boolean truncated) {
+        this(index, command, inputs, outputs, edges, droppedContextIds, inputCount, outputCount, droppedCount,
+            terminal, executionCount, successCount, complete, lineageComplete, truncated, -1, List.of());
+    }
+
+    /** Compatibility constructor for stages built before historical call stacks existed. */
+    public ExecutionFlowStage(int index, CommandSnippet command, List<ExecutionFlowContext> inputs,
+                              List<ExecutionFlowContext> outputs, List<ExecutionFlowEdge> edges,
+                              List<Long> droppedContextIds, int inputCount, int outputCount, int droppedCount,
+                              boolean terminal, int executionCount, int successCount, boolean complete,
+                              boolean lineageComplete, boolean truncated, long observationOrder) {
+        this(index, command, inputs, outputs, edges, droppedContextIds, inputCount, outputCount, droppedCount,
+            terminal, executionCount, successCount, complete, lineageComplete, truncated, observationOrder, List.of());
     }
 
     /**

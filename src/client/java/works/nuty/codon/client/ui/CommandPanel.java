@@ -1,0 +1,391 @@
+package works.nuty.codon.client.ui;
+
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.network.chat.Component;
+import org.jspecify.annotations.Nullable;
+import works.nuty.codon.client.input.InputManager;
+import works.nuty.codon.client.state.ClientDebuggerState;
+import works.nuty.codon.client.ui.layout.CommandFlowLayout;
+import works.nuty.codon.client.ui.layout.CommandFlowLayout.Part;
+import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds;
+import works.nuty.codon.core.model.CallFrame;
+import works.nuty.codon.core.model.CommandSnippet;
+import works.nuty.codon.core.model.ExecutionFlowStage;
+import works.nuty.codon.core.model.ExecutionFlowTrace;
+import works.nuty.codon.core.model.PauseSnapshot;
+import works.nuty.codon.core.model.SourceLocation;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import static works.nuty.codon.client.ui.DebuggerTheme.*;
+
+/** A single command surface: its call path, recorded clauses, and the authoritative stop. */
+public final class CommandPanel {
+    private static final Bounds EMPTY = new Bounds(0, 0, 0, 0);
+    private final Minecraft client = Minecraft.getInstance();
+    private final ClientDebuggerState state;
+    private final Runnable selectionChanged;
+    private final Map<String, DebuggerButton> cache = new HashMap<>();
+    private final Set<String> used = new HashSet<>();
+    private final List<DebuggerButton> buttons = new ArrayList<>();
+    private boolean expanded;
+    private int commandOffset;
+    private int stackOffset;
+    private int maxCommandOffset;
+    private int maxStackOffset;
+    private Bounds commandBounds = EMPTY;
+    private Bounds stackBounds = EMPTY;
+    private @Nullable Selection lastSelection;
+    private @Nullable StackSelection lastStackSelection;
+    private @Nullable PauseSnapshot renderedSnapshot;
+
+    public CommandPanel(ClientDebuggerState state, Runnable selectionChanged) {
+        this.state = state;
+        this.selectionChanged = selectionChanged;
+    }
+
+    public int preferredHeight(int width, int height, @Nullable PauseSnapshot snapshot) {
+        if (snapshot == null) return 36;
+        int base = state.selectedExecutionFlow() == null ? 47 : height < 240 ? 57 : 71;
+        return expanded ? Math.max(120, height / 2) : base;
+    }
+
+    public List<DebuggerButton> render(GuiGraphicsExtractor graphics, Bounds area,
+                                       @Nullable PauseSnapshot snapshot, InputManager input, DebuggerOverlay overlay) {
+        used.clear();
+        buttons.clear();
+        renderedSnapshot = snapshot;
+        commandBounds = stackBounds = EMPTY;
+        if (area.width() < 20 || area.height() < 18) return finish();
+        graphics.fill(area.x(), area.y(), area.x() + area.width(), area.y() + area.height(), PANEL);
+        graphics.outline(area.x(), area.y(), area.width(), area.height(), BORDER);
+        if (snapshot == null) {
+            drawText(graphics, tr("codon.ui.no_snapshot"), area.x() + 7, area.y() + 7, area.width() - 14, MUTED);
+            lastSelection = null;
+            return finish();
+        }
+
+        boolean compact = area.height() < 59;
+        int y = area.y() + 3;
+        int pathRight = renderActions(new Bounds(area.x() + 4, y, area.width() - 8, 17), snapshot, input, overlay);
+        renderPath(graphics, new Bounds(area.x() + 4, y, Math.max(0, pathRight - area.x() - 8), 17), snapshot);
+        y += 19;
+        int footerHeight = !compact && area.y() + area.height() - y >= 43 ? 14 : 0;
+        Bounds body = new Bounds(area.x() + 5, y, area.width() - 12,
+            Math.max(0, area.y() + area.height() - 4 - footerHeight - y));
+        renderClauses(graphics, body, snapshot);
+        if (footerHeight > 0) {
+            int footerY = area.y() + area.height() - footerHeight;
+            graphics.fill(area.x() + 1, footerY - 2, area.x() + area.width() - 1, footerY - 1, BORDER);
+            drawText(graphics, summary(), area.x() + 8, footerY + 1, area.width() - 16, MUTED);
+        }
+        return finish();
+    }
+
+    private void renderPath(GuiGraphicsExtractor graphics, Bounds area, PauseSnapshot snapshot) {
+        List<CallFrame> frames = state.displayedCallStack();
+        int titleWidth = Math.min(client.font.width(tr("codon.ui.call_stack", frames.size())) + 10,
+            Math.max(0, area.width() / 2));
+        drawText(graphics, tr("codon.ui.call_stack", frames.size()), area.x() + 3, area.y() + 4, titleWidth - 6, MUTED);
+        int left = area.x() + titleWidth;
+        int available = Math.max(0, area.width() - titleWidth);
+        if (frames.isEmpty()) {
+            drawText(graphics, tr("codon.ui.stack_unavailable"), left + 3, area.y() + 4, available - 6, MUTED);
+            return;
+        }
+        if (available < 5) return;
+        int total = 0;
+        int selectedStart = 0;
+        int selectedEnd = 0;
+        for (int i = frames.size() - 1; i >= 0; i--) {
+            int width = client.font.width(frameLabel(snapshot, i)) + 10 + frameIconWidth(i);
+            if (i == state.selectedCallFrameIndex()) { selectedStart = total; selectedEnd = total + width; }
+            total += width + (i > 0 ? 8 : 0);
+        }
+        maxStackOffset = Math.max(0, total - available);
+        StackSelection selection = new StackSelection(frames, state.selectedCallFrameIndex(), available);
+        if (!selection.equals(lastStackSelection)) {
+            if (selectedEnd - selectedStart > available) stackOffset = selectedEnd - available;
+            else if (selectedStart < stackOffset) stackOffset = selectedStart;
+            else if (selectedEnd > stackOffset + available) stackOffset = selectedEnd - available;
+            lastStackSelection = selection;
+        }
+        stackOffset = Math.clamp(stackOffset, 0, maxStackOffset);
+        stackBounds = area;
+        int x = left - stackOffset;
+        for (int i = frames.size() - 1; i >= 0; i--) {
+            String label = frameLabel(snapshot, i);
+            int width = client.font.width(label) + 10 + frameIconWidth(i);
+            int visibleLeft = Math.max(left, x);
+            int visibleRight = Math.min(left + available, x + width);
+            if (visibleRight - visibleLeft >= 5) {
+                DebuggerButton frame = button("path-" + i + "-" + frames.get(i).invocationId(),
+                    new Bounds(visibleLeft, area.y(), visibleRight - visibleLeft, 15), Component.literal(label),
+                    true, state.selectedCallFrameIndex() == i, frameAction(i))
+                    .withHorizontalViewport(visibleLeft - x, width);
+                if (frameIconWidth(i) > 0) frame.withTextIcon(DebuggerIcon.PAUSE);
+                if (i == state.selectedCallFrameIndex() && state.isViewingCurrentCommand()) frame.withStatusColor(AMBER, AMBER_SURFACE);
+                frame.setTooltip(Tooltip.create(frameTooltip(frames.get(i))));
+            }
+            x += width;
+            if (i > 0 && x + 2 >= left && x + 8 <= left + available)
+                drawText(graphics, "›", x + 2, area.y() + 4, 6, MUTED);
+            x += 8;
+        }
+        if (maxStackOffset > 0) {
+            int thumb = Math.max(5, available * available / total);
+            int thumbX = left + (available - thumb) * stackOffset / maxStackOffset;
+            graphics.fill(left, area.y() + 16, left + available, area.y() + 17, BORDER);
+            graphics.fill(thumbX, area.y() + 16, thumbX + thumb, area.y() + 17, TEAL);
+        }
+    }
+
+    private int renderActions(Bounds area, PauseSnapshot snapshot,
+                               InputManager input, DebuggerOverlay overlay) {
+        int right = area.x() + area.width();
+        button("expand", new Bounds(right - 17, area.y(), 17, 16),
+            Component.translatable(expanded ? "codon.ui.collapse_command" : "codon.ui.expand_command"), true, false,
+            () -> expanded = !expanded).withIcon(expanded ? DebuggerIcon.COLLAPSE : DebuggerIcon.EXPAND);
+        right -= 20;
+        if (area.width() >= 240) {
+            int width = labelWidth("codon.watch.open");
+            button("watch", new Bounds(right - width, area.y(), width, 16), Component.translatable("codon.watch.open"),
+                true, false, () -> client.gui.setScreen(new WatchScreen(input, state, overlay)));
+            right -= width + 3;
+        }
+        if (!state.isViewingCurrentCommand()) {
+            int width = labelWidth("codon.ui.return_current");
+            button("current", new Bounds(right - width, area.y(), width, 16), Component.translatable("codon.ui.return_current"),
+                true, false, () -> { state.selectCurrentCommand(); changed(); });
+            right -= width + 3;
+        }
+        if (snapshot.executionFlows().size() > 1 && right - area.x() >= 100) {
+            button("flow-next", new Bounds(right - 16, area.y(), 16, 16), Component.literal("›"),
+                state.hasAdjacentExecutionVisit(1), false,
+                () -> { state.selectAdjacentExecutionVisit(1); changed(); })
+                .setTooltip(Tooltip.create(Component.translatable("codon.ui.next_recorded_command")));
+            button("flow-prev", new Bounds(right - 34, area.y(), 16, 16), Component.literal("‹"),
+                state.hasAdjacentExecutionVisit(-1), false,
+                () -> { state.selectAdjacentExecutionVisit(-1); changed(); })
+                .setTooltip(Tooltip.create(Component.translatable("codon.ui.previous_recorded_command")));
+            right -= 38;
+        }
+        return right;
+    }
+
+    private void renderClauses(GuiGraphicsExtractor graphics, Bounds body, PauseSnapshot snapshot) {
+        if (body.height() < 15 || body.width() < 10) return;
+        CommandSnippet snippet = state.selectedCommand();
+        if (snippet == null) return;
+        ExecutionFlowTrace flow = state.selectedExecutionFlow();
+        if (flow == null) {
+            renderRawCommand(graphics, body, snippet, snapshot);
+            return;
+        }
+        CommandFlowLayout.Content content = CommandFlowLayout.content(snippet, flow);
+        List<Part> parts = content.parts();
+        if (!content.inline()) {
+            parts = new ArrayList<>(parts);
+            parts.addFirst(new Part(content.command(), -1));
+        }
+        List<Part> displayed = parts;
+        CommandFlowLayout.Layout layout = CommandFlowLayout.layout(parts, body.width() - 4, client.font::width,
+            index -> {
+                int stage = displayed.get(index).stageIndex();
+                return stage < 0 ? client.font.width(tr("codon.ui.not_observed")) + 10
+                    : client.font.width(counts(flow.stages().get(stage))) + DebuggerIcon.SIZE + 14;
+            });
+        int rowHeight = body.height() < 30 ? 17 : 30;
+        int rows = Math.max(1, body.height() / rowHeight);
+        maxCommandOffset = Math.max(0, layout.rows() - rows);
+        Selection selection = new Selection(snapshot, state.selectedCallFrameIndex(), state.selectedFlowIndex(),
+            state.selectedFlowStageIndex(), body.width(), body.height());
+        if (!selection.equals(lastSelection)) {
+            int selectedStage = state.selectedFlowStageIndex();
+            int selectedRow = layout.cells().stream()
+                .filter(cell -> displayed.get(cell.partIndex()).stageIndex() == selectedStage)
+                .mapToInt(CommandFlowLayout.Cell::row).findFirst().orElse(0);
+            commandOffset = Math.clamp(selectedRow - rows + 1, 0, maxCommandOffset);
+            lastSelection = selection;
+        }
+        commandOffset = Math.clamp(commandOffset, 0, maxCommandOffset);
+        commandBounds = body;
+        for (CommandFlowLayout.Cell cell : layout.cells()) {
+            int row = cell.row() - commandOffset;
+            if (row < 0 || row >= rows) continue;
+            Part part = parts.get(cell.partIndex());
+            int x = body.x() + cell.x();
+            int y = body.y() + row * rowHeight;
+            int stageIndex = part.stageIndex();
+            if (stageIndex >= 0 && flow != null) {
+                ExecutionFlowStage stage = flow.stages().get(stageIndex);
+                boolean stopped = state.selectedFlowIndex() == state.pausedFlowIndex() && stageIndex == state.pausedFlowStageIndex();
+                DebuggerButton clause = button("clause-" + flow.invocationId() + "-" + stage.index() + "-" + cell.row(),
+                    new Bounds(x, y, cell.width(), 16), Component.literal(cell.text()), true,
+                    stageIndex == state.selectedFlowStageIndex(), () -> {
+                        if (state.selectedExecutionFlow() != flow) return;
+                        state.selectExecutionFlowStage(stageIndex);
+                        changed();
+                    });
+                if (stopped) clause.withStatusColor(AMBER, AMBER_SURFACE);
+                clause.setTooltip(Tooltip.create(Component.literal(part.text().strip() + "\n" + stageSummary(stage))));
+                if (cell.first() && rowHeight >= 30) {
+                    String count = counts(stage);
+                    drawText(graphics, count, x + 4, y + 20,
+                        cell.width() - 5 - (stopped ? DebuggerIcon.SIZE + 3 : 0), stopped ? AMBER : MUTED);
+                    if (stopped) DebuggerIcon.PAUSE.draw(graphics,
+                        x + 7 + client.font.width(count), y + 17, AMBER);
+                }
+            } else {
+                drawText(graphics, cell.text(), x + 5, y + 4, cell.width() - 10, flow == null ? TEXT : MUTED);
+                if (flow != null && cell.first() && rowHeight >= 30) {
+                    drawText(graphics, tr("codon.ui.not_observed"), x + 4, y + 20, cell.width() - 5, MUTED);
+                }
+            }
+        }
+        scrollbar(graphics, body.x() + body.width() - 1, body.y(), body.height(), commandOffset, maxCommandOffset, rows);
+    }
+
+    private void renderRawCommand(GuiGraphicsExtractor graphics, Bounds body, CommandSnippet command, PauseSnapshot snapshot) {
+        var lines = client.font.split(ClientFormatting.command(command), Math.max(1, body.width() - 12));
+        int rows = Math.max(1, body.height() / 11);
+        maxCommandOffset = Math.max(0, lines.size() - rows);
+        Selection selection = new Selection(snapshot, state.selectedCallFrameIndex(), state.selectedFlowIndex(), -1,
+            body.width(), body.height());
+        if (!selection.equals(lastSelection)) { commandOffset = 0; lastSelection = selection; }
+        commandOffset = Math.clamp(commandOffset, 0, maxCommandOffset);
+        commandBounds = body;
+        graphics.fill(body.x(), body.y(), body.x() + 2, body.y() + body.height(),
+            state.isViewingCurrentCommand() ? AMBER : MUTED);
+        graphics.enableScissor(body.x() + 4, body.y(), body.x() + body.width() - 4, body.y() + body.height());
+        for (int i = 0; i < rows && commandOffset + i < lines.size(); i++) {
+            graphics.text(client.font, lines.get(commandOffset + i), body.x() + 5, body.y() + i * 11, TEXT, false);
+        }
+        graphics.disableScissor();
+        scrollbar(graphics, body.x() + body.width() - 1, body.y(), body.height(), commandOffset, maxCommandOffset, rows);
+    }
+
+    private String summary() {
+        ExecutionFlowStage stage = state.selectedExecutionFlowStage();
+        if (stage == null) return tr("codon.ui.no_flow");
+        ExecutionFlowTrace flow = state.selectedExecutionFlow();
+        return stageSummary(stage) + (flow != null && flow.truncated() && !stage.truncated()
+            ? " · " + tr("codon.ui.truncated") : "");
+    }
+
+    private static String counts(ExecutionFlowStage stage) {
+        String result = stage.inputCount() + "→" + (stage.complete() ? stage.outputCount() : "…");
+        if (stage.droppedCount() > 0) result += "  −" + stage.droppedCount();
+        if (!stage.lineageComplete()) result += "  ?";
+        if (stage.truncated()) result += "  …";
+        return result;
+    }
+
+    private static String stageSummary(ExecutionFlowStage stage) {
+        String summary = stage.terminal()
+            ? Component.translatable("codon.ui.command_results", stage.inputCount(), stage.executionCount(), stage.successCount()).getString()
+            : Component.translatable("codon.ui.command_contexts", counts(stage)).getString();
+        if (!stage.lineageComplete()) summary += " · " + tr("codon.ui.unknown_lineage");
+        if (stage.truncated()) summary += " · " + tr("codon.ui.truncated");
+        return summary;
+    }
+
+    public boolean scroll(double x, double y, double scrollX, double amount) {
+        if (stackBounds.contains(x, y)) {
+            double movement = scrollX != 0 ? scrollX : amount;
+            if (movement == 0) return false;
+            stackOffset = (int) Math.clamp(stackOffset - movement * 24, 0, maxStackOffset);
+            return true;
+        }
+        int delta = amount > 0 ? -1 : amount < 0 ? 1 : 0;
+        if (delta == 0) return false;
+        if (commandBounds.contains(x, y)) {
+            commandOffset = Math.clamp(commandOffset + delta, 0, maxCommandOffset);
+        } else return false;
+        return true;
+    }
+
+    public void clearBounds() {
+        commandBounds = stackBounds = EMPTY;
+    }
+
+    private Runnable frameAction(int index) {
+        CallFrame expected = state.displayedCallStack().get(index);
+        return () -> {
+            if (index >= state.displayedCallStack().size() || !state.displayedCallStack().get(index).equals(expected)) return;
+            state.selectCallFrame(index);
+            changed();
+        };
+    }
+
+    private void changed() {
+        selectionChanged.run();
+    }
+
+    private DebuggerButton button(String id, Bounds bounds, Component label, boolean active, boolean selected, Runnable action) {
+        DebuggerButton button = cache.computeIfAbsent(id, ignored -> new DebuggerButton());
+        PauseSnapshot expected = renderedSnapshot;
+        button.configure(bounds.x(), bounds.y(), Math.max(1, bounds.width()), bounds.height(), label,
+            active, selected, true, false, () -> { if (state.snapshot() == expected) action.run(); });
+        used.add(id);
+        buttons.add(button);
+        return button;
+    }
+
+    private List<DebuggerButton> finish() {
+        cache.keySet().retainAll(used);
+        return List.copyOf(buttons);
+    }
+
+    private void drawText(GuiGraphicsExtractor graphics, String value, int x, int y, int width, int color) {
+        if (width <= 0) return;
+        String clipped = client.font.width(value) <= width ? value
+            : client.font.plainSubstrByWidth(value, Math.max(0, width - client.font.width("…"))) + "…";
+        graphics.enableScissor(x, y, x + width, y + client.font.lineHeight + 1);
+        graphics.text(client.font, clipped, x, y, color, false);
+        graphics.disableScissor();
+    }
+
+    private static void scrollbar(GuiGraphicsExtractor graphics, int x, int y, int height, int offset, int max, int rows) {
+        if (max <= 0 || height <= 0) return;
+        graphics.fill(x, y, x + 2, y + height, BORDER);
+        int thumb = Math.min(height, Math.max(5, height * rows / (rows + max)));
+        int top = y + (height - thumb) * offset / max;
+        graphics.fill(x, top, x + 2, top + thumb, TEAL);
+    }
+
+    private String frameLabel(PauseSnapshot snapshot, int index) {
+        return location(state.displayedCallStack().get(index).location());
+    }
+
+    private int frameIconWidth(int index) {
+        return state.isPausedCallFrame(state.displayedCallStack().get(index)) ? DebuggerButton.TEXT_ICON_INSET : 0;
+    }
+
+    private static Component frameTooltip(CallFrame frame) {
+        return ClientFormatting.sourceLocation(frame.location()).copy().append("\n" + frame.command().text())
+            .append(frame.invocationId() >= 0 ? "\n#" + frame.invocationId() : "");
+    }
+
+    private static String location(SourceLocation location) {
+        return switch (location) {
+            case SourceLocation.Function function -> function.location().function() + ":" + function.location().line();
+            case SourceLocation.Block block -> tr("codon.ui.command_block") + " " + block.block().x() + ", " + block.block().y() + ", " + block.block().z();
+            case SourceLocation.Player player -> player.name();
+        };
+    }
+
+    private static String tr(String key, Object... args) { return Component.translatable(key, args).getString(); }
+
+    private int labelWidth(String key) { return client.font.width(Component.translatable(key)) + 10; }
+
+    private record Selection(PauseSnapshot snapshot, int frame, int flow, int stage, int width, int height) { }
+    private record StackSelection(List<CallFrame> frames, int selected, int rows) { }
+}

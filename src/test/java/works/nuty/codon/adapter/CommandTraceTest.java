@@ -7,6 +7,7 @@ import works.nuty.codon.core.model.PauseSource;
 import works.nuty.codon.core.model.SourceLocation;
 import works.nuty.codon.core.model.Vec3d;
 import works.nuty.codon.core.service.ExecutionFlowHistory;
+import works.nuty.codon.core.service.ExecutionFlowRecorder;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -64,6 +65,22 @@ class CommandTraceTest {
         assertEquals(127, flow.stages().getFirst().outputs().size());
         assertEquals(10_000, flow.finalContextCount());
         assertTrue(flow.truncated());
+    }
+
+    @Test
+    void capturesTheActualFlowStageIndexAndUsesMinusOneAfterStageLimit() {
+        ExecutionFlowHistory history = new ExecutionFlowHistory();
+        SourceLocation location = new SourceLocation.Block(
+            new BlockLocation(0, 64, 0, "minecraft:overworld"));
+        CommandTrace trace = new CommandTrace(location, history);
+
+        for (int index = 0; index < ExecutionFlowRecorder.MAX_STAGES; index++) {
+            trace.beginStage(CommandSnippet.plain("say " + index), List.of(source(index)), true);
+            assertEquals(index, trace.flowStageIndex());
+        }
+        trace.beginStage(CommandSnippet.plain("say truncated"), List.of(source(99)), true);
+
+        assertEquals(-1, trace.flowStageIndex());
     }
 
     private static PauseSource source(double x) {

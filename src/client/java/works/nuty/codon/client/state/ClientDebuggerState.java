@@ -2,12 +2,15 @@ package works.nuty.codon.client.state;
 
 import org.jspecify.annotations.Nullable;
 import works.nuty.codon.core.model.BlockLocation;
+import works.nuty.codon.core.model.CallFrame;
+import works.nuty.codon.core.model.CommandSnippet;
 import works.nuty.codon.core.model.ExecutionFlowContext;
 import works.nuty.codon.core.model.ExecutionFlowEdge;
 import works.nuty.codon.core.model.ExecutionFlowStage;
 import works.nuty.codon.core.model.ExecutionFlowTrace;
 import works.nuty.codon.core.model.PauseSnapshot;
 import works.nuty.codon.core.model.PauseSource;
+import works.nuty.codon.core.model.SourceLocation;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -27,6 +30,8 @@ public final class ClientDebuggerState {
     private volatile List<BlockLocation> blockBreakpoints = List.of();
     private int selectedSourceIndex = -1;
     private int selectedFrameIndex;
+    private List<CallFrame> displayedCallStack = List.of();
+    private int selectedCallFrameIndex = -1;
     private int selectedFlowIndex = -1;
     private int selectedFlowStageIndex = -1;
     private boolean controlPending;
@@ -36,6 +41,8 @@ public final class ClientDebuggerState {
     private final ClientNbtState nbt;
     private @Nullable PauseSource selectionHint;
     private @Nullable FlowSelectionHint flowSelectionHint;
+    private @Nullable PauseSnapshot timelineSnapshot;
+    private List<ExecutionFlowTimeline.Visit> executionVisits = List.of();
     private final DebuggerPreferences preferences;
 
     public ClientDebuggerState() {
@@ -81,8 +88,16 @@ public final class ClientDebuggerState {
         this.continuing = false;
         this.controlPending = false;
         this.selectedFrameIndex = 0;
-        selectLatestFlow(snapshot);
-        if (selectedFlowStageIndex >= 0) selectedFrameIndex = -1;
+        this.displayedCallStack = snapshot.callStack();
+        this.selectedCallFrameIndex = displayedCallStack.isEmpty() ? -1 : 0;
+        if (!snapshot.callStack().isEmpty() && snapshot.callStack().getFirst().invocationId() >= 0) {
+            selectFrameFlow(snapshot.callStack().getFirst());
+        } else {
+            // Older fixtures/snapshots have no frame linkage. Never infer it from command text.
+            selectLatestFlow(snapshot);
+            if (selectedFlowStageIndex >= 0) selectedFrameIndex = -1;
+            followSelectedCallStack();
+        }
         this.selectedSourceIndex = displayedSources().isEmpty() ? -1 : 0;
 
         ExecutionFlowTrace latestFlow = selectedExecutionFlow();
@@ -122,6 +137,8 @@ public final class ClientDebuggerState {
         this.snapshot = null;
         this.selectedSourceIndex = -1;
         this.selectedFrameIndex = 0;
+        this.displayedCallStack = recentFlowSnapshot == null ? List.of() : recentFlowSnapshot.callStack();
+        this.selectedCallFrameIndex = displayedCallStack.isEmpty() ? -1 : 0;
         this.selectedFlowIndex = -1;
         this.selectedFlowStageIndex = -1;
         this.controlPending = false;
@@ -174,10 +191,12 @@ public final class ClientDebuggerState {
         PauseSnapshot completed = new PauseSnapshot(previous.location(), previous.command(), previous.depth(),
             previous.callStack(), previous.pauseSources(), flows, previous.reason(), previous.pauseId());
         recentFlowSnapshot = completed;
+        if (paused) return;
 
         FlowSelectionHint previousFlow = flowSelectionHint;
         selectLatestFlow(completed);
-        selectedFrameIndex = selectedFlowStageIndex >= 0 ? -1 : 0;
+        selectedFrameIndex = frameForSelectedFlow();
+        followSelectedCallStack();
         selectedSourceIndex = displayedSources().isEmpty() ? -1 : 0;
         if (previousFlow != null) restoreFlow(previousFlow, completed);
         controlPending = false;
@@ -195,7 +214,26 @@ public final class ClientDebuggerState {
     public int selectedPauseSourceIndex() {
         PauseSnapshot current = snapshot;
         PauseSource selected = selectedSource();
-        return current == null || selected == null ? -1 : current.pauseSources().indexOf(selected);
+        if (current == null || selected == null || selectedFrameIndex > 0 || selectedCallFrameIndex > 0
+                || (selectedFrameIndex < 0 && !current.callStack().isEmpty())) return -1;
+        CallFrame top = current.callStack().isEmpty() ? null : current.callStack().getFirst();
+        if (top != null && top.invocationId() >= 0 && selectedExecutionFlowStage() != null) {
+            if (isViewingCurrentCommand() && sourceStage() == null) {
+                return selectedSourceIndex >= 0 && selectedSourceIndex < current.pauseSources().size() ? selectedSourceIndex : -1;
+            }
+            ExecutionFlowTrace flow = selectedExecutionFlow();
+            ExecutionFlowContext context = selectedFlowContext();
+            int pausedStage = pausedFlowStageIndex();
+            if (flow == null || flow.invocationId() != top.invocationId() || context == null || pausedStage < 0) return -1;
+            ExecutionFlowStage stage = current.executionFlows().get(pausedFlowIndex()).stages().get(pausedStage);
+            // IDs identify actual occurrences; equal entity/source values in old stages are not live.
+            if (stage.inputCount() != current.pauseSources().size()) return -1;
+            for (int i = 0; i < stage.inputs().size() && i < current.pauseSources().size(); i++) {
+                if (stage.inputs().get(i).id() == context.id()) return i;
+            }
+            return -1;
+        }
+        return current.pauseSources().indexOf(selected);
     }
 
     /** Sources currently connected to the inspector and world markers. */
@@ -207,6 +245,7 @@ public final class ClientDebuggerState {
             return List.copyOf(result);
         }
         PauseSnapshot current = inspectionSnapshot();
+        if (selectedFrameIndex > 0 || (selectedFrameIndex < 0 && current != null && !current.callStack().isEmpty())) return List.of();
         return current == null ? List.of() : current.pauseSources();
     }
 
@@ -279,14 +318,21 @@ public final class ClientDebuggerState {
         ExecutionFlowStage current = selectedExecutionFlowStage();
         ExecutionFlowTrace flow = selectedExecutionFlow();
         if (current == null || flow == null) return null;
+        if (isViewingCurrentCommand() && !completePauseInputs(current, snapshot)) return null;
         if ((!current.complete() || current.terminal()) && selectedFlowStageIndex > 0) {
             ExecutionFlowStage previous = flow.stages().get(selectedFlowStageIndex - 1);
             if (!previous.terminal() && previous.complete() && previous.lineageComplete()
+                && previous.outputs().size() == previous.outputCount() && current.inputs().size() == current.inputCount()
                 && previous.outputCount() == current.inputCount() && previous.outputs().equals(current.inputs())) {
                 return previous;
             }
         }
         return current;
+    }
+
+    private static boolean completePauseInputs(ExecutionFlowStage stage, PauseSnapshot pause) {
+        return stage.inputCount() == pause.pauseSources().size() && stage.inputs().size() == stage.inputCount()
+            && stage.inputs().stream().map(ExecutionFlowContext::source).toList().equals(pause.pauseSources());
     }
 
     private @Nullable ExecutionFlowStage sourceStage() {
@@ -356,18 +402,168 @@ public final class ClientDebuggerState {
         return selectedFrameIndex;
     }
 
+    /** Frames observed with the selected recording, kept stable while inspecting its callers. */
+    public List<CallFrame> displayedCallStack() {
+        return displayedCallStack;
+    }
+
+    public int selectedCallFrameIndex() {
+        return selectedCallFrameIndex;
+    }
+
+    private @Nullable CallFrame selectedCallFrame() {
+        return selectedCallFrameIndex >= 0 && selectedCallFrameIndex < displayedCallStack.size()
+            ? displayedCallStack.get(selectedCallFrameIndex) : null;
+    }
+
+    /** Selecting a recorded caller does not replace that recording's stack with the live stack. */
+    public void selectCallFrame(int index) {
+        if (index < 0 || index >= displayedCallStack.size()) return;
+        selectCallFrame(displayedCallStack, index);
+    }
+
+    private void selectCallFrame(List<CallFrame> frames, int index) {
+        PauseSource previous = selectedSource() != null ? selectedSource() : selectionHint;
+        if (selectedPauseSourceIndex() >= 0) selectionHint = selectedSource();
+        displayedCallStack = frames;
+        selectedCallFrameIndex = index;
+        CallFrame frame = frames.get(index);
+        selectedFrameIndex = liveFrameIndex(frame);
+        selectFrameFlow(frame);
+        List<PauseSource> sources = displayedSources();
+        int exact = previous == null ? -1 : sources.indexOf(previous);
+        selectedSourceIndex = exact >= 0 ? exact : sources.isEmpty() ? -1 : 0;
+        syncLiveSourceSelection();
+    }
+
+    private int liveFrameIndex(CallFrame frame) {
+        PauseSnapshot current = inspectionSnapshot();
+        if (current == null) return -1;
+        for (int i = 0; i < current.callStack().size(); i++) {
+            CallFrame live = current.callStack().get(i);
+            if (frame.invocationId() >= 0 ? live.invocationId() == frame.invocationId() : live.equals(frame)) return i;
+        }
+        return -1;
+    }
+
+    /** Only the authoritative stopped invocation and stage receive a pause marker. */
+    public boolean isPausedCallFrame(CallFrame frame) {
+        if (!paused || snapshot == null || snapshot.callStack().isEmpty()) return false;
+        CallFrame top = snapshot.callStack().getFirst();
+        return top.invocationId() >= 0 && top.flowStageIndex() >= 0 && frame.flowStageIndex() >= 0
+            ? top.invocationId() == frame.invocationId() && top.flowStageIndex() == frame.flowStageIndex()
+            : top == frame;
+    }
+
+    private void followSelectedCallStack() {
+        ExecutionFlowStage stage = selectedExecutionFlowStage();
+        if (stage != null && !stage.callStack().isEmpty()) {
+            displayedCallStack = stage.callStack();
+            selectedCallFrameIndex = 0;
+            return;
+        }
+        // Legacy live frames can still be inspected. Never attach an unrelated live stack to history.
+        PauseSnapshot current = inspectionSnapshot();
+        boolean matchingLiveFrame = selectedFrameIndex >= 0 && current != null
+            && selectedFrameIndex < current.callStack().size()
+            && (stage == null || current.callStack().get(selectedFrameIndex).flowStageIndex() == stage.index());
+        displayedCallStack = matchingLiveFrame ? current.callStack() : List.of();
+        selectedCallFrameIndex = selectedFrameIndex >= 0 && selectedFrameIndex < displayedCallStack.size()
+            ? selectedFrameIndex : -1;
+    }
+
     public void selectFrame(int index) {
         PauseSnapshot current = inspectionSnapshot();
         boolean currentWithoutStack = index == 0 && current != null && current.callStack().isEmpty();
         if (current == null || (!currentWithoutStack
             && (index < 0 || index >= current.callStack().size()))) return;
+        if (!currentWithoutStack) {
+            selectCallFrame(current.callStack(), index);
+            return;
+        }
 
-        PauseSource previous = selectedSource();
+        PauseSource previous = selectedSource() != null ? selectedSource() : selectionHint;
+        if (selectedPauseSourceIndex() >= 0) selectionHint = selectedSource();
         selectedFrameIndex = index;
-        selectedFlowStageIndex = -1;
-        int exact = previous == null ? -1 : current.pauseSources().indexOf(previous);
-        selectedSourceIndex = exact >= 0 ? exact : current.pauseSources().isEmpty() ? -1 : 0;
+        displayedCallStack = List.of();
+        selectedCallFrameIndex = -1;
+        selectedFlowIndex = selectedFlowStageIndex = -1;
+        List<PauseSource> sources = displayedSources();
+        int exact = previous == null ? -1 : sources.indexOf(previous);
+        selectedSourceIndex = exact >= 0 ? exact : sources.isEmpty() ? -1 : 0;
         syncLiveSourceSelection();
+    }
+
+    /** Selects only explicitly linked stages; an evicted/truncated recording stays unavailable. */
+    private void selectFrameFlow(CallFrame frame) {
+        selectedFlowIndex = flowIndex(frame.invocationId());
+        selectedFlowStageIndex = stageIndex(selectedFlowIndex, frame.flowStageIndex());
+    }
+
+    public void selectCurrentCommand() {
+        selectFrame(0);
+    }
+
+    public int pausedFlowIndex() {
+        PauseSnapshot current = snapshot;
+        return current == null || current.callStack().isEmpty() ? -1
+            : flowIndex(current.callStack().getFirst().invocationId());
+    }
+
+    public int pausedFlowStageIndex() {
+        PauseSnapshot current = snapshot;
+        return current == null || current.callStack().isEmpty() ? -1
+            : stageIndex(pausedFlowIndex(), current.callStack().getFirst().flowStageIndex());
+    }
+
+    public boolean isViewingCurrentCommand() {
+        return paused && snapshot != null && selectedFrameIndex == 0 && selectedCallFrameIndex <= 0
+            && selectedFlowStageIndex == pausedFlowStageIndex();
+    }
+
+    public @Nullable CommandSnippet selectedCommand() {
+        ExecutionFlowStage stage = selectedExecutionFlowStage();
+        if (stage != null) return stage.command();
+        PauseSnapshot current = inspectionSnapshot();
+        if (current == null) return null;
+        CallFrame frame = selectedCallFrame();
+        return frame != null ? frame.command() : current.command();
+    }
+
+    public @Nullable SourceLocation selectedLocation() {
+        ExecutionFlowTrace flow = selectedExecutionFlow();
+        if (selectedExecutionFlowStage() != null && flow != null) return flow.location();
+        PauseSnapshot current = inspectionSnapshot();
+        if (current == null) return null;
+        CallFrame frame = selectedCallFrame();
+        return frame != null ? frame.location() : current.location();
+    }
+
+    private int flowIndex(long invocationId) {
+        PauseSnapshot current = inspectionSnapshot();
+        if (invocationId < 0 || current == null) return -1;
+        for (int i = 0; i < current.executionFlows().size(); i++) {
+            if (current.executionFlows().get(i).invocationId() == invocationId) return i;
+        }
+        return -1;
+    }
+
+    private int stageIndex(int flowIndex, int recordedIndex) {
+        PauseSnapshot current = inspectionSnapshot();
+        if (current == null || flowIndex < 0 || recordedIndex < 0) return -1;
+        List<ExecutionFlowStage> stages = current.executionFlows().get(flowIndex).stages();
+        for (int i = 0; i < stages.size(); i++) if (stages.get(i).index() == recordedIndex) return i;
+        return -1;
+    }
+
+    private int frameForSelectedFlow() {
+        PauseSnapshot current = inspectionSnapshot();
+        ExecutionFlowTrace flow = selectedExecutionFlow();
+        if (current == null || flow == null) return -1;
+        for (int i = 0; i < current.callStack().size(); i++) {
+            if (current.callStack().get(i).invocationId() == flow.invocationId()) return i;
+        }
+        return -1;
     }
 
     public int selectedFlowIndex() {
@@ -397,8 +593,9 @@ public final class ClientDebuggerState {
         if (flow.stages().isEmpty()) return;
         selectedFlowIndex = flowIndex;
         selectedFlowStageIndex = latestCompletedStage(flow);
+        selectedFrameIndex = frameForSelectedFlow();
+        followSelectedCallStack();
         selectedSourceIndex = displayedSources().isEmpty() ? -1 : 0;
-        selectedFrameIndex = -1;
         syncLiveSourceSelection();
     }
 
@@ -406,9 +603,45 @@ public final class ClientDebuggerState {
         ExecutionFlowTrace flow = selectedExecutionFlow();
         if (flow == null || stageIndex < 0 || stageIndex >= flow.stages().size()) return;
         selectedFlowStageIndex = stageIndex;
+        selectedFrameIndex = frameForSelectedFlow();
+        followSelectedCallStack();
         selectedSourceIndex = displayedSources().isEmpty() ? -1 : 0;
-        selectedFrameIndex = -1;
         syncLiveSourceSelection();
+    }
+
+    public boolean hasAdjacentExecutionVisit(int direction) {
+        return adjacentExecutionVisit(direction) != null;
+    }
+
+    /** Read-only history navigation: a caller may appear again after a condition function returns. */
+    public void selectAdjacentExecutionVisit(int direction) {
+        ExecutionFlowTimeline.Visit visit = adjacentExecutionVisit(direction);
+        if (visit == null) return;
+        selectedFlowIndex = visit.flowIndex();
+        selectedFlowStageIndex = direction > 0 ? visit.stageIndices().getFirst() : visit.stageIndices().getLast();
+        selectedFrameIndex = frameForSelectedFlow();
+        followSelectedCallStack();
+        selectedSourceIndex = displayedSources().isEmpty() ? -1 : 0;
+        syncLiveSourceSelection();
+    }
+
+    private ExecutionFlowTimeline.@Nullable Visit adjacentExecutionVisit(int direction) {
+        if (direction != -1 && direction != 1) return null;
+        PauseSnapshot current = inspectionSnapshot();
+        if (current != timelineSnapshot) {
+            timelineSnapshot = current;
+            executionVisits = current == null ? List.of() : ExecutionFlowTimeline.visits(current.executionFlows());
+        }
+        int selectedVisit = -1;
+        for (int i = 0; i < executionVisits.size(); i++) {
+            ExecutionFlowTimeline.Visit visit = executionVisits.get(i);
+            if (visit.flowIndex() == selectedFlowIndex && visit.stageIndices().contains(selectedFlowStageIndex)) {
+                selectedVisit = i;
+                break;
+            }
+        }
+        int target = selectedVisit < 0 ? direction > 0 ? 0 : executionVisits.size() - 1 : selectedVisit + direction;
+        return target >= 0 && target < executionVisits.size() ? executionVisits.get(target) : null;
     }
 
     public GizmoMode gizmoMode() {
@@ -439,6 +672,10 @@ public final class ClientDebuggerState {
     public void reset() {
         applyResume();
         recentFlowSnapshot = null;
+        displayedCallStack = List.of();
+        selectedCallFrameIndex = -1;
+        timelineSnapshot = null;
+        executionVisits = List.of();
         selectionHint = null;
         flowSelectionHint = null;
         blockBreakpoints = List.of();
@@ -456,6 +693,18 @@ public final class ClientDebuggerState {
     private void selectLatestFlow(PauseSnapshot snapshot) {
         selectedFlowIndex = -1;
         selectedFlowStageIndex = -1;
+        long latestOrder = -1;
+        for (int flowIndex = 0; flowIndex < snapshot.executionFlows().size(); flowIndex++) {
+            List<ExecutionFlowStage> stages = snapshot.executionFlows().get(flowIndex).stages();
+            for (int stageIndex = 0; stageIndex < stages.size(); stageIndex++) {
+                if (stages.get(stageIndex).observationOrder() > latestOrder) {
+                    latestOrder = stages.get(stageIndex).observationOrder();
+                    selectedFlowIndex = flowIndex;
+                    selectedFlowStageIndex = stageIndex;
+                }
+            }
+        }
+        if (latestOrder >= 0) return;
         for (int i = snapshot.executionFlows().size() - 1; i >= 0; i--) {
             ExecutionFlowTrace flow = snapshot.executionFlows().get(i);
             if (!flow.stages().isEmpty()) {
@@ -479,7 +728,8 @@ public final class ClientDebuggerState {
                         selectedFlowIndex = flowIndex;
                         selectedFlowStageIndex = stageIndex;
                         selectedSourceIndex = sourceIndex;
-                        selectedFrameIndex = -1;
+                        selectedFrameIndex = frameForSelectedFlow();
+                        followSelectedCallStack();
                         return true;
                     }
                 }

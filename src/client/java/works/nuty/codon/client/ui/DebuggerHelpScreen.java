@@ -1,0 +1,189 @@
+package works.nuty.codon.client.ui;
+
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.network.chat.Component;
+import net.minecraft.util.FormattedCharSequence;
+import org.jspecify.annotations.Nullable;
+import works.nuty.codon.client.input.InputManager;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import static works.nuty.codon.client.ui.DebuggerTheme.*;
+
+/** Central home for debugger guidance, with wrapping and scrolling at every GUI scale. */
+public final class DebuggerHelpScreen extends Screen {
+    private final @Nullable Screen parent;
+    private final InputManager input;
+    private record Line(FormattedCharSequence text, int color, @Nullable DebuggerIcon icon) { }
+    private final List<Line> lines = new ArrayList<>();
+    private static final String[] TOPICS = {"basics", "controls", "sources", "watches"};
+    private int topic;
+    private int offset;
+    private int left;
+    private int top;
+    private int panelWidth;
+    private int panelHeight;
+
+    public DebuggerHelpScreen(@Nullable Screen parent, InputManager input) {
+        super(Component.translatable("codon.ui.information"));
+        this.parent = parent;
+        this.input = input;
+    }
+
+    @Override
+    protected void init() {
+        panelWidth = Math.max(1, Math.min(420, width - 12));
+        panelHeight = Math.max(1, Math.min(300, height - 12));
+        left = (width - panelWidth) / 2;
+        top = (height - panelHeight) / 2;
+        lines.clear();
+        int tabWidth = Math.max(1, (panelWidth - 16) / TOPICS.length);
+        for (int index = 0; index < TOPICS.length; index++) {
+            final int selected = index;
+            var tab = new DebuggerButton();
+            tab.configure(left + 8 + index * tabWidth, top + 27, tabWidth - 2, 20,
+                help("tab." + TOPICS[index]), true, topic == index, false, false,
+                () -> { topic = selected; offset = 0; rebuildWidgets(); });
+            addRenderableWidget(tab);
+        }
+        var client = Minecraft.getInstance();
+        switch (topic) {
+            case 0 -> {
+                entry("start", null, TEAL, keybind(input.breakpointKey.getTranslatedKeyMessage()), keybind(input.menuKey.getTranslatedKeyMessage()));
+                entry("breakpoints", null, TEAL);
+                entry("stop", null, AMBER);
+                entry("camera", null, TEAL, keybind(input.menuKey.getTranslatedKeyMessage()),
+                    keybind(client.options.keyUp.getTranslatedKeyMessage()), keybind(client.options.keyLeft.getTranslatedKeyMessage()),
+                    keybind(client.options.keyDown.getTranslatedKeyMessage()), keybind(client.options.keyRight.getTranslatedKeyMessage()),
+                    keybind(client.options.keyJump.getTranslatedKeyMessage()), keybind(client.options.keyShift.getTranslatedKeyMessage()),
+                    keybind(client.options.keySprint.getTranslatedKeyMessage()));
+            }
+            case 1 -> {
+                for (InputManager.Control control : InputManager.Control.values()) {
+                    DebuggerIcon icon = switch (control) {
+                        case RESUME -> DebuggerIcon.CONTINUE;
+                        case OVER -> DebuggerIcon.STEP_OVER;
+                        case INTO -> DebuggerIcon.STEP_INTO;
+                        case OUT -> DebuggerIcon.STEP_OUT;
+                    };
+                    add(Component.translatable(control.translationKey()).append("  ").append(keybind(input.keyLabel(control))), TEAL, icon);
+                    add(help("control." + control.name().toLowerCase(java.util.Locale.ROOT)), TEXT, null);
+                    blank();
+                }
+                entry("availability", null, TEAL);
+                entry("gizmo", DebuggerIcon.GIZMO_GROUPED, TEAL);
+                entry("labels", DebuggerIcon.GIZMO_LABELS, TEAL);
+                entry("details", DebuggerIcon.DETAILS_OPEN, TEAL);
+            }
+            case 2 -> {
+                entry("source", null, TEAL);
+                entry("flow", null, TEAL);
+                entry("created", DebuggerIcon.SOURCE_CREATED, GREEN);
+                entry("excluded", DebuggerIcon.SOURCE_EXCLUDED, RED);
+                entry("offscreen", DebuggerIcon.OUTSIDE_VIEWPORT, AMBER);
+                entry("uuid", DebuggerIcon.COPY_UUID, TEAL);
+                entry("stack", null, TEAL);
+            }
+            case 3 -> {
+                entry("watch", null, TEAL);
+                entry("types", null, TEAL);
+                entry("pin", DebuggerIcon.PIN, TEAL);
+                entry("values", null, TEAL);
+                entry("nbt", DebuggerIcon.EXPAND, TEAL);
+                entry("nbt_pin", DebuggerIcon.PIN, TEAL);
+            }
+            default -> throw new IllegalStateException("Unknown help topic");
+        }
+        offset = Math.clamp(offset, 0, maxOffset());
+        var close = new DebuggerButton();
+        close.configure(left + panelWidth - 56, top + 4, 50, 18,
+            Component.translatable("gui.done"), true, false, false, false, this::onClose);
+        addRenderableWidget(close);
+    }
+
+    private static Component help(String key, Object... args) {
+        return Component.translatable("codon.ui.help." + key, args);
+    }
+
+    private void entry(String key, @Nullable DebuggerIcon icon, int color, Object... args) {
+        add(help(key + ".title"), color, icon);
+        add(help(key + ".body", args), TEXT, null);
+        blank();
+    }
+
+    private void blank() { lines.add(new Line(FormattedCharSequence.EMPTY, TEXT, null)); }
+
+    private void add(Component text, int color, @Nullable DebuggerIcon icon) {
+        boolean first = true;
+        for (var line : font.split(text, Math.max(1, panelWidth - 44))) {
+            lines.add(new Line(line, color, first ? icon : null));
+            first = false;
+        }
+    }
+
+    private int visibleLines() { return Math.max(1, (panelHeight - 78) / (font.lineHeight + 3)); }
+    private int maxOffset() { return Math.max(0, lines.size() - visibleLines()); }
+
+    @Override
+    public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+        graphics.fill(left, top, left + panelWidth, top + panelHeight, SURFACE);
+        graphics.outline(left, top, panelWidth, panelHeight, BORDER);
+        graphics.text(font, title, left + 8, top + 9, TEAL, false);
+        graphics.enableScissor(left + 6, top + 54, left + panelWidth - 6, top + panelHeight - 22);
+        for (int row = 0; row < visibleLines() && offset + row < lines.size(); row++) {
+            Line line = lines.get(offset + row);
+            int y = top + 54 + row * (font.lineHeight + 3);
+            if (line.icon() != null) line.icon().draw(graphics, left + 9, y - 1, line.color());
+            graphics.text(font, line.text(), left + 26, y, line.color(), false);
+        }
+        graphics.disableScissor();
+        if (maxOffset() > 0) {
+            int track = Math.max(1, panelHeight - 80);
+            int thumb = Math.max(4, track * visibleLines() / lines.size());
+            int y = top + 55 + (track - thumb) * offset / maxOffset();
+            graphics.fill(left + panelWidth - 5, y, left + panelWidth - 3, y + thumb, TEAL);
+        }
+        graphics.text(font, help("navigation", keybind(Component.literal("↑ / ↓ / PgUp / PgDn")),
+            keybind(Component.literal("Esc"))), left + 8, top + panelHeight - 14, MUTED, false);
+        super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+    }
+
+    @Override
+    public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
+        offset = Math.clamp(offset - (int) Math.signum(scrollY) * 3, 0, maxOffset());
+        return true;
+    }
+
+    @Override
+    public boolean keyPressed(KeyEvent event) {
+        if (event.key() == 268 || event.key() == 269) {
+            offset = event.key() == 268 ? 0 : maxOffset();
+            return true;
+        }
+        int delta = switch (event.key()) {
+            case 265 -> -1;
+            case 264 -> 1;
+            case 266 -> -visibleLines();
+            case 267 -> visibleLines();
+            default -> 0;
+        };
+        if (delta != 0) {
+            offset = Math.clamp(offset + delta, 0, maxOffset());
+            return true;
+        }
+        return super.keyPressed(event);
+    }
+
+    @Override
+    public void onClose() { Minecraft.getInstance().gui.setScreen(parent); }
+
+    @Override
+    public boolean isPauseScreen() { return false; }
+
+    @Override
+    public boolean isInGameUi() { return true; }
+}

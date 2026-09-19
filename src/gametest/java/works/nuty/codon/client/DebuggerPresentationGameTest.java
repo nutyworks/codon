@@ -72,9 +72,10 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
                 return result;
             });
             context.waitTicks(3);
-            context.takeScreenshot("codon-grouped");
+            context.takeScreenshot("codon-command-integrated");
             checkIconToolbar(context, screen);
-            checkFlowInspector(context, screen, state);
+            checkCommandPanel(context, screen, state);
+            checkHorizontalCallPath(context, screen, state);
             checkSourceColors(context, screen, state);
             context.runOnClient(client -> {
                 DebuggerButton mode = button(screen, value -> value.startsWith("Gizmo: "));
@@ -110,6 +111,9 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
                 button(screen, value -> value.equals("#2 Zombie 2  +8"));
             });
             context.takeScreenshot("codon-grouped-second-selected");
+            // Constrain the viewport so the source list still overflows with the shorter command panel.
+            context.getInput().resizeWindow(1280, 600);
+            context.waitTicks(2);
             context.runOnClient(client -> {
                 DebuggerButton second = button(screen, value -> value.equals("#2 Zombie 2"));
                 screen.setFocused(second);
@@ -122,13 +126,21 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
                 require(state.selectedSourceIndex() == 1, "Enter cannot activate a hidden source");
             });
             context.runOnClient(client -> state.setGizmoMode(ClientDebuggerState.GizmoMode.LABELS));
+            context.getInput().resizeWindow(1280, 800);
             context.waitTicks(2);
             context.takeScreenshot("codon-labels");
             checkLabelSlotsStayFixedAfterSourceSelection(context, screen, state);
             context.getInput().resizeWindow(640, 480);
             context.waitTicks(2);
-            context.takeScreenshot("codon-compact");
+            context.takeScreenshot("codon-command-compact-stack");
             context.runOnClient(client -> {
+                require(state.selectedFlowStageIndex() == 2, "The selected condition survives a resize");
+                button(screen, value -> value.contains("if entity"));
+                for (String label : List.of("Current", "Watch")) {
+                    DebuggerButton control = button(screen, value -> value.equals(label));
+                    require(control.getWidth() >= client.font.width(control.getMessage()) + 10,
+                        "Command actions keep their complete label at compact width");
+                }
                 for (var child : screen.children()) {
                     if (child instanceof DebuggerButton button) {
                         require(button.getX() >= 0 && button.getY() >= 0
@@ -136,10 +148,18 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
                             "Compact controls remain in the screen");
                     }
                 }
+            });
+            context.waitTicks(2);
+            context.runOnClient(client -> button(screen, value -> value.contains("if entity")));
+            context.takeScreenshot("codon-command-compact");
+            context.runOnClient(client -> {
                 state.applyResume();
             });
             context.waitTicks(2);
             context.runOnClient(client -> {
+                require(screen.children().stream().noneMatch(child -> child instanceof DebuggerButton button
+                    && button.icon() == DebuggerIcon.PAUSE),
+                    "Resumed command history does not display an active stop marker");
                 for (InputManager.Control action : InputManager.Control.values()) {
                     DebuggerButton control = button(screen, value -> value.equals(
                         Component.translatable(action.translationKey()).getString()));
@@ -164,8 +184,8 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
     private static void checkIconToolbar(ClientGameTestContext context, CodonScreen screen) {
         context.runOnClient(client -> {
             List<DebuggerButton> icons = screen.children().stream().filter(DebuggerButton.class::isInstance)
-                .map(DebuggerButton.class::cast).filter(button -> button.icon() != null).toList();
-            require(icons.size() == 6, "Execution, gizmo, and details controls all use icons");
+                .map(DebuggerButton.class::cast).filter(button -> button.icon() != null && button.getY() < 50).toList();
+            require(icons.size() == 7, "Main toolbar retains execution, gizmo, details, and information icons");
             require(icons.stream().allMatch(button -> button.getWidth() == 20 && button.getHeight() == 20),
                 "Toolbar icons keep compact square hit targets");
             require(icons.stream().map(DebuggerButton::getY).distinct().count() == 1, "All icons share one row");
@@ -206,108 +226,111 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
         context.waitTicks(2);
     }
 
-    private static void checkFlowInspector(ClientGameTestContext context, CodonScreen screen,
-                                           ClientDebuggerState state) {
-        context.getInput().resizeWindow(1280, 1100);
-        context.waitTicks(2);
+    private static void checkHorizontalCallPath(ClientGameTestContext context, CodonScreen screen,
+                                                ClientDebuggerState state) {
         context.runOnClient(client -> {
-            button(screen, value -> value.startsWith("RUN 9→9"));
-            require(state.selectedFlowStageIndex() == 3,
-                "the latest selected stage remains visible in the tall flow panel");
-        });
-        context.takeScreenshot("codon-flow-tall-selected-stage");
-        checkInspectorSections(context, screen);
-        context.getInput().resizeWindow(1280, 800);
-        context.waitTicks(2);
-        context.runOnClient(client -> click(screen, button(screen, value -> value.equals("Flow"))));
-        context.waitTicks(2);
-        context.runOnClient(client -> {
-            DebuggerButton condition = button(screen, value -> value.contains("10→9") && value.contains("−1"));
-            click(screen, condition);
-            require(state.selectedExecutionFlowStage() != null
-                    && state.selectedExecutionFlowStage().droppedCount() == 1,
-                "Flow-stage click selects the condition result");
-            require(state.displayedSources().size() == 10,
-                "Condition stage exposes its nine outputs and one explicitly excluded input");
-        });
-        context.waitTicks(2);
-        context.runOnClient(client -> click(screen, button(screen, value -> value.equals("Sources"))));
-        context.waitTicks(2);
-        context.runOnClient(client -> {
-            DebuggerButton first = button(screen, value -> value.equals("#1 Zombie 1"));
-            for (int i = 0; i < 6; i++) {
-                screen.mouseScrolled(first.getX() + 2, first.getY() + 2, 0, -1);
-            }
+            PauseSnapshot original = fixture(client);
+            List<CallFrame> frames = new ArrayList<>();
+            frames.add(original.callStack().getFirst());
+            for (int i = 1; i <= 9; i++) frames.add(new CallFrame(9 - i,
+                new SourceLocation.Function(new FunctionLocation(new FunctionId("demo", "caller_" + i), i)),
+                CommandSnippet.plain("function demo:caller_" + (i - 1)), 9000 + i, 0));
+            state.applyPause(new PauseSnapshot(original.location(), original.command(), original.depth(), frames,
+                original.pauseSources(), original.executionFlows(), original.reason(), original.pauseId()));
         });
         context.waitTicks(2);
         context.runOnClient(client -> {
-            click(screen, button(screen, value -> value.startsWith("× Nether source")));
-            require(state.selectedSourceDropped(), "Excluded context remains selectable in the inspector");
+            DebuggerButton leaf = button(screen, value -> value.equals("demo:spawn_wave:12"));
+            require(screen.children().stream().noneMatch(child -> child instanceof DebuggerButton control
+                && control.getMessage().getString().equals("demo:caller_9:9")), "Off-screen frames are not active widgets");
+            require(screen.mouseScrolled(leaf.getX() + 3, leaf.getY() + 3, 100, 0),
+                "Horizontal trackpad input scrolls the call path");
         });
         context.waitTicks(2);
-        context.takeScreenshot("codon-flow-excluded-context");
-        context.runOnClient(client -> click(screen, button(screen, value -> value.equals("Flow"))));
+        context.runOnClient(client -> {
+            DebuggerButton root = button(screen, value -> value.equals("demo:caller_9:9"));
+            click(screen, root);
+            require(state.selectedCallFrameIndex() == 9, "Horizontal scrolling makes the deepest caller selectable");
+            require(state.selectedCommand().text().equals("function demo:caller_8"), "Caller selection preserves its command");
+        });
         context.waitTicks(2);
-        context.runOnClient(client -> click(screen, button(screen, value -> value.startsWith("RUN 9→9"))));
+        context.takeScreenshot("codon-horizontal-stack-root");
+        context.runOnClient(client -> {
+            DebuggerButton root = button(screen, value -> value.equals("demo:caller_9:9"));
+            require(screen.mouseScrolled(root.getX() + 3, root.getY() + 3, 0, -100),
+                "A vertical mouse wheel also scrolls the horizontal path");
+        });
         context.waitTicks(2);
-        context.runOnClient(client -> click(screen, button(screen, value -> value.equals("Sources"))));
+        context.runOnClient(client -> {
+            click(screen, button(screen, value -> value.equals("demo:spawn_wave:12")));
+            require(state.selectedCallFrameIndex() == 0 && state.isViewingCurrentCommand(), "The scrolled leaf returns to the actual stop");
+            for (var child : screen.children()) if (child instanceof DebuggerButton control)
+                require(control.getX() >= 0 && control.getRight() <= screen.width,
+                    "Clipped frame hit boxes stay inside the screen");
+        });
         context.waitTicks(2);
-        context.runOnClient(client -> state.selectSource(0));
+        context.takeScreenshot("codon-horizontal-stack-leaf");
+        context.runOnClient(client -> state.applyPause(fixture(client)));
+        context.waitTicks(2);
     }
 
-    private static void checkInspectorSections(ClientGameTestContext context, CodonScreen screen) {
-        String[] sections = { "Flow", "Sources", "Details", "Call stack" };
+    private static void checkCommandPanel(ClientGameTestContext context, CodonScreen screen,
+                                          ClientDebuggerState state) {
         context.runOnClient(client -> {
-            for (String section : sections) {
-                DebuggerButton toggle = button(screen, value -> value.equals("v " + section));
-                require(toggle.icon() == DebuggerIcon.COLLAPSE,
-                    "Collapse is a drawn icon, never ellipsized text");
-                require(toggle.getWidth() >= DebuggerIcon.SIZE + 2
-                    && toggle.getHeight() >= DebuggerIcon.SIZE + 2, "Toggle icon fits inside its hit area");
-            }
-            long sourceRows = screen.children().stream().filter(DebuggerButton.class::isInstance)
-                .map(DebuggerButton.class::cast).filter(b -> b.getMessage().getString().matches("#[0-9]+ Zombie [0-9]+"))
-                .count();
-            require(sourceRows > 3, "Tall Sources uses available height beyond the previous three-row cap");
+            require(screen.children().stream().noneMatch(child -> child instanceof DebuggerButton control
+                && control.getMessage().getString().startsWith("Call stack")), "Call path has no expand/collapse control");
+            require(button(screen, value -> value.equals("demo:spawn_wave:12")).icon() == DebuggerIcon.PAUSE,
+                "The paused frame uses a drawn pause icon");
+            button(screen, value -> value.equals("demo:tick:4"));
+            DebuggerButton condition = button(screen, value -> value.contains("if entity"));
+            require(condition.getY() == button(screen, value -> value.equals("demo:spawn_wave:12")).getY() + 19,
+                "Command clauses follow the call path directly without a duplicate location caption row");
+            click(screen, condition);
+            require(state.selectedExecutionFlowStage().index() == 2 && state.displayedSources().size() == 10,
+                "A command clause selects its recorded condition stage and sources");
         });
-        for (String section : sections) {
-            context.runOnClient(client -> click(screen, button(screen, value -> value.equals("v " + section))));
-            context.waitTicks(2);
-            context.runOnClient(client -> require(button(screen, value -> value.equals("> " + section)).icon()
-                == DebuggerIcon.EXPAND, "Collapsed section retains its right chevron"));
-        }
+        context.waitTicks(2);
+        context.takeScreenshot("codon-command-condition");
         context.runOnClient(client -> {
-            for (int i = 1; i < sections.length; i++) {
-                String previousLabel = "> " + sections[i - 1];
-                String currentLabel = "> " + sections[i];
-                DebuggerButton previous = button(screen, value -> value.equals(previousLabel));
-                DebuggerButton current = button(screen, value -> value.equals(currentLabel));
-                require(current.getY() - previous.getY() == 20, "Every collapsed section is header-only");
-            }
+            require(button(screen, value -> value.equals("demo:spawn_wave:12")).icon() != DebuggerIcon.PAUSE,
+                "An earlier selected clause shows its recorded frame without the current stop icon");
+            DebuggerButton parent = button(screen, value -> value.equals("demo:tick:4"));
+            click(screen, parent);
+            require(state.selectedFrameIndex() == 1 && state.selectedExecutionFlow().invocationId() == 76,
+                "Horizontal call path selects the matching parent invocation");
+            require(state.selectedPauseSourceIndex() == -1 && state.nbt().executor() == null,
+                "A same-valued parent context never becomes the live Watch or NBT executor");
         });
-        context.takeScreenshot("codon-inspector-all-collapsed");
-        context.runOnClient(client -> click(screen, button(screen, value -> value.equals("> Sources"))));
+        context.waitTicks(2);
+        context.takeScreenshot("codon-command-stack");
+        context.runOnClient(client -> {
+            DebuggerButton previousClause = button(screen, value -> value.equals("function demo:spawn_wave"));
+            click(screen, button(screen, value -> value.equals("Current")));
+            click(screen, previousClause);
+            require(state.isViewingCurrentCommand(),
+                "A clause from the previous flow cannot select a different stage after Current and before the next render");
+        });
         context.waitTicks(2);
         context.runOnClient(client -> {
-            button(screen, value -> value.equals("#8 Zombie 8"));
-            DebuggerButton stack = button(screen, value -> value.equals("> Call stack"));
-            var area = works.nuty.codon.client.ui.layout.DebuggerLayout.create(screen.width, screen.height, true).inspector();
-            require(stack.getY() == area.y() + area.height() - 18,
-                "The only open section takes all height down to the final collapsed header");
+            require(state.selectedFrameIndex() == 0 && state.selectedExecutionFlow().invocationId() == 77
+                    && state.isViewingCurrentCommand(), "Current returns to the authoritative stopped frame and stage");
+            click(screen, button(screen, value -> value.equals("Expand command panel")));
         });
-        context.takeScreenshot("codon-inspector-sources-fill-height");
-        for (String section : List.of("Flow", "Details", "Call stack")) {
-            context.runOnClient(client -> click(screen, button(screen, value -> value.equals("> " + section))));
-            context.waitTicks(2);
-        }
-        context.getInput().resizeWindow(1280, 1600);
         context.waitTicks(2);
         context.runOnClient(client -> {
-            button(screen, value -> value.startsWith("1  1→10"));
-            button(screen, value -> value.startsWith("RUN 9→9"));
-            button(screen, value -> value.equals("#8 Zombie 8"));
+            button(screen, value -> value.equals("Collapse command panel"));
+            click(screen, button(screen, value -> value.equals("Collapse command panel")));
         });
-        context.takeScreenshot("codon-inspector-expanded-fill-height");
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            click(screen, button(screen, value -> value.equals("‹")));
+            require(state.selectedExecutionFlow().invocationId() == 76, "Flow previous selects the parent trace");
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            click(screen, button(screen, value -> value.equals("Current")));
+            state.selectSource(0);
+        });
     }
 
     private static void checkSourceColors(ClientGameTestContext context, CodonScreen screen,
@@ -332,9 +355,9 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
                 "An unchanged condition output keeps its normal color despite its new occurrence ID");
             DebuggerButton removed = button(screen, value -> value.equals("× Removed source"));
             require(removed.foregroundColor() == DebuggerTheme.RED, "Removed source is red even before selection");
-            require(state.selectedFlowStageIndex() == 3 && state.displayedSources().size() == 9
+            require(state.selectedFlowStageIndex() == 3 && state.displayedSources().size() == 10
                 && state.worldSources().size() == 10,
-                "Only the viewport adds the removed input while the current RUN inspector stays live");
+                "The command panel and viewport expose the same removed-input context");
         });
         context.takeScreenshot("codon-default-after-if-removed");
         context.runOnClient(client -> {
@@ -410,15 +433,22 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
 
     /** Like a real pause packet: prior stages are complete, the selected next stage has not run. */
     private static PauseSnapshot beforeStage(PauseSnapshot fixture, int index) {
-        ExecutionFlowTrace original = fixture.executionFlows().getFirst();
+        ExecutionFlowTrace original = fixture.executionFlows().stream()
+            .filter(flow -> flow.invocationId() == 77).findFirst().orElseThrow();
         ExecutionFlowStage stage = original.stages().get(index);
         List<ExecutionFlowStage> stages = new ArrayList<>(original.stages().subList(0, index));
         stages.add(new ExecutionFlowStage(stage.index(), stage.command(), stage.inputs(),
             stage.terminal() ? stage.inputs() : List.of(), List.of(), List.of(), stage.inputCount(),
-            stage.terminal() ? stage.inputCount() : 0, 0, stage.terminal(), 0, 0, false, true, false));
-        return new PauseSnapshot(fixture.location(), stage.command(), fixture.depth(), fixture.callStack(),
+            stage.terminal() ? stage.inputCount() : 0, 0, stage.terminal(), 0, 0, false, true, false,
+            stage.observationOrder(), stage.callStack()));
+        List<CallFrame> stack = new ArrayList<>(fixture.callStack());
+        CallFrame top = stack.getFirst();
+        stack.set(0, new CallFrame(top.depth(), top.location(), stage.command(), top.invocationId(), index));
+        List<ExecutionFlowTrace> flows = fixture.executionFlows().stream().map(flow -> flow.invocationId() == 77
+            ? new ExecutionFlowTrace(original.invocationId(), original.location(), stages, false) : flow).toList();
+        return new PauseSnapshot(fixture.location(), stage.command(), fixture.depth(), stack,
             stage.inputs().stream().map(ExecutionFlowContext::source).toList(),
-            List.of(new ExecutionFlowTrace(original.invocationId(), original.location(), stages, false)),
+            flows,
             PauseReason.STEP, fixture.pauseId());
     }
 
@@ -481,18 +511,28 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
         SourceLocation location = new SourceLocation.Function(new FunctionLocation(new FunctionId("demo", "spawn_wave"), 12));
         String commandText = "execute as @e[type=zombie] at @s if entity @s[tag=keep] run function demo:move";
         CommandSnippet command = new CommandSnippet(commandText, 60, commandText.length());
-        List<CallFrame> stack = List.of(new CallFrame(1, location, command),
+        List<CallFrame> stack = List.of(new CallFrame(1, location, command, 77, 3),
             new CallFrame(0, new SourceLocation.Function(new FunctionLocation(new FunctionId("demo", "tick"), 4)),
-                CommandSnippet.plain("function demo:spawn_wave")));
+                CommandSnippet.plain("function demo:spawn_wave"), 76, 0));
         SourceLocation pausedBlock = new SourceLocation.Block(new BlockLocation(
             (int) Math.floor(x) + 2, (int) Math.floor(y), (int) Math.floor(z) + 5, "minecraft:overworld"));
         List<PauseSource> finalSources = List.copyOf(sources.subList(0, 9));
         return new PauseSnapshot(pausedBlock, command, 1, stack, finalSources,
-            List.of(flowFixture(pausedBlock, command, sources)), PauseReason.BREAKPOINT);
+            List.of(parentFlowFixture(stack.get(1).location(), sources), flowFixture(pausedBlock, command, sources, stack)),
+            PauseReason.BREAKPOINT);
+    }
+
+    private static ExecutionFlowTrace parentFlowFixture(SourceLocation location, List<PauseSource> sources) {
+        ExecutionFlowContext sameSource = new ExecutionFlowContext(90, sources.getFirst());
+        ExecutionFlowStage terminal = new ExecutionFlowStage(0, CommandSnippet.plain("function demo:spawn_wave"),
+            List.of(sameSource), List.of(sameSource), List.of(), List.of(), 1, 1, 0, true,
+            1, 1, true, true, false, 0, List.of(new CallFrame(0, location,
+                CommandSnippet.plain("function demo:spawn_wave"), 76, 0)));
+        return new ExecutionFlowTrace(76, location, List.of(terminal), false);
     }
 
     private static ExecutionFlowTrace flowFixture(SourceLocation location, CommandSnippet command,
-                                                   List<PauseSource> sources) {
+                                                   List<PauseSource> sources, List<CallFrame> stack) {
         ExecutionFlowContext root = new ExecutionFlowContext(1, sources.get(8));
         List<ExecutionFlowContext> afterAs = contexts(2, sources);
         List<ExecutionFlowContext> afterAt = contexts(12, sources);
@@ -500,25 +540,34 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
         ExecutionFlowStage as = new ExecutionFlowStage(0,
             new CommandSnippet(command.text(), 8, 26), List.of(root), afterAs,
             afterAs.stream().map(output -> new ExecutionFlowEdge(root.id(), output.id())).toList(),
-            List.of(), 1, 10, 0, false, 0, 0, true, true, false);
+            List.of(), 1, 10, 0, false, 0, 0, true, true, false, 1);
         List<ExecutionFlowEdge> atEdges = new ArrayList<>();
         for (int i = 0; i < afterAs.size(); i++) {
             atEdges.add(new ExecutionFlowEdge(afterAs.get(i).id(), afterAt.get(i).id()));
         }
         ExecutionFlowStage at = new ExecutionFlowStage(1,
             new CommandSnippet(command.text(), 27, 32), afterAs, afterAt, atEdges,
-            List.of(), 10, 10, 0, false, 0, 0, true, true, false);
+            List.of(), 10, 10, 0, false, 0, 0, true, true, false, 2);
         List<ExecutionFlowEdge> ifEdges = new ArrayList<>();
         for (int i = 0; i < afterIf.size(); i++) {
             ifEdges.add(new ExecutionFlowEdge(afterAt.get(i).id(), afterIf.get(i).id()));
         }
         ExecutionFlowStage condition = new ExecutionFlowStage(2,
             new CommandSnippet(command.text(), 33, 55), afterAt, afterIf, ifEdges,
-            List.of(afterAt.getLast().id()), 10, 9, 1, false, 0, 0, true, true, false);
+            List.of(afterAt.getLast().id()), 10, 9, 1, false, 0, 0, true, true, false, 3);
         ExecutionFlowStage terminal = new ExecutionFlowStage(3,
             new CommandSnippet(command.text(), 60, command.text().length()), afterIf, afterIf,
-            List.of(), List.of(), 9, 9, 0, true, 9, 8, true, true, false);
-        return new ExecutionFlowTrace(77, location, List.of(as, at, condition, terminal), false);
+            List.of(), List.of(), 9, 9, 0, true, 9, 8, true, true, false, 4);
+        return new ExecutionFlowTrace(77, location, List.of(as, at, condition, terminal).stream()
+            .map(stage -> withStack(stage, List.of(new CallFrame(1, stack.getFirst().location(),
+                stage.command(), 77, stage.index()), stack.get(1)))).toList(), false);
+    }
+
+    private static ExecutionFlowStage withStack(ExecutionFlowStage stage, List<CallFrame> stack) {
+        return new ExecutionFlowStage(stage.index(), stage.command(), stage.inputs(), stage.outputs(), stage.edges(),
+            stage.droppedContextIds(), stage.inputCount(), stage.outputCount(), stage.droppedCount(), stage.terminal(),
+            stage.executionCount(), stage.successCount(), stage.complete(), stage.lineageComplete(), stage.truncated(),
+            stage.observationOrder(), stack);
     }
 
     private static List<ExecutionFlowContext> contexts(long firstId, List<PauseSource> sources) {

@@ -29,6 +29,7 @@ public final class CommandTrace {
     private int droppedCount;
     private long pendingInputId;
     private boolean pendingResult;
+    private int flowStageIndex = -1;
 
     public CommandTrace(SourceLocation location, ExecutionFlowHistory history) {
         this.id = NEXT_ID.getAndIncrement();
@@ -67,7 +68,9 @@ public final class CommandTrace {
         // Closing here avoids a fragile local capture around ContextChain.nextStage().
         if (stageActive) finishStage(sourceCount, sourceMapper);
         ensureContextIds(sourceCount, sourceMapper);
+        flowStageIndex = -1;
         if (!flow.beginStage(command, contextIds, sourceCount, terminal)) return;
+        flowStageIndex = flow.activeStageIndex();
         if (terminal) return;
         stageActive = true;
         nextContextIds = new ArrayList<>();
@@ -164,6 +167,11 @@ public final class CommandTrace {
 
     public void executionResult(boolean success) {
         flow.executionResult(success);
+    }
+
+    /** The retained Flow stage for the most recently begun command stage, if any. */
+    public synchronized int flowStageIndex() {
+        return flowStageIndex;
     }
 
     private void ensureContextIds(int sourceCount, IntFunction<List<PauseSource>> sourceMapper) {

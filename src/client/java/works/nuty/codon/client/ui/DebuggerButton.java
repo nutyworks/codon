@@ -13,6 +13,7 @@ import org.jspecify.annotations.Nullable;
 
 /** Standard keyboard/narration behavior with Codon's compact, high-contrast chrome. */
 public final class DebuggerButton extends AbstractButton {
+    public static final int TEXT_ICON_INSET = DebuggerIcon.SIZE + 2;
     private Runnable action = () -> { };
     private @Nullable Runnable secondaryAction;
     private boolean selected;
@@ -20,6 +21,9 @@ public final class DebuggerButton extends AbstractButton {
     private boolean subdued;
     private boolean borderless;
     private boolean leadingIcon;
+    private boolean iconWithText;
+    private int contentOffset;
+    private int contentWidth;
     private @Nullable DebuggerIcon icon;
     private @Nullable Tooltip tooltip;
     private int foregroundColor = DebuggerTheme.TEXT;
@@ -43,6 +47,9 @@ public final class DebuggerButton extends AbstractButton {
         this.subdued = subdued;
         this.borderless = false;
         this.leadingIcon = false;
+        this.iconWithText = false;
+        this.contentOffset = 0;
+        this.contentWidth = width;
         this.action = action;
         this.secondaryAction = null;
         this.icon = null;
@@ -73,6 +80,19 @@ public final class DebuggerButton extends AbstractButton {
     public DebuggerButton withLeadingIcon(DebuggerIcon icon) {
         this.icon = icon;
         this.leadingIcon = true;
+        return this;
+    }
+
+    public DebuggerButton withTextIcon(DebuggerIcon icon) {
+        this.icon = icon;
+        this.iconWithText = true;
+        return this;
+    }
+
+    /** Keeps the full breadcrumb text while the widget's hit box is clipped to its viewport. */
+    public DebuggerButton withHorizontalViewport(int offset, int fullWidth) {
+        this.contentOffset = offset;
+        this.contentWidth = fullWidth;
         return this;
     }
 
@@ -117,18 +137,20 @@ public final class DebuggerButton extends AbstractButton {
         }
         if (icon != null) {
             graphics.enableScissor(getX() + 1, getY() + 1, getRight() - 1, getBottom() - 1);
-            icon.draw(graphics, getX() + (leadingIcon ? 1 : (width - DebuggerIcon.SIZE) / 2),
+            icon.draw(graphics, getX() - contentOffset + (iconWithText ? 3 : leadingIcon ? 1 : (contentWidth - DebuggerIcon.SIZE) / 2),
                 getY() + (height - DebuggerIcon.SIZE) / 2, foreground);
             graphics.disableScissor();
-            return;
+            if (!iconWithText) return;
         }
         var font = client.font;
         String full = getMessage().getString();
-        int available = Math.max(0, width - 10);
+        int inset = iconWithText ? TEXT_ICON_INSET : 0;
+        int available = Math.max(0, contentWidth - 10 - inset);
         String text = font.width(full) <= available ? full
             : font.plainSubstrByWidth(full, Math.max(0, available - font.width("…"))) + "…";
         graphics.enableScissor(getX() + 2, getY(), getRight() - 2, getBottom());
-        graphics.text(font, text, leftAligned ? getX() + 5 : getX() + (width - font.width(text)) / 2,
+        graphics.text(font, text, leftAligned ? getX() - contentOffset + 5 + inset
+            : getX() - contentOffset + inset + (contentWidth - inset - font.width(text)) / 2,
             getY() + (height - font.lineHeight) / 2 + 1, foreground, false);
         graphics.disableScissor();
     }
@@ -142,7 +164,8 @@ public final class DebuggerButton extends AbstractButton {
     @Override
     protected void extractTooltipForNextRenderPass(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
         var client = Minecraft.getInstance();
-        if (icon == null && isHovered() && client.font.width(getMessage()) > Math.max(0, width - 10)) {
+        if ((icon == null || iconWithText) && isHovered()
+            && client.font.width(getMessage()) > Math.max(0, width - 10 - (iconWithText ? TEXT_ICON_INSET : 0))) {
             var lines = new java.util.ArrayList<>(Tooltip.splitTooltip(client, getMessage()));
             if (tooltip != null) {
                 var hint = tooltip.toCharSequence(client);
@@ -152,7 +175,7 @@ public final class DebuggerButton extends AbstractButton {
             return;
         }
         // Icon names remain available to narration; visual shortcut hints require an actual hover.
-        if (icon == null || isHovered()) super.extractTooltipForNextRenderPass(graphics, mouseX, mouseY);
+        if (icon == null || iconWithText || isHovered()) super.extractTooltipForNextRenderPass(graphics, mouseX, mouseY);
     }
 
     @Override

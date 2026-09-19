@@ -292,7 +292,7 @@ class ClientDebuggerStateTest {
         assertEquals(-1, state.selectedFlowStageIndex(), "returning to the call stack also restores pause sources");
         assertSame(flowSource, state.selectedSource());
 
-        state.selectExecutionFlowStage(0);
+        state.selectExecutionFlow(0);
         assertEquals(-1, state.selectedFrameIndex());
         assertEquals(0, state.selectedFlowStageIndex());
     }

@@ -44,7 +44,7 @@ public final class CodonScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
-        return overlay.scroll(x, y, scrollY) || super.mouseScrolled(x, y, scrollX, scrollY);
+        return overlay.scroll(x, y, scrollX, scrollY) || super.mouseScrolled(x, y, scrollX, scrollY);
     }
 
     @Override

@@ -37,6 +37,21 @@ class DebuggerLayoutTest {
     }
 
     @Test
+    void expandedCommandPanelReservesWorldSpaceAndNeverCoversItsControls() {
+        for (Size size : List.of(new Size(200, 120), new Size(320, 180), new Size(640, 400), new Size(1024, 576))) {
+            for (int requested : List.of(36, 106, 220, 1000)) {
+                DebuggerLayout layout = DebuggerLayout.create(size.width(), size.height(), true, requested);
+                assertInScreen(layout.command(), size);
+                assertInScreen(layout.world(), size);
+                assertFalse(overlaps(layout.command(), layout.controls()));
+                assertFalse(overlaps(layout.command(), layout.inspector()));
+                assertFalse(overlaps(layout.command(), layout.world()));
+                assertTrue(layout.world().height() >= 16, "expansion must retain a world viewport");
+            }
+        }
+    }
+
+    @Test
     void keepsTheSameSafetyInAVerySmallWindow() {
         Size size = new Size(200, 120);
         for (boolean inspectorOpen : List.of(false, true)) {
