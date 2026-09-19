@@ -84,7 +84,27 @@ when deeper. These immutable caller records survive returns and parent-trace evi
 selection displays that stack, while selecting a caller keeps the originating stack available.
 Missing caller flow data still permits viewing its captured command, without borrowing live sources.
 Only the exact authoritative invocation/stage receives the pause icon; Current restores the live stack.
-This format uses `pause_sync_v8` and `execution_flow_sync_v3`, so client and
+`return run` records the actual source list forwarded at continuation enqueue. Conditional
+functions associate each isolated result callback with the input occurrence which scheduled it;
+the recorder observes only the outputs accepted by vanilla's callback, without re-evaluating the
+condition or matching sources by entity identity. The parent stage stays pending during the child
+function and closes when its continuation begins, reusing its recorded output IDs as continuation
+input IDs. Empty function sets and rejected conditions retain measured zero output. A deferred
+stage still open at execution completion reports that its continuation was not observed. Each
+execution queue retains only unresolved continuations independently of display-history eviction.
+Return-run stages also await the actual continuation start after recording their forwarded sources.
+Queue completion reports command-quota exhaustion, queue overflow, thrown errors, or otherwise an
+unobserved continuation, and republishes an evicted parent with that reason.
+
+Incomplete-flow warnings carry a specific reason, originating stage and command range, optional
+limit, and bounded detail text. A clause icon reports only that clause's missing data; the footer
+summarizes the entire invocation and its tooltip lists all recorded causes. Context, stage, edge,
+and historical-stack caps remain 128, 24, 256, and 32. Unsupported custom modifiers, early command
+errors, Minecraft fork-limit exits, and inconsistent modifier observations have distinct reasons.
+Reasons are retained once per stage and kind, and warning details are limited to 256 characters.
+Warning payloads reuse the invocation's existing command text while preserving the originating
+clause range, including the first stage omitted by the recording cap.
+This format uses `pause_sync_v9` and `execution_flow_sync_v4`, so client and
 server must use matching versions.
 
 While paused, the server services only debugger mailbox work and bounded connection maintenance

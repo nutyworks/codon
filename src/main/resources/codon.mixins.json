@@ -11,6 +11,8 @@
     "MinecraftServerMixin",
     "ExecutionContextMixin",
     "ExecuteCommandMixin",
+    "FunctionConditionMixin",
+    "ReturnRunMixin",
     "ServerCommonPacketListenerAccessor",
     "ServerGamePacketListenerMixin",
     "DedicatedServerMixin",

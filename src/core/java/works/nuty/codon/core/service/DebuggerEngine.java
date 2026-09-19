@@ -265,6 +265,7 @@ public final class DebuggerEngine {
         if (!completedNormally) executionFailed = true;
         if (executionNesting > 0) executionNesting--;
         if (executionNesting != 0 || paused) return;
+        executionFlows.finishExecution();
         CommandStageEvent completedStage = lastStage;
         lastStage = null;
         try {
@@ -278,6 +279,7 @@ public final class DebuggerEngine {
 
     private void completeExecutionState() {
         if (paused) return;
+        executionFlows.finishExecution();
         var completedFlows = executionFlows.snapshot();
         clearExecutionState();
         // If a terminal step exhausted the queue, clearExecutionState publishes the resume first.

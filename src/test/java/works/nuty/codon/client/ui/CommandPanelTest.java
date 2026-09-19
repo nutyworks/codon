@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import works.nuty.codon.core.model.BlockLocation;
 import works.nuty.codon.core.model.CommandSnippet;
 import works.nuty.codon.core.model.ExecutionFlowStage;
+import works.nuty.codon.core.model.ExecutionFlowWarning;
 import works.nuty.codon.core.model.PauseSource;
 import works.nuty.codon.core.model.SourceLocation;
 import works.nuty.codon.core.model.Vec3d;
@@ -73,7 +74,7 @@ class CommandPanelTest {
 
     @Test
     void truncatedDetailsPreserveMeasuredAggregateCounts() {
-        recorder.beginStage(CommandSnippet.plain("execute as @e run say ok"), List.of(input), 1, false);
+        recorder.beginStage(new CommandSnippet("execute as @e run say ok", 8, 13), List.of(input), 1, false);
         recorder.markTruncated();
         recorder.finishStage(200, 0);
         assertDisplay("1→200", "Execution contexts: 1 in → 200 out");
@@ -96,6 +97,25 @@ class CommandPanelTest {
     void terminalWithoutInputsShowsMeasuredZeroes() {
         recorder.beginStage(CommandSnippet.plain("say skipped"), List.of(), 0, true);
         assertDisplay("0→0", "Execution contexts: 0 · Runs: 0 · Successes: 0");
+    }
+
+    @Test
+    void warningDetailsRoundTripAndNameTheActualStageAndLimit() {
+        recorder.beginStage(new CommandSnippet("execute as @e run say ok", 8, 13), List.of(input), 1, false);
+        recorder.markTruncated(ExecutionFlowWarning.Reason.CONTEXT_LIMIT, 128, "Context detail limit reached");
+        ExecutionFlowSyncPayload payload = new ExecutionFlowSyncPayload(List.of(recorder.snapshot()));
+        FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
+        try {
+            ExecutionFlowSyncPayload.CODEC.encode(buffer, payload);
+            var decoded = ExecutionFlowSyncPayload.CODEC.decode(buffer);
+            assertEquals(payload, decoded);
+            assertEquals("Context detail limit (128) — stage 1",
+                CommandPanel.warningSummary(decoded.flows().getFirst()));
+            assertEquals("Context detail limit (128) — stage 1: as @e\nContext detail limit reached",
+                CommandPanel.warningText(decoded.flows().getFirst().warnings().getFirst()));
+        } finally {
+            buffer.release();
+        }
     }
 
     private void assertDisplay(String counts, String summary) {

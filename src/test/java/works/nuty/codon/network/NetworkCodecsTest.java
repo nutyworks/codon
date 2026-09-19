@@ -10,6 +10,7 @@ import works.nuty.codon.core.model.ExecutionFlowContext;
 import works.nuty.codon.core.model.ExecutionFlowEdge;
 import works.nuty.codon.core.model.ExecutionFlowStage;
 import works.nuty.codon.core.model.ExecutionFlowTrace;
+import works.nuty.codon.core.model.ExecutionFlowWarning;
 import works.nuty.codon.core.model.PauseReason;
 import works.nuty.codon.core.model.PauseSnapshot;
 import works.nuty.codon.core.model.PauseSource;
@@ -21,8 +22,57 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NetworkCodecsTest {
+    @Test
+    void bothPayloadsPreserveWarningCausesAndRangesWithoutRepeatingLongCommandText() {
+        SourceLocation location = new SourceLocation.Block(new BlockLocation(0, 64, 0, "minecraft:overworld"));
+        String command = "execute " + "positioned ~ ~ ~ ".repeat(1000) + "run say ok";
+        CommandSnippet snippet = new CommandSnippet(command, 8, 24);
+        ExecutionFlowStage stage = new ExecutionFlowStage(0, snippet, List.of(), List.of(), List.of(), List.of(),
+            1, 1, 0, false, -1, -1, true, true, false);
+        var warnings = List.of(
+            new ExecutionFlowWarning(ExecutionFlowWarning.Reason.CONTEXT_LIMIT, 0, snippet, 128, "Some contexts omitted"),
+            new ExecutionFlowWarning(ExecutionFlowWarning.Reason.STAGE_LIMIT, 24,
+                new CommandSnippet(command, 392, 408), 24, "First omitted clause"));
+        var flow = new ExecutionFlowTrace(19, location, List.of(stage), true, warnings);
+        FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
+        try {
+            NetworkCodecs.writeFlowTrace(buffer, new ExecutionFlowTrace(19, location, List.of(stage), false));
+            int withoutWarnings = buffer.writerIndex();
+            buffer.clear();
+            NetworkCodecs.writeFlowTrace(buffer, flow);
+            assertTrue(buffer.writerIndex() - withoutWarnings < 300, "warning metadata must not repeat the full command");
+            assertEquals(flow, NetworkCodecs.readFlowTrace(buffer));
+            buffer.clear();
+            PauseSnapshot snapshot = new PauseSnapshot(location, snippet, 0, List.of(), List.of(), List.of(flow), PauseReason.STEP, 44);
+            PauseSyncPayload.CODEC.encode(buffer, new PauseSyncPayload(snapshot));
+            assertEquals(snapshot, PauseSyncPayload.CODEC.decode(buffer).snapshot());
+            buffer.clear();
+            ExecutionFlowSyncPayload completed = new ExecutionFlowSyncPayload(List.of(flow));
+            ExecutionFlowSyncPayload.CODEC.encode(buffer, completed);
+            assertEquals(completed, ExecutionFlowSyncPayload.CODEC.decode(buffer));
+            assertEquals(0, buffer.readableBytes());
+        } finally {
+            buffer.release();
+        }
+    }
+
+    @Test
+    void warningWithoutRetainedStagePreservesItsOwnCommand() {
+        SourceLocation location = new SourceLocation.Block(new BlockLocation(0, 64, 0, "minecraft:overworld"));
+        var flow = new ExecutionFlowTrace(20, location, List.of(), true, List.of(new ExecutionFlowWarning(
+            ExecutionFlowWarning.Reason.EXECUTION_ERROR, -1, CommandSnippet.plain("return run say ok"), -1, "Queue failed")));
+        FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
+        try {
+            NetworkCodecs.writeFlowTrace(buffer, flow);
+            assertEquals(flow, NetworkCodecs.readFlowTrace(buffer));
+        } finally {
+            buffer.release();
+        }
+    }
+
     @Test
     void pausePayloadRoundTripPreservesTheBoundedExecutionGraph() {
         SourceLocation location = new SourceLocation.Block(

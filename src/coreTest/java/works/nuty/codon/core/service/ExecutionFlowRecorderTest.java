@@ -7,6 +7,7 @@ import works.nuty.codon.core.model.CommandSnippet;
 import works.nuty.codon.core.model.EntityRef;
 import works.nuty.codon.core.model.ExecutionFlowStage;
 import works.nuty.codon.core.model.ExecutionFlowTrace;
+import works.nuty.codon.core.model.ExecutionFlowWarning;
 import works.nuty.codon.core.model.PauseSource;
 import works.nuty.codon.core.model.SourceLocation;
 import works.nuty.codon.core.model.Vec3d;
@@ -287,6 +288,51 @@ class ExecutionFlowRecorderTest {
         assertEquals(ExecutionFlowRecorder.MAX_STACK_FRAMES, overflowTrace.stages().getFirst().callStack().size());
         assertTrue(overflowTrace.stages().getFirst().truncated());
         assertTrue(overflowTrace.truncated());
+        assertEquals(ExecutionFlowWarning.Reason.CALL_STACK_LIMIT, overflowTrace.warnings().getFirst().reason());
+    }
+
+    @Test
+    void recordsSpecificWarningsOnceAndAssignsPreStageContextOverflowToTheNextStage() {
+        ExecutionFlowRecorder recorder = new ExecutionFlowHistory().start(46, location);
+        for (int index = 0; index <= ExecutionFlowRecorder.MAX_CONTEXTS; index++)
+            recorder.createContext(source("source-" + index, index, "minecraft:overworld"));
+        CommandSnippet command = CommandSnippet.plain("execute as @e run say capped");
+        recorder.beginStage(command, List.of(1L), 1, false);
+        recorder.markTruncated(ExecutionFlowWarning.Reason.CONTEXT_LIMIT, ExecutionFlowRecorder.MAX_CONTEXTS,
+            "Context detail limit reached");
+        recorder.markTruncated(ExecutionFlowWarning.Reason.CONTEXT_LIMIT, ExecutionFlowRecorder.MAX_CONTEXTS,
+            "Context detail limit reached");
+
+        ExecutionFlowTrace trace = recorder.snapshot();
+        assertEquals(1, trace.warnings().size());
+        ExecutionFlowWarning warning = trace.warnings().getFirst();
+        assertEquals(ExecutionFlowWarning.Reason.CONTEXT_LIMIT, warning.reason());
+        assertEquals(0, warning.stageIndex());
+        assertEquals(command, warning.command());
+        assertEquals(ExecutionFlowRecorder.MAX_CONTEXTS, warning.limit());
+    }
+
+    @Test
+    void finishExecutionExplainsAnUnresumedDeferredStage() {
+        ExecutionFlowRecorder recorder = new ExecutionFlowHistory().start(47, location);
+        recorder.beginStage(CommandSnippet.plain("return run say later"), List.of(), 0, false);
+        recorder.deferStage();
+        recorder.finishExecution();
+
+        ExecutionFlowTrace trace = recorder.snapshot();
+        assertFalse(trace.stages().getFirst().lineageComplete());
+        assertEquals(ExecutionFlowWarning.Reason.CONTINUATION_NOT_RESUMED, trace.warnings().getFirst().reason());
+    }
+
+    @Test
+    void flagsInvalidInputIdsEvenWhenRetainedInputsMatchTheAggregateCount() {
+        ExecutionFlowRecorder recorder = new ExecutionFlowHistory().start(48, location);
+        long input = recorder.createContext(source("input", 0, "minecraft:overworld"));
+        recorder.beginStage(CommandSnippet.plain("execute at @s run say ok"), List.of(input, 0L), 1, false);
+
+        ExecutionFlowTrace trace = recorder.snapshot();
+        assertEquals(1, trace.stages().getFirst().inputs().size());
+        assertEquals(ExecutionFlowWarning.Reason.MISSING_CONTEXT, trace.warnings().getFirst().reason());
     }
 
     private static CommandSnippet snippet(String text, int start, int end) {

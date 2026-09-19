@@ -16,6 +16,8 @@ import net.minecraft.commands.execution.ChainModifiers;
 import net.minecraft.commands.execution.ExecutionContext;
 import net.minecraft.commands.execution.Frame;
 import net.minecraft.commands.execution.CustomCommandExecutor;
+import net.minecraft.commands.execution.CustomModifierExecutor;
+import net.minecraft.commands.execution.TraceCallbacks;
 import net.minecraft.commands.execution.ExecutionControl;
 import org.jspecify.annotations.Nullable;
 import org.spongepowered.asm.mixin.Final;
@@ -33,6 +35,7 @@ import works.nuty.codon.adapter.TracedCommand;
 import works.nuty.codon.adapter.SourceMapper;
 import works.nuty.codon.core.model.CommandSnippet;
 import works.nuty.codon.core.model.SourceLocation;
+import works.nuty.codon.core.model.ExecutionFlowWarning.Reason;
 import works.nuty.codon.core.service.CommandStageEvent;
 import works.nuty.codon.core.service.DebuggerEngine;
 import works.nuty.codon.core.service.ExecutionFlowHistory;
@@ -65,13 +68,43 @@ public class BuildContextsMixin<T extends ExecutionCommandSource<T>> implements 
             trace = null;
         }
         CommandTrace.setCurrent(trace);
+        boolean failed = true;
         try {
             original.call(source, sources, context, frame, modifiers);
+            failed = false;
+        } catch (RuntimeException | Error failure) {
+            if (trace != null) trace.interrupted(Reason.EXECUTION_ERROR, -1,
+                failure.getClass().getSimpleName() + ": " + failure.getMessage());
+            throw failure;
         } finally {
-            if (trace != null) trace.abandonStage();
+            if (trace != null) trace.invocationEnded(failed);
             CommandTrace.setCurrent(previous);
             codon$inheritedTrace = null;
         }
+    }
+
+    @WrapOperation(method = "execute", at = @At(value = "INVOKE",
+        target = "Lnet/minecraft/commands/execution/CustomModifierExecutor;apply(Ljava/lang/Object;Ljava/util/List;Lcom/mojang/brigadier/context/ContextChain;Lnet/minecraft/commands/execution/ChainModifiers;Lnet/minecraft/commands/execution/ExecutionControl;)V"))
+    private void codon$identifyCustomModifier(CustomModifierExecutor<T> modifier, Object source, List<T> sources,
+                                              ContextChain<T> stage, ChainModifiers modifiers,
+                                              ExecutionControl<T> control, Operation<Void> original) {
+        CommandTrace trace = CommandTrace.current();
+        if (trace != null) trace.interrupted(Reason.UNSUPPORTED_MODIFIER, -1, modifier.getClass().getName());
+        original.call(modifier, source, sources, stage, modifiers, control);
+    }
+
+    @WrapOperation(method = "execute", at = @At(value = "INVOKE",
+        target = "Lnet/minecraft/commands/ExecutionCommandSource;handleError(Lcom/mojang/brigadier/exceptions/CommandSyntaxException;ZLnet/minecraft/commands/execution/TraceCallbacks;)V"))
+    private void codon$identifyEarlyExit(ExecutionCommandSource<T> source, CommandSyntaxException error,
+                                        boolean forked, TraceCallbacks callbacks, Operation<Void> original,
+                                        @Local(argsOnly = true) ExecutionContext<T> context) {
+        CommandTrace trace = CommandTrace.current();
+        if (trace != null) {
+            boolean forkLimit = error.getType() == BuildContexts.ERROR_FORK_LIMIT_REACHED;
+            trace.interrupted(forkLimit ? Reason.FORK_LIMIT : Reason.EXECUTION_ERROR,
+                forkLimit ? context.forkLimit() : -1, error.getRawMessage().getString());
+        }
+        original.call(source, error, forked, callbacks);
     }
 
     @Inject(method = "execute", at = @At(value = "INVOKE",

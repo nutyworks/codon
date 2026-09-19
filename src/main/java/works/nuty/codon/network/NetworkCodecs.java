@@ -11,6 +11,7 @@ import works.nuty.codon.core.model.ExecutionFlowContext;
 import works.nuty.codon.core.model.ExecutionFlowEdge;
 import works.nuty.codon.core.model.ExecutionFlowStage;
 import works.nuty.codon.core.model.ExecutionFlowTrace;
+import works.nuty.codon.core.model.ExecutionFlowWarning;
 import works.nuty.codon.core.model.FunctionId;
 import works.nuty.codon.core.model.FunctionLocation;
 import works.nuty.codon.core.model.PauseReason;
@@ -226,11 +227,49 @@ final class NetworkCodecs {
         writeSourceLocation(buf, trace.location());
         FLOW_STAGES_CODEC.encode(buf, trace.stages());
         buf.writeBoolean(trace.truncated());
+        flowWarningsCodec(trace.stages()).encode(buf, trace.warnings());
     }
 
     static ExecutionFlowTrace readFlowTrace(FriendlyByteBuf buf) {
-        return new ExecutionFlowTrace(buf.readVarLong(), readSourceLocation(buf),
-            FLOW_STAGES_CODEC.decode(buf), buf.readBoolean());
+        long invocationId = buf.readVarLong();
+        SourceLocation location = readSourceLocation(buf);
+        List<ExecutionFlowStage> stages = FLOW_STAGES_CODEC.decode(buf);
+        return new ExecutionFlowTrace(invocationId, location, stages, buf.readBoolean(), flowWarningsCodec(stages).decode(buf));
+    }
+
+    private static StreamCodec<FriendlyByteBuf, List<ExecutionFlowWarning>> flowWarningsCodec(List<ExecutionFlowStage> stages) {
+        String command = stages.isEmpty() ? null : stages.getFirst().command().text();
+        return StreamCodec.<FriendlyByteBuf, ExecutionFlowWarning>of(
+            (buf, warning) -> writeFlowWarning(buf, warning, command), buf -> readFlowWarning(buf, command))
+            .apply(ByteBufCodecs.list(ExecutionFlowWarning.MAX_WARNINGS));
+    }
+
+    private static void writeFlowWarning(FriendlyByteBuf buf, ExecutionFlowWarning warning, String command) {
+        buf.writeEnum(warning.reason());
+        buf.writeVarInt(warning.stageIndex());
+        boolean sharedCommand = warning.command().text().equals(command);
+        buf.writeBoolean(sharedCommand);
+        if (sharedCommand) {
+            buf.writeVarInt(warning.command().highlightStart());
+            buf.writeVarInt(warning.command().highlightEnd());
+        } else {
+            writeCommandSnippet(buf, warning.command());
+        }
+        buf.writeVarInt(warning.limit());
+        buf.writeUtf(warning.detail(), ExecutionFlowWarning.MAX_DETAIL_LENGTH);
+    }
+
+    private static ExecutionFlowWarning readFlowWarning(FriendlyByteBuf buf, String command) {
+        ExecutionFlowWarning.Reason reason = buf.readEnum(ExecutionFlowWarning.Reason.class);
+        int stageIndex = buf.readVarInt();
+        CommandSnippet snippet;
+        if (buf.readBoolean()) {
+            if (command == null) throw new io.netty.handler.codec.DecoderException("Missing shared warning command");
+            snippet = new CommandSnippet(command, buf.readVarInt(), buf.readVarInt());
+        } else {
+            snippet = readCommandSnippet(buf);
+        }
+        return new ExecutionFlowWarning(reason, stageIndex, snippet, buf.readVarInt(), buf.readUtf(ExecutionFlowWarning.MAX_DETAIL_LENGTH));
     }
 
     static void writeExecutionFlows(FriendlyByteBuf buf, List<ExecutionFlowTrace> flows) {

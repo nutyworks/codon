@@ -5,6 +5,7 @@ import works.nuty.codon.core.model.BlockLocation;
 import works.nuty.codon.core.model.CallFrame;
 import works.nuty.codon.core.model.CommandSnippet;
 import works.nuty.codon.core.model.ExecutionFlowTrace;
+import works.nuty.codon.core.model.ExecutionFlowWarning;
 import works.nuty.codon.core.model.FunctionId;
 import works.nuty.codon.core.model.FunctionLocation;
 import works.nuty.codon.core.model.PauseReason;
@@ -261,6 +262,36 @@ class DebuggerEngineTest {
         engine.onTickBoundary();
         engine.resetSession();
         assertEquals(1, sink.resumes, "later cleanup must not publish another resume");
+    }
+
+    @Test
+    void deferredRecordingIsFinalizedAtOuterCompletionBeforePublishingTheCompletionPause() {
+        ExecutionFlowHistory history = new ExecutionFlowHistory();
+        DebuggerEngine local = new DebuggerEngine(breakpoints, step, callStack, controller, sink, history);
+        local.onExecutionStarted();
+        local.onExecutionStarted();
+        SourceLocation location = new SourceLocation.Function(tick(3));
+        ExecutionFlowRecorder recorder = history.start(77, location);
+        CommandSnippet command = CommandSnippet.plain("execute if function test:condition run say ok");
+        recorder.beginStage(command, List.of(), 0, false);
+        recorder.deferStage();
+        breakpoints.toggleFunction(tick(3));
+        local.onCommandStage(new CommandStageEvent(77, 0, location, command, List::of, 0));
+        local.stepInto();
+
+        local.onExecutionFinished();
+        assertFalse(recorder.snapshot().stages().getFirst().complete());
+        assertTrue(recorder.snapshot().warnings().isEmpty(), "an inner scope must not finalize a waiting parent");
+
+        local.onExecutionFinished();
+        assertEquals(PauseReason.EXECUTION_COMPLETE, sink.lastPause().reason());
+        ExecutionFlowTrace completed = sink.lastPause().executionFlows().getFirst();
+        assertEquals(ExecutionFlowWarning.Reason.CONTINUATION_NOT_RESUMED, completed.warnings().getFirst().reason());
+        assertFalse(completed.stages().getFirst().lineageComplete());
+        local.resume();
+        local.onTickBoundary();
+        assertFalse(local.isPaused());
+        assertTrue(history.snapshot().isEmpty(), "resume clears the completed inspection lifetime");
     }
 
     @Test

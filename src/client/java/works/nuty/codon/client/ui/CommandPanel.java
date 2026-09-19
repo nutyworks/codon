@@ -14,6 +14,7 @@ import works.nuty.codon.core.model.CallFrame;
 import works.nuty.codon.core.model.CommandSnippet;
 import works.nuty.codon.core.model.ExecutionFlowStage;
 import works.nuty.codon.core.model.ExecutionFlowTrace;
+import works.nuty.codon.core.model.ExecutionFlowWarning;
 import works.nuty.codon.core.model.PauseSnapshot;
 import works.nuty.codon.core.model.SourceLocation;
 
@@ -90,7 +91,7 @@ public final class CommandPanel {
             renderClauses(graphics, body, snapshot);
             graphics.fill(area.x() + 1, actionY - 3, area.x() + area.width() - 1, actionY - 2, BORDER);
             ExecutionFlowStage stage = state.selectedExecutionFlowStage();
-            boolean warning = stage != null && hasWarning(stage);
+            boolean warning = stage != null && hasFlowWarning();
             int summaryX = area.x() + 8;
             if (warning && actionLeft - summaryX >= 17) {
                 navigationGroup = DebuggerNavigation.Group.ACTIONS;
@@ -353,31 +354,87 @@ public final class CommandPanel {
     private String summary() {
         ExecutionFlowStage stage = state.selectedExecutionFlowStage();
         if (stage == null) return tr("codon.ui.no_flow");
-        if (stage.terminal()) return Component.translatable("codon.ui.terminal_results",
-            measuredCount(stage.executionCount()), measuredCount(stage.successCount())).getString();
+        if (stage.terminal()) {
+            String terminal = Component.translatable("codon.ui.terminal_results",
+                measuredCount(stage.executionCount()), measuredCount(stage.successCount())).getString();
+            return hasFlowWarning() ? terminal + " · " + warningSummary(state.selectedExecutionFlow()) : terminal;
+        }
         // Per-clause counts already describe input/output contexts. Keep this fixed row
         // for additional information, rather than repeating those counts below them.
-        return hasWarning(stage) ? tr("codon.ui.recording_warning") : "";
+        return hasFlowWarning() ? warningSummary(state.selectedExecutionFlow()) : "";
     }
 
     private boolean hasWarning(ExecutionFlowStage stage) {
         ExecutionFlowTrace flow = state.selectedExecutionFlow();
-        return !stage.lineageComplete() || stage.truncated() || (flow != null && flow.truncated());
+        return !warningsForStage(flow, stage.index()).isEmpty() || !stage.lineageComplete() || stage.truncated();
     }
 
     private String stageDetails(ExecutionFlowStage stage) {
         String details = stageSummary(stage) + "\n" + tr("codon.ui.context_explanation");
-        if (!stage.lineageComplete()) details += "\n" + tr("codon.ui.unknown_lineage");
         ExecutionFlowTrace flow = state.selectedExecutionFlow();
-        if (stage.truncated() || (flow != null && flow.truncated()))
-            details += "\n" + tr("codon.ui.partial_recording_detail");
+        List<ExecutionFlowWarning> warnings = warningsForStage(flow, stage.index());
+        if (!warnings.isEmpty()) {
+            for (ExecutionFlowWarning warning : warnings) details += "\n" + warningText(warning);
+        } else if (!stage.lineageComplete() || stage.truncated()) {
+            details += "\n" + tr("codon.ui.recording_warning_legacy");
+        }
         return details;
+    }
+
+    private boolean hasFlowWarning() {
+        ExecutionFlowTrace flow = state.selectedExecutionFlow();
+        return flow != null && (!flow.warnings().isEmpty() || flow.truncated()
+            || flow.stages().stream().anyMatch(stage -> !stage.lineageComplete() || stage.truncated()));
+    }
+
+    private static List<ExecutionFlowWarning> warningsForStage(ExecutionFlowTrace flow, int stageIndex) {
+        if (flow == null) return List.of();
+        return flow.warnings().stream().filter(warning -> warning.stageIndex() == stageIndex).toList();
+    }
+
+    static String warningSummary(ExecutionFlowTrace flow) {
+        if (flow == null || flow.warnings().isEmpty()) return tr("codon.ui.recording_warning_legacy");
+        String result = warningSummary(flow.warnings().getFirst());
+        int more = flow.warnings().size() - 1;
+        return more == 0 ? result : tr("codon.ui.recording_warning_more", result, more);
+    }
+
+    static String warningText(ExecutionFlowWarning warning) {
+        String result = warningSummary(warning) + ": " + highlightedCommand(warning.command());
+        return warning.detail().isEmpty() ? result : result + "\n" + warning.detail();
+    }
+
+    private static String warningSummary(ExecutionFlowWarning warning) {
+        String reason = tr("codon.ui.recording_reason." + warning.reason().name().toLowerCase(java.util.Locale.ROOT));
+        if (warning.limit() >= 0) reason = tr("codon.ui.recording_warning_limit", reason, warning.limit());
+        return warning.stageIndex() >= 0 ? tr("codon.ui.recording_warning_stage", reason, warning.stageIndex() + 1) : reason;
+    }
+
+    private static String highlightedCommand(CommandSnippet command) {
+        String text = command.text();
+        int start = Math.clamp(command.highlightStart(), 0, text.length());
+        int end = Math.clamp(command.highlightEnd(), start, text.length());
+        return text.substring(start, end);
     }
 
     private void warningButton(String key, Bounds bounds, ExecutionFlowStage stage) {
         button(key, bounds, Component.translatable("codon.ui.recording_warning"), true, false, () -> { })
             .withIcon(DebuggerIcon.WARNING).withoutChrome().withStatusColor(AMBER, AMBER_SURFACE)
-            .setTooltip(Tooltip.create(Component.literal(stageDetails(stage))));
+            .setTooltip(Tooltip.create(Component.literal(key.equals("flow-warning") ? flowDetails(stage) : stageDetails(stage))));
+    }
+
+    private String flowDetails(ExecutionFlowStage selectedStage) {
+        ExecutionFlowTrace flow = state.selectedExecutionFlow();
+        if (flow == null) return stageDetails(selectedStage);
+        if (flow.warnings().isEmpty()) return flow.truncated()
+            ? stageDetails(selectedStage) + "\n" + tr("codon.ui.recording_warning_legacy")
+            : stageDetails(selectedStage);
+        StringBuilder details = new StringBuilder();
+        for (ExecutionFlowWarning warning : flow.warnings()) {
+            if (!details.isEmpty()) details.append('\n');
+            details.append(warningText(warning));
+        }
+        return details.toString();
     }
 
     static String counts(ExecutionFlowStage stage) {

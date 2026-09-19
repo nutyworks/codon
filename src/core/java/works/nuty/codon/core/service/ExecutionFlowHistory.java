@@ -32,6 +32,11 @@ public final class ExecutionFlowHistory {
         return List.copyOf(result);
     }
 
+    /** Resolve still-open stages only when their outer execution scope has actually ended. */
+    public synchronized void finishExecution() {
+        for (ExecutionFlowRecorder trace : List.copyOf(traces)) trace.finishExecution();
+    }
+
     /** Records a stage stack on the most recently retained recorder for that invocation. */
     public synchronized void recordCallStack(long invocationId, int stageIndex, List<CallFrame> callStack) {
         var iterator = traces.descendingIterator();

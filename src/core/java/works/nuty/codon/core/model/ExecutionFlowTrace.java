@@ -7,10 +7,17 @@ public record ExecutionFlowTrace(
     long invocationId,
     SourceLocation location,
     List<ExecutionFlowStage> stages,
-    boolean truncated
+    boolean truncated,
+    List<ExecutionFlowWarning> warnings
 ) {
     public ExecutionFlowTrace {
         stages = List.copyOf(stages);
+        warnings = List.copyOf(warnings);
+    }
+
+    /** Compatibility constructor for traces recorded before diagnostic warnings existed. */
+    public ExecutionFlowTrace(long invocationId, SourceLocation location, List<ExecutionFlowStage> stages, boolean truncated) {
+        this(invocationId, location, stages, truncated, List.of());
     }
 
     public int finalContextCount() {

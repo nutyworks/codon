@@ -12,7 +12,7 @@ import java.util.List;
 /** S2C: immutable results from the most recently completed outer command execution scope. */
 public record ExecutionFlowSyncPayload(List<ExecutionFlowTrace> flows) implements CustomPacketPayload {
     public static final Type<ExecutionFlowSyncPayload> TYPE =
-        new Type<>(Identifier.fromNamespaceAndPath("codon", "execution_flow_sync_v3"));
+        new Type<>(Identifier.fromNamespaceAndPath("codon", "execution_flow_sync_v4"));
 
     public static final StreamCodec<FriendlyByteBuf, ExecutionFlowSyncPayload> CODEC = StreamCodec.of(
         (buf, payload) -> NetworkCodecs.writeExecutionFlows(buf, payload.flows()),
