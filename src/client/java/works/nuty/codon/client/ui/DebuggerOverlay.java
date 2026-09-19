@@ -38,7 +38,7 @@ public final class DebuggerOverlay {
     private static final int MAX_WORLD_LABELS = 20;
     private static final int SOURCE_LIST_MIN_HEIGHT = 40;
     private static final int SOURCE_LIST_MAX_HEIGHT = 87;
-    private static final int SOURCE_DETAILS_VIEWPORT_HEIGHT = 80;
+    private static final int SOURCE_DETAILS_VIEWPORT_HEIGHT = 102;
     private static final int NBT_HEADER_VIEWPORT_HEIGHT = 20;
     private static final int NBT_MIN_VIEWPORT_HEIGHT = 54;
     private final ClientDebuggerState state;
@@ -473,26 +473,50 @@ public final class DebuggerOverlay {
         text(graphics, sourceLabel(source, state.selectedSourceIndex(), state.selectedSourceDropped()),
             area.x() + 7 + headingInset, y, iconX + 16 - area.x() - 9 - headingInset, accent);
         y += 16;
-        if (!state.selectedSourceDropped()) {
-            ExecutionFlowContext parent = state.selectedFlowParent();
-            if (parent != null) y = renderFlowChanges(graphics, area, y, parent.source(), source);
-        }
-        if (y + 9 > area.y() + area.height()) return;
-        text(graphics, tr("codon.ui.anchor"), area.x() + 7, y, area.width() - 14, MUTED);
-        y += 10;
-        if (y + 9 > area.y() + area.height()) return;
-        text(graphics, String.format(Locale.ROOT, "%.2f, %.2f, %.2f", source.anchor().x(), source.anchor().y(), source.anchor().z()),
-            area.x() + 7, y, area.width() - 14, TEXT);
-        y += 11;
-        if (y + 9 > area.y() + area.height()) return;
-        text(graphics, shortDimension(source.dimension()), area.x() + 7, y, area.width() - 14,
-            source.dimension().equals(dimension()) ? MUTED : AMBER);
-        y += 11;
-        if (y + 9 < area.y() + area.height()) {
-            text(graphics, String.format(Locale.ROOT, "yaw %.1f° / pitch %.1f°", source.yaw(), source.pitch()),
-                area.x() + 7, y, area.width() - 14, TEXT);
+        ExecutionFlowContext parent = state.selectedSourceDropped() ? null : state.selectedFlowParent();
+        PauseSource before = parent == null ? null : parent.source();
+        if (before != null && !Objects.equals(before.entity(), source.entity())) {
+            if (y + 9 > area.y() + area.height()) return;
+            text(graphics, "← " + name(before), area.x() + 7, y, area.width() - 14, MUTED);
             y += 11;
         }
+        if (y + 9 > area.y() + area.height()) return;
+        text(graphics, shortDimension(source.dimension()), area.x() + 7, y, area.width() - 14, TEXT);
+        y += 11;
+        if (before != null && !before.dimension().equals(source.dimension())) {
+            if (y + 9 > area.y() + area.height()) return;
+            text(graphics, "← " + shortDimension(before.dimension()), area.x() + 7, y, area.width() - 14, MUTED);
+            y += 11;
+        }
+        y = sourceValueRows(graphics, area, y, SourceDetailsFormatting.position(source),
+            SourceDetailsFormatting.previousPosition(before, source));
+        sourceValueRows(graphics, area, y, SourceDetailsFormatting.rotation(source),
+            SourceDetailsFormatting.previousRotation(before, source));
+    }
+
+    private int sourceValueRows(GuiGraphicsExtractor graphics, Bounds area, int y,
+                                String current, String previous) {
+        // Keep each pair at the same scale so the before/after values remain comparable.
+        int widest = Math.max(client.font.width(current), client.font.width(previous));
+        float scale = Math.min(1.0f, Math.max(1, area.width() - 14) / (float) Math.max(1, widest));
+        if (y + 9 > area.y() + area.height()) return y;
+        sourceTransformText(graphics, current, area, y, scale, TEXT);
+        y += 11;
+        if (!previous.isEmpty() && y + 9 <= area.y() + area.height()) {
+            sourceTransformText(graphics, previous, area, y, scale, MUTED);
+            y += 11;
+        }
+        return y;
+    }
+
+    private void sourceTransformText(GuiGraphicsExtractor graphics, String value, Bounds area,
+                                     int y, float scale, int color) {
+        int x = area.x() + 7;
+        graphics.pose().pushMatrix();
+        graphics.pose().translate(x, y + (client.font.lineHeight * (1.0f - scale)) / 2.0f);
+        graphics.pose().scale(scale, scale);
+        graphics.text(client.font, value, 0, 0, color, false);
+        graphics.pose().popMatrix();
     }
 
     private void sourceStatusIcon(GuiGraphicsExtractor graphics, int x, int y, DebuggerIcon icon,
@@ -529,33 +553,6 @@ public final class DebuggerOverlay {
 
     private Component sourceTooltip(Component title, int index) {
         return title;
-    }
-
-    private int renderFlowChanges(GuiGraphicsExtractor graphics, Bounds area, int y,
-                                  PauseSource before, PauseSource after) {
-        String beforeEntity = before.entity() == null ? tr("codon.ui.position_source") : before.entity().name();
-        String afterEntity = after.entity() == null ? tr("codon.ui.position_source") : after.entity().name();
-        if (!Objects.equals(before.entity(), after.entity()) && y + 9 <= area.y() + area.height()) {
-            text(graphics, Component.translatable("codon.ui.flow_executor_change", beforeEntity, afterEntity).getString(),
-                area.x() + 7, y, area.width() - 14, TEXT);
-            y += 11;
-        }
-        if (!before.dimension().equals(after.dimension()) && y + 9 <= area.y() + area.height()) {
-            text(graphics, Component.translatable("codon.ui.flow_dimension_change",
-                shortDimension(before.dimension()), shortDimension(after.dimension())).getString(),
-                area.x() + 7, y, area.width() - 14, AMBER);
-            y += 11;
-        }
-        if (!before.anchor().equals(after.anchor()) && y + 9 <= area.y() + area.height()) {
-            String from = String.format(Locale.ROOT, "%.1f,%.1f,%.1f",
-                before.anchor().x(), before.anchor().y(), before.anchor().z());
-            String to = String.format(Locale.ROOT, "%.1f,%.1f,%.1f",
-                after.anchor().x(), after.anchor().y(), after.anchor().z());
-            text(graphics, Component.translatable("codon.ui.flow_position_change", from, to).getString(),
-                area.x() + 7, y, area.width() - 14, TEXT);
-            y += 11;
-        }
-        return y;
     }
 
     public boolean scroll(double x, double y, double scrollX, double amount) {
