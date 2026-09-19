@@ -25,7 +25,7 @@ import static works.nuty.codon.client.ui.DebuggerTheme.*;
 
 /** Read-only paged chooser used by the Watch expression form. */
 public final class WatchPickerScreen extends Screen {
-    private static final int ROW_HEIGHT = 24;
+    private static final int ROW_HEIGHT = 26;
     private final Screen parent;
     private final ClientDebuggerState state;
     private final WatchEditorQuery initial;
