@@ -118,8 +118,6 @@
   "codon.watch.feedback.pin_unavailable": "Select an entity executor first.",
   "codon.nbt.empty": "(empty)",
   "codon.nbt.pending": "…",
-  "codon.nbt.previous": "‹ Previous fields",
-  "codon.nbt.next": "More fields ›",
   "codon.nbt.pin": "Pin this field for %s",
   "codon.nbt.unpin": "Remove this pinned field",
   "codon.nbt.path_unavailable": "This path is too long or unsupported for a watch.",
@@ -227,7 +225,7 @@
   "codon.ui.help.values.title": "Read watch values",
   "codon.ui.help.values.body": "An arrow shows a previous value changing to the current value. Hover a value for details, including executor changes or unavailable values. Running and pending indicators are not numeric values; do not interpret them as zero.",
   "codon.ui.help.nbt.title": "Explore entity NBT",
-  "codon.ui.help.nbt.body": "Select an entity source to browse its NBT in the source inspector. NBT is always shown for the selected live entity. Expand compound or list fields to inspect children. Use Previous fields / More fields for additional entries and Refresh NBT when offered. Hover a field for its path and preview. Pinned fields remain in Watches when you switch sources.",
+  "codon.ui.help.nbt.body": "Select an entity source to browse its NBT in the source inspector. NBT is always shown for the selected live entity. Expand compound or list fields to inspect children. Scroll to load additional fields automatically, and use Refresh NBT when offered. Hover a field for its path and preview. Pinned fields remain in Watches when you switch sources.",
   "codon.ui.help.nbt_pin.title": "Pin directly from NBT",
   "codon.ui.help.nbt_pin.body": "Left-click a field pin to add or remove a watch for that entity. Right-click to add the same path for all available entity sources, or remove those watches when all are already pinned. Unsupported paths cannot be pinned."
 }

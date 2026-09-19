@@ -108,8 +108,7 @@ class ClientNbtStateTest {
         assertEquals(a.uuid(), expandedA.executor());
         assertEquals(branch.path(), expandedA.path());
         state.accept(40, expandedA.requestId(), page("leaf", branch.path() + ".\"leaf\"", false));
-        ClientNbtState.Row bNext = state.rows(b.uuid()).stream().filter(row -> row.kind() == ClientNbtState.Kind.NEXT).findFirst().orElseThrow();
-        assertTrue(state.page(b.uuid(), "", bNext.targetOffset()));
+        assertTrue(state.page(b.uuid(), "", NbtPage.PAGE_SIZE));
         ClientNbtState.Query pageB = onlyQuery(state);
         assertEquals(b.uuid(), pageB.executor());
         state.refresh(a.uuid());
@@ -166,20 +165,118 @@ class ClientNbtStateTest {
     }
 
     @Test
-    void pagesKnownBranchesWithExplicitNextAndPreviousOffsets() {
+    void preservesVirtualRowCountAndAutomaticallyLoadsOnlyTheVisibleRootPages() {
         EntityRef a = entity("a");
         ClientNbtState state = new ClientNbtState(() -> 0);
         state.paused(1, List.of(source(a)), 0);
         ClientNbtState.Query root = onlyQuery(state);
-        state.accept(1, root.requestId(), manyNodes(0, 33));
-        ClientNbtState.Row next = state.rows().stream().filter(row -> row.kind() == ClientNbtState.Kind.NEXT).findFirst().orElseThrow();
-        assertEquals(32, next.targetOffset());
-        assertTrue(state.page("", next.targetOffset()));
-        ClientNbtState.Query secondPage = onlyQuery(state);
-        assertEquals(32, secondPage.offset());
-        state.accept(1, secondPage.requestId(), manyNodes(32, 33));
-        assertTrue(state.rows().stream().anyMatch(row -> row.kind() == ClientNbtState.Kind.PREVIOUS && row.targetOffset() == 0));
-        assertFalse(state.page("\"unknown\"", 0), "only branches visible in the current tree can be paged");
+        state.accept(1, root.requestId(), manyNodes(0, 65));
+
+        List<ClientNbtState.Row> initial = state.rows();
+        assertEquals(65, initial.size(), "the scrollbar receives one stable logical row per root child");
+        assertEquals(32, initial.stream().filter(row -> row.kind() == ClientNbtState.Kind.NODE).count());
+        assertEquals(33, initial.stream().filter(row -> row.kind() == ClientNbtState.Kind.PLACEHOLDER).count());
+        assertEquals(33, ClientNbtState.hiddenCount(initial, 32));
+        assertEquals(17, ClientNbtState.hiddenCount(initial, 48));
+        assertTrue(initial.stream().filter(row -> row.kind() == ClientNbtState.Kind.PLACEHOLDER)
+            .allMatch(row -> row.path().isEmpty() && (row.targetOffset() == 32 || row.targetOffset() == 64)));
+        assertTrue(initial.stream().allMatch(row -> row.kind() == ClientNbtState.Kind.NODE || row.kind() == ClientNbtState.Kind.PLACEHOLDER),
+            "virtual children replace pagination-control rows");
+
+        state.requestVisible(a.uuid(), 48, 8);
+        assertEquals(33, ClientNbtState.hiddenCount(state.rows(), 32), "queueing a page must not split the +N marker");
+        ClientNbtState.Query middle = onlyQuery(state);
+        assertEquals(NbtPage.PAGE_SIZE, middle.offset(), "a viewport in the second page never requests the preceding page again");
+        state.accept(1, middle.requestId(), manyNodes(NbtPage.PAGE_SIZE, 65));
+        assertEquals(65, state.rows().size(), "loading a page must not move the scrollbar thumb");
+
+        state.requestVisible(a.uuid(), 64, 1);
+        ClientNbtState.Query last = onlyQuery(state);
+        assertEquals(NbtPage.PAGE_SIZE * 2, last.offset(), "a far jump requests its aligned page without intermediate pages");
+        state.accept(1, last.requestId(), manyNodes(NbtPage.PAGE_SIZE * 2, 65));
+        assertEquals(65, state.rows().size());
+
+        state.requestVisible(a.uuid(), 48, 8);
+        assertTrue(state.drainQueries().isEmpty(), "revisiting a cached viewport does not refetch it");
+    }
+
+    @Test
+    void queuesAlignedVisiblePagesOnceAndReservesNestedExpandedTotals() {
+        EntityRef a = entity("a");
+        ClientNbtState state = new ClientNbtState(() -> 0);
+        state.paused(1, List.of(source(a)), 0);
+        ClientNbtState.Query root = onlyQuery(state);
+        NbtPage.Node nested = new NbtPage.Node("nested", "\"nested\"", "{}", true);
+        state.accept(1, root.requestId(), new NbtPage(WatchResult.Status.VALUE, List.of(nested), 0, 1));
+        assertTrue(state.toggle(nested.path()));
+        ClientNbtState.Query nestedRoot = onlyQuery(state);
+        state.accept(1, nestedRoot.requestId(), manyNodes(nested.path(), 0, 65));
+
+        List<ClientNbtState.Row> initial = state.rows();
+        assertEquals(66, initial.size(), "the expanded node plus every nested child occupies a fixed logical row");
+        assertEquals(nested.path(), initial.get(0).path());
+        assertEquals(33, initial.stream().filter(row -> row.kind() == ClientNbtState.Kind.PLACEHOLDER).count());
+        assertTrue(initial.stream().filter(row -> row.kind() == ClientNbtState.Kind.PLACEHOLDER)
+            .allMatch(row -> row.path().equals(nested.path())));
+
+        state.requestVisible(a.uuid(), 49, 5);
+        assertFalse(state.page(a.uuid(), nested.path(), 33), "a visible viewport has already queued the aligned page");
+        assertFalse(state.page(a.uuid(), nested.path(), 32), "the same pending page is deduplicated");
+        ClientNbtState.Query second = onlyQuery(state);
+        assertEquals(nested.path(), second.path());
+        assertEquals(NbtPage.PAGE_SIZE, second.offset());
+        state.accept(1, second.requestId(), manyNodes(nested.path(), NbtPage.PAGE_SIZE, 65));
+        assertFalse(state.page(a.uuid(), nested.path(), 32), "a cached page is never queued twice");
+        assertEquals(66, state.rows().size(), "nested page loading also preserves flattened scroll length");
+    }
+
+    @Test
+    void farJumpQueuesOnlyTheAlignedLastPageOfAMillionChildBranch() {
+        EntityRef a = entity("a");
+        ClientNbtState state = new ClientNbtState(() -> 0);
+        state.paused(1, List.of(source(a)), 0);
+        ClientNbtState.Query root = onlyQuery(state);
+        state.accept(1, root.requestId(), manyNodes(0, 1_000_000));
+
+        assertEquals(1_000_000, state.rows().size());
+        state.requestVisible(a.uuid(), 999_999, 1);
+        ClientNbtState.Query last = onlyQuery(state);
+        assertEquals(999_968, last.offset(), "a far viewport jump requests only its containing 32-child page");
+        assertTrue(state.drainQueries().isEmpty(), "no intermediate pages are queued by the far jump");
+        state.accept(1, last.requestId(), manyNodes(last.offset(), 1_000_000));
+
+        assertEquals(1_000_000, state.rows().size(), "loading the final page preserves the million-row scroll extent");
+        assertFalse(state.page(a.uuid(), "", 0), "the initially loaded first page remains cached");
+    }
+
+    @Test
+    void timedOutLaterPageKeepsItsVirtualSlotsAndRejectsLateReplyUntilRefresh() {
+        AtomicLong now = new AtomicLong();
+        EntityRef a = entity("a");
+        ClientNbtState state = new ClientNbtState(now::get);
+        state.paused(1, List.of(source(a)), 0);
+        ClientNbtState.Query root = onlyQuery(state);
+        state.accept(1, root.requestId(), manyNodes(0, 65));
+        state.requestVisible(a.uuid(), NbtPage.PAGE_SIZE, 1);
+        ClientNbtState.Query later = onlyQuery(state);
+        assertEquals(NbtPage.PAGE_SIZE, later.offset());
+
+        now.addAndGet(5_000_000_000L);
+        List<ClientNbtState.Row> timedOut = state.rows();
+        assertEquals(65, timedOut.size(), "timing out a later page must not change the scroll extent");
+        assertTrue(timedOut.subList(NbtPage.PAGE_SIZE, NbtPage.PAGE_SIZE * 2).stream()
+            .allMatch(row -> row.kind() == ClientNbtState.Kind.PLACEHOLDER && row.status() == WatchResult.Status.UNAVAILABLE));
+        state.accept(1, later.requestId(), manyNodes(NbtPage.PAGE_SIZE, 65));
+        assertTrue(state.rows().subList(NbtPage.PAGE_SIZE, NbtPage.PAGE_SIZE * 2).stream()
+            .allMatch(row -> row.kind() == ClientNbtState.Kind.PLACEHOLDER && row.status() == WatchResult.Status.UNAVAILABLE),
+            "a reply arriving after timeout cannot replace the timed-out slots");
+
+        state.refresh(a.uuid());
+        ClientNbtState.Query refreshedRoot = onlyQuery(state);
+        state.accept(1, refreshedRoot.requestId(), manyNodes(0, 65));
+        state.requestVisible(a.uuid(), NbtPage.PAGE_SIZE, 1);
+        ClientNbtState.Query retry = onlyQuery(state);
+        assertEquals(NbtPage.PAGE_SIZE, retry.offset(), "refresh is the only path that permits a later-page retry");
     }
 
     @Test
@@ -302,6 +399,14 @@ class ClientNbtStateTest {
         List<NbtPage.Node> nodes = new ArrayList<>();
         for (int i = offset; i < Math.min(total, offset + NbtPage.PAGE_SIZE); i++) {
             nodes.add(new NbtPage.Node("node" + i, "\"node" + i + "\"", "value", false));
+        }
+        return new NbtPage(WatchResult.Status.VALUE, nodes, offset, total);
+    }
+
+    private static NbtPage manyNodes(String parentPath, int offset, int total) {
+        List<NbtPage.Node> nodes = new ArrayList<>();
+        for (int i = offset; i < Math.min(total, offset + NbtPage.PAGE_SIZE); i++) {
+            nodes.add(new NbtPage.Node("node" + i, parentPath + ".\"node" + i + "\"", "value", false));
         }
         return new NbtPage(WatchResult.Status.VALUE, nodes, offset, total);
     }

@@ -474,7 +474,7 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
             .anyMatch(row -> row.kind() == ClientNbtState.Kind.NODE && row.path().equals("\"Pos\"[0]")), 200);
     }
 
-    /** Uses the model to choose direction, but navigates through actual rendered scroll/page controls. */
+    /** Navigates through the rendered NBT scroll area; reaching unloaded rows must load their page automatically. */
     private static void showNode(ClientGameTestContext context, UUID executor, String prefix) {
         context.runOnClient(client -> require(CodonClientMod.state().nbt().executor() != null
                 && CodonClientMod.state().nbt().executor().uuid().equals(executor),
@@ -482,7 +482,6 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
         context.waitTicks(2);
         for (int attempt = 0; attempt < 128; attempt++) {
             AtomicBoolean visible = new AtomicBoolean();
-            AtomicBoolean paged = new AtomicBoolean();
             context.runOnClient(client -> {
                 CodonScreen screen = codonScreen(client.gui.screen());
                 if (findButton(screen, message -> message.startsWith(prefix)) != null) {
@@ -492,20 +491,6 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
                 List<ClientNbtState.Row> rows = CodonClientMod.state().nbt().rows(executor);
                 int target = -1;
                 for (int i = 0; i < rows.size(); i++) if (rowLabel(rows.get(i)).startsWith(prefix)) { target = i; break; }
-                if (target < 0) {
-                    String requestedName = prefix.startsWith("▸ ") || prefix.startsWith("▾ ") ? prefix.substring(2, prefix.indexOf(':')) : "";
-                    String firstName = rows.stream().filter(row -> row.kind() == ClientNbtState.Kind.NODE && row.depth() == 0)
-                        .map(row -> row.node().name()).findFirst().orElse("");
-                    ClientNbtState.Kind direction = requestedName.compareTo(firstName) < 0
-                        ? ClientNbtState.Kind.PREVIOUS : ClientNbtState.Kind.NEXT;
-                    for (int i = 0; i < rows.size(); i++) if (rows.get(i).kind() == direction && rows.get(i).path().isEmpty()) { target = i; break; }
-                    if (target >= 0) {
-                        String label = net.minecraft.network.chat.Component.translatable(direction == ClientNbtState.Kind.PREVIOUS
-                            ? "codon.nbt.previous" : "codon.nbt.next").getString();
-                        DebuggerButton page = findButton(screen, message -> message.equals(label));
-                        if (page != null) { click(screen, page); paged.set(true); return; }
-                    }
-                }
                 int firstVisible = 0;
                 for (int i = 0; i < rows.size(); i++) {
                     String label = rowLabel(rows.get(i));
@@ -515,8 +500,6 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
                 screen.mouseScrolled(header.getX() + 4, header.getY() + 28, 0, target >= 0 && target < firstVisible ? 1 : -1);
             });
             if (visible.get()) return;
-            if (paged.get()) context.waitFor(client -> CodonClientMod.state().nbt().rows(executor).stream()
-                .anyMatch(row -> row.kind() == ClientNbtState.Kind.NODE), 200);
             context.waitTicks(1);
         }
         throw new AssertionError("NBT node never became visible: " + prefix);

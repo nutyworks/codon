@@ -82,7 +82,7 @@ public final class NbtTreePanel {
         offset = Math.clamp(offset, 0, maximumOffset(rows.size(), visibleRows));
         String idPrefix = "nbt-" + selectedSource.index() + "-" + selectedSource.executor().uuid() + "-";
         if (visibleRows > 0) {
-            for (int index = 0; index < rows.size(); index++) {
+            for (int index : ClientNbtState.loadedIndices(rows)) {
                 int logicalRow = index;
                 registerRow(navigation, rows.get(index), idPrefix, selectedSource.executor(), index, () -> {
                     if (logicalRow < offset || logicalRow >= offset + visibleRows) {
@@ -94,17 +94,26 @@ public final class NbtTreePanel {
             }
         }
         navigation.revealFocus(DebuggerNavigation.Group.NBT);
+        // Prefetch the next page so keyboard navigation and ordinary wheel scrolling stay continuous.
+        if (visibleRows > 0) state.nbt().requestVisible(selectedSource.executor().uuid(), offset,
+            visibleRows + NbtPage.PAGE_SIZE);
         for (int index = 0; index < visibleRows && offset + index < rows.size(); index++) {
             Bounds bounds = new Bounds(area.x() + 3, area.y() + HEADER_HEIGHT + index * ROW_HEIGHT,
                 Math.max(1, area.width() - 9), ROW_HEIGHT);
             ClientNbtState.Row row = rows.get(offset + index);
-            renderRow(graphics, bounds, mouseX, mouseY, controls, row, pauseId, selectedSource.executor(), idPrefix);
+            int hidden = ClientNbtState.hiddenCount(rows, offset + index);
+            if (row.kind() == ClientNbtState.Kind.PLACEHOLDER && index > 0) {
+                ClientNbtState.Row previous = rows.get(offset + index - 1);
+                if (previous.kind() == row.kind() && previous.path().equals(row.path())
+                    && previous.depth() == row.depth() && previous.status() == row.status()) continue;
+            }
+            renderRow(graphics, bounds, mouseX, mouseY, controls, row, pauseId, selectedSource.executor(), idPrefix, hidden);
         }
         int maximumOffset = maximumOffset(rows.size(), visibleRows);
         if (visibleRows > 0 && maximumOffset > 0) {
             int height = visibleRows * ROW_HEIGHT;
-            int thumb = Math.max(8, height * visibleRows / (visibleRows + maximumOffset));
-            int top = area.y() + HEADER_HEIGHT + (height - thumb) * offset / maximumOffset;
+            int thumb = (int) Math.max(8, (long) height * visibleRows / ((long) visibleRows + maximumOffset));
+            int top = area.y() + HEADER_HEIGHT + (int) ((long) (height - thumb) * offset / maximumOffset);
             scrollbars.add(idPrefix + "scroll", false, area.x() + area.width() - 3,
                 area.y() + HEADER_HEIGHT, height, 2, thumb, offset, maximumOffset, value -> {
                     // A branch's click anchor must not undo explicit pointer scrolling next frame.
@@ -133,9 +142,7 @@ public final class NbtTreePanel {
                 if (row.status() != null) navigation.add(prefix + "refresh-" + stable(row.path()),
                     DebuggerNavigation.Group.NBT, index, 0, reveal);
             }
-            case PREVIOUS, NEXT -> navigation.add(prefix + "page-" + stable(row.path()) + "-" + row.targetOffset(),
-                DebuggerNavigation.Group.NBT, index, 0, reveal);
-            case EMPTY -> { }
+            case EMPTY, PLACEHOLDER -> { }
         }
     }
 
@@ -167,7 +174,7 @@ public final class NbtTreePanel {
             return;
         }
         int index = -1;
-        for (int row = 0; row < rows.size(); row++) {
+        for (int row : ClientNbtState.loadedIndices(rows)) {
             if (anchorPath.equals(rows.get(row).path())) {
                 index = row;
                 break;
@@ -190,21 +197,17 @@ public final class NbtTreePanel {
     }
 
     private void renderRow(GuiGraphicsExtractor graphics, Bounds bounds, int mouseX, int mouseY, Controls controls,
-                           ClientNbtState.Row row, long pauseId, EntityRef executor, String idPrefix) {
+                           ClientNbtState.Row row, long pauseId, EntityRef executor, String idPrefix, int hidden) {
         int indent = Math.min(8, Math.max(0, row.depth())) * 8;
         int pinWidth = 18;
         int contentWidth = Math.max(1, bounds.width() - indent - pinWidth - 2);
         Bounds content = new Bounds(bounds.x() + indent, bounds.y(), contentWidth, bounds.height());
         switch (row.kind()) {
             case NODE -> renderNode(graphics, bounds, content, mouseX, mouseY, controls, row, pauseId, executor, idPrefix);
-            case STATUS -> renderStatus(graphics, content, controls, row, pauseId, executor.uuid(), idPrefix);
+            case STATUS -> renderStatus(graphics, content, controls, row, pauseId, executor.uuid(), idPrefix, 0);
+            case PLACEHOLDER -> renderStatus(graphics, content, controls, row, pauseId, executor.uuid(),
+                idPrefix + "slot-" + bounds.y() + "-", hidden);
             case EMPTY -> text(graphics, Component.translatable("codon.nbt.empty").getString(), content, MUTED);
-            case PREVIOUS, NEXT -> {
-                Component label = Component.translatable(row.kind() == ClientNbtState.Kind.PREVIOUS
-                    ? "codon.nbt.previous" : "codon.nbt.next");
-                controls.button(idPrefix + "page-" + stable(row.path()) + "-" + row.targetOffset(), content, label, true, false,
-                    () -> { if (isCurrent(pauseId, executor.uuid())) state.nbt().page(executor.uuid(), row.path(), row.targetOffset()); });
-            }
         }
     }
 
@@ -246,7 +249,7 @@ public final class NbtTreePanel {
     private void toggleNode(long pauseId, UUID executor, String path) {
         if (!isCurrent(pauseId, executor)) return;
         List<ClientNbtState.Row> rows = state.nbt().rows(executor);
-        for (int index = 0; index < rows.size(); index++) {
+        for (int index : ClientNbtState.loadedIndices(rows)) {
             if (path.equals(rows.get(index).path())) {
                 anchorPath = path;
                 anchorRow = index - offset;
@@ -258,8 +261,10 @@ public final class NbtTreePanel {
     }
 
     private void renderStatus(GuiGraphicsExtractor graphics, Bounds content, Controls controls, ClientNbtState.Row row,
-                              long pauseId, UUID executor, String idPrefix) {
+                              long pauseId, UUID executor, String idPrefix, int hidden) {
         Component label = row.status() == null ? Component.translatable("codon.nbt.pending") : WatchFormatting.status(row.status());
+        if (hidden > 0) label = Component.literal("+" + hidden)
+            .append(row.status() == null ? Component.empty() : Component.literal(" · ").append(label));
         text(graphics, label.getString(), new Bounds(content.x(), content.y(), Math.max(1, content.width() - 48), content.height()),
             row.status() == null ? MUTED : RED);
         Bounds refresh = new Bounds(content.x() + Math.max(0, content.width() - 44), content.y(), 44, content.height());
