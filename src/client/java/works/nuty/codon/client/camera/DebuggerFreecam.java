@@ -107,6 +107,31 @@ public final class DebuggerFreecam {
         return camera != null && client.player == suspendedPlayer && client.level == camera.level();
     }
 
+    /** Availability is rechecked on activation so a step cannot use a stale UI target. */
+    public String selectedAnchorStatus(Minecraft client) {
+        if (!state.isPaused() || state.snapshot() == null) return "not_paused";
+        if (state.controlPending()) return "pending";
+        var source = state.selectedSource();
+        if (source == null) return "no_selection";
+        if (!isActive() || client.getCameraEntity() != camera) return "unavailable";
+        if (!source.dimension().equals(client.level.dimension().identifier().toString())) return "other_dimension";
+        var anchor = source.anchor();
+        if (!Double.isFinite(anchor.x()) || !Double.isFinite(anchor.y()) || !Double.isFinite(anchor.z())
+                || !Float.isFinite(source.yaw()) || !Float.isFinite(source.pitch())) return "invalid_position";
+        return "ready";
+    }
+
+    /** Moves only the detached camera; the recorded execution anchor is the new eye position. */
+    public boolean moveToSelectedAnchor(Minecraft client) {
+        if (!selectedAnchorStatus(client).equals("ready")) return false;
+        var source = state.selectedSource();
+        var anchor = source.anchor();
+        camera.snapTo(anchor.x(), anchor.y() - camera.getEyeHeight(), anchor.z(),
+            source.yaw(), Math.clamp(source.pitch(), -90.0f, 90.0f));
+        camera.setOldPosAndRot();
+        return true;
+    }
+
     public boolean freezes(Entity entity) {
         return isActive() && (entity == suspendedPlayer || entity == suspendedPlayer.getRootVehicle());
     }

@@ -10,6 +10,7 @@ import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
 import works.nuty.codon.client.input.InputManager;
+import works.nuty.codon.client.CodonClientMod;
 import works.nuty.codon.client.state.ClientDebuggerState;
 import works.nuty.codon.client.state.DebuggerPreferences.InspectorTab;
 import works.nuty.codon.client.ui.layout.DebuggerLayout;
@@ -451,6 +452,14 @@ public final class DebuggerOverlay {
         int y = area.y() + 6;
         int accent = sourceColor(state.selectedSourceIndex(), TEAL);
         int iconX = area.x() + area.width() - 23;
+        var freecam = CodonClientMod.freecam();
+        String status = freecam == null ? "unavailable" : freecam.selectedAnchorStatus(client);
+        iconButton("move-to-source", new Bounds(iconX, y - 3, 16, 16),
+            component("codon.ui.move_to_source"), DebuggerIcon.FREECAM, status.equals("ready"),
+            () -> { if (freecam != null) freecam.moveToSelectedAnchor(client); })
+            .withoutChrome()
+            .setTooltip(Tooltip.create(component("codon.ui.move_to_source." + status)));
+        iconX -= 18;
         if (source.entity() != null) {
             String uuid = source.entity().uuid().toString();
             iconButton("copy-uuid", new Bounds(iconX, y - 3, 16, 16),

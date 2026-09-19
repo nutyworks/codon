@@ -1,4 +1,12 @@
 {
+  "codon.ui.move_to_source": "Move camera to context",
+  "codon.ui.move_to_source.ready": "Move the freecam eye to the selected recorded execution anchor and use its facing. Only the camera moves; unloaded terrain may not be visible while paused.",
+  "codon.ui.move_to_source.pending": "Wait for the pending debugger control to finish.",
+  "codon.ui.move_to_source.not_paused": "Camera movement requires a current paused snapshot.",
+  "codon.ui.move_to_source.no_selection": "Select an execution context first.",
+  "codon.ui.move_to_source.unavailable": "The debugger freecam is not available in this world.",
+  "codon.ui.move_to_source.other_dimension": "The selected context is in another dimension. The client camera cannot move there.",
+  "codon.ui.move_to_source.invalid_position": "The selected context has an invalid position or facing.",
   "key.category.codon.debugger": "Codon Debugger",
   "key.codon.keep_freecam": "Toggle Keep Freecam While Running",
   "key.codon.open_menu": "Open Menu",

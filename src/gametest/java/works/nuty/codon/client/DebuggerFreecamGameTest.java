@@ -16,9 +16,12 @@ import works.nuty.codon.client.camera.DebuggerFreecam;
 import works.nuty.codon.client.state.ClientDebuggerState;
 import works.nuty.codon.core.model.BlockLocation;
 import works.nuty.codon.core.model.CommandSnippet;
+import works.nuty.codon.core.model.EntityRef;
 import works.nuty.codon.core.model.PauseReason;
 import works.nuty.codon.core.model.PauseSnapshot;
+import works.nuty.codon.core.model.PauseSource;
 import works.nuty.codon.core.model.SourceLocation;
+import works.nuty.codon.core.model.Vec3d;
 
 import java.util.List;
 
@@ -51,6 +54,7 @@ public final class DebuggerFreecamGameTest implements FabricClientGameTest {
             });
             try {
                 FreecamPacketProbe.start();
+                verifyMoveToSelectedAnchor(context, fixture);
                 context.runOnClient(client -> {
                     client.getCameraEntity().setYRot(0);
                     client.getCameraEntity().setXRot(-70);
@@ -267,6 +271,79 @@ public final class DebuggerFreecamGameTest implements FabricClientGameTest {
             player.level().dimension().identifier().toString());
         SourceLocation location = new SourceLocation.Block(block);
         return new PauseSnapshot(location, CommandSnippet.plain("say freecam fixture"), 0, List.of(), List.of(),
+            PauseReason.BREAKPOINT);
+    }
+
+    /**
+     * The selected source's anchor is the command execution reference point. It can differ from
+     * the attached executor's current position, so this checks the rendered eye against the
+     * captured anchor and never against the player entity.
+     */
+    private static void verifyMoveToSelectedAnchor(ClientGameTestContext context, Fixture fixture) {
+        context.runOnClient(client -> {
+            LocalPlayer player = fixture.player();
+            String dimension = player.level().dimension().identifier().toString();
+            Vec3 anchor = player.position().add(13.25, 7.5, -9.75);
+            PauseSource selected = new PauseSource(new Vec3d(anchor.x, anchor.y, anchor.z), 23.5F, -137.25F,
+                new EntityRef(player.getUUID(), player.getName().getString()), dimension);
+            require(anchor.distanceToSqr(player.getEyePosition()) > 1.0,
+                "fixture anchor is intentionally distinct from its attached entity's current eye position");
+            fixture.state().applyPause(pauseFixture(player, List.of(selected)));
+            fixture.freecam().synchronize(client);
+
+            require(fixture.freecam().selectedAnchorStatus(client).equals("ready"),
+                "a paused selected source in the current dimension reports a reachable anchor");
+            PlayerState playerBeforeMove = playerState(player);
+            require(fixture.freecam().moveToSelectedAnchor(client), "the selected anchor is reachable");
+            client.gameRenderer.mainCamera().update(DeltaTracker.ONE);
+            require(client.gameRenderer.mainCamera().position().distanceToSqr(anchor) < 1.0E-8,
+                "freecam eye moves to the selected execution anchor");
+            require(client.getCameraEntity().getYRot() == selected.yaw()
+                    && client.getCameraEntity().getXRot() == selected.pitch(),
+                "freecam adopts the selected execution rotation");
+            require(playerState(player).equals(playerBeforeMove),
+                "moving to an execution anchor does not move or rotate the local player");
+
+            CameraState beforeRejectedMove = cameraState(client);
+            fixture.state().applyPause(pauseFixture(player, List.of()));
+            require(fixture.freecam().selectedAnchorStatus(client).equals("no_selection"),
+                "a pause without sources explains that no execution context is selected");
+            require(!fixture.freecam().moveToSelectedAnchor(client), "a missing selection cannot move freecam");
+            require(cameraState(client).equals(beforeRejectedMove), "a rejected move leaves the freecam pose intact");
+
+            PauseSource otherDimension = new PauseSource(new Vec3d(anchor.x, anchor.y, anchor.z), 0, 0,
+                null, "minecraft:the_nether");
+            fixture.state().applyPause(pauseFixture(player, List.of(otherDimension)));
+            require(fixture.freecam().selectedAnchorStatus(client).equals("other_dimension"),
+                "a selected anchor in another dimension reports why it cannot be reached");
+            require(!fixture.freecam().moveToSelectedAnchor(client), "another dimension cannot move the local freecam");
+            require(cameraState(client).equals(beforeRejectedMove), "another-dimension rejection preserves the freecam pose");
+
+            PauseSource nonFinite = new PauseSource(new Vec3d(Double.NaN, anchor.y, anchor.z), 0, 0,
+                null, dimension);
+            fixture.state().applyPause(pauseFixture(player, List.of(nonFinite)));
+            require(fixture.freecam().selectedAnchorStatus(client).equals("invalid_position"),
+                "a non-finite captured anchor reports invalid position");
+            require(!fixture.freecam().moveToSelectedAnchor(client), "a non-finite anchor cannot move freecam");
+            require(cameraState(client).equals(beforeRejectedMove), "invalid-position rejection preserves the freecam pose");
+
+            fixture.state().applyResume();
+            require(fixture.freecam().selectedAnchorStatus(client).equals("not_paused"),
+                "terminal resume makes selected-anchor movement unavailable");
+            require(!fixture.freecam().moveToSelectedAnchor(client), "a running debugger cannot move freecam to an anchor");
+            fixture.freecam().synchronize(client);
+
+            fixture.state().applyPause(pauseFixture(player));
+            fixture.freecam().synchronize(client);
+            require(fixture.freecam().isActive(), "anchor rejection cases leave the fixture able to resume freecam testing");
+        });
+    }
+
+    private static PauseSnapshot pauseFixture(LocalPlayer player, List<PauseSource> sources) {
+        BlockLocation block = new BlockLocation(player.getBlockX(), player.getBlockY(), player.getBlockZ(),
+            player.level().dimension().identifier().toString());
+        SourceLocation location = new SourceLocation.Block(block);
+        return new PauseSnapshot(location, CommandSnippet.plain("say freecam anchor fixture"), 0, List.of(), sources,
             PauseReason.BREAKPOINT);
     }
 

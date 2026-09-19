@@ -177,6 +177,11 @@ and changes that require subsequent simulation ticks still wait for normal execu
   snapshots are still cleared during advancement so stale command state cannot be inspected.
   The original player's body remains visible at its paused position through vanilla entity
   rendering; player/vehicle render interpolation is fixed so the pose stays still.
+  The inspector's **Move camera to context** icon, to the right of Copy UUID, places the detached camera eye at the
+  selected context's recorded execution anchor and applies its recorded facing. It never reads
+  the entity's current position or moves the player/vehicle. The action revalidates the current
+  pause, pending control, selection, camera session, dimension and finite coordinates on click;
+  disabled controls explain the reason on hover. It does not load terrain while paused.
   First-person arms and held items are hidden while freecam is active and return through vanilla
   rendering at execution end; the paused body's third-person arms and equipment remain visible.
 - `CodonClientMod` — client composition root.
