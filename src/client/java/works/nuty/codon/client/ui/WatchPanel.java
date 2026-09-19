@@ -32,7 +32,7 @@ public final class WatchPanel {
     private static final int HEADER = 23;
     private static final int BOTTOM_PADDING = 3;
     private static final int ACTION_SIZE = 16;
-    private static final int KIND_ICON_INSET = 10;
+    private static final int KIND_ICON_INSET = 11;
     private static final int DIVIDER_MARGIN = 2;
     private static final int DIVIDER_TOP_MARGIN = 1;
     private record Row(long key, ClientWatchState.@Nullable Entry entry, Component heading, boolean grouped,
@@ -123,7 +123,7 @@ public final class WatchPanel {
             bounds.x() + 7, bounds.y() + (HEADER - font.lineHeight) / 2 + 1, Math.max(0, bounds.width() - 74), TEAL);
         button("watch-add", new Bounds(bounds.x() + bounds.width() - 23, bounds.y() + 3, 18, 17), Component.literal("+"),
             true, false, () -> client.gui.setScreen(new WatchScreen(input, state, overlay)), navigation, -1, 3)
-            .withIcon(DebuggerIcon.SOURCE_CREATED).withSingleLineTooltip(text("editor.title"));
+            .withIcon(DebuggerIcon.SOURCE_CREATED).withIconOffsetY(2).withSingleLineTooltip(text("editor.title"));
         button("watch-grouping", new Bounds(bounds.x() + bounds.width() - 44, bounds.y() + 3, 18, 17),
             text("grouping." + state.watches().grouping().name().toLowerCase(java.util.Locale.ROOT)), true, false,
             () -> client.gui.setScreen(new WatchGroupingScreen(new CodonScreen(input, overlay), state.watches().grouping(), mode -> {
@@ -131,7 +131,7 @@ public final class WatchPanel {
                 offset = 0;
                 previousKeys = List.of();
                 requestedId = 0;
-            })), navigation, -1, 1).withIcon(DebuggerIcon.GIZMO_GROUPED)
+            })), navigation, -1, 1).withIcon(DebuggerIcon.GIZMO_GROUPED).withIconOffsetY(2)
                 .withSingleLineTooltip(text("grouping.tooltip." + state.watches().grouping().name().toLowerCase(java.util.Locale.ROOT)));
         var save = state.watches().saveStatus();
         if (save == ClientWatchState.SaveStatus.FAILED) {

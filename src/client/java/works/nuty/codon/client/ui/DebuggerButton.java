@@ -29,6 +29,7 @@ public final class DebuggerButton extends AbstractButton {
     private int contentWidth;
     private @Nullable DebuggerIcon icon;
     private boolean smallIcon;
+    private int iconOffsetY;
     private @Nullable Tooltip tooltip;
     private @Nullable Component singleLineTooltip;
     private int foregroundColor = DebuggerTheme.TEXT;
@@ -63,6 +64,7 @@ public final class DebuggerButton extends AbstractButton {
         this.secondaryAction = null;
         this.icon = null;
         this.smallIcon = false;
+        this.iconOffsetY = 0;
         this.foregroundColor = DebuggerTheme.TEXT;
         this.accentColor = DebuggerTheme.TEAL;
         this.selectedSurface = DebuggerTheme.TEAL_SURFACE;
@@ -85,6 +87,11 @@ public final class DebuggerButton extends AbstractButton {
     public DebuggerButton withSmallIcon(DebuggerIcon icon) {
         this.icon = icon;
         this.smallIcon = true;
+        return this;
+    }
+
+    public DebuggerButton withIconOffsetY(int offset) {
+        this.iconOffsetY = offset;
         return this;
     }
 
@@ -180,7 +187,7 @@ public final class DebuggerButton extends AbstractButton {
             graphics.enableScissor(getX() + 1, getY() + 1, getRight() - 1, getBottom() - 1);
             int iconSize = smallIcon ? icon.smallSize() : DebuggerIcon.SIZE;
             int iconX = getX() - contentOffset + (iconWithText ? 3 : leadingIcon ? 1 : (contentWidth - iconSize) / 2);
-            int iconY = getY() + (height - iconSize) / 2;
+            int iconY = getY() + (height - iconSize) / 2 + iconOffsetY;
             if (smallIcon) icon.drawSmall(graphics, iconX, iconY, foreground);
             else icon.draw(graphics, iconX, iconY, foreground);
             graphics.disableScissor();
