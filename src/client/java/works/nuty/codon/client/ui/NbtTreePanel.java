@@ -23,7 +23,7 @@ import java.util.UUID;
 
 import static works.nuty.codon.client.ui.DebuggerTheme.*;
 
-/** Compact, lazy NBT-tree presentation for every entity source at the current debugger stop. */
+/** Compact, lazy NBT-tree presentation for the selected live entity source. */
 public final class NbtTreePanel {
     private static final Bounds EMPTY = new Bounds(0, 0, 0, 0);
     private static final int HEADER_HEIGHT = 18;
@@ -32,6 +32,7 @@ public final class NbtTreePanel {
     private final ClientDebuggerState state;
     private Bounds scrollBounds = EMPTY;
     private long boundsPause;
+    private ClientNbtState.@Nullable EntitySource boundsSource;
     private record DisplayRow(ClientNbtState.EntitySource source, ClientNbtState.@Nullable Row row) {}
     private int offset;
 
@@ -40,14 +41,15 @@ public final class NbtTreePanel {
     }
 
     public int preferredHeight(int maximum) {
-        if (state.nbt().entitySources().isEmpty() || maximum < HEADER_HEIGHT) return 0;
+        if (selectedSource() == null || maximum < HEADER_HEIGHT) return 0;
         if (!state.nbt().enabled()) return Math.min(maximum, HEADER_HEIGHT);
         return Math.min(maximum, 22 + displayRows().size() * ROW_HEIGHT);
     }
 
     private List<DisplayRow> displayRows() {
         List<DisplayRow> rows = new ArrayList<>();
-        for (var source : state.nbt().entitySources()) {
+        var source = selectedSource();
+        if (source != null) {
             rows.add(new DisplayRow(source, null));
             if (state.nbt().sourceExpanded(source.executor().uuid())) {
                 for (var row : state.nbt().rows(source.executor().uuid())) rows.add(new DisplayRow(source, row));
@@ -56,24 +58,31 @@ public final class NbtTreePanel {
         return rows;
     }
 
+    private ClientNbtState.@Nullable EntitySource selectedSource() {
+        int index = state.selectedPauseSourceIndex();
+        return state.nbt().entitySources().stream().filter(source -> source.index() == index).findFirst().orElse(null);
+    }
+
     public void render(GuiGraphicsExtractor graphics, Bounds area, int mouseX, int mouseY, Controls controls) {
-        if (state.nbt().entitySources().isEmpty() || area.width() <= 0 || area.height() <= 0) {
+        var selectedSource = selectedSource();
+        if (selectedSource == null || area.width() <= 0 || area.height() <= 0) {
             clearBounds();
             return;
         }
         long pauseId = pauseId();
-        if (boundsPause != pauseId) {
+        if (boundsPause != pauseId || !selectedSource.equals(boundsSource)) {
             offset = 0;
             boundsPause = pauseId;
+            boundsSource = selectedSource;
         }
         graphics.fill(area.x(), area.y(), area.x() + area.width(), area.y() + area.height(), SURFACE);
         graphics.outline(area.x(), area.y(), area.width(), area.height(), BORDER);
 
         boolean enabled = state.nbt().enabled();
-        Component title = Component.literal((enabled ? "▾ NBT · " : "▸ NBT · ") + state.nbt().entitySources().size());
+        Component title = Component.literal(enabled ? "▾ NBT · 1" : "▸ NBT · 1");
         controls.button("nbt-header", new Bounds(area.x() + 2, area.y() + 1, Math.max(1, area.width() - 4), HEADER_HEIGHT - 2),
             title, true, enabled, () -> {
-                if (pauseId > 0 && pauseId == pauseId()) state.nbt().setEnabled(!enabled);
+                if (isCurrent(pauseId, selectedSource.executor().uuid())) state.nbt().setEnabled(!enabled);
             }).setTooltip(Tooltip.create(Component.translatable(enabled ? "codon.nbt.collapse" : "codon.nbt.expand")));
         if (!enabled) {
             clearBounds();
@@ -244,7 +253,8 @@ public final class NbtTreePanel {
     }
 
     private boolean isCurrent(long pauseId, UUID executor) {
-        return pauseId > 0 && pauseId == pauseId() && state.nbt().contains(executor);
+        var source = selectedSource();
+        return pauseId > 0 && pauseId == pauseId() && source != null && source.executor().uuid().equals(executor);
     }
 
     private static String stable(String path) {

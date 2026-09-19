@@ -22,6 +22,7 @@ import works.nuty.codon.client.ui.DebuggerIcon;
 import works.nuty.codon.client.ui.DebuggerOverlay;
 import works.nuty.codon.client.ui.WatchScreen;
 import works.nuty.codon.client.ui.WatchFormatting;
+import works.nuty.codon.client.ui.layout.DebuggerLayout;
 import works.nuty.codon.core.model.BlockLocation;
 import works.nuty.codon.core.model.CommandSnippet;
 import works.nuty.codon.core.model.PauseSource;
@@ -97,6 +98,12 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
                 openCodonScreen(context);
                 context.takeScreenshot("codon-nbt-tree-empty-watch-plus");
                 checkWatchEditorRoute(context);
+                assertNoNbtControls(context);
+                selectSource(context, 1);
+                setInspectorVisible(context, false);
+                assertNoNbtControls(context);
+                setInspectorVisible(context, true);
+                assertNbtHeaderIsInsideInspector(context);
                 collapseAndExpandHeader(context);
                 expandAndPinUuidLeaf(context, first.get().getUUID(), "A");
                 context.runOnClient(client -> require(CodonClientMod.state().watches().definitions().size() == 1,
@@ -104,9 +111,11 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
                 expandPosBranch(context, first.get().getUUID());
 
                 collapseSource(context, 2);
+                selectSource(context, 2);
                 expandSource(context, 3);
                 expandAndPinUuidLeaf(context, second.get().getUUID(), "B", true);
                 context.waitFor(client -> pinsReady(first.get().getUUID(), second.get().getUUID()), 200);
+                selectSource(context, 0);
                 context.runOnClient(client -> {
                     WatchSpec a = new WatchSpec(WatchSpec.Kind.ENTITY_NBT, "", UUID_LEAF, first.get().getUUID());
                     WatchSpec b = new WatchSpec(WatchSpec.Kind.ENTITY_NBT, "", UUID_LEAF, second.get().getUUID());
@@ -126,7 +135,16 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
                     }
                 });
                 assertInitialSource(context);
-                // Additional pinned rows resize the NBT viewport; reveal the leaf again before clicking it.
+                assertNoNbtControls(context);
+                checkWatchEditorRoute(context);
+                selectSource(context, 1);
+                setInspectorVisible(context, false);
+                assertNoNbtControls(context);
+                context.takeScreenshot("codon-nbt-hidden-inspector-pinned-watches");
+                context.runOnClient(client -> require(CodonClientMod.state().watches().definitions().size() == 2,
+                    "hiding the source inspector preserves pinned watches"));
+                setInspectorVisible(context, true);
+                selectSource(context, 2);
                 showNode(context, second.get().getUUID(), "  [0]:");
                 context.runOnClient(client -> {
                     CodonScreen screen = codonScreen(client.gui.screen());
@@ -165,6 +183,7 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
                     require(CodonClientMod.state().watches().entries().stream().noneMatch(entry -> entry.spec().equals(b)),
                         "clicking B's UUID leaf pin again removes only B's binding");
                 });
+                selectSource(context, 0);
                 assertInitialSource(context);
                 checkExpansionRetention(context, first.get().getUUID(), second.get().getUUID());
             } finally {
@@ -182,6 +201,7 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
     }
 
     private static void checkExpansionRetention(ClientGameTestContext context, UUID a, UUID b) {
+        selectSource(context, 2);
         context.runOnClient(client -> {
             require(!CodonClientMod.state().nbt().sourceExpanded(a), "A starts collapsed");
             require(CodonClientMod.state().nbt().sourceExpanded(b), "B starts expanded");
@@ -208,7 +228,9 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
         advance(context, true);
         context.runOnClient(client -> require(CodonClientMod.state().nbt().entitySources().isEmpty(),
             "Continue reaches an intermediate stop without entity sources"));
+        assertNoNbtControls(context);
         advance(context, false);
+        selectSource(context, 1);
         context.runOnClient(client -> {
             var nbt = CodonClientMod.state().nbt();
             require(nbt.enabled(), "global NBT expansion survives Continue and the next F9");
@@ -218,6 +240,7 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
         context.runOnClient(client -> require(findButton(codonScreen(client.gui.screen()),
             label -> label.startsWith("▸ #2 · ")) != null, "returning A is visibly collapsed"));
         context.takeScreenshot("codon-nbt-expansion-preserved");
+        selectSource(context, 2);
         showNode(context, b, "▾ UUID:");
     }
 
@@ -239,13 +262,47 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
     private static void assertInitialSource(ClientGameTestContext context) {
         context.runOnClient(client -> {
             require(CodonClientMod.state().selectedSourceIndex() == 0, "selected source remains the no-entity source");
-            require(CodonClientMod.state().nbt().executor() == null, "NBT tree does not depend on selected entity source");
+            require(CodonClientMod.state().nbt().executor() == null, "non-entity selection has no NBT executor");
+        });
+    }
+
+    private static void selectSource(ClientGameTestContext context, int index) {
+        context.runOnClient(client -> CodonClientMod.state().selectSource(index));
+        context.waitTicks(3);
+        context.runOnClient(client -> require(CodonClientMod.state().selectedSourceIndex() == index,
+            "source selection changes the inspected NBT executor"));
+    }
+
+    private static void setInspectorVisible(ClientGameTestContext context, boolean visible) {
+        context.runOnClient(client -> CodonClientMod.state().preferences().setInspectorVisible(visible));
+        context.waitTicks(3);
+    }
+
+    private static void assertNoNbtControls(ClientGameTestContext context) {
+        context.runOnClient(client -> {
+            CodonScreen screen = codonScreen(client.gui.screen());
+            require(findButton(screen, message -> message.startsWith("▾ NBT · ") || message.startsWith("▸ NBT · ")) == null,
+                "a non-entity source does not render NBT controls");
+        });
+    }
+
+    private static void assertNbtHeaderIsInsideInspector(ClientGameTestContext context) {
+        context.runOnClient(client -> {
+            CodonScreen screen = codonScreen(client.gui.screen());
+            DebuggerButton header = button(screen, message -> message.startsWith("▾ NBT · ") || message.startsWith("▸ NBT · "));
+            var inspector = DebuggerLayout.create(screen.width, screen.height, true).inspector();
+            require(header.getX() >= inspector.x() && header.getX() + header.getWidth() <= inspector.x() + inspector.width()
+                    && header.getY() >= inspector.y() && header.getY() + header.getHeight() <= inspector.y() + inspector.height(),
+                "NBT controls are contained by the selected source inspector");
         });
     }
 
     private static void openCodonScreen(ClientGameTestContext context) {
         context.getInput().resizeWindow(1280, 900);
         context.runOnClient(client -> {
+            client.options.guiScale().set(2);
+            client.resizeGui();
+            CodonClientMod.state().preferences().setInspectorVisible(true);
             InputManager input = input();
             client.setScreenAndShow(new CodonScreen(input, new DebuggerOverlay(CodonClientMod.state())));
         });
@@ -257,6 +314,10 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
             CodonScreen screen = codonScreen(client.gui.screen());
             click(screen, button(screen, message -> message.equals("+")));
             require(client.gui.screen() instanceof WatchScreen, "CodonScreen watch summary plus opens WatchScreen");
+            long pins = client.gui.screen().children().stream().filter(DebuggerButton.class::isInstance)
+                .map(DebuggerButton.class::cast).filter(button -> button.icon() == DebuggerIcon.PIN).count();
+            require(pins == CodonClientMod.state().watches().entries().size(),
+                "the Watch editor still displays the pinned NBT entries");
             client.gui.screen().onClose();
         });
         context.waitFor(client -> client.gui.screen() instanceof CodonScreen, 50);
@@ -352,6 +413,9 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
 
     /** Uses the model to choose direction, but navigates through actual rendered scroll/page controls. */
     private static void showNode(ClientGameTestContext context, UUID executor, String prefix) {
+        context.runOnClient(client -> require(CodonClientMod.state().nbt().executor() != null
+                && CodonClientMod.state().nbt().executor().uuid().equals(executor),
+            "NBT navigation targets only the selected source"));
         context.waitTicks(2);
         for (int attempt = 0; attempt < 128; attempt++) {
             AtomicBoolean visible = new AtomicBoolean();

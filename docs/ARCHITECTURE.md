@@ -185,9 +185,9 @@ executor first: `Pig #abcd1234 · Health ...... 20.0f`. Tooltips retain the full
 reports `no target`. Unknown names use the UUID alone until the server or a pause source supplies a name.
 
 The Watches heading always includes a **+** button to open the definition editor, even when the
-list is empty. Below the watches, every entity source has a collapsible NBT section, independent
-of the inspector's selection (including a selected non-entity source). New sections start expanded;
-scrolling reaches every source. Compound fields and list/array elements expand lazily; each tree pages
+list is empty. The source inspector shows a collapsible NBT section for its selected live entity source.
+Selecting a non-entity or historical source, or hiding the inspector, hides the tree; pinned values remain
+in Watches. New entity sections start expanded. Compound fields and list/array elements expand lazily; each tree pages
 through 32 immediate children at a time. Left-clicking a field pin adds its exact path bound to that
 source's UUID; an active pin removes only that binding. Right-clicking fills the same path for every
 current entity source, skipping existing bindings and duplicate UUIDs. If all current entities already
@@ -365,10 +365,12 @@ the combined response must stay below 750 ms, including the outgoing executor's 
 `NbtTreeReaderGameTest` checks exact generated paths (including punctuation, quotes, and backslashes),
 compound/list/array paging, size limits, and the reply codec in the Minecraft runtime.
 `DebuggerNbtTreeGameTest` parks the integrated server and exercises the empty Watches **+** button,
+the selected live source's NBT tree inside the source inspector (absent for non-entity sources and a hidden inspector),
 NBT collapse/expand retained across F9, Continue, reordered/temporarily absent sources, and a recreated overlay,
 scrolling and pagination, individual left-click array-element pins and right-click
-all-source pins while a non-entity source stays selected. Repeated right-clicks remove and re-add the whole current-source group;
-left-click removal affects only its own UUID. Screenshots include four simultaneous watch rows.
+all-source pins. Pinned values stay in Watches when the selected source changes or the inspector is hidden.
+Repeated right-clicks remove and re-add the whole current-source group; left-click removal affects only its own UUID.
+Screenshots include four simultaneous watch rows.
 
 `DebuggerWatchPinGameTest` parks the actual server with two executor entities and clicks the editor's
 pin/unpin controls. It checks independent score bindings, entity NBT pinning, source switches,

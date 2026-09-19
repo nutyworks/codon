@@ -259,27 +259,10 @@ public final class DebuggerOverlay {
         var entries = state.watches().entries();
         Bounds world = layout.world();
         if (world.width() < 60 || world.height() < 40) return;
-        // Share normal-height space with NBT.
         int availableHeight = Math.max(0, world.height() - 24);
-        int minimumWatchHeight = entries.isEmpty() ? 20 : 32;
-        int nbtCapacity = Math.max(0, Math.min(220, availableHeight - minimumWatchHeight));
-        int nbtPreferred = nbtCapacity >= 18 ? nbtPanel.preferredHeight(nbtCapacity) : 0;
-        int nbtFloor = nbtPreferred > 18 ? 54 : nbtPreferred;
-        int allWatchHeight = entries.isEmpty() ? 20 : 20 + entries.size() * 12;
-        int targetWatchHeight = entries.isEmpty() ? 20 : Math.min(allWatchHeight, 80);
-        int nbtHeight;
-        if (availableHeight >= allWatchHeight + nbtFloor) {
-            // When the viewport has room, retain every watch row before growing the tree.
-            nbtHeight = Math.min(nbtPreferred, availableHeight - allWatchHeight);
-        } else {
-            // Typical viewport: keep a field-sized tree region and 3–5 readable watch rows.
-            nbtHeight = Math.min(nbtPreferred, Math.max(nbtFloor, availableHeight - targetWatchHeight));
-        }
-        int remainingWatchHeight = Math.max(0, availableHeight - nbtHeight);
-        int rows = entries.isEmpty() || remainingWatchHeight < 32 ? 0
-            : Math.max(1, Math.min(entries.size(), (remainingWatchHeight - 20) / 12));
-        int watchHeight = 20 + rows * 12;
-        int panelHeight = watchHeight + nbtHeight;
+        int rows = entries.isEmpty() || availableHeight < 32 ? 0
+            : Math.max(1, Math.min(entries.size(), (availableHeight - 20) / 12));
+        int panelHeight = 20 + rows * 12;
         maxWatchSummaryOffset = Math.max(0, entries.size() - rows);
         watchSummaryOffset = Math.clamp(watchSummaryOffset, 0, maxWatchSummaryOffset);
         int width = Math.min(270, Math.max(1, world.width() - 8));
@@ -309,10 +292,6 @@ public final class DebuggerOverlay {
         if (rows > 0 && maxWatchSummaryOffset > 0) scrollbar(graphics,
             panelBounds.x() + panelBounds.width() - 4, panelBounds.y() + 19, rows * 12,
             watchSummaryOffset, maxWatchSummaryOffset, rows, entries.size());
-        if (nbtHeight > 0) nbtPanel.render(graphics,
-            new Bounds(panelBounds.x() + 3, panelBounds.y() + watchHeight, panelBounds.width() - 6, nbtHeight),
-            interactive ? mouseX : -1, interactive ? mouseY : -1,
-            (id, bounds, label, active, selected, action) -> button(id, bounds, label, active, selected, true, false, action));
     }
 
     private void renderInspector(GuiGraphicsExtractor graphics, Bounds area, @Nullable PauseSnapshot snapshot) {
@@ -334,13 +313,23 @@ public final class DebuggerOverlay {
 
     private void renderSourcesWithDetails(GuiGraphicsExtractor graphics, Bounds body,
                                           PauseSnapshot snapshot, int headingInset) {
-        // Keep at least one selectable source row and give its details the remaining content budget.
-        int detailHeight = Math.min(sourceDetailsHeight(), Math.max(0, body.height() - 49));
+        // Keep source selection accessible while its details and NBT share the inspector.
+        int sourceCount = expandedGroup.isEmpty() ? state.displayedSources().size() : expandedGroup.size();
+        int preferredListHeight = 30 + Math.clamp(sourceCount, 1, 3) * 19;
+        int nbtPreferred = nbtPanel.preferredHeight(Math.min(220, Math.max(0, body.height() - 49 - 22)));
+        int nbtFloor = nbtPreferred > 18 ? 54 : nbtPreferred;
+        int nbtHeight = Math.min(nbtPreferred, Math.max(nbtFloor,
+            body.height() - preferredListHeight - sourceDetailsHeight()));
+        int detailHeight = Math.min(sourceDetailsHeight(), Math.max(0, body.height() - 49 - nbtHeight));
         if (detailHeight < 22) detailHeight = 0;
-        int listHeight = body.height() - detailHeight;
+        int listHeight = body.height() - detailHeight - nbtHeight;
         renderSources(graphics, new Bounds(body.x(), body.y(), body.width(), listHeight), snapshot, headingInset);
         if (detailHeight > 0) renderSourceDetails(graphics,
             new Bounds(body.x(), body.y() + listHeight, body.width(), detailHeight), 0);
+        if (nbtHeight > 0) nbtPanel.render(graphics,
+            new Bounds(body.x() + 3, body.y() + listHeight + detailHeight, body.width() - 6, nbtHeight),
+            hoverX, hoverY,
+            (id, bounds, label, active, selected, action) -> button(id, bounds, label, active, selected, true, false, action));
     }
 
     private void renderSources(GuiGraphicsExtractor graphics, Bounds area, PauseSnapshot snapshot, int headingInset) {
