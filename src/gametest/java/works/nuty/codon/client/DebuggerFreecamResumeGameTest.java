@@ -38,11 +38,18 @@ public final class DebuggerFreecamResumeGameTest implements FabricClientGameTest
 
     @Override
     public void runTest(ClientGameTestContext context) {
+        runResume(context, false);
+        runResume(context, true);
+    }
+
+    private void runResume(ClientGameTestContext context, boolean keepFreecam) {
         try (TestSingleplayerContext world = context.worldBuilder().create()) {
             world.getConnection().waitForChunksRender();
             MinecraftServer server = world.getServer().computeOnServer(value -> value);
             configure(world);
             Fixture fixture = context.computeOnClient(DebuggerFreecamResumeGameTest::prepare);
+            boolean originalKeep = fixture.state().preferences().keepFreecam();
+            context.runOnClient(client -> fixture.state().preferences().setKeepFreecam(keepFreecam));
             try {
                 // A normal redstone trigger enters the production command-block execution path.
                 world.getServer().runCommand("setblock 3 80 0 minecraft:redstone_block");
@@ -63,14 +70,56 @@ public final class DebuggerFreecamResumeGameTest implements FabricClientGameTest
                 waitForPause(context, THIRD);
                 context.runOnClient(client -> assertGuard(client, fixture, guard, "the third breakpoint"));
 
-                // No later breakpoint remains. Only this final Resume may restore the player camera.
+                // No later breakpoint remains. Keep Freecam determines whether the camera is restored.
                 context.runOnClient(client -> client.player.connection.sendCommand("codon resume"));
                 context.waitFor(client -> {
                     ClientDebuggerState state = require(CodonClientMod.state(), "client debugger state remains initialized");
                     DebuggerFreecam freecam = require(CodonClientMod.freecam(), "client freecam remains initialized");
-                    return !state.isPaused() && !state.isContinuing() && !freecam.isActive();
+                    return !state.isPaused() && !state.isContinuing() && freecam.isActive() == keepFreecam;
                 }, 200);
-                context.runOnClient(client -> assertTerminalResume(client, fixture));
+                if (keepFreecam) {
+                    context.runOnClient(client -> {
+                        assertGuard(client, fixture, guard, "terminal resume with retained freecam");
+                        require(!fixture.freecam().freezes(fixture.player()), "resumed body is not frozen");
+                        fixture.player().getAbilities().flying = false;
+                        fixture.player().setDeltaMovement(Vec3.ZERO);
+                    });
+                    int bodyTicks = context.computeOnClient(client -> fixture.player().tickCount);
+                    double bodyY = context.computeOnClient(client -> fixture.player().getY());
+                    context.waitTicks(10);
+                    context.runOnClient(client -> {
+                        require(fixture.player().tickCount > bodyTicks, "body ticks resume while camera stays detached");
+                        require(fixture.player().getY() < bodyY - 0.5, "resumed body falls under gravity");
+                        assertGuard(client, fixture, guard, "resumed body physics");
+                        client.options.keyUp.setDown(true);
+                        client.options.keyJump.setDown(true);
+                        client.options.keyShift.setDown(true);
+                        fixture.player().input.tick();
+                        require(fixture.player().input.keyPresses.equals(net.minecraft.world.entity.player.Input.EMPTY),
+                            "camera navigation does not become body input");
+                        client.options.keyUp.setDown(false);
+                        client.options.keyJump.setDown(false);
+                        client.options.keyShift.setDown(false);
+                    });
+                    world.getServer().runOnServer(value -> require(
+                        value.getPlayerList().getPlayers().getFirst().getY() < bodyY - 0.5,
+                        "server receives the falling body's position while freecam is retained"));
+                    context.runOnClient(client -> {
+                        // Frame the actual resumed body and observe vanilla render extraction.
+                        Entity camera = client.getCameraEntity();
+                        Vec3 body = fixture.player().position();
+                        camera.snapTo(body.x, body.y + 0.2, body.z + 4, 180, 12);
+                        camera.setOldPosAndRot();
+                        FreecamRenderProbe.reset();
+                    });
+                    context.waitTicks(2);
+                    context.takeScreenshot("codon-freecam-retained-body");
+                    require(!Float.isNaN(FreecamRenderProbe.playerPartialTick()),
+                        "resumed player body remains rendered from retained freecam; "
+                            + FreecamRenderProbe.visibility());
+                } else {
+                    context.runOnClient(client -> assertTerminalResume(client, fixture));
+                }
                 world.getServer().runOnServer(value -> {
                     var player = value.getPlayerList().getPlayers().getFirst();
                     var score = value.getScoreboard().getPlayerScoreInfo(player, value.getScoreboard().getObjective(OBJECTIVE));
@@ -86,6 +135,7 @@ public final class DebuggerFreecamResumeGameTest implements FabricClientGameTest
                 });
                 context.waitFor(client -> cleaned.get(), 200);
                 context.runOnClient(client -> {
+                    fixture.state().preferences().setKeepFreecam(originalKeep);
                     fixture.state().reset();
                     fixture.freecam().synchronize(client);
                     client.options.setCameraType(fixture.originalPerspective());

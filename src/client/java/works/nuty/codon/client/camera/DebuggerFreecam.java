@@ -133,7 +133,8 @@ public final class DebuggerFreecam {
     }
 
     public boolean freezes(Entity entity) {
-        return isActive() && (entity == suspendedPlayer || entity == suspendedPlayer.getRootVehicle());
+        return state.isPaused() && isActive()
+            && (entity == suspendedPlayer || entity == suspendedPlayer.getRootVehicle());
     }
 
     /** Receives the same sensitivity/inversion-adjusted deltas as vanilla LocalPlayer.turn. */

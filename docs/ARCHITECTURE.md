@@ -412,6 +412,10 @@ production pause loop, with only the same test-harness phaser exemption describe
 `DebuggerFreecamResumeGameTest` powers three connected command blocks with a breakpoint on each,
 then sends real client Resume commands. It checks camera identity and rendered pose at later
 breakpoints, player-view restoration when the chain ends, and that every block executes once.
+With Keep Freecam enabled, it also checks that the resumed player ticks and falls, the server
+receives body-position updates, and camera navigation remains isolated from player input.
+The resumed body must still reach render-state extraction from the retained camera; visibility
+depends on freecam being active, while pose freezing depends on the debugger being paused.
 A gametest-only `WatchPauseTestMixin` releases the parked server from Fabric's client/server tick
 phaser so the test can render and send controls during a real debugger pause. This hook does not
 run in the shipped mod or process additional server work.

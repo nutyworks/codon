@@ -11,6 +11,7 @@
 		"DeltaTrackerMixin",
 		"EffectClockMixin",
 		"GameRendererMixin",
+		"KeyboardInputMixin",
 		"LevelExtractorMixin",
 		"LocalPlayerMixin",
 		"MinecraftMixin",

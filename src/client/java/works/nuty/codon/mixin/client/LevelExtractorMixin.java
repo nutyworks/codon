@@ -15,12 +15,13 @@ import works.nuty.codon.client.CodonClientMod;
 @Mixin(LevelExtractor.class)
 public abstract class LevelExtractorMixin {
     // The fourth Camera.entity() call hides LocalPlayer when the camera belongs to another entity.
-    // Let only our paused body pass that check, preserving vanilla visibility/culling and rendering.
+    // Keep our body visible for the entire detached-camera session, including after Resume.
+    // Pose freezing below remains tied to the debugger pause state.
     @WrapOperation(method = "extractVisibleEntities", at = @At(value = "INVOKE",
         target = "Lnet/minecraft/client/Camera;entity()Lnet/minecraft/world/entity/Entity;", ordinal = 3))
-    private Entity codon$showPausedBody(Camera camera, Operation<Entity> original, @Local Entity entity) {
+    private Entity codon$showDetachedBody(Camera camera, Operation<Entity> original, @Local Entity entity) {
         var freecam = CodonClientMod.freecam();
-        if (entity instanceof LocalPlayer && freecam != null && freecam.freezes(entity)) return entity;
+        if (entity instanceof LocalPlayer && freecam != null && freecam.isActive()) return entity;
         return original.call(camera);
     }
 
