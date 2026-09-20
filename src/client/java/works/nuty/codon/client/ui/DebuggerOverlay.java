@@ -110,8 +110,9 @@ public final class DebuggerOverlay {
         Font font = client.font;
         if ((!state.isPaused() || snapshot == null) && !interactive) {
             if (!state.blockBreakpoints().isEmpty()) {
-                Component text = Component.literal("CODON · " + statusText() + "  ")
-                    .append(keybind(Component.literal("[").append(input.menuKey.getTranslatedKeyMessage()).append("]")));
+                Component text = Component.literal("CODON ")
+                    .append(keybind(Component.literal("[").append(input.menuKey.getTranslatedKeyMessage()).append("]")))
+                    .append(" · " + statusText());
                 Bounds header = DebuggerLayout.create(graphics.guiWidth(), graphics.guiHeight(), false).header();
                 Bounds badge = new Bounds(header.x(), header.y(),
                     Math.min(graphics.guiWidth() - 2 * header.x(), font.width(text) + 14), header.height());
@@ -158,7 +159,7 @@ public final class DebuggerOverlay {
     private void renderHeader(GuiGraphicsExtractor graphics, DebuggerLayout layout, InputManager input,
                               @Nullable PauseSnapshot snapshot) {
         String status = statusText();
-        String prefix = "CODON · ";
+        String prefix = "CODON [" + input.menuKey.getTranslatedKeyMessage().getString() + "] · ";
         int prefixWidth = client.font.width(prefix);
         Bounds toolbar = layout.controls();
         Bounds header = new Bounds(layout.header().x(), layout.header().y(),
