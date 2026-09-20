@@ -42,11 +42,11 @@ final class WatchCommand {
         watch.then(Commands.literal("editor")
             .then(Commands.argument("pause", LongArgumentType.longArg(0))
                 .then(Commands.argument("request", LongArgumentType.longArg(1))
-                    .then(Commands.argument("source", IntegerArgumentType.integer(-1))
+                    .then(Commands.argument("context", IntegerArgumentType.integer(-1))
                         .then(Commands.argument("query", StringArgumentType.greedyString())
                             .executes(c -> editor(c, engine)))))));
 
-        var source = Commands.argument("source", IntegerArgumentType.integer(-1));
+        var source = Commands.argument("context", IntegerArgumentType.integer(-1));
         source.then(Commands.literal("score").then(Commands.argument("target", StringArgumentType.greedyString())
             .executes(c -> query(c, engine, WatchSpec.Kind.SCORE))));
         source.then(Commands.literal("entity").then(Commands.argument("path", StringArgumentType.greedyString())
@@ -133,7 +133,7 @@ final class WatchCommand {
                 page = WatchEditorPage.absent(WatchResult.Status.UNAVAILABLE);
             } else {
                 page = WatchEditorReader.read(context.getSource().getServer(), pauseId == 0 ? null : snapshot,
-                    IntegerArgumentType.getInteger(context, "source"), query);
+                    IntegerArgumentType.getInteger(context, "context"), query);
             }
         } catch (IllegalArgumentException e) {
             page = WatchEditorPage.absent(WatchResult.Status.INVALID_PATH);
@@ -151,7 +151,7 @@ final class WatchCommand {
         if (player == null || !ServerPlayNetworking.canSend(player, WatchSyncPayload.TYPE.id())) return 0;
         long pauseId = LongArgumentType.getLong(context, "pause");
         long requestId = LongArgumentType.getLong(context, "request");
-        int sourceIndex = IntegerArgumentType.getInteger(context, "source");
+        int sourceIndex = IntegerArgumentType.getInteger(context, "context");
         var snapshot = engine.currentSnapshot();
         WatchResult result;
         if (!engine.isPaused() || snapshot == null || snapshot.pauseId() != pauseId) {

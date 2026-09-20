@@ -60,7 +60,7 @@ the modifier stages. The existing `BuildContexts.execute` observation points are
 Execution scopes nest: `CommandBlockMixin` wraps the initial block and its connected chain, while
 `ExecutionContextMixin` wraps each command queue. A pending step at the outermost normal return
 creates one `EXECUTION_COMPLETE` pause after the last command, with a fresh pause ID and the last
-stage's sources evaluated at completion. Watch reads therefore include the final command's changes.
+stage's contexts evaluated at completion. Watch reads therefore include the final command's changes.
 Continue or any step at this stop releases it without executing that command again or arming a new
 step. Root-level step-out also lands at this final inspection stop. Inner queue completions do not
 stop or clear stepping, so connected command blocks remain one scope. Exceptional unwinding in any
@@ -82,17 +82,17 @@ parent returns to the bounded history after a long child function has evicted it
 Each stage preserves its observed top-first call stack, bounded to 32 frames and marked truncated
 when deeper. These immutable caller records survive returns and parent-trace eviction. Historical
 selection displays that stack, while selecting a caller keeps the originating stack available.
-Missing caller flow data still permits viewing its captured command, without borrowing live sources.
+Missing caller flow data still permits viewing its captured command, without borrowing live contexts.
 Only the exact authoritative invocation/stage receives the pause icon; Current restores the live stack.
-`return run` records the actual source list forwarded at continuation enqueue. Conditional
+`return run` records the actual context list forwarded at continuation enqueue. Conditional
 functions associate each isolated result callback with the input occurrence which scheduled it;
 the recorder observes only the outputs accepted by vanilla's callback, without re-evaluating the
-condition or matching sources by entity identity. The parent stage stays pending during the child
+condition or matching contexts by entity identity. The parent stage stays pending during the child
 function and closes when its continuation begins, reusing its recorded output IDs as continuation
 input IDs. Empty function sets and rejected conditions retain measured zero output. A deferred
 stage still open at execution completion reports that its continuation was not observed. Each
 execution queue retains only unresolved continuations independently of display-history eviction.
-Return-run stages also await the actual continuation start after recording their forwarded sources.
+Return-run stages also await the actual continuation start after recording their forwarded contexts.
 Queue completion reports command-quota exhaustion, queue overflow, thrown errors, or otherwise an
 unobserved continuation, and republishes an evicted parent with that reason.
 
@@ -129,10 +129,10 @@ client-visible state; server-only NBT remains available through Watches/NBT. New
 and changes that require subsequent simulation ticks still wait for normal execution.
 
 ### Client adapters — `works.nuty.codon.client.*` (source set `client`)
-- `state/ClientDebuggerState` — authoritative pause/breakpoint mirror, local source/frame selection,
+- `state/ClientDebuggerState` — authoritative pause/breakpoint mirror, local context/frame selection,
   gizmo mode, and a pending-control latch cleared by server packets or a retry timeout.
 - `network/ClientNetworking` — receivers that update the mirror and clear it on disconnect.
-- `ui/DebuggerOverlay` — shared transparent HUD and cursor-mode presentation: control bar and source
+- `ui/DebuggerOverlay` — shared transparent HUD and cursor-mode presentation: control bar and context
   inspector on the left (clear of the scoreboard). `CommandPanel` combines a single horizontally
   scrollable call path (trackpad or mouse wheel, with clipped hit boxes and selected-frame visibility) and recorded command
   clauses with context counts below the world. Navigation, Current, Watch, and panel expansion occupy
@@ -147,11 +147,11 @@ and changes that require subsequent simulation ticks still wait for normal execu
   Unobserved command suffixes stay visible without invented counts. Repeated or nonordered ranges
   preserve the original command and show each recorded stage separately inside the same panel.
   Historical invocations and caller frames cannot supply live Watch/NBT executors. For the current
-  invocation, live source mapping follows the paused stage's occurrence IDs and source ordering.
+  invocation, live context mapping follows the paused stage's occurrence IDs and context ordering.
   `CodonScreen` registers its native widgets
   for mouse, keyboard, and narration. `ClientFormatting` renders core types as chat components.
-  `DebuggerNavigation` keeps a logical focus order separate from rendering order: toolbar, source
-  list, source details, NBT, world controls, call path, command clauses, and bottom actions. Tab and
+  `DebuggerNavigation` keeps a logical focus order separate from rendering order: toolbar, context
+  list, context details, NBT, world controls, call path, command clauses, and bottom actions. Tab and
   Shift+Tab switch directly between containers and remember each container's last focused item.
   Arrows traverse items, including off-screen rows, but never leave their container. Revealing a hidden control restores focus by its stable
   ID after rendering. Mouse scrolling clears focus from hidden controls without arming a replacement;
@@ -161,11 +161,11 @@ and changes that require subsequent simulation ticks still wait for normal execu
   The older `Window` classes are no longer used by the client composition root.
 - `ui/layout/` — Minecraft-free responsive panel and screen-space label placement. Overlapping
   labels can be grouped; crowded ungrouped labels move into free slots or one aggregate. Clicking
-  a group filters the inspector without changing the underlying source positions.
-- `render/` — `DebugHudElement` and `DebugLevelRenderer`: rings for entity-bearing sources,
-  squares for position-only sources, one-block facing arrows, selected-source emphasis, red
-  breakpoint outlines, and amber active stops. Sources in other dimensions remain in the inspector
-  but are not drawn in the current world. Source anchors are execution reference points, not
+  a group filters the inspector without changing the underlying context positions.
+- `render/` — `DebugHudElement` and `DebugLevelRenderer`: rings for entity-bearing contexts,
+  squares for position-only contexts, one-block facing arrows, selected-context emphasis, red
+  breakpoint outlines, and amber active stops. Contexts in other dimensions remain in the inspector
+  but are not drawn in the current world. Context anchors are execution reference points, not
   necessarily the attached entity's position.
 - `input/InputManager` — keybinds; control actions go to the server as `/codon` commands.
 - `camera/DebuggerFreecam` — a client-only camera entity while paused and while advancing the inspected execution.
@@ -188,8 +188,8 @@ and changes that require subsequent simulation ticks still wait for normal execu
 
 `B` opens/closes cursor mode. `F7` continues, `F8` steps over, `F9` steps into, `Shift+F9` steps
 out, and `F10` toggles the targeted block breakpoint; UI hints follow remapped keys. Gizmo modes
-are Grouped (default), Labels, and Focus. Source numbers identify entries in the current snapshot;
-selection survives a step only when an exact source or unambiguous entity/dimension match exists.
+are Grouped (default), Labels, and Focus. Context numbers identify entries in the current snapshot;
+selection survives a step only when an exact context or unambiguous entity/dimension match exists.
 Transition trails are not inferred: they need execution history beyond the current snapshot.
 
 Pausing automatically enables freecam: movement keys follow the horizontal facing direction, jump/sneak move
@@ -219,9 +219,9 @@ Resume/disconnect restores audio while preserving any ordinary singleplayer menu
 
 While paused, open **B → Watch** in the command panel. Add scoreboard objectives,
 entity NBT paths, or storage ID/path pairs. Edit, remove and pin existing definitions in the Watches panel. Unpinned entity queries follow
-the selected source in the inspector, not the selected caller frame. Examples: score objective
+the selected context in the inspector, not the selected caller frame. Examples: score objective
 `points`, entity path `Health` or `Pos[0]`, storage `demo:state` with path `counter`. Storage queries
-are independent of source selection. Definitions are saved per world and player, survive Continue,
+are independent of context selection. Definitions are saved per world and player, survive Continue,
 and are restored on rejoin; disconnect clears only the current client session. There is no watch-count limit. The Watches panel scrolls through the full list; no entries are
 replaced by a `+N` summary. Values align to the right with dot leaders from the field label. Long labels
 and values are clipped independently; click the row to inspect and copy full values.
@@ -239,7 +239,7 @@ fresh pages replace their own old values immediately while unresolved pages expi
 Displayed pages never satisfy queries or authorize stale node, pin, refresh, or picker actions.
 During the NBT grace period, toggles and pins retain their appearance and keyboard focus while input
 is blocked independently. Button identity and scroll position follow the executor UUID across pauses
-and source reordering. A pending NBT row has no transient disabled Refresh button.
+and context reordering. A pending NBT row has no transient disabled Refresh button.
 Editor invalidation across a step preserves only the short display hold; closing, resuming, and
 disconnecting clear it. The server-control waiting label uses the same grace period, while control
 actions lock immediately. Flow `...` counts still mean unmeasured data, not an asynchronous loading state.
@@ -248,8 +248,8 @@ Every continuous step also captures automatic changes, whether or not their fiel
 The server compares NBT leaves and all score objectives for current and previously observed execution
 entities, plus command storage, against the preceding stop. The first observation establishes a baseline.
 Outgoing executors remain tracked even at an executor-free next stop. Saved watches appear first (UUID-bound
-pins ahead of source-following watches), followed by every unregistered change.
-Automatic rows last only for that pause, survive source selection, and have an **Add to Watches** action to save the
+pins ahead of context-following watches), followed by every unregistered change.
+Automatic rows last only for that pause, survive context selection, and have an **Add to Watches** action to save the
 actual changed entity/path. Equivalent saved fields suppress duplicate automatic rows. Continue clears the
 visible rows but preserves the comparison for a later breakpoint in the same execution. Execution end,
 disconnect, and world changes clear the automatic comparison session. These read-only captures run on the
@@ -266,14 +266,14 @@ Binding changes start a fresh comparison for that row and invalidate its old in-
 Duplicate pin bindings are rejected without removing either row. Unpinning into an existing equivalent
 context-following watch removes the redundant pin and reveals the existing row, preserving its ID and observations. Pinning requires a displayed or selected entity;
 unpinning also works while running. Storage has no executor or pin control. Ungrouped entity rows with an executor show the expression and current value first, with the binding and executor on a second line. An unloaded or removed target
-reports `no target`. Unknown names use the UUID alone until the server or a pause source supplies a name.
+reports `no target`. Unknown names use the UUID alone until the server or a pause context supplies a name.
 
 The Watches heading always includes a **+** button to open the definition editor, even when the
 list is empty. The add form contains only expression inputs: direct Score / Entity NBT / Storage tabs,
 separate drafts, inline syntax validation, and optional entity UUID selection. Blank entity follows the
 selected context; a specified UUID stays fixed. Objective, loaded-entity, storage and NBT pickers use
 owner-only read requests, paged at 32 options. NBT search filters the current page. Draft previews use
-pause/request/source correlation and never save definitions. Timeout retries are explicit. Input fields
+pause/request/context correlation and never save definitions. Timeout retries are explicit. Input fields
 handle typing before global shortcuts; Tab changes fields, Enter adds and returns to Watches,
 Ctrl+Enter adds another with focus restored. Watches owns editing, binding and removal controls.
 It uses upper-right whitespace down to the command panel, offers Context / Path / No group display modes, and
@@ -296,37 +296,37 @@ Simple quoted NBT paths share duplicate identity.
 Row inspection provides scrollable full values and copy actions; current values have priority over
 long previous values in compact rows. Save status follows an explicit server ACK (or timeout), with retry.
 
-The source inspector always shows NBT for its selected live entity source.
-Selecting a non-entity or historical source, or hiding the inspector, hides the tree; pinned values remain
+The context inspector always shows NBT for its selected live entity context.
+Selecting a non-entity or historical context, or hiding the inspector, hides the tree; pinned values remain
 in Watches. There is one passive NBT heading, with no section toggle or repeated entity heading.
 Inspector regions are sized from the viewport so loading or expanding fields does not move the heading
-or source details. Compact layouts prioritize the selected source row and NBT data over secondary details.
+or context details. Compact layouts prioritize the selected context row and NBT data over secondary details.
 Expanding or collapsing a field preserves that field's screen row, including at the tree's bottom;
 wheel scrolling releases this anchor. Compound fields and list/array elements expand lazily; each tree pages
 through 32 immediate children at a time. Left-clicking a field pin adds its exact path bound to that
-source's UUID; an active pin removes only that binding. Right-clicking fills the same path for every
-current entity source, skipping existing bindings and duplicate UUIDs. If all current entities already
+context's UUID; an active pin removes only that binding. Right-clicking fills the same path for every
+current entity context, skipping existing bindings and duplicate UUIDs. If all current entities already
 have that path pinned, right-clicking removes the entire group in one edit. Other paths, floating watches,
-and entities outside the current sources are preserved.
-Both mouse actions are explained on hover. Non-entity sources have no NBT section.
+and entities outside the current contexts are preserved.
+Both mouse actions are explained on hover. Non-entity contexts have no NBT section.
 
 `ClientNbtState` caches pages by executor UUID within one pause and correlates every reply with its
 pause/request IDs. Steps and Continue discard pages and late requests while retaining each UUID's
-expanded field paths, including across reordered sources and temporary non-entity stops. Closing and
+expanded field paths, including across reordered contexts and temporary non-entity stops. Closing and
 reopening the debugger overlay keeps these preferences. Disconnect clears per-entity presentation state.
 Legacy whole-tree and entity-section collapse settings no longer suppress NBT rows or reads.
-Requests use the same owner-only `/codon nbt <pause> <request> <source> <offset> root|path ...` mailbox.
-The server reads the loaded source entity across dimensions without loading chunks or mutating NBT.
+Requests use the same owner-only `/codon nbt <pause> <request> <context> <offset> root|path ...` mailbox.
+The server reads the loaded context entity across dimensions without loading chunks or mutating NBT.
 Root data is bounded to 1 MiB estimated size, pages to 32 nodes, previews/names to 128 characters,
 and navigation paths to 512 characters. Generated paths quote compound names and index collections;
 they are never truncated into a different target. Paths that cannot fit a Watch's existing 128-character
-limit remain browsable where possible but have disabled pins. Client caches retain the current source
+limit remain browsable where possible but have disabled pins. Client caches retain the current context
 entities with up to 64 expanded branches each, plus up to 256 absent UUIDs' presentation states, and issue at
 most four NBT reads per drain. A five-second timeout reports unavailable; refresh is explicit.
 
 `ClientWatchState` retains observations by watch and target across a continuous stepping session,
 bounded to 256 targets per watch. Returning from executor B to A compares A with its last captured
-value, and reselecting a source at the same stop preserves its capture and change highlight.
+value, and reselecting a context at the same stop preserves its capture and change highlight.
 Each step also retains an unpinned watch's last selected executor UUID and re-reads it at the very next pause,
 even if the new command has no executor or a different one. Its change is displayed immediately,
 prefixed with that executor's actual name and short UUID. Hover explains that it is the previous executor
@@ -345,18 +345,18 @@ final inspection drops comparisons and stale values. An
 unanswered query expires after five seconds, without automatic retry loops. Definitions added at a
 stop get an initial observation; they cannot retroactively sample the preceding step.
 
-The owner-only `/codon watch <pause-id> <request-id> <source-index>` subcommands (`score
+The owner-only `/codon watch <pause-id> <request-id> <context-index>` subcommands (`score
 <objective>`, `entity <path>`, `storage <id> <path>`) use the existing validated command mailbox.
-`captured <uuid>` can replace the source index for score/entity queries of a pinned executor or the executor just stepped.
+`captured <uuid>` can replace the context index for score/entity queries of a pinned executor or the executor just stepped.
 They run on the parked **server thread**, without draining general tasks/packets or changing the
 pause/freecam lifecycle. `WatchReader` uses existing scoreboard scores (never creating them), loaded
 entities by UUID across dimensions (including `execute in`), and vanilla read-only NBT paths.
 Only the requesting player receives `watch_sync_v2`; no client world data is used for evaluation.
 Replies include the loaded entity's display name (bounded to 128 characters), so restored pinned rows can
-identify entities outside the current source list. Names are presentation metadata, never persisted bindings
+identify entities outside the current context list. Names are presentation metadata, never persisted bindings
 or part of value comparison; the UUID still defines the target.
 The server checks the active pause ID before reading, and the client checks pause/request IDs before
-applying replies, including after source changes or item removal. Each engine stop gets a monotonically
+applying replies, including after context changes or item removal. Each engine stop gets a monotonically
 increasing ID, even across session resets.
 Reads are enqueued when a pause arrives and before a UI step command, preserving request/reply order
 even when the next step is requested before the following client tick.
@@ -395,7 +395,7 @@ waiting or resuming. Vanilla normally batches these sends until the end of the t
 finish during a debugger pause. Watch replies and control acknowledgements therefore do not wait
 for the separate one-second keepalive. This flush does not tick connections or drain ordinary tasks.
 
-Pause payloads use `codon:pause_sync_v4` for the completion reason and the stop ID alongside source dimensions.
+Pause payloads use `codon:pause_sync_v4` for the completion reason and the stop ID alongside context dimensions.
 Client and server must both use the updated mod for pause visualization and watches.
 
 ## Persistence
@@ -404,7 +404,7 @@ Client preferences are shared across worlds and servers in the Minecraft instanc
 `config/codon.json`: gizmo mode, inspector visibility, and inspector tab. Changes save immediately.
 The legacy whole-NBT expansion setting is accepted for compatibility but no longer hides NBT.
 An unset (`null`) inspector visibility retains the responsive automatic default. Key bindings
-continue to use Minecraft's own options file. Pause snapshots, source/frame selection, scroll
+continue to use Minecraft's own options file. Pause snapshots, context/frame selection, scroll
 positions, and freecam state remain session-local.
 
 Both block and function breakpoints live on the server in each world save's
@@ -491,15 +491,15 @@ the combined response must stay below 750 ms, including the outgoing executor's 
 `NbtTreeReaderGameTest` checks exact generated paths (including punctuation, quotes, and backslashes),
 compound/list/array paging, size limits, and the reply codec in the Minecraft runtime.
 `DebuggerNbtTreeGameTest` parks the integrated server and exercises the empty Watches **+** button,
-the selected live source's NBT tree inside the source inspector (absent for non-entity sources and a hidden inspector),
-always-visible NBT and field expansion retained across F9, Continue, reordered/temporarily absent sources, and a recreated overlay,
+the selected live context's NBT tree inside the context inspector (absent for non-entity contexts and a hidden inspector),
+always-visible NBT and field expansion retained across F9, Continue, reordered/temporarily absent contexts, and a recreated overlay,
 scrolling and pagination, individual left-click array-element pins and right-click
-all-source pins. Pinned values stay in Watches when the selected source changes or the inspector is hidden.
-Repeated right-clicks remove and re-add the whole current-source group; left-click removal affects only its own UUID.
+all-context pins. Pinned values stay in Watches when the selected context changes or the inspector is hidden.
+Repeated right-clicks remove and re-add the whole current-context group; left-click removal affects only its own UUID.
 Screenshots include four simultaneous watch rows.
 
 `DebuggerWatchPinGameTest` parks the actual server with two executor entities and clicks the Watches panel's
-pin/unpin controls. It checks independent score bindings, entity NBT pinning, source switches,
+pin/unpin controls. It checks independent score bindings, entity NBT pinning, context switches,
 per-target changes at a stop without an executor, duplicate unpin rejection, and removed-target status.
 Screenshots capture the two pinned rows and a detailed hover tooltip.
 

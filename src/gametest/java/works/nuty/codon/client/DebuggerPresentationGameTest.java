@@ -497,21 +497,21 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
         context.runOnClient(client -> {
             require(button(screen, value -> value.equals("#1 Zombie 1")).foregroundColor() == DebuggerTheme.TEXT,
                 "An unchanged condition output keeps its normal color despite its new occurrence ID");
-            DebuggerButton removed = button(screen, value -> value.equals("× Removed source"));
-            require(removed.foregroundColor() == DebuggerTheme.RED, "Removed source is red even before selection");
+            DebuggerButton removed = button(screen, value -> value.equals("× Removed context"));
+            require(removed.foregroundColor() == DebuggerTheme.RED, "Removed context is red even before selection");
             require(state.selectedFlowStageIndex() == 3 && state.displayedSources().size() == 10
                 && state.worldSources().size() == 10,
                 "The command panel and viewport expose the same removed-input context");
         });
         context.takeScreenshot("codon-default-after-if-removed");
         context.runOnClient(client -> {
-            DebuggerButton removed = button(screen, value -> value.equals("× Removed source"));
+            DebuggerButton removed = button(screen, value -> value.equals("× Removed context"));
             click(screen, removed);
             require(state.selectedFlowStageIndex() == 2 && state.selectedSourceDropped(),
                 "Clicking the removed world marker opens its recorded stage");
         });
         context.waitTicks(2);
-        context.runOnClient(client -> require(button(screen, value -> value.equals("× Removed source")).foregroundColor()
+        context.runOnClient(client -> require(button(screen, value -> value.equals("× Removed context")).foregroundColor()
             == DebuggerTheme.RED, "Selecting a removed source preserves its red status"));
         context.takeScreenshot("codon-unchanged-neutral-removed-red");
         context.runOnClient(client -> state.selectExecutionFlowStage(3));
@@ -555,7 +555,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
             require(previous == null, "Every LABELS-mode source has one world widget");
         }
         require(result.size() == 9, "The fixture exposes all nine same-dimension source labels in LABELS mode");
-        require(result.containsKey("#1 Zombie 1") && result.containsKey("#8 Zombie 8") && result.containsKey("[9] Position source"),
+        require(result.containsKey("#1 Zombie 1") && result.containsKey("#8 Zombie 8") && result.containsKey("[9] Position context"),
             "LABELS mode retains numbered entity and position sources as separate widgets");
         return Map.copyOf(result);
     }
@@ -651,7 +651,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
         }
         sources.add(new PauseSource(new Vec3d(x + 1, y, z + 2), 0, 60, null, "minecraft:overworld"));
         sources.add(new PauseSource(new Vec3d(visibleDropped ? x + 2 : x, y, visibleDropped ? z + 2 : z), 0, 0,
-            new EntityRef(new UUID(0, 10), visibleDropped ? "Removed source" : "Nether source"),
+            new EntityRef(new UUID(0, 10), visibleDropped ? "Removed context" : "Nether context"),
             visibleDropped ? "minecraft:overworld" : "minecraft:the_nether"));
         SourceLocation location = new SourceLocation.Function(new FunctionLocation(new FunctionId("demo", "spawn_wave"), 12));
         String commandText = "execute as @e[type=zombie] at @s if entity @s[tag=keep] run function demo:move";

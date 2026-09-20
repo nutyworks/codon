@@ -20,7 +20,7 @@ final class NbtTreeCommand {
         return Commands.literal("nbt")
             .then(Commands.argument("pause", LongArgumentType.longArg(1))
                 .then(Commands.argument("request", LongArgumentType.longArg(1))
-                    .then(Commands.argument("source", IntegerArgumentType.integer(-1))
+                    .then(Commands.argument("context", IntegerArgumentType.integer(-1))
                         .then(Commands.argument("offset", IntegerArgumentType.integer(0))
                             .then(Commands.literal("root").executes(c -> query(c, engine, "")))
                             .then(Commands.literal("path")
@@ -37,7 +37,7 @@ final class NbtTreeCommand {
         var snapshot = engine.currentSnapshot();
         if (!engine.isPaused() || snapshot == null || snapshot.pauseId() != pauseId) page = NbtPage.absent(works.nuty.codon.core.model.WatchResult.Status.UNAVAILABLE);
         else {
-            try { page = NbtTreeReader.read(context.getSource().getServer(), snapshot, IntegerArgumentType.getInteger(context, "source"), path, IntegerArgumentType.getInteger(context, "offset")); }
+            try { page = NbtTreeReader.read(context.getSource().getServer(), snapshot, IntegerArgumentType.getInteger(context, "context"), path, IntegerArgumentType.getInteger(context, "offset")); }
             catch (RuntimeException e) { page = NbtPage.absent(works.nuty.codon.core.model.WatchResult.Status.ERROR); }
         }
         ServerPlayNetworking.send(player, new NbtTreeSyncPayload(pauseId, requestId, page));
