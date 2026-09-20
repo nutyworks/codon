@@ -66,7 +66,8 @@ public final class WatchScreen extends Screen {
                 var spec = entry.spec();
                 kind = spec.kind();
                 drafts.put(kind, new ClientWatchEditorState.Draft(spec.target(), spec.path(),
-                    spec.executor() == null ? "" : spec.executor().toString()));
+                    spec.scoreHolder() != null ? quotedHolder(spec.scoreHolder())
+                        : spec.executor() == null ? "" : spec.executor().toString()));
             }
         }
     }
@@ -100,7 +101,7 @@ public final class WatchScreen extends Screen {
         int secondY = top + 112;
         if (kind == WatchSpec.Kind.SCORE) {
             field("target", firstY, text("editor.objective"), "points", draft.target(), WatchEditorQuery.Mode.OBJECTIVES);
-            field("entity", secondY, text("editor.entity"), text("editor.context").getString(), draft.entity(), WatchEditorQuery.Mode.ENTITIES);
+            field("entity", secondY, text("editor.score_holder"), text("editor.score_holder_hint").getString(), draft.entity(), WatchEditorQuery.Mode.ENTITIES);
         } else if (kind == WatchSpec.Kind.ENTITY_NBT) {
             field("path", firstY, text("path"), "Health, Pos[0]", draft.path(), WatchEditorQuery.Mode.NBT);
             field("entity", secondY, text("editor.entity"), text("editor.context").getString(), draft.entity(), WatchEditorQuery.Mode.ENTITIES);
@@ -128,7 +129,8 @@ public final class WatchScreen extends Screen {
 
     private void field(String id, int y, Component label, String hint, String value, WatchEditorQuery.Mode mode) {
         EditBox field = new DebuggerEditBox(font, left + 8, y, Math.max(1, panelWidth - 76), 20, label);
-        field.setMaxLength(id.equals("entity") ? 128 : WatchSpec.MAX_INPUT_LENGTH);
+        field.setMaxLength(id.equals("entity") && kind == WatchSpec.Kind.SCORE
+            ? WatchSpec.MAX_INPUT_LENGTH * 2 + 2 : WatchSpec.MAX_INPUT_LENGTH);
         field.setHint(Component.literal(hint));
         field.setTooltip(Tooltip.create(label));
         field.setValue(value);
@@ -175,7 +177,28 @@ public final class WatchScreen extends Screen {
     private @Nullable UUID executor() {
         String entity = value("entity").trim();
         if (entity.isEmpty()) return null;
-        try { return UUID.fromString(entity); } catch (IllegalArgumentException ignored) { return null; }
+        try {
+            UUID id = UUID.fromString(entity);
+            return id.toString().equalsIgnoreCase(entity) ? id : null;
+        } catch (IllegalArgumentException ignored) { return null; }
+    }
+
+    private static String quotedHolder(String name) {
+        return "\"" + name.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+    }
+
+    private @Nullable String scoreHolder() {
+        String value = value("entity").trim();
+        if (kind != WatchSpec.Kind.SCORE || value.isEmpty() || executor() != null) return null;
+        if (value.startsWith("\"")) {
+            try {
+                StringReader reader = new StringReader(value);
+                String name = reader.readQuotedString();
+                if (reader.canRead()) throw new IllegalArgumentException("Trailing score holder input");
+                return name;
+            } catch (CommandSyntaxException invalid) { throw new IllegalArgumentException(invalid); }
+        }
+        return value;
     }
 
     private Map<String, Component> errors() {
@@ -196,7 +219,14 @@ public final class WatchScreen extends Screen {
                 } catch (RuntimeException error) { errors.put("path", text("error.path_incomplete")); }
             }
         }
-        if (!entity.isEmpty() && executor() == null) errors.put("entity", text("error.entity"));
+        if (kind == WatchSpec.Kind.ENTITY_NBT && !entity.isEmpty() && executor() == null)
+            errors.put("entity", text("error.entity"));
+        if (kind == WatchSpec.Kind.SCORE && !entity.isEmpty()) {
+            try {
+                String holder = scoreHolder();
+                if (holder != null) WatchSpec.scoreHolder("_", holder);
+            } catch (IllegalArgumentException invalid) { errors.put("entity", text("error.score_holder")); }
+        }
         if (errors.isEmpty()) {
             try { specification(); }
             catch (IllegalArgumentException error) { errors.put(kind == WatchSpec.Kind.ENTITY_NBT ? "path" : "target", text("error.characters")); }
@@ -206,7 +236,7 @@ public final class WatchScreen extends Screen {
 
     private WatchSpec specification() {
         return new WatchSpec(kind, kind == WatchSpec.Kind.ENTITY_NBT ? "" : value("target"),
-            kind == WatchSpec.Kind.SCORE ? "" : value("path"), kind == WatchSpec.Kind.STORAGE_NBT ? null : executor());
+            kind == WatchSpec.Kind.SCORE ? "" : value("path"), kind == WatchSpec.Kind.STORAGE_NBT ? null : executor(), scoreHolder());
     }
 
     private void refreshValidation() { if (submit != null) submit.active = errors().isEmpty(); }
@@ -263,6 +293,12 @@ public final class WatchScreen extends Screen {
             return;
         }
         String search = mode == WatchEditorQuery.Mode.NBT ? "" : value(field);
+        if (kind == WatchSpec.Kind.SCORE && field.equals("entity")) {
+            try { if (scoreHolder() != null) search = scoreHolder(); }
+            catch (IllegalArgumentException ignored) { search = ""; }
+        }
+        if (search.length() > WatchEditorQuery.MAX_SEARCH_LENGTH)
+            search = search.substring(0, WatchEditorQuery.MAX_SEARCH_LENGTH);
         var query = new WatchEditorQuery(mode, kind, target, "", executor(), search, 0);
         minecraft.gui.setScreen(new WatchPickerScreen(this, state, query, option -> {
             var draft = drafts.get(kind);
@@ -301,7 +337,9 @@ public final class WatchScreen extends Screen {
         int y = top + 148;
         if (kind != WatchSpec.Kind.STORAGE_NBT) {
             var current = WatchUi.currentEntity(state);
-            String scope = executor() != null ? text("editor.bound", executor().toString().substring(0, 8)).getString()
+            String holder = valid ? scoreHolder() : null;
+            String scope = holder != null ? text("scope.fixed", holder).getString()
+                : executor() != null ? text("editor.bound", executor().toString().substring(0, 8)).getString()
                 : current == null ? text("editor.no_entity").getString()
                 : text("editor.following", current.name() + " #" + current.uuid().toString().substring(0, 8)).getString();
             WatchUi.line(graphics, font, scope, left + 8, y, panelWidth - 16, MUTED);
@@ -316,7 +354,7 @@ public final class WatchScreen extends Screen {
         if (state.isPaused()) {
             var spec = specification();
             state.watchEditor().request(WatchUi.pause(state), state.selectedPauseSourceIndex(),
-                new WatchEditorQuery(WatchEditorQuery.Mode.PREVIEW, kind, spec.target(), spec.path(), spec.executor(), "", 0));
+                new WatchEditorQuery(WatchEditorQuery.Mode.PREVIEW, kind, spec.target(), spec.path(), spec.executor(), "", 0, spec.scoreHolder()));
         }
         var page = state.watchEditor().page();
         var displayedPage = state.watchEditor().displayedPage();

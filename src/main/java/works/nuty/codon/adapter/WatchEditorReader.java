@@ -47,7 +47,23 @@ public final class WatchEditorReader {
         for (var level : server.getAllLevels()) for (Entity entity : level.getAllEntities()) if (!entity.isRemoved()) values.add(entity);
         values.sort(Comparator.comparing((Entity entity) -> !priority.contains(entity.getUUID()))
             .thenComparing(entity -> entity.getName().getString(), String.CASE_INSENSITIVE_ORDER).thenComparing(Entity::getUUID));
-        List<WatchEditorPage.Option> options = values.stream().map(entity -> entityOption(entity)).toList();
+        List<WatchEditorPage.Option> options = new ArrayList<>(values.stream().map(WatchEditorReader::entityOption).toList());
+        if (query.kind() == WatchSpec.Kind.SCORE) {
+            Set<String> loaded = new HashSet<>();
+            values.forEach(entity -> loaded.add(entity.getScoreboardName()));
+            server.getScoreboard().getTrackedPlayers().stream()
+                .map(net.minecraft.world.scores.ScoreHolder::getScoreboardName)
+                .filter(name -> !loaded.contains(name))
+                .sorted(String.CASE_INSENSITIVE_ORDER.thenComparing(Comparator.naturalOrder()))
+                .forEach(name -> {
+                    try {
+                        WatchSpec.scoreHolder(query.target().isEmpty() ? "_" : query.target(), name);
+                        // Literal quoting distinguishes even UUID-shaped holders from loaded entities.
+                        String literal = "\"" + name.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+                        options.add(new WatchEditorPage.Option(literal, name, "", false));
+                    } catch (IllegalArgumentException ignored) { /* Not representable as a saved watch. */ }
+                });
+        }
         return choices(options, query);
     }
 
@@ -89,8 +105,8 @@ public final class WatchEditorReader {
         if (query.path().length() > WatchSpec.MAX_INPUT_LENGTH || query.target().length() > WatchSpec.MAX_INPUT_LENGTH)
             return WatchEditorPage.absent(WatchResult.Status.INVALID_PATH);
         try {
-            WatchSpec spec = new WatchSpec(query.kind(), query.target(), query.path(), query.executor());
-            if (spec.kind() != WatchSpec.Kind.STORAGE_NBT && spec.executor() == null && snapshot == null)
+            WatchSpec spec = new WatchSpec(query.kind(), query.target(), query.path(), query.executor(), query.scoreHolder());
+            if (spec.kind() != WatchSpec.Kind.STORAGE_NBT && !spec.isPinned() && snapshot == null)
                 return WatchEditorPage.absent(WatchResult.Status.NO_EXECUTOR);
             WatchResult result = WatchReader.read(server, snapshot, sourceIndex, spec);
             return new WatchEditorPage(result.status(), List.of(), 0, false, result);

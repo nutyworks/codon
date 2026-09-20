@@ -94,6 +94,7 @@ public final class WatchDetailsScreen extends Screen {
         blank();
         add(WatchUi.text("details.binding"), TEAL);
         if (entry.spec().kind() == WatchSpec.Kind.STORAGE_NBT) add(WatchUi.text("details.storage"), TEXT);
+        else if (entry.spec().scoreHolder() != null) add(WatchUi.text("details.fixed", entry.spec().scoreHolder()), TEXT);
         else if (entry.spec().executor() == null) add(WatchUi.text("details.current_context"), TEXT);
         else add(Component.literal(fixedBinding(entry)), TEXT);
         blank();

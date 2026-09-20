@@ -43,6 +43,8 @@ public final class DebuggerWatchGameTest implements FabricClientGameTest {
     private static final WatchSpec STORAGE = new WatchSpec(WatchSpec.Kind.STORAGE_NBT, "codon:watch_test", "count");
     private static final WatchSpec UNSET = new WatchSpec(WatchSpec.Kind.SCORE, "watch_unset", "");
     private static final WatchSpec NO_OBJECTIVE = new WatchSpec(WatchSpec.Kind.SCORE, "watch_absent", "");
+    private static final WatchSpec NAMED = WatchSpec.scoreHolder("watch_points", " #fake \"counter\" \\ value ");
+    private static final WatchSpec NAMED_UNSET = WatchSpec.scoreHolder("watch_unset", "#never-created");
 
     @Override
     public void runTest(ClientGameTestContext context) {
@@ -55,6 +57,8 @@ public final class DebuggerWatchGameTest implements FabricClientGameTest {
             world.getServer().runCommand("data merge storage codon:watch_test {count:10}");
             MinecraftServer server = world.getServer().computeOnServer(s -> s);
             world.getServer().runOnServer(s -> {
+                s.getScoreboard().getOrCreatePlayerScore(net.minecraft.world.scores.ScoreHolder.forNameOnly(NAMED.scoreHolder()),
+                    s.getScoreboard().getObjective("watch_points")).set(40);
                 var player = s.getPlayerList().getPlayers().getFirst();
                 s.getPlayerList().op(player.nameAndId(),
                     java.util.Optional.of(net.minecraft.server.permissions.LevelBasedPermissionSet.OWNER), java.util.Optional.empty());
@@ -67,7 +71,8 @@ public final class DebuggerWatchGameTest implements FabricClientGameTest {
             context.runOnClient(client -> {
                 var state = CodonClientMod.state();
                 state.reset();
-                for (var spec : List.of(SCORE, ENTITY, STORAGE, UNSET, NO_OBJECTIVE)) require(state.watches().add(spec), "add fixture watch");
+                for (var spec : List.of(SCORE, ENTITY, STORAGE, UNSET, NO_OBJECTIVE, NAMED, NAMED_UNSET))
+                    require(state.watches().add(spec), "add fixture watch");
             });
             try {
                 // Schedule without blocking the test thread: onCommandStage really parks this server.
@@ -84,6 +89,8 @@ public final class DebuggerWatchGameTest implements FabricClientGameTest {
                         engine.onCommandStage(new CommandStageEvent(900001, 0, location,
                             CommandSnippet.plain("scoreboard players add @s watch_points 1"), () -> sources));
                         server.getScoreboard().getOrCreatePlayerScore(player, server.getScoreboard().getObjective("watch_points")).set(11);
+                        server.getScoreboard().getOrCreatePlayerScore(net.minecraft.world.scores.ScoreHolder.forNameOnly(NAMED.scoreHolder()),
+                            server.getScoreboard().getObjective("watch_points")).set(41);
                         var storage = server.getCommandStorage().get(Identifier.parse("codon:watch_test")).copy();
                         storage.putInt("count", 11);
                         server.getCommandStorage().set(Identifier.parse("codon:watch_test"), storage);
@@ -95,6 +102,9 @@ public final class DebuggerWatchGameTest implements FabricClientGameTest {
                         server.getCommandStorage().set(Identifier.parse("codon:watch_test"), storage);
                         require(server.getScoreboard().getPlayerScoreInfo(player, server.getScoreboard().getObjective("watch_unset")) == null,
                             "watch reads never create unset scores");
+                        require(server.getScoreboard().getTrackedPlayers().stream()
+                            .noneMatch(holder -> holder.getScoreboardName().equals(NAMED_UNSET.scoreHolder())),
+                            "named watch reads never create a holder or its missing score");
                     } catch (Throwable problem) {
                         failure.set(problem);
                     } finally {
@@ -115,14 +125,14 @@ public final class DebuggerWatchGameTest implements FabricClientGameTest {
                     state.watchEditor().request(firstPause, state.selectedPauseSourceIndex(),
                         new works.nuty.codon.core.model.WatchEditorQuery(
                             works.nuty.codon.core.model.WatchEditorQuery.Mode.PREVIEW,
-                            WatchSpec.Kind.SCORE, "watch_points", "", null, "", 0));
+                            WatchSpec.Kind.SCORE, "watch_points", "", null, "", 0, NAMED.scoreHolder()));
                     state.watches().retrySave();
                 });
                 context.waitFor(client -> CodonClientMod.state().watchEditor().page() != null, 200);
                 context.waitFor(client -> CodonClientMod.state().watches().saveStatus() == ClientWatchState.SaveStatus.SAVED, 200);
                 context.runOnClient(client -> {
                     var preview = CodonClientMod.state().watchEditor().page().preview();
-                    require(preview != null && preview.value().equals("10"), "editor preview roundtrip works while server is parked");
+                    require(preview != null && preview.value().equals("40"), "named editor preview roundtrip works while server is parked");
                     CodonClientMod.state().watchEditor().cancel();
                 });
                 require(!ordinaryTask.get(), "editor and save ACK do not drain ordinary server tasks");
@@ -135,6 +145,12 @@ public final class DebuggerWatchGameTest implements FabricClientGameTest {
                     require(entry(STORAGE).result().targetName().isEmpty(), "storage has no entity label");
                     require(entry(UNSET).result().status() == WatchResult.Status.VALUE_MISSING, "unset score is absent, not zero");
                     require(entry(NO_OBJECTIVE).result().status() == WatchResult.Status.OBJECTIVE_MISSING, "missing objective is distinct");
+                    require(entry(NAMED).result().value().equals("40")
+                        && entry(NAMED).result().targetName().equals(NAMED.scoreHolder())
+                        && entry(NAMED).displayedExecutor() == null,
+                        "named score roundtrip preserves quotes/backslashes and never borrows the selected executor");
+                    require(entry(NAMED_UNSET).result().status() == WatchResult.Status.VALUE_MISSING,
+                        "a missing fake-player score is not zero or a missing entity");
                     client.player.connection.sendCommand("codon stepover");
                 });
                 context.waitFor(client -> ready("11") && CodonClientMod.state().snapshot().pauseId() != firstPause, 200);
@@ -143,6 +159,9 @@ public final class DebuggerWatchGameTest implements FabricClientGameTest {
                         && entry(SCORE).previousValue().equals("10"), "score changed 10 to 11");
                     require(entry(STORAGE).change() == ClientWatchState.Change.VALUE_CHANGED, "storage changed at the same step");
                     require(entry(ENTITY).change() == ClientWatchState.Change.UNCHANGED, "unchanged entity NBT stays unhighlighted");
+                    require(entry(NAMED).change() == ClientWatchState.Change.VALUE_CHANGED
+                        && entry(NAMED).previousValue().equals("40") && entry(NAMED).result().value().equals("41"),
+                        "named scores are reread and compared across the actual parked-server step");
                     require(client.getCameraEntity() == camera, "real watch query steps retain freecam identity");
                     checkPauseCodec(CodonClientMod.state().snapshot());
                 });
@@ -297,8 +316,9 @@ public final class DebuggerWatchGameTest implements FabricClientGameTest {
             field.setValue("watch_added");
             var add = screen.children().stream().filter(DebuggerButton.class::isInstance).map(DebuggerButton.class::cast)
                 .filter(b -> b.getMessage().getString().equals("Add")).findFirst().orElseThrow();
+            int before = CodonClientMod.state().watches().entries().size();
             click(screen, add);
-            require(CodonClientMod.state().watches().entries().size() == 6, "UI adds a watch");
+            require(CodonClientMod.state().watches().entries().size() == before + 1, "UI adds a watch");
             require(client.gui.screen() instanceof CodonScreen, "Add returns to the shared Watches HUD for management");
         });
         context.getInput().resizeWindow(640, 480);

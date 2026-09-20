@@ -69,6 +69,30 @@ class WatchSpecTest {
         assertThrows(IllegalArgumentException.class, () -> storage.withExecutor(executor));
     }
 
+    @Test
+    void bindsScoreWatchesToNamedScoreHoldersWithoutMergingTheirIdentities() {
+        WatchSpec first = WatchSpec.scoreHolder("  kills  ", "  fake player  ");
+        WatchSpec second = WatchSpec.scoreHolder("kills", "other fake player");
+
+        assertEquals("kills", first.target());
+        assertEquals("  fake player  ", first.scoreHolder());
+        assertFalse(WatchIdentity.same(first, WatchSpec.scoreHolder("kills", "fake player")));
+        assertTrue(first.isPinned());
+        assertFalse(WatchIdentity.same(first, second));
+        assertFalse(WatchIdentity.sameField(first, second));
+        assertEquals(new WatchSpec(WatchSpec.Kind.SCORE, "kills", ""), first.withExecutor(null));
+
+        UUID executor = UUID.randomUUID();
+        assertThrows(IllegalArgumentException.class,
+            () -> new WatchSpec(WatchSpec.Kind.SCORE, "kills", "", executor, "fake player"));
+        assertThrows(IllegalArgumentException.class,
+            () -> new WatchSpec(WatchSpec.Kind.ENTITY_NBT, "", "Health", null, "fake player"));
+        assertThrows(IllegalArgumentException.class, () -> WatchSpec.scoreHolder("kills", ""));
+        assertThrows(IllegalArgumentException.class, () -> WatchSpec.scoreHolder("kills", "fake\nplayer"));
+        assertThrows(IllegalArgumentException.class,
+            () -> WatchSpec.scoreHolder("kills", "x".repeat(WatchSpec.MAX_INPUT_LENGTH + 1)));
+    }
+
     private static void assertInvalid(WatchSpec.Kind kind, String target, String path) {
         assertThrows(IllegalArgumentException.class, () -> new WatchSpec(kind, target, path));
     }

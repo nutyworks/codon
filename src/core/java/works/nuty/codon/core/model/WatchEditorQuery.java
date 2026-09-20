@@ -6,12 +6,18 @@ import org.jspecify.annotations.Nullable;
 
 /** A bounded, read-only request used to populate the Watch editor. */
 public record WatchEditorQuery(Mode mode, WatchSpec.Kind kind, String target, String path,
-                               @Nullable UUID executor, String search, int offset) {
+                               @Nullable UUID executor, String search, int offset,
+                               @Nullable String scoreHolder) {
     public static final int MAX_TARGET_LENGTH = 128;
     public static final int MAX_PATH_LENGTH = 512;
     public static final int MAX_SEARCH_LENGTH = 128;
 
     public enum Mode { OBJECTIVES, ENTITIES, STORAGES, NBT, PREVIEW }
+
+    public WatchEditorQuery(Mode mode, WatchSpec.Kind kind, String target, String path,
+                            @Nullable UUID executor, String search, int offset) {
+        this(mode, kind, target, path, executor, search, offset, null);
+    }
 
     public WatchEditorQuery {
         Objects.requireNonNull(mode);
@@ -19,6 +25,13 @@ public record WatchEditorQuery(Mode mode, WatchSpec.Kind kind, String target, St
         target = bounded(target, MAX_TARGET_LENGTH, "target");
         path = bounded(path, MAX_PATH_LENGTH, "path");
         search = bounded(search, MAX_SEARCH_LENGTH, "search");
+        if (scoreHolder != null) {
+            if (scoreHolder.isEmpty() || scoreHolder.length() > WatchSpec.MAX_INPUT_LENGTH
+                || scoreHolder.chars().anyMatch(c -> c < 32 || c == 127 || c == 167)
+                || kind != WatchSpec.Kind.SCORE || executor != null) {
+                throw new IllegalArgumentException("invalid editor score holder binding");
+            }
+        }
         if (offset < 0) throw new IllegalArgumentException("negative offset");
     }
 

@@ -41,6 +41,8 @@ public final class WatchGrouping {
                 key = new Key("storage", spec.target());
             } else if (mode == Mode.PATH) {
                 key = new Key(spec.kind().name(), spec.target() + "\n" + WatchIdentity.canonicalPath(spec.path()));
+            } else if (spec.scoreHolder() != null) {
+                key = new Key("score-holder", spec.scoreHolder());
             } else {
                 UUID entity = entry.displayedExecutor();
                 if (entity == null) entity = spec.executor() == null ? currentEntity : spec.executor();

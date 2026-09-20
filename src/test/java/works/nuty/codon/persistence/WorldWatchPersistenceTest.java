@@ -73,7 +73,16 @@ class WorldWatchPersistenceTest {
         assertThrows(IllegalArgumentException.class, () -> WatchDefinitions.fromJson("[{\"kind\":\"SCORE\",\"target\":1,\"path\":\"\"}]"));
         assertThrows(IllegalArgumentException.class, () -> WatchDefinitions.fromJson("[{\"kind\":\"SCORE\",\"target\":\"x\",\"path\":\"\",\"executor\":1}]"));
         assertThrows(IllegalArgumentException.class, () -> WatchDefinitions.fromJson("[{\"kind\":\"SCORE\",\"target\":\"x\",\"path\":\"\",\"executor\":\"1-1-1-1-1\"}]"));
+        assertThrows(IllegalArgumentException.class, () -> WatchDefinitions.fromJson("[{\"kind\":\"SCORE\",\"target\":\"x\",\"path\":\"\",\"scoreHolder\":1}]"));
         assertThrows(IllegalArgumentException.class, () -> new WatchSpec(WatchSpec.Kind.STORAGE_NBT, "minecraft:data", "x", UUID.randomUUID()));
+    }
+
+    @Test void definitionsRoundTripNamedScoreHoldersAndAcceptLegacyDefinitions() {
+        WatchSpec holder = WatchSpec.scoreHolder("points", " fake player ");
+        assertEquals(List.of(holder), WatchDefinitions.fromJson(WatchDefinitions.toJson(List.of(holder))));
+        assertEquals(List.of(score), WatchDefinitions.fromJson("[{\"kind\":\"SCORE\",\"target\":\"points\",\"path\":\"\"}]"));
+        assertThrows(IllegalArgumentException.class,
+            () -> WatchDefinitions.fromJson("[{\"kind\":\"ENTITY_NBT\",\"target\":\"\",\"path\":\"Health\",\"scoreHolder\":\"fake player\"}]"));
     }
 
     @Test void largeDefinitionSetOverTransportLimitSurvivesDiskRoundTrip() throws Exception {

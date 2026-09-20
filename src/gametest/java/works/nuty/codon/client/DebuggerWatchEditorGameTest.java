@@ -44,6 +44,7 @@ public final class DebuggerWatchEditorGameTest implements FabricClientGameTest {
             checkAddOnlyEditor(context, state, input, overlay);
             checkDraftsValidationAndKeyboard(context, state, input, overlay);
             checkOptionalExecutorAndHudManagement(context, state, input, overlay);
+            checkFakePlayerEditor(context, state, input, overlay);
             context.takeScreenshot("codon-watches-top-management");
             context.runOnClient(client -> {
                 client.setScreenAndShow(new WatchScreen(input, state, overlay));
@@ -154,7 +155,7 @@ public final class DebuggerWatchEditorGameTest implements FabricClientGameTest {
             editor = editor(client);
             click(editor, button(editor, "Score"));
             field(editor, "Objective").setValue("bound_points");
-            field(editor, "Entity (optional)").setValue(state.selectedSource().entity().uuid().toString());
+            field(editor, "Entity UUID or score holder (optional)").setValue(state.selectedSource().entity().uuid().toString());
             click(editor, button(editor, "Add"));
             require(state.watches().definitions().stream().anyMatch(spec -> spec.kind() == WatchSpec.Kind.SCORE
                     && spec.target().equals("bound_points") && state.selectedSource().entity().uuid().equals(spec.executor())),
@@ -184,6 +185,38 @@ public final class DebuggerWatchEditorGameTest implements FabricClientGameTest {
             require(state.watches().definitions().size() == beforeRemove - 1,
                 "the Watches HUD removes a saved watch");
         });
+    }
+
+    private static void checkFakePlayerEditor(ClientGameTestContext context, ClientDebuggerState state,
+                                              InputManager input, DebuggerOverlay overlay) {
+        context.runOnClient(client -> {
+            client.setScreenAndShow(new WatchScreen(input, state, overlay));
+            WatchScreen editor = editor(client);
+            click(editor, button(editor, "Score"));
+            field(editor, "Objective").setValue("fake_points");
+            field(editor, "Entity UUID or score holder (optional)").setValue("#counter");
+            click(editor, button(editor, "Add"));
+            WatchSpec named = WatchSpec.scoreHolder("fake_points", "#counter");
+            long id = state.watches().findId(named);
+            require(id > 0, "plain fake-player names can be saved from the Score form");
+            client.setScreenAndShow(WatchScreen.edit(input, state, overlay, id));
+            editor = editor(client);
+            require(field(editor, "Entity UUID or score holder (optional)").getValue().equals("\"#counter\""),
+                "editing restores the exact literal holder binding");
+            String uuidName = state.selectedSource().entity().uuid().toString();
+            field(editor, "Entity UUID or score holder (optional)").setValue("\"" + uuidName + "\"");
+            click(editor, button(editor, "Save"));
+            require(state.watches().findId(WatchSpec.scoreHolder("fake_points", uuidName)) == id,
+                "quoting preserves a UUID-shaped score holder instead of binding the loaded entity");
+            client.setScreenAndShow(WatchScreen.edit(input, state, overlay, id));
+            editor = editor(client);
+            field(editor, "Entity UUID or score holder (optional)").setValue("\" " + uuidName + " \"");
+            click(editor, button(editor, "Save"));
+            require(state.watches().findId(WatchSpec.scoreHolder("fake_points", " " + uuidName + " ")) == id,
+                "quoting preserves a UUID-shaped holder and its surrounding spaces instead of binding an entity");
+        });
+        context.waitTicks(3);
+        context.takeScreenshot("codon-watch-fake-player");
     }
 
     private static WatchScreen editor(Minecraft client) {

@@ -215,7 +215,8 @@ public final class WatchPickerScreen extends Screen {
         WatchUi.line(graphics, font, title.getString(), left + 8, top + 9, panelWidth - 72, TEXT);
         String place = mode == WatchEditorQuery.Mode.NBT
             ? path.isEmpty() ? WatchUi.text("picker.root").getString() : path
-            : WatchUi.text("picker." + mode.name().toLowerCase(Locale.ROOT)).getString();
+            : WatchUi.text(mode == WatchEditorQuery.Mode.ENTITIES && kind == WatchSpec.Kind.SCORE
+                ? "picker.score_holders" : "picker." + mode.name().toLowerCase(Locale.ROOT)).getString();
         WatchUi.line(graphics, font, place, left + 8, top + 55, panelWidth - 16, MUTED);
         int listTop = top + 70;
         int listBottom = listTop + visibleRows() * ROW_HEIGHT;

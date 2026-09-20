@@ -259,6 +259,8 @@ public final class WatchPanel {
                 } else if (state.watches().grouping() == WatchGrouping.Mode.PATH) {
                     heading = Component.literal(expression(group.entries().getFirst().spec(), false));
                     headingIcon = kindIcon(group.entries().getFirst().spec());
+                } else if (group.key().category().equals("score-holder")) {
+                    heading = Component.literal(group.key().value());
                 } else if (group.key().value().isEmpty()) {
                     heading = text("status.no_executor");
                 } else {
@@ -289,7 +291,9 @@ public final class WatchPanel {
             if (name.isEmpty() && target != null) name = target.name() + " #" + target.uuid().toString().substring(0, 8);
             return name.isEmpty() ? text("editor.no_entity").getString() : name;
         }
-        return expression(entry.spec(), mode == WatchGrouping.Mode.CONTEXT);
+        String expression = expression(entry.spec(), mode == WatchGrouping.Mode.CONTEXT);
+        return entry.spec().scoreHolder() != null && mode != WatchGrouping.Mode.CONTEXT
+            ? entry.spec().scoreHolder() + " · " + expression : expression;
     }
 
     private String expression(WatchSpec spec, boolean omitStorageId) {
@@ -306,7 +310,7 @@ public final class WatchPanel {
     }
 
     private boolean noExecutor(ClientWatchState.Entry entry) {
-        return entry.spec().kind() != WatchSpec.Kind.STORAGE_NBT && (executor(entry) == null
+        return entry.spec().kind() != WatchSpec.Kind.STORAGE_NBT && entry.spec().scoreHolder() == null && (executor(entry) == null
             || entry.displayedResult() != null && entry.displayedResult().status() == WatchResult.Status.NO_EXECUTOR);
     }
 
@@ -324,6 +328,7 @@ public final class WatchPanel {
     }
 
     private @Nullable EntityRef executor(ClientWatchState.Entry entry) {
+        if (entry.spec().scoreHolder() != null) return null;
         if (entry.displayedExecutor() != null) return new EntityRef(entry.displayedExecutor(), entry.executorName().isBlank()
             ? entry.displayedExecutor().toString() : entry.executorName());
         return WatchUi.currentEntity(state);

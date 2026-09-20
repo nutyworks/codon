@@ -16,6 +16,25 @@ class WatchEditorQueryCodecTest {
     }
 
     @Test
+    void preservesNamedScoreHolderAndRejectsInvalidBindings() {
+        var holder = new WatchEditorQuery(WatchEditorQuery.Mode.PREVIEW, WatchSpec.Kind.SCORE, "points", "",
+            null, "", 0, " fake player ");
+        assertEquals(" fake player ", holder.scoreHolder());
+        assertEquals(holder, WatchEditorQueryCodec.fromJson(WatchEditorQueryCodec.toJson(holder)));
+        assertEquals(new WatchEditorQuery(WatchEditorQuery.Mode.PREVIEW, WatchSpec.Kind.SCORE, "points", "",
+                null, "", 0),
+            WatchEditorQueryCodec.fromJson("{\"mode\":\"PREVIEW\",\"kind\":\"SCORE\",\"target\":\"points\",\"path\":\"\",\"search\":\"\",\"offset\":0}"));
+        assertThrows(IllegalArgumentException.class,
+            () -> WatchEditorQueryCodec.fromJson("{\"mode\":\"PREVIEW\",\"kind\":\"SCORE\",\"target\":\"points\",\"path\":\"\",\"scoreHolder\":1,\"search\":\"\",\"offset\":0}"));
+        assertThrows(IllegalArgumentException.class,
+            () -> new WatchEditorQuery(WatchEditorQuery.Mode.PREVIEW, WatchSpec.Kind.SCORE, "points", "",
+                UUID.randomUUID(), "", 0, "fake player"));
+        assertThrows(IllegalArgumentException.class,
+            () -> new WatchEditorQuery(WatchEditorQuery.Mode.PREVIEW, WatchSpec.Kind.ENTITY_NBT, "", "Health",
+                null, "", 0, "fake player"));
+    }
+
+    @Test
     void rejectsMissingFieldsAndOverlongJson() {
         assertThrows(IllegalArgumentException.class, () -> WatchEditorQueryCodec.fromJson("{}"));
         assertThrows(IllegalArgumentException.class, () -> WatchEditorQueryCodec.fromJson("x".repeat(WatchEditorQueryCodec.MAX_JSON_LENGTH + 1)));

@@ -9,6 +9,7 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.scores.ScoreHolder;
 import works.nuty.codon.core.model.PauseSnapshot;
 import works.nuty.codon.core.model.WatchResult;
 import works.nuty.codon.core.model.WatchSpec;
@@ -27,6 +28,18 @@ public final class WatchReader {
 
     public static WatchResult read(MinecraftServer server, PauseSnapshot snapshot, int sourceIndex, WatchSpec spec) {
         if (!server.isSameThread()) throw new IllegalStateException("Watch reads require the server thread");
+        if (spec.scoreHolder() != null) {
+            String key = "score-holder:" + spec.scoreHolder();
+            var objective = server.getScoreboard().getObjective(spec.target());
+            WatchResult result;
+            if (objective == null) result = WatchResult.absent(OBJECTIVE_MISSING, key);
+            else {
+                var score = server.getScoreboard().getPlayerScoreInfo(ScoreHolder.forNameOnly(spec.scoreHolder()), objective);
+                result = score == null ? WatchResult.absent(VALUE_MISSING, key)
+                    : new WatchResult(VALUE, Integer.toString(score.value()), key);
+            }
+            return result.withTargetName(boundedName(spec.scoreHolder()));
+        }
         if (spec.executor() != null) return readCapturedEntity(server, spec.executor(), spec);
         String key;
         CompoundTag nbt;
@@ -38,7 +51,7 @@ public final class WatchReader {
             // Empty storage entries are removed by vanilla, so this also detects absent keys.
             if (nbt.isEmpty()) return WatchResult.absent(TARGET_MISSING, key);
         } else {
-            if (sourceIndex < 0 || sourceIndex >= snapshot.pauseSources().size()
+            if (snapshot == null || sourceIndex < 0 || sourceIndex >= snapshot.pauseSources().size()
                 || snapshot.pauseSources().get(sourceIndex).entity() == null) {
                 return WatchResult.absent(NO_EXECUTOR, "no-executor");
             }

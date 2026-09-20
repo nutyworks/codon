@@ -19,6 +19,7 @@ public final class WatchEditorQueryCodec {
         object.addProperty("target", query.target());
         object.addProperty("path", query.path());
         if (query.executor() != null) object.addProperty("executor", query.executor().toString());
+        if (query.scoreHolder() != null) object.addProperty("scoreHolder", query.scoreHolder());
         object.addProperty("search", query.search());
         object.addProperty("offset", query.offset());
         String json = object.toString();
@@ -34,10 +35,11 @@ public final class WatchEditorQueryCodec {
             WatchEditorQuery.Mode mode = WatchEditorQuery.Mode.valueOf(string(object, "mode"));
             WatchSpec.Kind kind = WatchSpec.Kind.valueOf(string(object, "kind"));
             UUID executor = executor(object);
+            String scoreHolder = optionalString(object, "scoreHolder");
             if (!object.has("offset") || !object.get("offset").isJsonPrimitive()
                 || !object.getAsJsonPrimitive("offset").isNumber()) throw new IllegalArgumentException("editor offset missing");
             return new WatchEditorQuery(mode, kind, string(object, "target"), string(object, "path"), executor,
-                string(object, "search"), object.get("offset").getAsInt());
+                string(object, "search"), object.get("offset").getAsInt(), scoreHolder);
         } catch (RuntimeException e) {
             if (e instanceof IllegalArgumentException) throw e;
             throw new IllegalArgumentException("invalid editor query", e);
@@ -57,5 +59,10 @@ public final class WatchEditorQueryCodec {
         UUID id = UUID.fromString(text);
         if (!id.toString().equalsIgnoreCase(text)) throw new IllegalArgumentException("invalid editor executor");
         return id;
+    }
+
+    private static @Nullable String optionalString(JsonObject object, String name) {
+        if (!object.has(name)) return null;
+        return string(object, name);
     }
 }

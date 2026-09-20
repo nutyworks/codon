@@ -14,6 +14,7 @@ public final class WatchIdentity {
         return first.kind() == second.kind()
             && first.target().equals(second.target())
             && Objects.equals(first.executor(), second.executor())
+            && Objects.equals(first.scoreHolder(), second.scoreHolder())
             && canonicalPath(first.path()).equals(canonicalPath(second.path()));
     }
 
@@ -21,6 +22,7 @@ public final class WatchIdentity {
     public static boolean sameField(WatchSpec first, WatchSpec second) {
         return first.kind() == second.kind()
             && first.target().equals(second.target())
+            && Objects.equals(first.scoreHolder(), second.scoreHolder())
             && canonicalPath(first.path()).equals(canonicalPath(second.path()));
     }
 

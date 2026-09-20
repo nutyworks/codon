@@ -25,6 +25,8 @@ public final class WatchFormatting {
     /** Labels name the entity whose value is displayed, including a completed previous-executor read. */
     public static Component specification(ClientWatchState.Entry entry) {
         Component name = specification(entry.spec());
+        if (entry.spec().scoreHolder() != null)
+            return Component.literal(entry.spec().scoreHolder() + " · " + name.getString());
         if (entry.displayedExecutor() == null) return name;
         return Component.literal(executorLabel(entry) + " · " + name.getString());
     }
@@ -34,6 +36,7 @@ public final class WatchFormatting {
     }
 
     public static String executorLabel(ClientWatchState.Entry entry) {
+        if (entry.spec().scoreHolder() != null) return entry.spec().scoreHolder();
         UUID executor = entry.displayedExecutor();
         if (executor == null) return "";
         String name = entry.executorName().isBlank() ? "" : entry.executorName() + " ";
@@ -93,6 +96,8 @@ public final class WatchFormatting {
         UUID executor = entry.spec().executor();
         if (entry.automatic()) {
             lines.add(Component.translatable("codon.watch.tooltip.automatic"));
+        } else if (entry.spec().scoreHolder() != null) {
+            lines.add(Component.translatable("codon.watch.details.fixed", entry.spec().scoreHolder()));
         } else if (entry.spec().kind() != WatchSpec.Kind.STORAGE_NBT) {
             lines.add(executor == null
                 ? Component.translatable("codon.watch.tooltip.follows")

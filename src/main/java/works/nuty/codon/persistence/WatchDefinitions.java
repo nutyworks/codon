@@ -26,6 +26,7 @@ public final class WatchDefinitions {
             object.addProperty("target", spec.target());
             object.addProperty("path", spec.path());
             if (spec.executor() != null) object.addProperty("executor", spec.executor().toString());
+            if (spec.scoreHolder() != null) object.addProperty("scoreHolder", spec.scoreHolder());
             result.add(object);
         }
         return result;
@@ -54,12 +55,22 @@ public final class WatchDefinitions {
                     executor = UUID.fromString(text);
                     if (!executor.toString().equalsIgnoreCase(text)) throw new IllegalArgumentException("noncanonical executor");
                 }
-                result.add(new WatchSpec(kind, object.get("target").getAsString(), object.get("path").getAsString(), executor));
+                String scoreHolder = optionalString(object, "scoreHolder");
+                result.add(new WatchSpec(kind, object.get("target").getAsString(), object.get("path").getAsString(), executor,
+                    scoreHolder));
             } catch (RuntimeException e) {
                 throw new IllegalArgumentException("invalid watch", e);
             }
         }
         return validate(result);
+    }
+
+    private static String optionalString(JsonObject object, String name) {
+        if (!object.has(name)) return null;
+        if (!object.get(name).isJsonPrimitive() || !object.getAsJsonPrimitive(name).isString()) {
+            throw new IllegalArgumentException("malformed " + name);
+        }
+        return object.get(name).getAsString();
     }
 
     public static String toJson(List<WatchSpec> specs) {

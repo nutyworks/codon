@@ -144,7 +144,9 @@ public final class ClientNetworking {
                 case ENTITY_NBT -> "entity " + spec.path();
                 case STORAGE_NBT -> "storage " + spec.target() + " " + spec.path();
             };
-            String target = query.capturedEntity() == null ? Integer.toString(query.sourceIndex())
+            String target = spec.scoreHolder() != null ? "holder \""
+                + spec.scoreHolder().replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+                : query.capturedEntity() == null ? Integer.toString(query.sourceIndex())
                 : "captured " + query.capturedEntity();
             client.player.connection.sendCommand("codon watch " + query.pauseId() + " "
                 + query.requestId() + " " + target + " " + expression);

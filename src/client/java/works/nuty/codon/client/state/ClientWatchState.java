@@ -113,7 +113,8 @@ public final class ClientWatchState {
             WatchResult displayed = completed == null ? slot.result : completed.result();
             UUID executor = slot.spec.kind() == WatchSpec.Kind.STORAGE_NBT ? null : entityId(displayed);
             if (executor == null && completed != null) executor = entityId(steppedFrom);
-            if (executor == null && completed == null && slot.spec.kind() != WatchSpec.Kind.STORAGE_NBT) {
+            if (executor == null && completed == null && slot.spec.kind() != WatchSpec.Kind.STORAGE_NBT
+                && slot.spec.scoreHolder() == null) {
                 executor = slot.spec.executor() != null ? slot.spec.executor() : selectedExecutor();
             }
             String name = executor == null ? "" : displayed != null && !displayed.targetName().isBlank()
@@ -323,7 +324,8 @@ public final class ClientWatchState {
 
     public boolean pin(long id, EntityRef executor) {
         Slot slot = slots.get(id);
-        if (pauseId <= 0 || executor == null || slot == null || slot.spec.kind() == WatchSpec.Kind.STORAGE_NBT) return false;
+        if (pauseId <= 0 || executor == null || slot == null || slot.spec.kind() == WatchSpec.Kind.STORAGE_NBT
+            || slot.spec.scoreHolder() != null) return false;
         if (!rebind(id, slot.spec.withExecutor(executor.uuid()))) return false;
         executorNames.put(executor.uuid(), executor.name());
         return true;

@@ -66,6 +66,9 @@ final class WatchCommand {
         var request = Commands.argument("request", LongArgumentType.longArg(1));
         request.then(source);
         request.then(captured);
+        request.then(Commands.literal("holder").then(Commands.argument("holder", StringArgumentType.string())
+            .then(Commands.literal("score").then(Commands.argument("target", StringArgumentType.greedyString())
+                .executes(c -> query(c, engine, WatchSpec.Kind.SCORE, StringArgumentType.getString(c, "holder")))))));
         watch.then(Commands.argument("pause", LongArgumentType.longArg(1)).then(request));
         return watch;
     }
@@ -146,12 +149,17 @@ final class WatchCommand {
     }
 
     private static int query(CommandContext<CommandSourceStack> context, DebuggerEngine engine, WatchSpec.Kind kind) {
+        return query(context, engine, kind, null);
+    }
+
+    private static int query(CommandContext<CommandSourceStack> context, DebuggerEngine engine, WatchSpec.Kind kind,
+                             String scoreHolder) {
         var source = context.getSource();
         var player = source.getPlayer();
         if (player == null || !ServerPlayNetworking.canSend(player, WatchSyncPayload.TYPE.id())) return 0;
         long pauseId = LongArgumentType.getLong(context, "pause");
         long requestId = LongArgumentType.getLong(context, "request");
-        int sourceIndex = IntegerArgumentType.getInteger(context, "context");
+        int sourceIndex = scoreHolder == null ? IntegerArgumentType.getInteger(context, "context") : -1;
         var snapshot = engine.currentSnapshot();
         WatchResult result;
         if (!engine.isPaused() || snapshot == null || snapshot.pauseId() != pauseId) {
@@ -161,7 +169,7 @@ final class WatchCommand {
                 var spec = new WatchSpec(kind,
                     kind == WatchSpec.Kind.ENTITY_NBT ? "" : kind == WatchSpec.Kind.STORAGE_NBT
                         ? IdentifierArgument.getId(context, "target").toString() : StringArgumentType.getString(context, "target"),
-                    kind == WatchSpec.Kind.SCORE ? "" : StringArgumentType.getString(context, "path"));
+                    kind == WatchSpec.Kind.SCORE ? "" : StringArgumentType.getString(context, "path"), null, scoreHolder);
                 result = WatchReader.read(source.getServer(), snapshot, sourceIndex, spec);
             } catch (IllegalArgumentException e) {
                 result = WatchResult.absent(WatchResult.Status.INVALID_PATH, "");
