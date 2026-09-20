@@ -21,7 +21,7 @@ public final class DebugHudElement implements HudElement {
     @Override
     public void extractRenderState(@NonNull GuiGraphicsExtractor graphics, @NonNull DeltaTracker tracker) {
         // Avoid competing with chat, inventories, menus, or the interactive debugger screen.
-        if (Minecraft.getInstance().gui.screen() == null) {
+        if (Minecraft.getInstance().gui.screen() == null && !input.isUiHidden()) {
             overlay.render(graphics, -1, -1, 0, false, input);
         }
     }

@@ -10,6 +10,7 @@ import net.minecraft.gizmos.Gizmos;
 import net.minecraft.util.ARGB;
 import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.NonNull;
+import works.nuty.codon.client.input.InputManager;
 import works.nuty.codon.client.state.ClientDebuggerState;
 import works.nuty.codon.core.model.BlockLocation;
 import works.nuty.codon.core.model.ExecutionFlowContext;
@@ -45,15 +46,17 @@ public final class DebugLevelRenderer implements LevelRenderEvents.EndMain {
     private static final int RING_SEGMENTS = 20;
 
     private final ClientDebuggerState state;
+    private final InputManager input;
 
-    public DebugLevelRenderer(ClientDebuggerState state) {
+    public DebugLevelRenderer(ClientDebuggerState state, InputManager input) {
         this.state = state;
+        this.input = input;
     }
 
     @Override
     public void endMain(@NonNull LevelRenderContext context) {
         ClientLevel level = Minecraft.getInstance().level;
-        if (level == null) {
+        if (level == null || input.isUiHidden()) {
             return;
         }
         String dimension = level.dimension().identifier().toString();

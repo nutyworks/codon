@@ -68,7 +68,7 @@ public final class CodonClientMod implements ClientModInitializer {
         ClientNetworking.register(state, camera, effects);
         ClientTickEvents.START_CLIENT_TICK.register(camera::tick);
         ClientTickEvents.END_CLIENT_TICK.register(inputManager);
-        LevelRenderEvents.END_MAIN.register(new DebugLevelRenderer(state));
+        LevelRenderEvents.END_MAIN.register(new DebugLevelRenderer(state, inputManager));
         HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("codon", "debug_overlay"), new DebugHudElement(overlay, inputManager));
     }
 }

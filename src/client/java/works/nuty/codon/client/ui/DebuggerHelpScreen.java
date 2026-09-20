@@ -65,6 +65,7 @@ public final class DebuggerHelpScreen extends Screen {
                 entry("start", null, TEAL, keybind(input.breakpointKey.getTranslatedKeyMessage()), keybind(input.menuKey.getTranslatedKeyMessage()));
                 entry("breakpoints", null, TEAL);
                 entry("stop", null, AMBER);
+                if (input.hideUiKey != null) entry("hide_ui", null, TEAL, keybind(input.hideUiKey.getTranslatedKeyMessage()));
                 entry("camera", null, TEAL, keybind(input.menuKey.getTranslatedKeyMessage()),
                     keybind(client.options.keyUp.getTranslatedKeyMessage()), keybind(client.options.keyLeft.getTranslatedKeyMessage()),
                     keybind(client.options.keyDown.getTranslatedKeyMessage()), keybind(client.options.keyRight.getTranslatedKeyMessage()),

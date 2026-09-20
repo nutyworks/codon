@@ -66,7 +66,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
                 state.applyPause(fixture);
                 BlockLocation active = ((SourceLocation.Block) fixture.location()).block();
                 state.applyBreakpoints(List.of(active, new BlockLocation(active.x() + 2, active.y(), active.z(), active.dimension())));
-                LevelRenderEvents.END_MAIN.register(new DebugLevelRenderer(state));
+                LevelRenderEvents.END_MAIN.register(new DebugLevelRenderer(state, input));
                 CodonScreen result = new CodonScreen(input, new DebuggerOverlay(state));
                 client.setScreenAndShow(result);
                 return result;
@@ -622,6 +622,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
     static InputManager input(Minecraft client, ClientDebuggerState state) {
         InputManager result = new InputManager(state, ignored -> {});
         result.keepFreecamKey = key(client, "key.codon.keep_freecam");
+        result.hideUiKey = key(client, "key.codon.hide_ui");
         result.menuKey = key(client, "key.codon.open_menu");
         result.breakpointKey = key(client, "key.codon.breakpoint");
         result.resumeKey = key(client, "key.codon.resume");

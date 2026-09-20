@@ -27,6 +27,7 @@ public final class InputManager implements ClientTickEvents.EndTick {
 
     public KeyMapping menuKey;
     public KeyMapping keepFreecamKey;
+    public KeyMapping hideUiKey;
     public KeyMapping breakpointKey;
     public KeyMapping resumeKey;
     public KeyMapping stepOverKey;
@@ -46,6 +47,11 @@ public final class InputManager implements ClientTickEvents.EndTick {
 
     @Override
     public void onEndTick(Minecraft client) {
+        // This is a held action; discard the click queue instead of toggling any preference.
+        if (hideUiKey != null) {
+            while (hideUiKey.consumeClick()) { }
+            if (!client.isWindowActive()) hideUiKey.setDown(false);
+        }
         if (client.player == null) {
             return;
         }
@@ -76,12 +82,25 @@ public final class InputManager implements ClientTickEvents.EndTick {
         }
 
         while (menuKey.consumeClick()) {
+            boolean hidden = isUiHidden();
             openScreen.open(this);
+            // Opening a screen releases every vanilla mapping, including a still-held peek key.
+            if (hideUiKey != null) hideUiKey.setDown(hidden);
         }
     }
 
     public void toggleKeepFreecam() {
         state.preferences().setKeepFreecam(!state.preferences().keepFreecam());
+    }
+
+    /** Shared by screen, HUD, and world markers; never changes the debugger's pause state. */
+    public boolean isUiHidden() {
+        if (hideUiKey == null) return false;
+        if (!Minecraft.getInstance().isWindowActive()) {
+            hideUiKey.setDown(false);
+            return false;
+        }
+        return hideUiKey.isDown();
     }
 
     public void control(Control action) {
@@ -140,6 +159,7 @@ public final class InputManager implements ClientTickEvents.EndTick {
     public void registerKeyMappings() {
         KeyMapping.Category category = new KeyMapping.Category(CATEGORY_ID);
         this.keepFreecamKey = register("key.codon.keep_freecam", InputConstants.KEY_G, category);
+        this.hideUiKey = register("key.codon.hide_ui", InputConstants.KEY_H, category);
         this.menuKey = register("key.codon.open_menu", InputConstants.KEY_V, category);
         this.breakpointKey = register("key.codon.breakpoint", InputConstants.KEY_F10, category);
         this.resumeKey = register("key.codon.resume", InputConstants.KEY_F7, category);

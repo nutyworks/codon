@@ -29,6 +29,10 @@ public final class CodonScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+        if (input.isUiHidden()) {
+            suspendPointerInteraction();
+            return;
+        }
         GuiEventListener focused = getFocused();
         overlay.navigation().rememberFocus(focused);
         List<DebuggerButton> buttons = overlay.render(graphics, mouseX, mouseY, partialTick, true, input);
@@ -48,6 +52,12 @@ public final class CodonScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        if (input.hideUiKey != null && input.hideUiKey.matchesMouse(event)) {
+            input.hideUiKey.setDown(true);
+            suspendPointerInteraction();
+            return true;
+        }
+        if (input.isUiHidden()) return true;
         if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && overlay.scrollbars().click(event.x(), event.y())) {
             overlay.navigation().mouseScrolled();
             return true;
@@ -57,25 +67,45 @@ public final class CodonScreen extends Screen {
 
     @Override
     public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
+        if (input.isUiHidden()) return true;
         if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && overlay.scrollbars().drag(event.x(), event.y())) return true;
         return super.mouseDragged(event, dx, dy);
     }
 
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
+        if (input.hideUiKey != null && input.hideUiKey.matchesMouse(event)) {
+            input.hideUiKey.setDown(false);
+            return true;
+        }
+        if (input.isUiHidden()) return true;
         if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && overlay.scrollbars().release()) return true;
         return super.mouseReleased(event);
     }
 
     @Override
     public void removed() {
+        suspendPointerInteraction();
+        super.removed();
+    }
+
+    private void suspendPointerInteraction() {
         overlay.commitBackgroundOpacity();
         overlay.scrollbars().release();
-        super.removed();
+        setDragging(false);
+    }
+
+    @Override
+    public void onClose() {
+        boolean hidden = input.isUiHidden();
+        super.onClose();
+        // Mouse capture may refresh keyboard mappings; retain the hold across cursor/world mode.
+        if (input.hideUiKey != null) input.hideUiKey.setDown(hidden);
     }
 
     @Override
     public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
+        if (input.isUiHidden()) return true;
         if (overlay.scroll(x, y, scrollX, scrollY)) {
             overlay.navigation().mouseScrolled();
             return true;
@@ -85,15 +115,35 @@ public final class CodonScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
+        // Screen key events bypass gameplay mappings, so track this held key explicitly here.
+        if (input.hideUiKey != null && input.hideUiKey.matches(event)) {
+            input.hideUiKey.setDown(true);
+            suspendPointerInteraction();
+            return true;
+        }
         if (input.menuKey.matches(event)) {
             while (input.menuKey.consumeClick()) { }
             onClose();
+            return true;
+        }
+        if (input.isUiHidden()) {
+            if (event.key() == InputConstants.KEY_ESCAPE) onClose();
+            else input.handleScreenKey(event);
             return true;
         }
         if (getFocused() instanceof BackgroundOpacitySlider slider && slider.keyPressed(event)) return true;
         return input.handleScreenKey(event)
             || overlay.navigation().keyPressed(event, getFocused(), this::setFocused)
             || super.keyPressed(event);
+    }
+
+    @Override
+    public boolean keyReleased(KeyEvent event) {
+        if (input.hideUiKey != null && input.hideUiKey.matches(event)) {
+            input.hideUiKey.setDown(false);
+            return true;
+        }
+        return super.keyReleased(event);
     }
 
     @Override
