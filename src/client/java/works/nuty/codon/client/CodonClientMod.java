@@ -52,6 +52,7 @@ public final class CodonClientMod implements ClientModInitializer {
         DebuggerPreferences preferences = ClientSettingsStore.open(
             FabricLoader.getInstance().getConfigDir().resolve("codon.json"),
             exception -> CodonMod.LOGGER.error("Could not load or save Codon client settings", exception));
+        works.nuty.codon.client.ui.DebuggerTheme.usePreferences(preferences);
         ClientDebuggerState state = new ClientDebuggerState(preferences);
         debuggerState = state;
         DebuggerFreecam camera = new DebuggerFreecam(state);

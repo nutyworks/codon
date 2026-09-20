@@ -72,7 +72,7 @@ public final class CommandPanel {
         renderedSnapshot = snapshot;
         commandBounds = stackBounds = EMPTY;
         if (area.width() < 20 || area.height() < 18) return finish();
-        graphics.fill(area.x(), area.y(), area.x() + area.width(), area.y() + area.height(), PANEL);
+        graphics.fill(area.x(), area.y(), area.x() + area.width(), area.y() + area.height(), DebuggerTheme.background(PANEL));
         graphics.outline(area.x(), area.y(), area.width(), area.height(), BORDER);
         if (snapshot == null) {
             drawText(graphics, tr("codon.ui.no_snapshot"), area.x() + 7, area.y() + 7, area.width() - 14, MUTED);

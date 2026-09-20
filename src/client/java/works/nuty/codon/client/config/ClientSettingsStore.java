@@ -55,6 +55,19 @@ public final class ClientSettingsStore {
         if (!json.has("version") || !isVersion(json.get("version"))) {
             throw new IOException("Unsupported Codon client settings version");
         }
+        if (json.has("backgroundOpacity")) {
+            JsonElement value = json.get("backgroundOpacity");
+            try {
+                if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber()) {
+                    throw new NumberFormatException();
+                }
+                int opacity = new BigDecimal(value.getAsString()).intValueExact();
+                if (opacity < 0 || opacity > 100) throw new NumberFormatException();
+                preferences.setBackgroundOpacity(opacity);
+            } catch (ArithmeticException | NumberFormatException exception) {
+                throw new IOException("Invalid backgroundOpacity in Codon client settings", exception);
+            }
+        }
         if (json.has("gizmoMode")) {
             preferences.setGizmoMode(enumValue(json.get("gizmoMode"), ClientDebuggerState.GizmoMode.class, "gizmoMode"));
         }
@@ -112,6 +125,7 @@ public final class ClientSettingsStore {
     private static JsonObject encode(DebuggerPreferences preferences) {
         JsonObject json = new JsonObject();
         json.addProperty("version", VERSION);
+        json.addProperty("backgroundOpacity", preferences.backgroundOpacity());
         json.addProperty("gizmoMode", preferences.gizmoMode().name());
         if (preferences.inspectorVisible() == null) {
             json.add("inspectorVisible", JsonNull.INSTANCE);

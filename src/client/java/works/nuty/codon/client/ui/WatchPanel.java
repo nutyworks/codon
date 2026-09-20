@@ -116,7 +116,7 @@ public final class WatchPanel {
         int panelHeight = Math.min(available.height(), HEADER + contentHeight + BOTTOM_PADDING);
         bounds = new Bounds(available.x(), available.y(), available.width(), panelHeight);
         scrollBounds = new Bounds(bounds.x() + 3, bounds.y() + HEADER, bounds.width() - 6, Math.max(0, panelHeight - HEADER - BOTTOM_PADDING));
-        graphics.fill(bounds.x(), bounds.y(), bounds.x() + bounds.width(), bounds.y() + bounds.height(), PANEL);
+        graphics.fill(bounds.x(), bounds.y(), bounds.x() + bounds.width(), bounds.y() + bounds.height(), DebuggerTheme.background(PANEL));
         graphics.outline(bounds.x(), bounds.y(), bounds.width(), bounds.height(), BORDER);
         graphics.fill(bounds.x(), bounds.y(), bounds.x() + 2, bounds.y() + HEADER, TEAL);
         WatchUi.line(graphics, font, text("title").getString(),
@@ -174,7 +174,7 @@ public final class WatchPanel {
             var entry = row.entry();
             int rowWidth = Math.max(1, bounds.width() - 69);
             if (entry.id() == selectedId && System.nanoTime() < highlightedUntil)
-                graphics.fill(bounds.x() + 3, y, bounds.x() + bounds.width() - 6, y + rowHeight - 1, TEAL_SURFACE);
+                graphics.fill(bounds.x() + 3, y, bounds.x() + bounds.width() - 6, y + rowHeight - 1, DebuggerTheme.background(TEAL_SURFACE));
             if (entry.id() == firstUngroupedId) {
                 int dividerY = y - topMargin + DIVIDER_TOP_MARGIN;
                 graphics.fill(bounds.x() + 5, dividerY, bounds.x() + bounds.width() - 5, dividerY + 1, BORDER);

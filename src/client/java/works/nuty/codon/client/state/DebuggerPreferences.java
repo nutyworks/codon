@@ -16,6 +16,7 @@ public final class DebuggerPreferences {
     private InspectorTab inspectorTab = InspectorTab.SOURCES;
     private boolean nbtExpanded = true;
     private boolean keepFreecam;
+    private int backgroundOpacity = 100;
     private Runnable changeListener = () -> { };
 
     public ClientDebuggerState.GizmoMode gizmoMode() {
@@ -49,6 +50,21 @@ public final class DebuggerPreferences {
         tab = Objects.requireNonNull(tab);
         if (inspectorTab != tab) {
             inspectorTab = tab;
+            changed();
+        }
+    }
+
+    public int backgroundOpacity() { return backgroundOpacity; }
+
+    /** Live slider preview; the editing widget commits the final value when the gesture ends. */
+    public void previewBackgroundOpacity(int opacity) {
+        backgroundOpacity = Math.clamp(opacity, 0, 100);
+    }
+
+    public void setBackgroundOpacity(int opacity) {
+        opacity = Math.clamp(opacity, 0, 100);
+        if (backgroundOpacity != opacity) {
+            backgroundOpacity = opacity;
             changed();
         }
     }

@@ -274,8 +274,8 @@ public final class WatchScreen extends Screen {
     }
 
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-        graphics.fill(0, 0, width, height, 0x70000000);
-        graphics.fill(left, top, left + panelWidth, top + panelHeight, PANEL);
+        graphics.fill(0, 0, width, height, DebuggerTheme.background(0x70000000));
+        graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.background(PANEL));
         graphics.outline(left, top, panelWidth, panelHeight, BORDER);
         graphics.fill(left, top, left + 2, top + 24, TEAL);
         WatchUi.line(graphics, font, title.getString(), left + 8, top + 9, panelWidth - 72, TEXT);

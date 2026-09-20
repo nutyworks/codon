@@ -66,7 +66,7 @@ public final class NbtTreePanel {
             anchorViewport = EMPTY;
         }
         boundsSource = selectedSource;
-        graphics.fill(area.x(), area.y(), area.x() + area.width(), area.y() + area.height(), SURFACE);
+        graphics.fill(area.x(), area.y(), area.x() + area.width(), area.y() + area.height(), DebuggerTheme.background(SURFACE));
         graphics.outline(area.x(), area.y(), area.width(), area.height(), BORDER);
 
         // This is an inert heading, registered only so the screen can retain its stable bounds.

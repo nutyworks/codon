@@ -38,8 +38,8 @@ public final class WatchGroupingScreen extends Screen {
     }
 
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-        graphics.fill(0, 0, width, height, 0x70000000);
-        graphics.fill(left, top, left + panelWidth, top + 130, DebuggerTheme.PANEL);
+        graphics.fill(0, 0, width, height, DebuggerTheme.background(0x70000000));
+        graphics.fill(left, top, left + panelWidth, top + 130, DebuggerTheme.background(DebuggerTheme.PANEL));
         graphics.outline(left, top, panelWidth, 130, DebuggerTheme.BORDER);
         WatchUi.line(graphics, font, title.getString(), left + 8, top + 9, panelWidth - 16, DebuggerTheme.TEAL);
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);

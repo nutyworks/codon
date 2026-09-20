@@ -12,11 +12,12 @@ import net.minecraft.network.chat.Component;
 import org.jspecify.annotations.Nullable;
 
 /** Standard keyboard/narration behavior with Codon's compact, high-contrast chrome. */
-public final class DebuggerButton extends AbstractButton {
+public class DebuggerButton extends AbstractButton {
     public static final int TEXT_ICON_INSET = DebuggerIcon.SIZE + 2;
     private Runnable action = () -> { };
     private @Nullable Runnable secondaryAction;
     private boolean selected;
+    private boolean opaqueBackground;
     private boolean inputBlocked;
     private boolean leftAligned;
     private boolean subdued;
@@ -52,6 +53,7 @@ public final class DebuggerButton extends AbstractButton {
         this.active = active;
         this.inputBlocked = false;
         this.selected = selected;
+        this.opaqueBackground = false;
         this.leftAligned = leftAligned;
         this.subdued = subdued;
         this.borderless = false;
@@ -78,6 +80,8 @@ public final class DebuggerButton extends AbstractButton {
         this.selectedSurface = surface;
         return this;
     }
+
+    public DebuggerButton withOpaqueBackground() { opaqueBackground = true; return this; }
 
     public int foregroundColor() { return foregroundColor; }
 
@@ -188,7 +192,7 @@ public final class DebuggerButton extends AbstractButton {
         if (borderless) {
             if (active && (isHovered() || keyboardFocus)) foreground = accentColor;
         } else {
-            graphics.fill(getX(), getY(), getRight(), getBottom(), background);
+            graphics.fill(getX(), getY(), getRight(), getBottom(), opaqueBackground ? background : DebuggerTheme.background(background));
             graphics.fill(getX(), getY(), getRight(), getY() + 1, outline);
             graphics.fill(getX(), getBottom() - 1, getRight(), getBottom(), outline);
             if (!openLeft) graphics.fill(getX(), getY(), getX() + 1, getBottom(), outline);

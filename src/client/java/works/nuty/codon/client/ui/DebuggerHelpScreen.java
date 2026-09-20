@@ -148,7 +148,7 @@ public final class DebuggerHelpScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-        graphics.fill(left, top, left + panelWidth, top + panelHeight, SURFACE);
+        graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.background(SURFACE));
         graphics.outline(left, top, panelWidth, panelHeight, BORDER);
         graphics.text(font, title, left + 8, top + 9, TEAL, false);
         graphics.enableScissor(left + 6, top + 54, left + panelWidth - 6, top + panelHeight - 22);

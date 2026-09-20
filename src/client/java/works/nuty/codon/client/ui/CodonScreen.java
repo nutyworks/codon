@@ -25,7 +25,7 @@ public final class CodonScreen extends Screen {
     }
 
     @Override
-    protected void init() { registered = List.of(); overlay.scrollbars().release(); }
+    protected void init() { overlay.commitBackgroundOpacity(); registered = List.of(); overlay.scrollbars().release(); }
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
@@ -69,6 +69,7 @@ public final class CodonScreen extends Screen {
 
     @Override
     public void removed() {
+        overlay.commitBackgroundOpacity();
         overlay.scrollbars().release();
         super.removed();
     }
@@ -89,6 +90,7 @@ public final class CodonScreen extends Screen {
             onClose();
             return true;
         }
+        if (getFocused() instanceof BackgroundOpacitySlider slider && slider.keyPressed(event)) return true;
         return input.handleScreenKey(event)
             || overlay.navigation().keyPressed(event, getFocused(), this::setFocused)
             || super.keyPressed(event);

@@ -43,6 +43,7 @@ public final class DebuggerOverlay {
     private static final int NBT_HEADER_VIEWPORT_HEIGHT = 20;
     private static final int NBT_MIN_VIEWPORT_HEIGHT = 54;
     private final ClientDebuggerState state;
+    private final BackgroundOpacitySlider opacitySlider;
     private final NbtTreePanel nbtPanel;
     private final CommandPanel commandPanel;
     private final ScrollbarInput scrollbars = new ScrollbarInput();
@@ -68,10 +69,13 @@ public final class DebuggerOverlay {
 
     public DebuggerOverlay(ClientDebuggerState state) {
         this.state = state;
+        this.opacitySlider = new BackgroundOpacitySlider(state.preferences());
         this.nbtPanel = new NbtTreePanel(state);
         this.watchPanel = new WatchPanel(state);
         this.commandPanel = new CommandPanel(state, () -> { sourceOffset = 0; expandedGroup = List.of(); });
     }
+
+    void commitBackgroundOpacity() { opacitySlider.commitPreview(); }
 
     ScrollbarInput scrollbars() { return scrollbars; }
 
@@ -111,7 +115,8 @@ public final class DebuggerOverlay {
                 Bounds header = DebuggerLayout.create(graphics.guiWidth(), graphics.guiHeight(), false).header();
                 Bounds badge = new Bounds(header.x(), header.y(),
                     Math.min(graphics.guiWidth() - 2 * header.x(), font.width(text) + 14), header.height());
-                panel(graphics, badge);
+                graphics.fill(badge.x(), badge.y(), badge.x() + badge.width(), badge.y() + badge.height(), PANEL);
+                graphics.outline(badge.x(), badge.y(), badge.width(), badge.height(), BORDER);
                 graphics.enableScissor(header.x() + 7, header.y(),
                     header.x() + Math.max(7, badge.width() - 7), header.y() + header.height());
                 graphics.text(font, text, header.x() + 7, header.y() + 5, MUTED, false);
@@ -157,14 +162,19 @@ public final class DebuggerOverlay {
         int prefixWidth = client.font.width(prefix);
         Bounds toolbar = layout.controls();
         Bounds header = new Bounds(layout.header().x(), layout.header().y(),
-            Math.min(layout.header().width(), Math.max(toolbar.width(), 14 + prefixWidth + client.font.width(status))),
+            Math.min(layout.header().width(), Math.max(toolbar.width(), 52 + prefixWidth + client.font.width(status))),
             layout.header().height());
         Bounds headerPanel = new Bounds(header.x(), header.y(), Math.max(header.width(), toolbar.width()),
             toolbar.y() + toolbar.height() - header.y());
-        panel(graphics, headerPanel);
+        graphics.fill(headerPanel.x(), headerPanel.y(), headerPanel.x() + headerPanel.width(),
+            headerPanel.y() + headerPanel.height(), PANEL);
+        graphics.outline(headerPanel.x(), headerPanel.y(), headerPanel.width(), headerPanel.height(), BORDER);
+        opacitySlider.position(header.x() + header.width() - 39, header.y() + 1, 34);
+        controls.add(opacitySlider);
+        navigation.bind("background-opacity", DebuggerNavigation.Group.TOOLBAR, opacitySlider);
         graphics.fill(header.x(), header.y(), header.x() + 2, header.y() + headerPanel.height(), TEAL);
-        text(graphics, prefix, header.x() + 7, header.y() + 5, Math.max(0, header.width() - 14), TEXT);
-        text(graphics, status, header.x() + 7 + prefixWidth, header.y() + 5, Math.max(0, header.width() - 14 - prefixWidth),
+        text(graphics, prefix, header.x() + 7, header.y() + 5, Math.max(0, header.width() - 52), TEXT);
+        text(graphics, status, header.x() + 7 + prefixWidth, header.y() + 5, Math.max(0, header.width() - 52 - prefixWidth),
             state.isPaused() ? AMBER : MUTED);
 
         int gap = DebuggerLayout.ICON_BUTTON_GAP;
@@ -539,6 +549,7 @@ public final class DebuggerOverlay {
         DebuggerButton button = buttonCache.computeIfAbsent(id, ignored -> new DebuggerButton());
         button.configure(bounds.x(), bounds.y(), bounds.width(), bounds.height(), label, active,
             selected, leftAligned, subdued, action);
+        if (navigationGroup == DebuggerNavigation.Group.TOOLBAR) button.withOpaqueBackground();
         usedButtons.add(id);
         controls.add(button);
         navigation.bind(id, navigationGroup, button);
@@ -590,7 +601,7 @@ public final class DebuggerOverlay {
 
     private static void panel(GuiGraphicsExtractor graphics, Bounds bounds) {
         if (bounds.width() <= 0 || bounds.height() <= 0) return;
-        graphics.fill(bounds.x(), bounds.y(), bounds.x() + bounds.width(), bounds.y() + bounds.height(), PANEL);
+        graphics.fill(bounds.x(), bounds.y(), bounds.x() + bounds.width(), bounds.y() + bounds.height(), DebuggerTheme.background(PANEL));
         graphics.outline(bounds.x(), bounds.y(), bounds.width(), bounds.height(), BORDER);
     }
 
