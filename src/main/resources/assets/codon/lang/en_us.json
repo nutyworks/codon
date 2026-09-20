@@ -67,6 +67,7 @@
   "codon.ui.copy": "Copy",
   "codon.ui.offscreen": "Outside the world viewport",
   "codon.ui.other_dimension": "In another dimension",
+  "codon.ui.command": "Command",
   "codon.ui.current_command": "Current command",
   "codon.ui.caller_command": "Caller command (read only)",
   "codon.ui.current_frame": "Current frame",

@@ -93,6 +93,7 @@ public final class DebuggerOverlay {
         sourceScrollBounds = EMPTY;
         commandPanel.clearBounds();
         watchPanel.clearBounds();
+        watchSummaryBounds = EMPTY;
         nbtPanel.clearBounds();
         if (client.level == null || client.player == null) {
             buttonCache.clear();
@@ -129,15 +130,20 @@ public final class DebuggerOverlay {
         showInspector = state.preferences().inspectorVisible() != null ? state.preferences().inspectorVisible()
             : graphics.guiWidth() >= 420 && graphics.guiHeight() >= 220;
         DebuggerLayout layout = DebuggerLayout.create(graphics.guiWidth(), graphics.guiHeight(), showInspector,
-            commandPanel.preferredHeight(graphics.guiWidth(), graphics.guiHeight(), snapshot));
+            state.preferences().commandVisible()
+                ? commandPanel.preferredHeight(graphics.guiWidth(), graphics.guiHeight(), snapshot) : 0);
         navigationGroup = DebuggerNavigation.Group.TOOLBAR;
         renderHeader(graphics, layout, input, snapshot);
         navigationGroup = DebuggerNavigation.Group.WATCH;
-        renderWatchSummary(graphics, layout, mouseX, mouseY, interactive, input);
+        if (state.preferences().watchesVisible()) {
+            renderWatchSummary(graphics, layout, mouseX, mouseY, interactive, input);
+        }
         navigationGroup = DebuggerNavigation.Group.WORLD;
         renderWorldLabels(graphics, layout.world(), snapshot);
         if (showInspector) renderInspector(graphics, layout.inspector(), snapshot);
-        controls.addAll(commandPanel.render(graphics, layout.command(), snapshot, input, this, navigation));
+        if (state.preferences().commandVisible()) {
+            controls.addAll(commandPanel.render(graphics, layout.command(), snapshot, input, this, navigation));
+        }
 
         buttonCache.keySet().retainAll(usedButtons);
         navigation.endFrame();
@@ -185,7 +191,7 @@ public final class DebuggerOverlay {
 
         int gap = DebuggerLayout.ICON_BUTTON_GAP;
         int width = Math.min(DebuggerLayout.ICON_BUTTON_SIZE,
-            Math.max(1, (toolbar.width() - 6 - 6 * gap - DebuggerLayout.ICON_GROUP_GAP) / 8));
+            Math.max(1, (toolbar.width() - 6 - 8 * gap - DebuggerLayout.ICON_GROUP_GAP) / 10));
         int x = toolbar.x() + 3;
         for (InputManager.Control action : InputManager.Control.values()) {
             DebuggerIcon icon = switch (action) {
@@ -216,20 +222,31 @@ public final class DebuggerOverlay {
                 expandedGroup = List.of();
                 sourceOffset = 0;
             });
-        iconButton("inspector", new Bounds(x + width + gap, toolbar.y() + 2, width, DebuggerLayout.ICON_BUTTON_SIZE),
-            component("codon.ui.details"), showInspector ? DebuggerIcon.DETAILS_OPEN : DebuggerIcon.DETAILS_CLOSED,
-            true, () -> state.preferences().setInspectorVisible(!showInspector));
-        iconButton("information", new Bounds(x + 2 * (width + gap), toolbar.y() + 2, width, DebuggerLayout.ICON_BUTTON_SIZE),
-            component("codon.ui.information"), DebuggerIcon.INFORMATION, true,
-            () -> client.gui.setScreen(new DebuggerHelpScreen(new CodonScreen(input, this), input)));
+        button("inspector", new Bounds(x + width + gap, toolbar.y() + 2, width, DebuggerLayout.ICON_BUTTON_SIZE),
+            component("codon.ui.details"), true, showInspector, false, false,
+            () -> state.preferences().setInspectorVisible(!showInspector))
+            .withIcon(showInspector ? DebuggerIcon.DETAILS_OPEN : DebuggerIcon.DETAILS_CLOSED);
+        boolean showWatches = state.preferences().watchesVisible();
+        button("watches", new Bounds(x + 2 * (width + gap), toolbar.y() + 2, width, DebuggerLayout.ICON_BUTTON_SIZE),
+            component("codon.watch.title"), true, showWatches, false, false,
+            () -> state.preferences().setWatchesVisible(!showWatches))
+            .withIcon(DebuggerIcon.WATCHES);
+        boolean showCommand = state.preferences().commandVisible();
+        button("command", new Bounds(x + 3 * (width + gap), toolbar.y() + 2, width, DebuggerLayout.ICON_BUTTON_SIZE),
+            component("codon.ui.command"), true, showCommand, false, false,
+            () -> state.preferences().setCommandVisible(!showCommand))
+            .withIcon(DebuggerIcon.COMMAND);
         boolean keepFreecam = state.preferences().keepFreecam();
-        button("keep-freecam", new Bounds(x + 3 * (width + gap), toolbar.y() + 2,
+        button("keep-freecam", new Bounds(x + 4 * (width + gap), toolbar.y() + 2,
                 width, DebuggerLayout.ICON_BUTTON_SIZE),
             component(keepFreecam ? "codon.ui.keep_freecam.on" : "codon.ui.keep_freecam.off")
                 .copy().append(" ").append(keybind(input.keepFreecamKey.getTranslatedKeyMessage())),
             true, keepFreecam, false, false,
             input::toggleKeepFreecam)
             .withIcon(DebuggerIcon.FREECAM);
+        iconButton("information", new Bounds(x + 5 * (width + gap), toolbar.y() + 2, width, DebuggerLayout.ICON_BUTTON_SIZE),
+            component("codon.ui.information"), DebuggerIcon.INFORMATION, true,
+            () -> client.gui.setScreen(new DebuggerHelpScreen(new CodonScreen(input, this), input)));
 
     }
 

@@ -84,6 +84,20 @@ public final class ClientSettingsStore {
         if (json.has("inspectorTab")) {
             preferences.setInspectorTab(enumValue(json.get("inspectorTab"), DebuggerPreferences.InspectorTab.class, "inspectorTab"));
         }
+        if (json.has("watchesVisible")) {
+            JsonElement visible = json.get("watchesVisible");
+            if (!visible.isJsonPrimitive() || !visible.getAsJsonPrimitive().isBoolean()) {
+                throw new IOException("Invalid watchesVisible in Codon client settings");
+            }
+            preferences.setWatchesVisible(visible.getAsBoolean());
+        }
+        if (json.has("commandVisible")) {
+            JsonElement visible = json.get("commandVisible");
+            if (!visible.isJsonPrimitive() || !visible.getAsJsonPrimitive().isBoolean()) {
+                throw new IOException("Invalid commandVisible in Codon client settings");
+            }
+            preferences.setCommandVisible(visible.getAsBoolean());
+        }
         if (json.has("keepFreecam")) {
             JsonElement keep = json.get("keepFreecam");
             if (!keep.isJsonPrimitive() || !keep.getAsJsonPrimitive().isBoolean()) {
@@ -135,6 +149,8 @@ public final class ClientSettingsStore {
         json.addProperty("inspectorTab", preferences.inspectorTab().name());
         json.addProperty("nbtExpanded", preferences.nbtExpanded());
         json.addProperty("keepFreecam", preferences.keepFreecam());
+        json.addProperty("watchesVisible", preferences.watchesVisible());
+        json.addProperty("commandVisible", preferences.commandVisible());
         return json;
     }
 }

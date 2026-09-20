@@ -57,6 +57,8 @@ class ClientSettingsStoreTest {
         first.setInspectorTab(DebuggerPreferences.InspectorTab.STACK);
         first.setNbtExpanded(false);
         first.setKeepFreecam(true);
+        first.setWatchesVisible(false);
+        first.setCommandVisible(false);
         first.setBackgroundOpacity(37);
 
         DebuggerPreferences reloaded = ClientSettingsStore.open(file, exception -> { throw new AssertionError(exception); });
@@ -66,6 +68,8 @@ class ClientSettingsStoreTest {
         assertEquals(DebuggerPreferences.InspectorTab.STACK, reloaded.inspectorTab());
         assertFalse(reloaded.nbtExpanded());
         assertTrue(reloaded.keepFreecam());
+        assertFalse(reloaded.watchesVisible());
+        assertFalse(reloaded.commandVisible());
         assertEquals(37, reloaded.backgroundOpacity());
     }
 
@@ -79,6 +83,8 @@ class ClientSettingsStoreTest {
         assertEquals(DebuggerPreferences.InspectorTab.SOURCES, preferences.inspectorTab());
         assertTrue(preferences.nbtExpanded());
         assertFalse(preferences.keepFreecam());
+        assertTrue(preferences.watchesVisible());
+        assertTrue(preferences.commandVisible());
         assertEquals(100, preferences.backgroundOpacity());
     }
 

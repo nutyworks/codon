@@ -16,6 +16,8 @@ public final class DebuggerPreferences {
     private InspectorTab inspectorTab = InspectorTab.SOURCES;
     private boolean nbtExpanded = true;
     private boolean keepFreecam;
+    private boolean watchesVisible = true;
+    private boolean commandVisible = true;
     private int backgroundOpacity = 100;
     private Runnable changeListener = () -> { };
 
@@ -65,6 +67,24 @@ public final class DebuggerPreferences {
         opacity = Math.clamp(opacity, 0, 100);
         if (backgroundOpacity != opacity) {
             backgroundOpacity = opacity;
+            changed();
+        }
+    }
+
+    public boolean watchesVisible() { return watchesVisible; }
+
+    public void setWatchesVisible(boolean visible) {
+        if (watchesVisible != visible) {
+            watchesVisible = visible;
+            changed();
+        }
+    }
+
+    public boolean commandVisible() { return commandVisible; }
+
+    public void setCommandVisible(boolean visible) {
+        if (commandVisible != visible) {
+            commandVisible = visible;
             changed();
         }
     }
