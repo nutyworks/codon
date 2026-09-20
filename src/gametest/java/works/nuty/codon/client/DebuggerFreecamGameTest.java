@@ -14,6 +14,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
 import works.nuty.codon.client.camera.DebuggerFreecam;
 import works.nuty.codon.client.state.ClientDebuggerState;
+import works.nuty.codon.client.testmixin.CameraAccessor;
 import works.nuty.codon.core.model.BlockLocation;
 import works.nuty.codon.core.model.CommandSnippet;
 import works.nuty.codon.core.model.EntityRef;
@@ -351,7 +352,16 @@ public final class DebuggerFreecamGameTest implements FabricClientGameTest {
     private static void verifyCameraInterpolation(Minecraft client, DebuggerFreecam freecam) {
         Entity camera = client.getCameraEntity();
         CameraState saved = cameraState(client);
+        CameraAccessor fov = (CameraAccessor) client.gameRenderer.mainCamera();
+        float oldFov = fov.codon$oldFovModifier();
+        float currentFov = fov.codon$fovModifier();
         try {
+            // Model pausing mid-sprint/flight FOV transition, rather than an idle camera
+            // whose identical endpoints conceal repeated interpolation of frozen state.
+            fov.codon$oldFovModifier(1.0F);
+            fov.codon$fovModifier(1.15F);
+            client.gameRenderer.mainCamera().update(new FixedDelta(0));
+            float pausedFov = client.gameRenderer.mainCamera().getFov();
             for (int yaw : new int[] {0, 90, 180, 270}) {
                 camera.snapTo(saved.position().x, saved.position().y, saved.position().z, yaw, -60);
                 camera.setOldPosAndRot();
@@ -364,6 +374,8 @@ public final class DebuggerFreecamGameTest implements FabricClientGameTest {
                     freecam.tick(client);
                     for (float fraction : new float[] {0, 0.25F, 0.5F, 0.75F, 1}) {
                         client.gameRenderer.mainCamera().update(new FixedDelta(fraction));
+                        require(Math.abs(client.gameRenderer.mainCamera().getFov() - pausedFov) < 1.0E-5F,
+                            "pausing during a movement FOV transition keeps zoom stable across frames and tick boundaries");
                         Vec3 expected = previousEnd.add(horizontalFacing.scale(0.4 * fraction));
                         require(client.gameRenderer.mainCamera().position().distanceToSqr(expected) < 1.0E-8,
                             "rendered camera follows horizontal view direction without snapping backward between ticks at yaw=" + yaw);
@@ -379,6 +391,8 @@ public final class DebuggerFreecamGameTest implements FabricClientGameTest {
                 }
             }
         } finally {
+            fov.codon$oldFovModifier(oldFov);
+            fov.codon$fovModifier(currentFov);
             client.options.keyUp.setDown(false);
             camera.snapTo(saved.position().x, saved.position().y, saved.position().z, saved.yaw(), saved.pitch());
             camera.setOldPosAndRot();
