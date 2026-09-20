@@ -16,9 +16,9 @@ public final class DebuggerTheme {
     public static final int RED_SURFACE = 0xFF402A2D;
     public static final int GREEN = 0xFF83E89D;
     public static final int GREEN_SURFACE = 0xFF243D2D;
-    /** Keep keyboard hints neutral even inside colored headings or wrapped translations. */
+    /** Keep keyboard hints teal even inside colored headings or wrapped translations. */
     public static net.minecraft.network.chat.Component keybind(net.minecraft.network.chat.Component label) {
-        return label.copy().withStyle(net.minecraft.ChatFormatting.GRAY);
+        return label.copy().withStyle(style -> style.withColor(TEAL & 0x00FFFFFF));
     }
 
     private static java.util.function.IntSupplier opacity = () -> 100;
