@@ -110,9 +110,8 @@ public final class DebuggerOverlay {
         Font font = client.font;
         if ((!state.isPaused() || snapshot == null) && !interactive) {
             if (!state.blockBreakpoints().isEmpty()) {
-                Component text = Component.literal("CODON ")
-                    .append(keybind(Component.literal("[").append(input.menuKey.getTranslatedKeyMessage()).append("]")))
-                    .append(" · " + statusText());
+                Component text = Component.literal("CODON · " + statusText() + " ")
+                    .append(keybind(Component.literal("[").append(input.menuKey.getTranslatedKeyMessage()).append("]")));
                 Bounds header = DebuggerLayout.create(graphics.guiWidth(), graphics.guiHeight(), false).header();
                 Bounds badge = new Bounds(header.x(), header.y(),
                     Math.min(graphics.guiWidth() - 2 * header.x(), font.width(text) + 14), header.height());
@@ -159,11 +158,15 @@ public final class DebuggerOverlay {
     private void renderHeader(GuiGraphicsExtractor graphics, DebuggerLayout layout, InputManager input,
                               @Nullable PauseSnapshot snapshot) {
         String status = statusText();
-        String prefix = "CODON [" + input.menuKey.getTranslatedKeyMessage().getString() + "] · ";
+        String prefix = "CODON · ";
+        Component menuKey = keybind(Component.literal("[").append(input.menuKey.getTranslatedKeyMessage()).append("]"));
+        int menuKeyWidth = client.font.width(menuKey);
+        int menuKeyGap = client.font.width(" ");
+        int rightControlsWidth = 52 + menuKeyWidth + menuKeyGap;
         int prefixWidth = client.font.width(prefix);
         Bounds toolbar = layout.controls();
         Bounds header = new Bounds(layout.header().x(), layout.header().y(),
-            Math.min(layout.header().width(), Math.max(toolbar.width(), 52 + prefixWidth + client.font.width(status))),
+            Math.min(layout.header().width(), Math.max(toolbar.width(), rightControlsWidth + prefixWidth + client.font.width(status))),
             layout.header().height());
         Bounds headerPanel = new Bounds(header.x(), header.y(), Math.max(header.width(), toolbar.width()),
             toolbar.y() + toolbar.height() - header.y());
@@ -174,9 +177,13 @@ public final class DebuggerOverlay {
         controls.add(opacitySlider);
         navigation.bind("background-opacity", DebuggerNavigation.Group.TOOLBAR, opacitySlider);
         graphics.fill(header.x(), header.y(), header.x() + 2, header.y() + headerPanel.height(), TEAL);
-        text(graphics, prefix, header.x() + 7, header.y() + 5, Math.max(0, header.width() - 52), TEXT, true);
-        text(graphics, status, header.x() + 7 + prefixWidth, header.y() + 5, Math.max(0, header.width() - 52 - prefixWidth),
+        text(graphics, prefix, header.x() + 7, header.y() + 5, Math.max(0, header.width() - rightControlsWidth), TEXT, true);
+        int statusWidth = Math.max(0, header.width() - rightControlsWidth - prefixWidth);
+        text(graphics, status, header.x() + 7 + prefixWidth, header.y() + 5, statusWidth,
             state.isPaused() ? AMBER : MUTED, true);
+
+        graphics.text(client.font, menuKey, header.x() + 7 + prefixWidth + client.font.width(trimmed(status, statusWidth)) + menuKeyGap,
+            header.y() + 5, MUTED, false);
 
         int gap = DebuggerLayout.ICON_BUTTON_GAP;
         int width = Math.min(DebuggerLayout.ICON_BUTTON_SIZE,
