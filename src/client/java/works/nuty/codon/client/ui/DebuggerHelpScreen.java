@@ -5,6 +5,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
 import org.jspecify.annotations.Nullable;
@@ -22,6 +23,7 @@ public final class DebuggerHelpScreen extends Screen {
     private record Line(FormattedCharSequence text, int color, @Nullable DebuggerIcon icon) { }
     private final List<Line> lines = new ArrayList<>();
     private static final String[] TOPICS = {"basics", "controls", "sources", "watches"};
+    private final ScrollbarInput scrollbars = new ScrollbarInput();
     private int topic;
     private int offset;
     private int left;
@@ -41,6 +43,8 @@ public final class DebuggerHelpScreen extends Screen {
 
     @Override
     protected void init() {
+        scrollbars.release();
+        scrollbars.beginFrame();
         panelWidth = Math.max(1, Math.min(420, width - 12));
         panelHeight = Math.max(1, Math.min(300, height - 12));
         left = (width - panelWidth) / 2;
@@ -149,6 +153,7 @@ public final class DebuggerHelpScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+        scrollbars.beginFrame();
         graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.color(SURFACE));
         graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.color(BORDER));
         graphics.text(font, title, left + 8, top + 9, DebuggerTheme.color(TEAL), false);
@@ -163,12 +168,39 @@ public final class DebuggerHelpScreen extends Screen {
         if (maxOffset() > 0) {
             int track = Math.max(1, panelHeight - 80);
             int thumb = Math.max(4, track * visibleLines() / lines.size());
+            scrollbars.add("information", false, left + panelWidth - 5, top + 55, track, 2,
+                thumb, offset, maxOffset(), value -> offset = value);
             int y = top + 55 + (track - thumb) * offset / maxOffset();
             graphics.fill(left + panelWidth - 5, y, left + panelWidth - 3, y + thumb, DebuggerTheme.color(TEAL));
         }
+        scrollbars.endFrame();
         graphics.text(font, help("navigation", keybind(Component.literal("↑ / ↓ / PgUp / PgDn")),
             keybind(Component.literal("Esc"))), left + 8, top + panelHeight - 14, DebuggerTheme.color(MUTED), false);
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+    }
+
+    @Override
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && scrollbars.click(event.x(), event.y())) return true;
+        return super.mouseClicked(event, doubleClick);
+    }
+
+    @Override
+    public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
+        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && scrollbars.drag(event.x(), event.y())) return true;
+        return super.mouseDragged(event, dx, dy);
+    }
+
+    @Override
+    public boolean mouseReleased(MouseButtonEvent event) {
+        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && scrollbars.release()) return true;
+        return super.mouseReleased(event);
+    }
+
+    @Override
+    public void removed() {
+        scrollbars.release();
+        super.removed();
     }
 
     @Override

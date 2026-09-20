@@ -6,6 +6,8 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
 import works.nuty.codon.client.input.InputManager;
 import works.nuty.codon.client.state.ClientDebuggerState;
+import net.minecraft.client.gui.screens.Screen;
+import works.nuty.codon.client.ui.DebuggerHelpScreen;
 import works.nuty.codon.client.ui.CodonScreen;
 import works.nuty.codon.client.ui.DebuggerButton;
 import works.nuty.codon.client.ui.DebuggerOverlay;
@@ -50,9 +52,44 @@ public final class DebuggerScrollbarGameTest implements FabricClientGameTest {
             dragSourceTrack(context, screen);
             clickNbtTrack(context, screen);
             dragNbtTrack(context, screen);
+            checkInformation(context, state);
 
             context.runOnClient(client -> client.setScreenAndShow(null));
         }
+    }
+
+    private static void checkInformation(ClientGameTestContext context, ClientDebuggerState state) {
+        DebuggerHelpScreen help = context.computeOnClient(client -> {
+            var result = new DebuggerHelpScreen(null, DebuggerPresentationGameTest.input(client, state));
+            client.setScreenAndShow(result);
+            return result;
+        });
+        context.waitTicks(3);
+        Track initial = context.computeOnClient(client -> informationTrack(help));
+        moveCursor(context, help, initial.x() + 1, initial.y() + initial.length() - 1);
+        context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_LEFT);
+        context.waitTicks(2);
+        context.runOnClient(client -> require(integerField(help, "offset") > 0,
+            "Native Information track click scrolls the help text"));
+        context.takeScreenshot("codon-scrollbar-information-click");
+        Track moved = context.computeOnClient(client -> informationTrack(help));
+        moveCursor(context, help, moved.x() + 1, thumbCenter(moved));
+        context.getInput().holdMouse(InputConstants.MOUSE_BUTTON_LEFT);
+        context.waitTicks(1);
+        moveCursor(context, help, moved.x() + 1, moved.y());
+        context.waitTicks(2);
+        context.getInput().releaseMouse(InputConstants.MOUSE_BUTTON_LEFT);
+        context.waitTicks(2);
+        context.runOnClient(client -> require(integerField(help, "offset") == 0,
+            "Native Information thumb drag returns to the first line after release"));
+        context.takeScreenshot("codon-scrollbar-information-drag");
+    }
+
+    private static Track informationTrack(DebuggerHelpScreen screen) {
+        Map<?, ?> tracks = (Map<?, ?>) field(field(screen, "scrollbars"), "tracks");
+        Object value = tracks.get("information");
+        require(value != null, "Information has a rendered interactive scrollbar");
+        return track(value);
     }
 
     private static void populateNbt(ClientGameTestContext context, ClientDebuggerState state) {
@@ -143,7 +180,7 @@ public final class DebuggerScrollbarGameTest implements FabricClientGameTest {
         context.takeScreenshot("codon-scrollbar-nbt-drag");
     }
 
-    private static void moveCursor(ClientGameTestContext context, CodonScreen screen, double x, double y) {
+    private static void moveCursor(ClientGameTestContext context, Screen screen, double x, double y) {
         double[] physical = context.computeOnClient(client -> new double[] {
             x * client.getWindow().getScreenWidth() / screen.width,
             y * client.getWindow().getScreenHeight() / screen.height
