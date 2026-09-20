@@ -92,9 +92,10 @@ public final class CodonMod implements ModInitializer {
         });
 
         CodonNetworking.registerPayloadTypes();
+        CodonNetworking.registerRequests(wiredEngine, watches);
         CodonNetworking.registerJoinSync(wiredEngine, watches, eventSink);
 
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
-            CodonCommand.register(dispatcher, wiredEngine, watches));
+            CodonCommand.register(dispatcher, wiredEngine));
     }
 }

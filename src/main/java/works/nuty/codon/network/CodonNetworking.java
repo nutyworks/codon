@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Registers the S2C sync payload types and brings newly joined clients up to date (current block
+ * Registers debugger request/sync payloads and brings newly joined clients up to date (current block
  * breakpoints, plus the active pause if the debugger is parked when they connect).
  */
 public final class CodonNetworking {
@@ -22,6 +22,10 @@ public final class CodonNetworking {
     }
 
     public static void registerPayloadTypes() {
+        PayloadTypeRegistry.serverboundPlay().register(WatchQueryPayload.TYPE, WatchQueryPayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(WatchEditorQueryPayload.TYPE, WatchEditorQueryPayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(WatchSavePayload.TYPE, WatchSavePayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(NbtTreeQueryPayload.TYPE, NbtTreeQueryPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(PauseSyncPayload.TYPE, PauseSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(WatchSyncPayload.TYPE, WatchSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(WatchChangesSyncPayload.TYPE, WatchChangesSyncPayload.CODEC);
@@ -34,6 +38,18 @@ public final class CodonNetworking {
         PayloadTypeRegistry.clientboundPlay().register(ContinueSyncPayload.TYPE, ContinueSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(BreakpointSyncPayload.TYPE, BreakpointSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(ExecutionFlowSyncPayload.TYPE, ExecutionFlowSyncPayload.CODEC);
+    }
+
+    public static void registerRequests(DebuggerEngine engine, WorldWatchPersistence watches) {
+        var requests = new DebuggerRequestHandler(engine, watches);
+        ServerPlayNetworking.registerGlobalReceiver(WatchQueryPayload.TYPE,
+            (payload, context) -> requests.query(context.server(), context.player(), payload));
+        ServerPlayNetworking.registerGlobalReceiver(WatchEditorQueryPayload.TYPE,
+            (payload, context) -> requests.editor(context.server(), context.player(), payload));
+        ServerPlayNetworking.registerGlobalReceiver(WatchSavePayload.TYPE,
+            (payload, context) -> requests.save(context.player(), payload));
+        ServerPlayNetworking.registerGlobalReceiver(NbtTreeQueryPayload.TYPE,
+            (payload, context) -> requests.nbt(context.server(), context.player(), payload));
     }
 
     public static void registerJoinSync(DebuggerEngine engine, WorldWatchPersistence watches, NetworkDebuggerEventSink eventSink) {

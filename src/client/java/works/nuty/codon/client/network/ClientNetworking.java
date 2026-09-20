@@ -19,7 +19,10 @@ import works.nuty.codon.network.WatchChangesSyncPayload;
 import works.nuty.codon.network.WatchDefinitionsSyncPayload;
 import works.nuty.codon.network.NbtTreeSyncPayload;
 import works.nuty.codon.network.WatchEditorSyncPayload;
-import works.nuty.codon.network.WatchEditorQueryCodec;
+import works.nuty.codon.network.WatchEditorQueryPayload;
+import works.nuty.codon.network.WatchQueryPayload;
+import works.nuty.codon.network.WatchSavePayload;
+import works.nuty.codon.network.NbtTreeQueryPayload;
 import works.nuty.codon.network.WatchSaveSyncPayload;
 import works.nuty.codon.persistence.WatchDefinitions;
 import works.nuty.codon.persistence.WatchDefinitionTransfer;
@@ -118,8 +121,7 @@ public final class ClientNetworking {
         var pages = WatchDefinitions.pages(definitions);
         for (int index = 0; index < pages.size(); index++) {
             var page = pages.get(index);
-            client.player.connection.sendCommand("codon watch save_chunk " + transferId + " " + offset + " "
-                + (index == pages.size() - 1) + " " + WatchDefinitions.toPageJson(page));
+            ClientPlayNetworking.send(new WatchSavePayload(transferId, offset, index == pages.size() - 1, page));
             offset += page.size();
         }
     }
@@ -133,28 +135,18 @@ public final class ClientNetworking {
     public static void sendWatchQueries(Minecraft client, ClientDebuggerState state) {
         if (client.player == null) return;
         for (var query : state.watchEditor().drainQueries()) {
-            client.player.connection.sendCommand("codon watch editor " + query.pauseId() + " " + query.requestId() + " "
-                + query.sourceIndex() + " " + WatchEditorQueryCodec.toJson(query.query()));
+            ClientPlayNetworking.send(new WatchEditorQueryPayload(query.pauseId(), query.requestId(),
+                query.sourceIndex(), query.query()));
         }
         if (!state.isPaused()) return;
         for (var query : state.watches().drainQueries()) {
             var spec = query.spec();
-            String expression = switch (spec.kind()) {
-                case SCORE -> "score " + spec.target();
-                case ENTITY_NBT -> "entity " + spec.path();
-                case STORAGE_NBT -> "storage " + spec.target() + " " + spec.path();
-            };
-            String target = spec.scoreHolder() != null ? "holder \""
-                + spec.scoreHolder().replace("\\", "\\\\").replace("\"", "\\\"") + "\""
-                : query.capturedEntity() == null ? Integer.toString(query.sourceIndex())
-                : "captured " + query.capturedEntity();
-            client.player.connection.sendCommand("codon watch " + query.pauseId() + " "
-                + query.requestId() + " " + target + " " + expression);
+            if (query.capturedEntity() != null) spec = spec.withExecutor(query.capturedEntity());
+            ClientPlayNetworking.send(new WatchQueryPayload(query.pauseId(), query.requestId(), query.sourceIndex(), spec));
         }
         for (var query : state.nbt().drainQueries()) {
-            String path = query.path().isEmpty() ? "root" : "path " + query.path();
-            client.player.connection.sendCommand("codon nbt " + query.pauseId() + " "
-                + query.requestId() + " " + query.sourceIndex() + " " + query.offset() + " " + path);
+            ClientPlayNetworking.send(new NbtTreeQueryPayload(query.pauseId(), query.requestId(), query.sourceIndex(),
+                query.offset(), query.path()));
         }
     }
 }

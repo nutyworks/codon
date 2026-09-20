@@ -47,7 +47,7 @@ suite in ~1s without Minecraft.
 - `adapter/` — `McExecutionController` (parks on a dedicated `DebuggerTaskQueue`), `SourceMapper`
   (Minecraft types ↔ core value types).
 - `command/CodonCommand` — the `/codon` tree, delegating to the engine.
-- `network/` — S2C sync payloads + `NetworkDebuggerEventSink`; this transport is what makes the
+- `network/` — C2S debugger requests, S2C sync payloads, and `NetworkDebuggerEventSink`; this transport makes the
   in-game UI work on dedicated servers.
 - `CodonMod` — composition root: constructs the core and wires adapters (constructor injection).
   Exposes the wired engine through a single static accessor, the seam mixins reach through.
@@ -315,7 +315,7 @@ pause/request IDs. Steps and Continue discard pages and late requests while reta
 expanded field paths, including across reordered contexts and temporary non-entity stops. Closing and
 reopening the debugger overlay keeps these preferences. Disconnect clears per-entity presentation state.
 Legacy whole-tree and entity-section collapse settings no longer suppress NBT rows or reads.
-Requests use the same owner-only `/codon nbt <pause> <request> <context> <offset> root|path ...` mailbox.
+Requests use the owner-only `codon:nbt_tree_query` C2S payload through the debugger mailbox.
 The server reads the loaded context entity across dimensions without loading chunks or mutating NBT.
 Root data is bounded to 1 MiB estimated size, pages to 32 nodes, previews/names to 128 characters,
 and navigation paths to 512 characters. Generated paths quote compound names and index collections;
@@ -345,9 +345,9 @@ final inspection drops comparisons and stale values. An
 unanswered query expires after five seconds, without automatic retry loops. Definitions added at a
 stop get an initial observation; they cannot retroactively sample the preceding step.
 
-The owner-only `/codon watch <pause-id> <request-id> <context-index>` subcommands (`score
-<objective>`, `entity <path>`, `storage <id> <path>`) use the existing validated command mailbox.
-`captured <uuid>` can replace the context index for score/entity queries of a pinned executor or the executor just stepped.
+The owner-only `codon:watch_query` C2S payload carries pause/request IDs, a context index, and a
+validated `WatchSpec`. Its optional executor UUID identifies a pinned executor or the executor just
+stepped; a score-holder binding preserves literal names including spaces, quotes, and backslashes.
 They run on the parked **server thread**, without draining general tasks/packets or changing the
 pause/freecam lifecycle. `WatchReader` uses existing scoreboard scores (never creating them), loaded
 entities by UUID across dimensions (including `execute in`), and vanilla read-only NBT paths.
@@ -361,14 +361,19 @@ increasing ID, even across session resets.
 Reads are enqueued when a pause arrives and before a UI step command, preserving request/reply order
 even when the next step is requested before the following client tick.
 
-Parsed `/codon` commands always execute through the control dispatcher, including just after a
-step unpauses the engine. Late watch requests are rejected by pause ID instead of being queued in
-the inspected execution or becoming step targets themselves. `/stop` keeps its pause-only bypass.
+`ServerGamePacketListenerMixin` wraps custom-payload handling before Fabric's normal packet-thread
+handoff. Only the four decoded debugger request types enter `DebuggerTaskQueue`; other payloads
+retain their normal handling. The queued original handler invokes Fabric's registered receiver on
+the server thread. Queries and control commands share the same FIFO, including just after a step
+unpauses the engine. Receivers recheck owner permission when executed. Late requests are rejected
+by pause ID instead of entering the inspected execution or becoming step targets themselves.
+`codon:watch_editor_query` also permits pause ID zero for running-world editor queries.
+`/codon` exposes only breakpoints and execution controls; `/stop` keeps its pause-only bypass.
 
 This first version bounds inputs to 128 characters, NBT roots to 1 MiB estimated size, path matches
 to 32, and returned text to 2,048 characters. Oversized values are reported explicitly, never compared
 as truncated text. NBT output uses vanilla's sorted-key SNBT; multiple matches include their count.
-There is no expression execution, fake-player score target, or NBT mutation.
+There is no expression execution or NBT mutation.
 
 `WorldWatchPersistence` keeps definitions in the server world save. The singleplayer owner's list
 uses `data/codon-watches/singleplayer.json`, so a changed development-launch username/UUID does not
@@ -381,14 +386,15 @@ and optional pinned executor UUID are saved; values, display-name hints, capture
 are session-local. A bound target UUID is never rewritten when the singleplayer owner's UUID changes.
 Join sync (`codon:watch_definitions_v3`) sends bounded definition pages, assembles the complete
 list, then attaches the client edit listener, so initial empty state and disconnect cleanup cannot
-overwrite the save. Adds/removals and pin changes send validated `/codon watch save_chunk`
-commands through the existing owner-only control mailbox, including while paused. Individual pages
+overwrite the save. Adds/removals and pin changes send validated `codon:watch_save` C2S payloads
+through the same owner-only control mailbox, including while paused. Individual pages
 remain bounded to 8,192 JSON characters; the full list has no count or aggregate JSON-length cap.
 Transfers carry an identity and contiguous offsets and replace definitions only after the final page;
 incomplete, duplicate, or out-of-order chunks cannot partially overwrite the saved list.
 The authenticated sender determines ownership; clients cannot specify another player or world.
 Writes use temporary-file replacement, failed writes retry on later edits/world saves/shutdown,
-and unreadable or unsupported files are preserved with writes disabled for that session. Failed save commands explicitly warn that edits remain session-only.
+and unreadable or unsupported files are preserved with writes disabled for that session. Failed saves
+return a failure acknowledgement and warn that edits remain session-only.
 
 After each nonempty debugger mailbox batch, the parked server flushes outgoing connections before
 waiting or resuming. Vanilla normally batches these sends until the end of the tick, which cannot
@@ -465,8 +471,13 @@ A gametest-only `WatchPauseTestMixin` releases the parked server from Fabric's c
 phaser so the test can render and send controls during a real debugger pause. This hook does not
 run in the shipped mod or process additional server work.
 
+`DebuggerRequestTransportGameTest` observes actual C2S requests/S2C replies while the integrated
+server is parked. It verifies that Watch/NBT are absent from the public command tree, a query sent
+immediately before a step sees the pre-step value, stale pause IDs return unavailable, and revoked
+owner permission blocks reads and saves. Ordinary server tasks remain deferred until resume.
+
 `DebuggerWatchGameTest` uses explicit command-stage fixtures to drive the production engine and
-actually park the integrated server. It checks watch command/reply transport while ordinary server
+actually park the integrated server. It checks watch payload/reply transport while ordinary server
 tasks remain deferred, scoreboard/storage changes across a step, unchanged entity NBT, absent scores
 without creation, cross-dimension executor lookup, codec correlation IDs, UI add/remove, and freecam
 identity/terminal restoration. It checks final score/storage mutations at the completion stop, then

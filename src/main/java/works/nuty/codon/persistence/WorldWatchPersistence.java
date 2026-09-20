@@ -70,7 +70,7 @@ public final class WorldWatchPersistence {
     }
 
     /**
-     * Accepts one client command page. The saved definitions change only when the final page is
+     * Accepts one client payload page. The saved definitions change only when the final page is
      * valid and complete; intermediate pages only update the authenticated player's staging area.
      */
     public ChunkSaveResult saveChunk(UUID player, long transferId, int offset, boolean last, List<WatchSpec> specs) {
