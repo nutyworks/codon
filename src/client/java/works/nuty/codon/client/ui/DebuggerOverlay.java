@@ -173,9 +173,9 @@ public final class DebuggerOverlay {
         controls.add(opacitySlider);
         navigation.bind("background-opacity", DebuggerNavigation.Group.TOOLBAR, opacitySlider);
         graphics.fill(header.x(), header.y(), header.x() + 2, header.y() + headerPanel.height(), TEAL);
-        text(graphics, prefix, header.x() + 7, header.y() + 5, Math.max(0, header.width() - 52), TEXT);
+        text(graphics, prefix, header.x() + 7, header.y() + 5, Math.max(0, header.width() - 52), TEXT, true);
         text(graphics, status, header.x() + 7 + prefixWidth, header.y() + 5, Math.max(0, header.width() - 52 - prefixWidth),
-            state.isPaused() ? AMBER : MUTED);
+            state.isPaused() ? AMBER : MUTED, true);
 
         int gap = DebuggerLayout.ICON_BUTTON_GAP;
         int width = Math.min(DebuggerLayout.ICON_BUTTON_SIZE,
@@ -493,13 +493,13 @@ public final class DebuggerOverlay {
         graphics.pose().pushMatrix();
         graphics.pose().translate(x, y + (client.font.lineHeight * (1.0f - scale)) / 2.0f);
         graphics.pose().scale(scale, scale);
-        graphics.text(client.font, value, 0, 0, color, false);
+        graphics.text(client.font, value, 0, 0, DebuggerTheme.color(color), false);
         graphics.pose().popMatrix();
     }
 
     private void sourceStatusIcon(GuiGraphicsExtractor graphics, int x, int y, DebuggerIcon icon,
                                   int color, Component description) {
-        icon.draw(graphics, x + 2, y + 2, color);
+        icon.draw(graphics, x + 2, y + 2, DebuggerTheme.color(color));
         if (hoverX >= x && hoverX < x + 16 && hoverY >= y && hoverY < y + 16) {
             graphics.setTooltipForNextFrame(client.font, description, hoverX, hoverY);
         }
@@ -549,7 +549,7 @@ public final class DebuggerOverlay {
         DebuggerButton button = buttonCache.computeIfAbsent(id, ignored -> new DebuggerButton());
         button.configure(bounds.x(), bounds.y(), bounds.width(), bounds.height(), label, active,
             selected, leftAligned, subdued, action);
-        if (navigationGroup == DebuggerNavigation.Group.TOOLBAR) button.withOpaqueBackground();
+        if (navigationGroup == DebuggerNavigation.Group.TOOLBAR) button.withOpaqueColors();
         usedButtons.add(id);
         controls.add(button);
         navigation.bind(id, navigationGroup, button);
@@ -569,9 +569,14 @@ public final class DebuggerOverlay {
     }
 
     private void text(GuiGraphicsExtractor graphics, String value, int x, int y, int width, int color) {
+        text(graphics, value, x, y, width, color, false);
+    }
+
+    private void text(GuiGraphicsExtractor graphics, String value, int x, int y, int width, int color, boolean opaque) {
         if (width <= 0) return;
         graphics.enableScissor(x, y, x + width, y + client.font.lineHeight + 1);
-        graphics.text(client.font, trimmed(value, width), x, y, color, false);
+        if (opaque) graphics.text(client.font, trimmed(value, width), x, y, color, false);
+        else graphics.text(client.font, trimmed(value, width), x, y, DebuggerTheme.color(color), false);
         graphics.disableScissor();
         if (client.font.width(value) > width && hoverX >= x && hoverX < x + width
             && hoverY >= y && hoverY < y + client.font.lineHeight + 1) {
@@ -590,19 +595,19 @@ public final class DebuggerOverlay {
         int y = bounds.y();
         for (FormattedCharSequence line : client.font.split(value, bounds.width())) {
             if (y + client.font.lineHeight > bounds.y() + bounds.height()) break;
-            graphics.text(client.font, line, bounds.x(), y, color, false);
+            graphics.text(client.font, line, bounds.x(), y, DebuggerTheme.color(color), false);
             y += 11;
         }
     }
 
     private static void sectionDivider(GuiGraphicsExtractor graphics, Bounds area) {
-        graphics.fill(area.x(), area.y(), area.x() + area.width(), area.y() + 1, BORDER);
+        graphics.fill(area.x(), area.y(), area.x() + area.width(), area.y() + 1, DebuggerTheme.color(BORDER));
     }
 
     private static void panel(GuiGraphicsExtractor graphics, Bounds bounds) {
         if (bounds.width() <= 0 || bounds.height() <= 0) return;
-        graphics.fill(bounds.x(), bounds.y(), bounds.x() + bounds.width(), bounds.y() + bounds.height(), DebuggerTheme.background(PANEL));
-        graphics.outline(bounds.x(), bounds.y(), bounds.width(), bounds.height(), BORDER);
+        graphics.fill(bounds.x(), bounds.y(), bounds.x() + bounds.width(), bounds.y() + bounds.height(), DebuggerTheme.color(PANEL));
+        graphics.outline(bounds.x(), bounds.y(), bounds.width(), bounds.height(), DebuggerTheme.color(BORDER));
     }
 
     private static void leader(GuiGraphicsExtractor graphics, int x1, int y1, int x2, int y2, int color) {
@@ -612,18 +617,18 @@ public final class DebuggerOverlay {
         for (int i = 0; i <= steps; i += 2) {
             int x = x1 + (x2 - x1) * i / steps;
             int y = y1 + (y2 - y1) * i / steps;
-            graphics.fill(x, y, x + 1, y + 1, color);
+            graphics.fill(x, y, x + 1, y + 1, DebuggerTheme.color(color));
         }
     }
 
     private void scrollbar(GuiGraphicsExtractor graphics, String id, java.util.function.IntConsumer setter, int x, int y, int height,
                                   int offset, int maxOffset, int rows, int total) {
         if (height <= 0 || total <= rows || maxOffset <= 0) return;
-        graphics.fill(x, y, x + 2, y + height, BORDER);
+        graphics.fill(x, y, x + 2, y + height, DebuggerTheme.color(BORDER));
         int thumb = Math.min(height, Math.max(6, height * rows / total));
         scrollbars.add(id, false, x, y, height, 2, thumb, offset, maxOffset, setter);
         int top = y + (height - thumb) * offset / maxOffset;
-        graphics.fill(x, top, x + 2, top + thumb, TEAL);
+        graphics.fill(x, top, x + 2, top + thumb, DebuggerTheme.color(TEAL));
     }
 
     private String dimension() {

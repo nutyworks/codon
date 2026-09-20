@@ -17,7 +17,7 @@ public class DebuggerButton extends AbstractButton {
     private Runnable action = () -> { };
     private @Nullable Runnable secondaryAction;
     private boolean selected;
-    private boolean opaqueBackground;
+    private boolean opaqueColors;
     private boolean inputBlocked;
     private boolean leftAligned;
     private boolean subdued;
@@ -53,7 +53,7 @@ public class DebuggerButton extends AbstractButton {
         this.active = active;
         this.inputBlocked = false;
         this.selected = selected;
-        this.opaqueBackground = false;
+        this.opaqueColors = false;
         this.leftAligned = leftAligned;
         this.subdued = subdued;
         this.borderless = false;
@@ -81,7 +81,7 @@ public class DebuggerButton extends AbstractButton {
         return this;
     }
 
-    public DebuggerButton withOpaqueBackground() { opaqueBackground = true; return this; }
+    public DebuggerButton withOpaqueColors() { opaqueColors = true; return this; }
 
     public int foregroundColor() { return foregroundColor; }
 
@@ -182,17 +182,17 @@ public class DebuggerButton extends AbstractButton {
         var client = Minecraft.getInstance();
         boolean keyboardFocus = isFocused() && client.getLastInputType().isKeyboard();
         if (hitSurface) {
-            if (keyboardFocus || isHovered()) graphics.outline(getX(), getY(), getWidth(), getHeight(), DebuggerTheme.TEAL);
+            if (keyboardFocus || isHovered()) graphics.outline(getX(), getY(), getWidth(), getHeight(), paintColor(DebuggerTheme.TEAL));
             return;
         }
         int background = selected && active ? selectedSurface
             : (isHovered() || keyboardFocus) && active ? DebuggerTheme.RAISED : DebuggerTheme.SURFACE;
         int foreground = !active || subdued ? DebuggerTheme.MUTED : foregroundColor;
-        int outline = active && (selected || keyboardFocus) ? accentColor : DebuggerTheme.BORDER;
+        int outline = paintColor(active && (selected || keyboardFocus) ? accentColor : DebuggerTheme.BORDER);
         if (borderless) {
             if (active && (isHovered() || keyboardFocus)) foreground = accentColor;
         } else {
-            graphics.fill(getX(), getY(), getRight(), getBottom(), opaqueBackground ? background : DebuggerTheme.background(background));
+            graphics.fill(getX(), getY(), getRight(), getBottom(), paintColor(background));
             graphics.fill(getX(), getY(), getRight(), getY() + 1, outline);
             graphics.fill(getX(), getBottom() - 1, getRight(), getBottom(), outline);
             if (!openLeft) graphics.fill(getX(), getY(), getX() + 1, getBottom(), outline);
@@ -203,8 +203,8 @@ public class DebuggerButton extends AbstractButton {
             int iconSize = smallIcon ? icon.smallSize() : DebuggerIcon.SIZE;
             int iconX = getX() - contentOffset + (iconWithText ? 3 : leadingIcon ? 1 : (contentWidth - iconSize) / 2);
             int iconY = getY() + (height - iconSize) / 2 + iconOffsetY;
-            if (smallIcon) icon.drawSmall(graphics, iconX, iconY, foreground);
-            else icon.draw(graphics, iconX, iconY, foreground);
+            if (smallIcon) icon.drawSmall(graphics, iconX, iconY, paintColor(foreground));
+            else icon.draw(graphics, iconX, iconY, paintColor(foreground));
             graphics.disableScissor();
             if (!iconWithText) return;
         }
@@ -217,9 +217,11 @@ public class DebuggerButton extends AbstractButton {
         graphics.enableScissor(getX() + 2, getY(), getRight() - 2, getBottom());
         graphics.text(font, text, leftAligned ? getX() - contentOffset + 5 + inset
             : getX() - contentOffset + inset + (contentWidth - inset - font.width(text)) / 2,
-            getY() + (height - font.lineHeight) / 2 + 1, foreground, false);
+            getY() + (height - font.lineHeight) / 2 + 1, paintColor(foreground), false);
         graphics.disableScissor();
     }
+
+    private int paintColor(int color) { return opaqueColors ? color : DebuggerTheme.color(color); }
 
     @Override
     public void setTooltip(@Nullable Tooltip tooltip) {

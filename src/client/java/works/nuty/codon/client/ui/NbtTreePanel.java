@@ -66,8 +66,8 @@ public final class NbtTreePanel {
             anchorViewport = EMPTY;
         }
         boundsSource = selectedSource;
-        graphics.fill(area.x(), area.y(), area.x() + area.width(), area.y() + area.height(), DebuggerTheme.background(SURFACE));
-        graphics.outline(area.x(), area.y(), area.width(), area.height(), BORDER);
+        graphics.fill(area.x(), area.y(), area.x() + area.width(), area.y() + area.height(), DebuggerTheme.color(SURFACE));
+        graphics.outline(area.x(), area.y(), area.width(), area.height(), DebuggerTheme.color(BORDER));
 
         // This is an inert heading, registered only so the screen can retain its stable bounds.
         controls.button("nbt-heading", new Bounds(area.x() + 2, area.y() + 1, Math.max(1, area.width() - 4), HEADER_HEIGHT - 2),
@@ -127,8 +127,8 @@ public final class NbtTreePanel {
                     offset = Math.clamp(value, 0, Math.max(0, rows.size() - visibleRows));
                 });
             graphics.fill(area.x() + area.width() - 3, area.y() + HEADER_HEIGHT,
-                area.x() + area.width() - 1, area.y() + HEADER_HEIGHT + height, BORDER);
-            graphics.fill(area.x() + area.width() - 3, top, area.x() + area.width() - 1, top + thumb, TEAL);
+                area.x() + area.width() - 1, area.y() + HEADER_HEIGHT + height, DebuggerTheme.color(BORDER));
+            graphics.fill(area.x() + area.width() - 3, top, area.x() + area.width() - 1, top + thumb, DebuggerTheme.color(TEAL));
         }
     }
 
@@ -359,7 +359,7 @@ public final class NbtTreePanel {
         String rendered = font.width(value) <= bounds.width() ? value
             : font.plainSubstrByWidth(value, Math.max(0, bounds.width() - font.width("…"))) + "…";
         graphics.enableScissor(bounds.x(), bounds.y(), bounds.x() + bounds.width(), bounds.y() + bounds.height());
-        graphics.text(font, rendered, bounds.x() + 2, bounds.y() + 4, color, false);
+        graphics.text(font, rendered, bounds.x() + 2, bounds.y() + 4, DebuggerTheme.color(color), false);
         graphics.disableScissor();
     }
 

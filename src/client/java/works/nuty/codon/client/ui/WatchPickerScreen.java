@@ -72,7 +72,7 @@ public final class WatchPickerScreen extends Screen {
         left = (width - panelWidth) / 2;
         top = (height - panelHeight) / 2;
 
-        search = addRenderableWidget(new EditBox(font, left + 8, top + 29, Math.max(1, panelWidth - 84), 20,
+        search = addRenderableWidget(new DebuggerEditBox(font, left + 8, top + 29, Math.max(1, panelWidth - 84), 20,
             WatchUi.text("picker.search")));
         search.setMaxLength(WatchEditorQuery.MAX_SEARCH_LENGTH);
         Component searchHint = mode == WatchEditorQuery.Mode.NBT
@@ -208,10 +208,10 @@ public final class WatchPickerScreen extends Screen {
         boolean authoritative = authoritativePage != null;
         List<WatchEditorPage.Option> options = options(page, authoritative);
         updatePresentation(page, options, authoritative);
-        graphics.fill(0, 0, width, height, DebuggerTheme.background(0x70000000));
-        graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.background(PANEL));
-        graphics.outline(left, top, panelWidth, panelHeight, BORDER);
-        graphics.fill(left, top, left + 2, top + 24, TEAL);
+        graphics.fill(0, 0, width, height, DebuggerTheme.color(0x70000000));
+        graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.color(PANEL));
+        graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.color(BORDER));
+        graphics.fill(left, top, left + 2, top + 24, DebuggerTheme.color(TEAL));
         WatchUi.line(graphics, font, title.getString(), left + 8, top + 9, panelWidth - 72, TEXT);
         String place = mode == WatchEditorQuery.Mode.NBT
             ? path.isEmpty() ? WatchUi.text("picker.root").getString() : path
@@ -227,14 +227,14 @@ public final class WatchPickerScreen extends Screen {
             boolean hovered = authoritative && mouseX >= left + 8 && mouseX < left + panelWidth - 8 && mouseY >= y && mouseY < y + ROW_HEIGHT - 2;
             boolean expandable = option.expandable() && mode == WatchEditorQuery.Mode.NBT;
             int surface = focused || hovered ? RAISED : SURFACE;
-            graphics.fill(left + 8, y, left + panelWidth - 8, y + ROW_HEIGHT - 2, DebuggerTheme.background(surface));
-            if (focused) graphics.outline(left + 8, y, panelWidth - 16, ROW_HEIGHT - 2, TEAL);
+            graphics.fill(left + 8, y, left + panelWidth - 8, y + ROW_HEIGHT - 2, DebuggerTheme.color(surface));
+            if (focused) graphics.outline(left + 8, y, panelWidth - 16, ROW_HEIGHT - 2, DebuggerTheme.color(TEAL));
             int labelColor = selectable(option) ? TEXT : MUTED;
             WatchUi.line(graphics, font, option.label(), left + 13, y + 4, panelWidth - (expandable ? 54 : 28), labelColor);
             if (!option.detail().isBlank()) WatchUi.line(graphics, font, option.detail(), left + 13, y + 14,
                 panelWidth - (expandable ? 54 : 28), MUTED);
             if (expandable) {
-                graphics.fill(left + panelWidth - 28, y + 5, left + panelWidth - 15, y + 18, DebuggerTheme.background(TEAL_SURFACE));
+                graphics.fill(left + panelWidth - 28, y + 5, left + panelWidth - 15, y + 18, DebuggerTheme.color(TEAL_SURFACE));
                 WatchUi.line(graphics, font, ">", left + panelWidth - 24, y + 5, 8, TEAL);
             }
             if (authoritative && hovered && !selectable(option)) graphics.setTooltipForNextFrame(font,
@@ -245,7 +245,7 @@ public final class WatchPickerScreen extends Screen {
             int track = Math.max(1, listBottom - listTop);
             int thumb = Math.max(4, track * visibleRows() / options.size());
             int thumbY = listTop + (track - thumb) * rowOffset / maxRowOffset(options);
-            graphics.fill(left + panelWidth - 5, thumbY, left + panelWidth - 3, thumbY + thumb, TEAL);
+            graphics.fill(left + panelWidth - 5, thumbY, left + panelWidth - 3, thumbY + thumb, DebuggerTheme.color(TEAL));
         }
         if (options.isEmpty()) {
             String status = page == null ? WatchUi.text("picker.loading").getString()

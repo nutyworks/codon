@@ -72,8 +72,8 @@ public final class CommandPanel {
         renderedSnapshot = snapshot;
         commandBounds = stackBounds = EMPTY;
         if (area.width() < 20 || area.height() < 18) return finish();
-        graphics.fill(area.x(), area.y(), area.x() + area.width(), area.y() + area.height(), DebuggerTheme.background(PANEL));
-        graphics.outline(area.x(), area.y(), area.width(), area.height(), BORDER);
+        graphics.fill(area.x(), area.y(), area.x() + area.width(), area.y() + area.height(), DebuggerTheme.color(PANEL));
+        graphics.outline(area.x(), area.y(), area.width(), area.height(), DebuggerTheme.color(BORDER));
         if (snapshot == null) {
             drawText(graphics, tr("codon.ui.no_snapshot"), area.x() + 7, area.y() + 7, area.width() - 14, MUTED);
             lastSelection = null;
@@ -89,7 +89,7 @@ public final class CommandPanel {
             y += 19;
             Bounds body = new Bounds(area.x() + 5, y, area.width() - 12, Math.max(0, actionY - 4 - y));
             renderClauses(graphics, body, snapshot);
-            graphics.fill(area.x() + 1, actionY - 3, area.x() + area.width() - 1, actionY - 2, BORDER);
+            graphics.fill(area.x() + 1, actionY - 3, area.x() + area.width() - 1, actionY - 2, DebuggerTheme.color(BORDER));
             ExecutionFlowStage stage = state.selectedExecutionFlowStage();
             boolean warning = stage != null && hasFlowWarning();
             int summaryX = area.x() + 8;
@@ -170,8 +170,8 @@ public final class CommandPanel {
             scrollbars.add("path", true, left, area.y() + 16, available, 1, thumb, stackOffset, maxStackOffset,
                 value -> stackOffset = value);
             int thumbX = left + (available - thumb) * stackOffset / maxStackOffset;
-            graphics.fill(left, area.y() + 16, left + available, area.y() + 17, BORDER);
-            graphics.fill(thumbX, area.y() + 16, thumbX + thumb, area.y() + 17, TEAL);
+            graphics.fill(left, area.y() + 16, left + available, area.y() + 17, DebuggerTheme.color(BORDER));
+            graphics.fill(thumbX, area.y() + 16, thumbX + thumb, area.y() + 17, DebuggerTheme.color(TEAL));
         }
     }
 
@@ -289,7 +289,7 @@ public final class CommandPanel {
             if (cellIndex + 1 < layout.cells().size()
                     && layout.cells().get(cellIndex + 1).row() > cell.row()
                     && (content.inline() || layout.cells().get(cellIndex + 1).partIndex() == cell.partIndex())) {
-                DebuggerIcon.LINE_WRAP.draw(graphics, x + cell.width(), y + 2, MUTED);
+                DebuggerIcon.LINE_WRAP.draw(graphics, x + cell.width(), y + 2, DebuggerTheme.color(MUTED));
             }
             if (stageIndex >= 0 && flow != null) {
                 ExecutionFlowStage stage = flow.stages().get(stageIndex);
@@ -337,14 +337,13 @@ public final class CommandPanel {
         if (!selection.equals(lastSelection)) { commandOffset = 0; lastSelection = selection; }
         commandOffset = Math.clamp(commandOffset, 0, maxCommandOffset);
         commandBounds = body;
-        graphics.fill(body.x(), body.y(), body.x() + 2, body.y() + body.height(),
-            state.isViewingCurrentCommand() ? AMBER : MUTED);
+        graphics.fill(body.x(), body.y(), body.x() + 2, body.y() + body.height(), DebuggerTheme.color(state.isViewingCurrentCommand() ? AMBER : MUTED));
         graphics.enableScissor(body.x() + 4, body.y(), body.x() + body.width() - 4, body.y() + body.height());
         for (int i = 0; i < rows && commandOffset + i < lines.size(); i++) {
-            graphics.text(client.font, lines.get(commandOffset + i), body.x() + 5, body.y() + i * 11, TEXT, false);
+            graphics.text(client.font, lines.get(commandOffset + i), body.x() + 5, body.y() + i * 11, DebuggerTheme.color(TEXT), false);
             if (commandOffset + i + 1 < lines.size()) {
                 DebuggerIcon.LINE_WRAP.draw(graphics,
-                    body.x() + 5 + client.font.width(lines.get(commandOffset + i)), body.y() + i * 11 - 1, MUTED);
+                    body.x() + 5 + client.font.width(lines.get(commandOffset + i)), body.y() + i * 11 - 1, DebuggerTheme.color(MUTED));
             }
         }
         graphics.disableScissor();
@@ -512,17 +511,17 @@ public final class CommandPanel {
         String clipped = client.font.width(value) <= width ? value
             : client.font.plainSubstrByWidth(value, Math.max(0, width - client.font.width("…"))) + "…";
         graphics.enableScissor(x, y, x + width, y + client.font.lineHeight + 1);
-        graphics.text(client.font, clipped, x, y, color, false);
+        graphics.text(client.font, clipped, x, y, DebuggerTheme.color(color), false);
         graphics.disableScissor();
     }
 
     private void scrollbar(GuiGraphicsExtractor graphics, int x, int y, int height, int offset, int max, int rows) {
         if (max <= 0 || height <= 0) return;
-        graphics.fill(x, y, x + 2, y + height, BORDER);
+        graphics.fill(x, y, x + 2, y + height, DebuggerTheme.color(BORDER));
         int thumb = Math.min(height, Math.max(5, height * rows / (rows + max)));
         scrollbars.add("command", false, x, y, height, 2, thumb, offset, max, value -> commandOffset = value);
         int top = y + (height - thumb) * offset / max;
-        graphics.fill(x, top, x + 2, top + thumb, TEAL);
+        graphics.fill(x, top, x + 2, top + thumb, DebuggerTheme.color(TEAL));
     }
 
     private String frameLabel(PauseSnapshot snapshot, int index) {

@@ -116,9 +116,9 @@ public final class WatchPanel {
         int panelHeight = Math.min(available.height(), HEADER + contentHeight + BOTTOM_PADDING);
         bounds = new Bounds(available.x(), available.y(), available.width(), panelHeight);
         scrollBounds = new Bounds(bounds.x() + 3, bounds.y() + HEADER, bounds.width() - 6, Math.max(0, panelHeight - HEADER - BOTTOM_PADDING));
-        graphics.fill(bounds.x(), bounds.y(), bounds.x() + bounds.width(), bounds.y() + bounds.height(), DebuggerTheme.background(PANEL));
-        graphics.outline(bounds.x(), bounds.y(), bounds.width(), bounds.height(), BORDER);
-        graphics.fill(bounds.x(), bounds.y(), bounds.x() + 2, bounds.y() + HEADER, TEAL);
+        graphics.fill(bounds.x(), bounds.y(), bounds.x() + bounds.width(), bounds.y() + bounds.height(), DebuggerTheme.color(PANEL));
+        graphics.outline(bounds.x(), bounds.y(), bounds.width(), bounds.height(), DebuggerTheme.color(BORDER));
+        graphics.fill(bounds.x(), bounds.y(), bounds.x() + 2, bounds.y() + HEADER, DebuggerTheme.color(TEAL));
         WatchUi.line(graphics, font, text("title").getString(),
             bounds.x() + 7, bounds.y() + (HEADER - font.lineHeight) / 2 + 1, Math.max(0, bounds.width() - 74), TEAL);
         button("watch-add", new Bounds(bounds.x() + bounds.width() - 23, bounds.y() + 3, 18, 17), Component.literal("+"),
@@ -162,11 +162,11 @@ public final class WatchPanel {
             int rowHeight = rowLayout.height(offset + index, offset + index + 1) - topMargin;
             if (row.entry() == null) {
                 int dividerY = y - topMargin + DIVIDER_TOP_MARGIN;
-                graphics.fill(bounds.x() + 5, dividerY, bounds.x() + bounds.width() - 5, dividerY + 1, BORDER);
+                graphics.fill(bounds.x() + 5, dividerY, bounds.x() + bounds.width() - 5, dividerY + 1, DebuggerTheme.color(BORDER));
                 int headingY = y + (rowHeight - font.lineHeight) / 2 + 1;
                 int headingColor = row.muted() ? MUTED : TEAL;
                 int inset = row.icon() == null ? 0 : KIND_ICON_INSET;
-                if (row.icon() != null) row.icon().drawSmall(graphics, bounds.x() + 7, headingY, headingColor);
+                if (row.icon() != null) row.icon().drawSmall(graphics, bounds.x() + 7, headingY, DebuggerTheme.color(headingColor));
                 WatchUi.line(graphics, font, row.heading().getString(), bounds.x() + 7 + inset,
                     headingY, bounds.width() - 14 - inset, headingColor);
                 continue;
@@ -174,10 +174,10 @@ public final class WatchPanel {
             var entry = row.entry();
             int rowWidth = Math.max(1, bounds.width() - 69);
             if (entry.id() == selectedId && System.nanoTime() < highlightedUntil)
-                graphics.fill(bounds.x() + 3, y, bounds.x() + bounds.width() - 6, y + rowHeight - 1, DebuggerTheme.background(TEAL_SURFACE));
+                graphics.fill(bounds.x() + 3, y, bounds.x() + bounds.width() - 6, y + rowHeight - 1, DebuggerTheme.color(TEAL_SURFACE));
             if (entry.id() == firstUngroupedId) {
                 int dividerY = y - topMargin + DIVIDER_TOP_MARGIN;
-                graphics.fill(bounds.x() + 5, dividerY, bounds.x() + bounds.width() - 5, dividerY + 1, BORDER);
+                graphics.fill(bounds.x() + 5, dividerY, bounds.x() + bounds.width() - 5, dividerY + 1, DebuggerTheme.color(BORDER));
             }
             boolean changed = entry.displayedChange().isValueChange();
             int lineSpacing = font.lineHeight + 3;
@@ -186,7 +186,7 @@ public final class WatchPanel {
             int textY = y + (rowHeight - textHeight) / 2 + 1;
             int labelColor = row.muted() ? MUTED : TEXT;
             int kindInset = row.icon() == null ? 0 : KIND_ICON_INSET;
-            if (row.icon() != null) row.icon().drawSmall(graphics, bounds.x() + 7, textY, labelColor);
+            if (row.icon() != null) row.icon().drawSmall(graphics, bounds.x() + 7, textY, DebuggerTheme.color(labelColor));
             WatchRowRenderer.render(graphics, font, entry, state.isPaused(), rowLabel(entry, row.grouped()),
                 bounds.x() + 7 + kindInset, textY, rowWidth - 4 - kindInset,
                 labelColor, row.muted() ? MUTED : changed ? AMBER : TEXT);
@@ -230,9 +230,9 @@ public final class WatchPanel {
         if (maximum > 0 && scrollBounds.height() > 0 && displayed > 0) {
             int h = scrollBounds.height(), thumb = Math.min(h, Math.max(8, h * h / totalHeight));
             int x = bounds.x() + bounds.width() - 4;
-            graphics.fill(x, scrollBounds.y(), x + 2, scrollBounds.y() + h, BORDER);
+            graphics.fill(x, scrollBounds.y(), x + 2, scrollBounds.y() + h, DebuggerTheme.color(BORDER));
             int y = scrollBounds.y() + (h - thumb) * offset / maximum;
-            graphics.fill(x, y, x + 2, y + thumb, TEAL);
+            graphics.fill(x, y, x + 2, y + thumb, DebuggerTheme.color(TEAL));
             scrollbars.add("watch", false, x, scrollBounds.y(), h, 2, thumb, offset, maximum, value -> offset = value);
         }
         if (interactive && System.nanoTime() < noticeUntil && mouseX >= bounds.x()

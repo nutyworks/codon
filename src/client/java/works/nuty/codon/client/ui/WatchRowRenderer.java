@@ -19,13 +19,13 @@ public final class WatchRowRenderer {
         label = fit(font, label, Math.max(0, valueX - x - 8 - 3 * dotWidth));
         int leaderX = x + font.width(label) + 4;
         int dots = label.isEmpty() ? 0 : Math.max(0, (valueX - 4 - leaderX) / dotWidth);
-        graphics.text(font, label, x, y, labelColor, false);
+        graphics.text(font, label, x, y, DebuggerTheme.color(labelColor), false);
         int leaderY = y + (font.lineHeight - 2) / 2;
         for (int dot = 0; dot < dots; dot++) {
             int dotX = leaderX + dot * dotWidth;
-            graphics.fill(dotX, leaderY, dotX + 1, leaderY + 1, DebuggerTheme.MUTED);
+            graphics.fill(dotX, leaderY, dotX + 1, leaderY + 1, DebuggerTheme.color(DebuggerTheme.MUTED));
         }
-        graphics.text(font, value, valueX, y, valueColor, false);
+        graphics.text(font, value, valueX, y, DebuggerTheme.color(valueColor), false);
     }
 
     private static String fitValue(Font font, ClientWatchState.Entry entry, boolean paused, int width) {

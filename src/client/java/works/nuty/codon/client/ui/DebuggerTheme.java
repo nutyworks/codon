@@ -1,6 +1,6 @@
 package works.nuty.codon.client.ui;
 
-/** Adjustable background surfaces over a transparent world; hue conveys meaning, never source identity. */
+/** Adjustable panel colors over a transparent world; hue conveys meaning, never source identity. */
 public final class DebuggerTheme {
     public static final int PANEL = 0xF2182228;
     public static final int SURFACE = 0xFF172126;
@@ -27,8 +27,8 @@ public final class DebuggerTheme {
         opacity = preferences::backgroundOpacity;
     }
 
-    /** Scale only background alpha; text, icons and borders retain their contrast. */
-    public static int background(int color) {
+    /** Apply panel opacity to an ARGB color without changing its hue. */
+    public static int color(int color) {
         return (color & 0x00FFFFFF) | (Math.round((color >>> 24) * opacity.getAsInt() / 100f) << 24);
     }
 

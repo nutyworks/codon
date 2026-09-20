@@ -148,25 +148,25 @@ public final class DebuggerHelpScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-        graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.background(SURFACE));
-        graphics.outline(left, top, panelWidth, panelHeight, BORDER);
-        graphics.text(font, title, left + 8, top + 9, TEAL, false);
+        graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.color(SURFACE));
+        graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.color(BORDER));
+        graphics.text(font, title, left + 8, top + 9, DebuggerTheme.color(TEAL), false);
         graphics.enableScissor(left + 6, top + 54, left + panelWidth - 6, top + panelHeight - 22);
         for (int row = 0; row < visibleLines() && offset + row < lines.size(); row++) {
             Line line = lines.get(offset + row);
             int y = top + 54 + row * (font.lineHeight + 3);
-            if (line.icon() != null) line.icon().draw(graphics, left + 9, y - 1, line.color());
-            graphics.text(font, line.text(), left + 26, y, line.color(), false);
+            if (line.icon() != null) line.icon().draw(graphics, left + 9, y - 1, DebuggerTheme.color(line.color()));
+            graphics.text(font, line.text(), left + 26, y, DebuggerTheme.color(line.color()), false);
         }
         graphics.disableScissor();
         if (maxOffset() > 0) {
             int track = Math.max(1, panelHeight - 80);
             int thumb = Math.max(4, track * visibleLines() / lines.size());
             int y = top + 55 + (track - thumb) * offset / maxOffset();
-            graphics.fill(left + panelWidth - 5, y, left + panelWidth - 3, y + thumb, TEAL);
+            graphics.fill(left + panelWidth - 5, y, left + panelWidth - 3, y + thumb, DebuggerTheme.color(TEAL));
         }
         graphics.text(font, help("navigation", keybind(Component.literal("↑ / ↓ / PgUp / PgDn")),
-            keybind(Component.literal("Esc"))), left + 8, top + panelHeight - 14, MUTED, false);
+            keybind(Component.literal("Esc"))), left + 8, top + panelHeight - 14, DebuggerTheme.color(MUTED), false);
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
     }
 

@@ -127,7 +127,7 @@ public final class WatchScreen extends Screen {
     }
 
     private void field(String id, int y, Component label, String hint, String value, WatchEditorQuery.Mode mode) {
-        EditBox field = new EditBox(font, left + 8, y, Math.max(1, panelWidth - 76), 20, label);
+        EditBox field = new DebuggerEditBox(font, left + 8, y, Math.max(1, panelWidth - 76), 20, label);
         field.setMaxLength(id.equals("entity") ? 128 : WatchSpec.MAX_INPUT_LENGTH);
         field.setHint(Component.literal(hint));
         field.setTooltip(Tooltip.create(label));
@@ -274,10 +274,10 @@ public final class WatchScreen extends Screen {
     }
 
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-        graphics.fill(0, 0, width, height, DebuggerTheme.background(0x70000000));
-        graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.background(PANEL));
-        graphics.outline(left, top, panelWidth, panelHeight, BORDER);
-        graphics.fill(left, top, left + 2, top + 24, TEAL);
+        graphics.fill(0, 0, width, height, DebuggerTheme.color(0x70000000));
+        graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.color(PANEL));
+        graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.color(BORDER));
+        graphics.fill(left, top, left + 2, top + 24, DebuggerTheme.color(TEAL));
         WatchUi.line(graphics, font, title.getString(), left + 8, top + 9, panelWidth - 72, TEXT);
         var errors = errors();
         submit.active = errors.isEmpty();

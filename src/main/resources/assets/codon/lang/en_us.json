@@ -1,6 +1,6 @@
 {
-  "codon.ui.background_opacity.usage": "Use Left and Right to adjust background opacity.",
-  "codon.ui.background_opacity": "Background opacity: %s%%",
+  "codon.ui.background_opacity.usage": "Use Left and Right to adjust panel opacity.",
+  "codon.ui.background_opacity": "Panel opacity: %s%%",
   "codon.ui.move_to_source": "Move camera to context",
   "codon.ui.move_to_source.ready": "Move the freecam eye to the selected recorded execution anchor and use its facing. Only the camera moves; unloaded terrain may not be visible while paused.",
   "codon.ui.move_to_source.pending": "Wait for the pending debugger control to finish.",

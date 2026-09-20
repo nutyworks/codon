@@ -51,7 +51,7 @@ public final class DebuggerOpacityGameTest implements FabricClientGameTest {
                 screen.mouseReleased(mouse(slider.getX() + slider.getWidth() / 2.0, y));
                 require(saves.get() == 1, "Release commits the final value once");
                 require(state.preferences().backgroundOpacity() == 50, "Dragging updates opacity live");
-                require((DebuggerTheme.background(DebuggerTheme.SURFACE) >>> 24) == 128, "Surface alpha follows slider");
+                require((DebuggerTheme.color(DebuggerTheme.SURFACE) >>> 24) == 128, "Surface alpha follows slider");
                 client.setLastInputType(InputType.KEYBOARD_ARROW);
                 screen.setFocused(slider);
                 screen.keyPressed(new KeyEvent(InputConstants.KEY_RIGHT, InputConstants.KEYCODE_RIGHT, 0));
@@ -68,6 +68,18 @@ public final class DebuggerOpacityGameTest implements FabricClientGameTest {
             moveCursor(context, screen, true);
             context.waitTicks(3);
             context.takeScreenshot("codon-opacity-hover-50");
+            moveCursor(context, screen, false);
+            context.runOnClient(client -> {
+                require((DebuggerTheme.color(DebuggerTheme.TEXT) >>> 24) == 128, "Text follows the same opacity");
+                require((DebuggerTheme.color(DebuggerTheme.BORDER) >>> 24) == 128, "Borders follow the same opacity");
+                state.preferences().setBackgroundOpacity(0);
+            });
+            context.waitTicks(3);
+            context.takeScreenshot("codon-opacity-all-zero");
+            context.runOnClient(client -> state.preferences().setBackgroundOpacity(1));
+            context.waitTicks(3);
+            context.takeScreenshot("codon-opacity-all-one");
+            context.runOnClient(client -> state.preferences().setBackgroundOpacity(50));
             context.getInput().resizeWindow(640, 480);
             context.waitTicks(3);
             moveCursor(context, screen, false);
@@ -87,6 +99,23 @@ public final class DebuggerOpacityGameTest implements FabricClientGameTest {
                 client.setScreenAndShow(null);
                 require(saves.get() == beforeClose + 1, "Closing during drag commits once");
             });
+            context.getInput().resizeWindow(1280, 800);
+            context.runOnClient(client -> {
+                state.preferences().setBackgroundOpacity(50);
+                var input = DebuggerPresentationGameTest.input(client, state);
+                var editor = new works.nuty.codon.client.ui.WatchScreen(input, state, new DebuggerOverlay(state));
+                client.setScreenAndShow(editor);
+                var field = editor.children().stream().filter(net.minecraft.client.gui.components.EditBox.class::isInstance)
+                    .map(net.minecraft.client.gui.components.EditBox.class::cast).findFirst().orElseThrow();
+                field.setValue("demo:opacity");
+                field.setHighlightPos(0);
+            });
+            context.waitTicks(3);
+            context.takeScreenshot("codon-opacity-editor-50");
+            context.runOnClient(client -> state.preferences().setBackgroundOpacity(0));
+            context.waitTicks(3);
+            context.takeScreenshot("codon-opacity-editor-zero");
+            context.runOnClient(client -> client.setScreenAndShow(null));
         } finally {
             context.runOnClient(client -> DebuggerTheme.usePreferences(CodonClientMod.state().preferences()));
         }
