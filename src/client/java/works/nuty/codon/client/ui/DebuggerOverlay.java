@@ -210,8 +210,8 @@ public final class DebuggerOverlay {
         }
         x += DebuggerLayout.ICON_GROUP_GAP - gap;
         graphics.fill(x - 4, toolbar.y() + 5, x - 3, toolbar.y() + toolbar.height() - 5, BORDER);
-        Component mode = Component.literal("Gizmo: ")
-            .append(component("codon.ui.mode." + state.gizmoMode().name().toLowerCase(Locale.ROOT)));
+        Component mode = Component.translatable("codon.ui.gizmo_mode",
+            component("codon.ui.mode." + state.gizmoMode().name().toLowerCase(Locale.ROOT)));
         DebuggerIcon modeIcon = switch (state.gizmoMode()) {
             case GROUPED -> DebuggerIcon.GIZMO_GROUPED;
             case LABELS -> DebuggerIcon.GIZMO_LABELS;

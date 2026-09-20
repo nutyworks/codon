@@ -22,7 +22,7 @@ public final class DebuggerHelpScreen extends Screen {
     private final InputManager input;
     private record Line(FormattedCharSequence text, int color, @Nullable DebuggerIcon icon) { }
     private final List<Line> lines = new ArrayList<>();
-    private static final String[] TOPICS = {"basics", "controls", "sources", "watches"};
+    private static final String[] TOPICS = {"basics", "controls", "sources", "flow", "watches"};
     private final ScrollbarInput scrollbars = new ScrollbarInput();
     private int topic;
     private int offset;
@@ -68,13 +68,15 @@ public final class DebuggerHelpScreen extends Screen {
             case 0 -> {
                 entry("start", null, TEAL, keybind(input.breakpointKey.getTranslatedKeyMessage()), keybind(input.menuKey.getTranslatedKeyMessage()));
                 entry("breakpoints", null, TEAL);
+                entry("session", null, TEAL);
                 entry("stop", null, AMBER);
-                if (input.hideUiKey != null) entry("hide_ui", null, TEAL, keybind(input.hideUiKey.getTranslatedKeyMessage()));
                 entry("camera", null, TEAL, keybind(input.menuKey.getTranslatedKeyMessage()),
                     keybind(client.options.keyUp.getTranslatedKeyMessage()), keybind(client.options.keyLeft.getTranslatedKeyMessage()),
                     keybind(client.options.keyDown.getTranslatedKeyMessage()), keybind(client.options.keyRight.getTranslatedKeyMessage()),
                     keybind(client.options.keyJump.getTranslatedKeyMessage()), keybind(client.options.keyShift.getTranslatedKeyMessage()),
                     keybind(client.options.keySprint.getTranslatedKeyMessage()));
+                entry("keep_freecam", DebuggerIcon.FREECAM, TEAL, keybind(input.keepFreecamKey.getTranslatedKeyMessage()));
+                if (input.hideUiKey != null) entry("hide_ui", null, TEAL, keybind(input.hideUiKey.getTranslatedKeyMessage()));
             }
             case 1 -> {
                 for (InputManager.Control control : InputManager.Control.values()) {
@@ -89,26 +91,42 @@ public final class DebuggerHelpScreen extends Screen {
                     blank();
                 }
                 entry("availability", null, TEAL);
+                entry("keyboard", null, TEAL, keybind(Component.literal("Tab / Shift+Tab")),
+                    keybind(Component.literal("↑ / ↓ / ← / →")), keybind(Component.literal("Enter / Space")));
+                entry("scrolling", null, TEAL);
                 entry("gizmo", DebuggerIcon.GIZMO_GROUPED, TEAL);
                 entry("labels", DebuggerIcon.GIZMO_LABELS, TEAL);
                 entry("details", DebuggerIcon.DETAILS_OPEN, TEAL);
+                entry("opacity", null, TEAL, keybind(Component.literal("← / →")));
             }
             case 2 -> {
                 entry("source", null, TEAL);
-                entry("flow", null, TEAL);
+                entry("coordinates", null, TEAL);
+                entry("move_camera", DebuggerIcon.FREECAM, TEAL);
                 entry("created", DebuggerIcon.SOURCE_CREATED, GREEN);
                 entry("excluded", DebuggerIcon.SOURCE_EXCLUDED, RED);
                 entry("offscreen", DebuggerIcon.OUTSIDE_VIEWPORT, AMBER);
                 entry("uuid", DebuggerIcon.COPY_UUID, TEAL);
-                entry("stack", null, TEAL);
             }
             case 3 -> {
+                entry("flow", null, TEAL);
+                entry("counts", null, TEAL);
+                entry("recording", null, AMBER);
+                entry("history", null, TEAL);
+                entry("stack", null, TEAL);
+            }
+            case 4 -> {
                 entry("watch", null, TEAL);
                 entry("types", null, TEAL);
+                entry("score_holders", null, TEAL);
                 entry("pin", DebuggerIcon.PIN, TEAL);
+                entry("grouping", null, TEAL);
                 entry("values", null, TEAL);
+                entry("changes", null, AMBER);
+                entry("watch_live", null, TEAL);
                 entry("nbt", DebuggerIcon.EXPAND, TEAL);
                 entry("nbt_pin", DebuggerIcon.PIN, TEAL);
+                entry("saving", null, TEAL);
             }
             default -> throw new IllegalStateException("Unknown help topic");
         }

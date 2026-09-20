@@ -31,7 +31,7 @@ public abstract class CommandsMixin {
             try {
                 this.getDispatcher().execute(parseResults);
             } catch (Exception e) {
-                source.sendFailure(Component.literal("Error: " + e.getMessage()));
+                source.sendFailure(Component.translatable("command.codon.error.execution", String.valueOf(e.getMessage())));
             }
             ci.cancel();
         }
