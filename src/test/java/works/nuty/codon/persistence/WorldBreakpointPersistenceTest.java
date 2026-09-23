@@ -3,9 +3,13 @@ package works.nuty.codon.persistence;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import works.nuty.codon.core.model.BlockLocation;
+import works.nuty.codon.core.model.BreakpointCondition;
+import works.nuty.codon.core.model.BreakpointDefinition;
+import works.nuty.codon.core.model.BreakpointTarget;
 import works.nuty.codon.core.model.FunctionId;
 import works.nuty.codon.core.model.FunctionLocation;
 import works.nuty.codon.core.model.PauseSnapshot;
+import works.nuty.codon.core.model.SourceLocation;
 import works.nuty.codon.core.port.DebuggerEventSink;
 import works.nuty.codon.core.port.ExecutionController;
 import works.nuty.codon.core.service.BreakpointRegistry;
@@ -67,7 +71,7 @@ class WorldBreakpointPersistenceTest {
     }
 
     @Test
-    void removedAndClearedBreakpointsDoNotReappear() {
+    void disabledBreakpointSurvivesReopenUntilExplicitClear() {
         Harness harness = new Harness();
         harness.persistence.openWorld(directory);
         harness.engine.toggleBlockBreakpoint(OVERWORLD);
@@ -76,6 +80,7 @@ class WorldBreakpointPersistenceTest {
         harness.persistence.openWorld(directory);
         assertEquals(Set.of(OVERWORLD), harness.engine.blockBreakpoints());
         assertTrue(harness.engine.functionBreakpoints().isEmpty());
+        assertEquals(2, harness.engine.breakpointCount(), "disabled definition remains available to re-enable");
         harness.engine.clearBreakpoints();
         harness.persistence.closeWorld();
         harness.persistence.openWorld(directory);
@@ -94,6 +99,28 @@ class WorldBreakpointPersistenceTest {
         Harness harness = new Harness();
         harness.persistence.openWorld(directory);
         assertEquals(2, harness.engine.breakpointCount());
+        assertTrue(harness.errors.isEmpty());
+    }
+
+    @Test
+    void versionTwoRestoresDisabledStageConditionsWithoutRetargetingTheirSavedCommand() throws Exception {
+        String command = "execute as @s run say ready";
+        BreakpointTarget target = BreakpointTarget.stage(new SourceLocation.Function(FUNCTION), 1, command);
+        BreakpointCondition condition = BreakpointCondition.count(BreakpointCondition.Kind.CHANGED_COUNT,
+            BreakpointCondition.Comparison.GE, 2);
+        write("""
+            {"version":2,"breakpoints":[{
+              "type":"function","function":"test:nested/tick","line":27,
+              "stage":1,"fingerprint":"%s","enabled":false,
+              "condition":"CHANGED_COUNT","comparison":"GE","threshold":2
+            }]}
+            """.formatted(target.commandFingerprint()));
+
+        Harness harness = new Harness();
+        harness.persistence.openWorld(directory);
+
+        assertEquals(List.of(new BreakpointDefinition(target, false, condition)), harness.engine.breakpointDefinitions());
+        assertFalse(harness.engine.hasBreakpoints(), "a saved disabled definition must not activate debugging");
         assertTrue(harness.errors.isEmpty());
     }
 
@@ -122,6 +149,22 @@ class WorldBreakpointPersistenceTest {
             harness.persistence.closeWorld();
             assertEquals(invalid, Files.readString(file()), "failed load must not overwrite the original");
         }
+    }
+
+    @Test
+    void oversizedSavedDefinitionsAreRejectedAndTheSourceFileIsPreserved() throws Exception {
+        String entry = "{\"dimension\":\"minecraft:overworld\",\"x\":0,\"y\":64,\"z\":0}";
+        String oversized = "{\"version\":1,\"blocks\":["
+            + String.join(",", java.util.Collections.nCopies(BreakpointRegistry.MAX_DEFINITIONS + 1, entry))
+            + "],\"functions\":[]}";
+        write(oversized);
+
+        Harness harness = new Harness();
+        harness.persistence.openWorld(directory);
+        assertTrue(harness.engine.breakpointDefinitions().isEmpty());
+        assertEquals(1, harness.errors.size());
+        harness.persistence.closeWorld();
+        assertEquals(oversized, Files.readString(file()));
     }
 
     @Test

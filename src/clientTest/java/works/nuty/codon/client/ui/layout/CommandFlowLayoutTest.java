@@ -39,7 +39,9 @@ class CommandFlowLayoutTest {
         assertTrue(content.inline());
         assertEquals(text, content.command());
         assertEquals(text, joinParts(content.parts()));
-        assertEquals(List.of(0, 1, -1), content.parts().stream().map(CommandFlowLayout.Part::stageIndex).toList());
+        assertEquals(List.of(-2, 0, 1, -1), content.parts().stream().map(CommandFlowLayout.Part::stageIndex).toList());
+        assertEquals("execute ", content.parts().getFirst().text());
+        assertEquals("as @e", content.parts().get(1).text());
         assertEquals(" say hello", content.parts().getLast().text());
     }
 

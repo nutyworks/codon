@@ -18,6 +18,7 @@ public final class CommandFlowLayout {
     private CommandFlowLayout() {
     }
 
+    /** Stage index -2 is the non-interactive {@code execute } prefix. */
     public record Part(String text, int stageIndex) {
     }
 
@@ -59,8 +60,15 @@ public final class CommandFlowLayout {
         }
 
         if (valid) {
-            List<Part> parts = new ArrayList<>(stages.size() + 1);
+            List<Part> parts = new ArrayList<>(stages.size() + 2);
             cursor = 0;
+            int prefixEnd = executePrefixEnd(text);
+            if (prefixEnd > 0 && !stages.isEmpty()
+                && stages.getFirst().command().highlightStart() <= prefixEnd
+                && stages.getFirst().command().highlightEnd() > prefixEnd) {
+                parts.add(new Part(text.substring(0, prefixEnd), -2));
+                cursor = prefixEnd;
+            }
             for (int index = 0; index < stages.size(); index++) {
                 int end = stages.get(index).command().highlightEnd();
                 parts.add(new Part(text.substring(cursor, end), index));
@@ -80,6 +88,15 @@ public final class CommandFlowLayout {
             parts.add(new Part(stageText, index));
         }
         return new Content(text, parts, false);
+    }
+
+    /** Keep the command verb outside the first modifier's breakpoint target in the UI. */
+    public static int executePrefixEnd(String command) {
+        if (command == null || !command.startsWith("execute") || command.length() <= 7
+            || !Character.isWhitespace(command.charAt(7))) return 0;
+        int end = 8;
+        while (end < command.length() && Character.isWhitespace(command.charAt(end))) end++;
+        return end < command.length() ? end : 0;
     }
 
     /**
@@ -106,12 +123,13 @@ public final class CommandFlowLayout {
             int requestedMinimum = Math.max(0, minimumWidth.applyAsInt(partIndex));
             int clampedMinimum = Math.min(available, requestedMinimum);
             int inset = Math.clamp(leadingInset.applyAsInt(partIndex), 0, available);
-            List<String> fragments = wrap(part.text(), Math.max(1, available - CELL_HORIZONTAL_PADDING - inset), measure);
+            int padding = part.stageIndex() == -2 ? 0 : CELL_HORIZONTAL_PADDING;
+            List<String> fragments = wrap(part.text(), Math.max(1, available - padding - inset), measure);
             boolean first = true;
             for (String fragment : fragments) {
                 int measured = Math.max(0, measure.applyAsInt(fragment));
                 int cellWidth = Math.min(available,
-                    Math.max(clampedMinimum, saturatedAdd(measured, CELL_HORIZONTAL_PADDING + inset)));
+                    Math.max(clampedMinimum, saturatedAdd(measured, padding + inset)));
                 if (x > 0 && x + GAP + cellWidth > available) {
                     row++;
                     x = 0;

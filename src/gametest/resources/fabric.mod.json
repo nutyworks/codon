@@ -8,6 +8,8 @@
   ],
   "entrypoints": {
     "fabric-client-gametest": [
+      "works.nuty.codon.client.DebuggerBreakpointUiGameTest",
+      "works.nuty.codon.client.FunctionSourceScreenGameTest",
       "works.nuty.codon.client.DebuggerOpacityGameTest",
       "works.nuty.codon.client.PauseWatchChangesGameTest",
       "works.nuty.codon.client.DebuggerAutomaticWatchGameTest",
@@ -34,6 +36,7 @@
       "works.nuty.codon.client.DebuggerWatchPinGameTest",
       "works.nuty.codon.client.DebuggerExecutionFlowGameTest",
       "works.nuty.codon.client.DebuggerConditionalFunctionFlowGameTest",
+      "works.nuty.codon.client.DebuggerBreakpointResultGameTest",
       "works.nuty.codon.client.DebuggerContinuationRecordingGameTest",
       "works.nuty.codon.client.DebuggerWatchGroupingGameTest",
       "works.nuty.codon.client.DebuggerPeekUiGameTest"

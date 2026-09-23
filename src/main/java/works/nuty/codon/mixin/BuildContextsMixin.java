@@ -62,7 +62,8 @@ public class BuildContextsMixin<T extends ExecutionCommandSource<T>> implements 
             if (trace == null) {
                 SourceLocation location = SourceMapper.toSourceLocation((BuildContexts<?>) (Object) this);
                 ExecutionFlowHistory history = CodonMod.executionFlows();
-                if (location != null && history != null) trace = new CommandTrace(location, history);
+                if (location != null && history != null)
+                    trace = new CommandTrace(location, history, engine::onCommandStageCompleted);
             }
         } else {
             trace = null;

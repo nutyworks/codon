@@ -27,6 +27,11 @@ public class DebuggerButton extends AbstractButton {
     private boolean iconWithText;
     private boolean openLeft;
     private boolean openRight;
+    private boolean revealOnHover;
+    private int revealX;
+    private int revealY;
+    private int revealWidth;
+    private int revealHeight;
     private int contentOffset;
     private int contentWidth;
     private @Nullable DebuggerIcon icon;
@@ -62,6 +67,7 @@ public class DebuggerButton extends AbstractButton {
         this.iconWithText = false;
         this.openLeft = false;
         this.openRight = false;
+        this.revealOnHover = false;
         this.contentOffset = 0;
         this.contentWidth = width;
         this.action = action;
@@ -103,6 +109,16 @@ public class DebuggerButton extends AbstractButton {
 
     public DebuggerButton withoutChrome() {
         this.borderless = true;
+        return this;
+    }
+
+    /** Keep the click target, but show an unused breakpoint marker only over its command clause. */
+    public DebuggerButton revealOnHover(int x, int y, int width, int height) {
+        this.revealOnHover = true;
+        this.revealX = x;
+        this.revealY = y;
+        this.revealWidth = width;
+        this.revealHeight = height;
         return this;
     }
 
@@ -181,6 +197,8 @@ public class DebuggerButton extends AbstractButton {
     protected void extractContents(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         var client = Minecraft.getInstance();
         boolean keyboardFocus = isFocused() && client.getLastInputType().isKeyboard();
+        if (revealOnHover && !keyboardFocus && (mouseX < revealX || mouseX >= revealX + revealWidth
+            || mouseY < revealY || mouseY >= revealY + revealHeight)) return;
         if (hitSurface) {
             if (keyboardFocus || isHovered()) graphics.outline(getX(), getY(), getWidth(), getHeight(), paintColor(DebuggerTheme.TEAL));
             return;

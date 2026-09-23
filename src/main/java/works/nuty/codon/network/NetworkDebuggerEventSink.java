@@ -8,6 +8,7 @@ import net.minecraft.server.permissions.Permissions;
 import works.nuty.codon.CodonMod;
 import works.nuty.codon.adapter.PauseWatchChanges;
 import works.nuty.codon.core.model.BlockLocation;
+import works.nuty.codon.core.model.BreakpointDefinition;
 import works.nuty.codon.core.model.ExecutionFlowTrace;
 import works.nuty.codon.core.model.PauseSnapshot;
 import works.nuty.codon.core.model.WatchChange;
@@ -15,6 +16,8 @@ import works.nuty.codon.core.port.DebuggerEventSink;
 
 import java.util.List;
 import java.util.Set;
+import java.util.Comparator;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
 /**
@@ -25,6 +28,7 @@ import java.util.function.Supplier;
 public final class NetworkDebuggerEventSink implements DebuggerEventSink {
     private final Supplier<MinecraftServer> server;
     private final PauseWatchChanges watchChanges = new PauseWatchChanges();
+    private static final AtomicLong nextBreakpointTransferId = new AtomicLong();
     private long changesPauseId;
     private List<WatchChange> changes = List.of();
 
@@ -113,6 +117,27 @@ public final class NetworkDebuggerEventSink implements DebuggerEventSink {
     @Override
     public void breakpointsChanged(Set<BlockLocation> blockBreakpoints) {
         broadcast(new BreakpointSyncPayload(List.copyOf(blockBreakpoints)));
+        MinecraftServer current = server.get();
+        var engine = CodonMod.engine();
+        if (current == null || engine == null) return;
+        List<BreakpointDefinition> definitions = engine.breakpointDefinitions();
+        for (ServerPlayer player : current.getPlayerList().getPlayers()) sendBreakpointDefinitions(player, definitions);
+    }
+
+    public void sendBreakpointDefinitions(ServerPlayer player, List<BreakpointDefinition> definitions) {
+        if (!player.connection.isAcceptingMessages()
+            || !player.createCommandSourceStack().permissions().hasPermission(Permissions.COMMANDS_OWNER)
+            || !ServerPlayNetworking.canSend(player, BreakpointDefinitionsSyncPayload.TYPE.id())) return;
+        long transferId = nextBreakpointTransferId.incrementAndGet();
+        List<BreakpointDefinition> sorted = definitions.stream()
+            .sorted(Comparator.comparing(definition -> definition.target().toString())).toList();
+        int offset = 0;
+        do {
+            int end = Math.min(sorted.size(), offset + BreakpointDefinitionsSyncPayload.PAGE_SIZE);
+            ServerPlayNetworking.send(player, new BreakpointDefinitionsSyncPayload(transferId, offset,
+                end == sorted.size(), sorted.subList(offset, end)));
+            offset = end;
+        } while (offset < sorted.size());
     }
 
     private void broadcast(CustomPacketPayload payload) {

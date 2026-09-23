@@ -77,6 +77,8 @@ class ExecutionFlowRecorderTest {
         assertEquals(List.of(secondId), at.droppedContextIds());
         assertTrue(at.isDroppedContext(secondId));
         assertTrue(at.isCreatedContext(movedId), "the same executor at a different anchor is a new context");
+        assertFalse(at.isBranchedContext(movedId), "one-to-one movement is not a created branch");
+        assertTrue(at.isChangedContext(movedId), "one-to-one movement changes the recorded source");
         assertEquals(2, at.displayContexts().size(), "output plus the explicitly dropped input are inspectable");
         assertEquals("minecraft:the_nether", at.displayContexts().get(1).source().dimension());
 

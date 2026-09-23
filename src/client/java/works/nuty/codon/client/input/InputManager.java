@@ -96,9 +96,18 @@ public final class InputManager implements ClientTickEvents.EndTick {
     /** Shared by screen, HUD, and world markers; never changes the debugger's pause state. */
     public boolean isUiHidden() {
         if (hideUiKey == null) return false;
-        if (!Minecraft.getInstance().isWindowActive()) {
+        Minecraft client = Minecraft.getInstance();
+        if (!client.isWindowActive()) {
             hideUiKey.setDown(false);
             return false;
+        }
+        // Closing a screen while H is held can leave the mapping down after the physical
+        // release. In world mode the actual keyboard state is authoritative.
+        if (client.gui.screen() == null) {
+            var bound = KeyMappingHelper.getBoundKeyOf(hideUiKey);
+            if (hideUiKey.isUnbound()) hideUiKey.setDown(false);
+            else if (bound.getType() == InputConstants.Type.KEYBOARD)
+                hideUiKey.setDown(InputConstants.isKeyDown(bound.getValue()));
         }
         return hideUiKey.isDown();
     }

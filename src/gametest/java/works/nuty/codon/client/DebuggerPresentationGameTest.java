@@ -80,9 +80,9 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
             checkHorizontalCallPath(context, screen, state);
             checkSourceColors(context, screen, state);
             context.runOnClient(client -> {
-                DebuggerButton mode = button(screen, value -> value.startsWith("Gizmo: "));
-                click(screen, mode);
-                require(screen.getFocused() == mode, "Mouse click retains widget focus for keyboard navigation");
+                DebuggerButton view = button(screen, value -> value.equals("View"));
+                click(screen, view);
+                require(screen.getFocused() == view, "Mouse click retains widget focus for keyboard navigation");
             });
             context.waitTicks(2);
             context.takeScreenshot("codon-gizmo-mouse-focus");
@@ -185,18 +185,24 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
 
     private static void checkIconToolbar(ClientGameTestContext context, CodonScreen screen, ClientDebuggerState state) {
         context.runOnClient(client -> {
+            int toolbarY = works.nuty.codon.client.ui.layout.DebuggerLayout
+                .create(screen.width, screen.height, true).controls().y() + 2;
             List<DebuggerButton> icons = screen.children().stream().filter(DebuggerButton.class::isInstance)
-                .map(DebuggerButton.class::cast).filter(button -> button.icon() != null && button.getY() < 50).toList();
-            require(icons.size() == 8, "Main toolbar includes execution, gizmo, details, information, and freecam icons");
-            require(icons.stream().allMatch(button -> button.getWidth() == 20 && button.getHeight() == 20),
-                "Toolbar icons keep compact square hit targets");
+                .map(DebuggerButton.class::cast)
+                .filter(button -> button.icon() != null && button.getY() == toolbarY).toList();
+            require(icons.size() == 8,
+                "Main toolbar includes execution, freecam, Information, Source, and breakpoints icons");
+            require(icons.stream().filter(button -> button.getWidth() == 20 && button.getHeight() == 20).count() == 7,
+                "Execution and utility icons keep compact square hit targets");
+            require(icons.stream().anyMatch(button -> button.getMessage().getString().startsWith("BP ")
+                && button.getWidth() >= 60), "Breakpoint count is visible in the toolbar");
             require(icons.stream().map(DebuggerButton::getY).distinct().count() == 1, "All icons share one row");
         });
         context.runOnClient(client -> {
             DebuggerButton info = button(screen, value -> value.equals("Information"));
             DebuggerButton keep = button(screen, value -> value.startsWith("Keep freecam"));
-            require(keep.getX() == info.getX() + info.getWidth() + 3,
-                "Freecam toggle sits immediately beside Information");
+            require(info.getX() == keep.getX() + keep.getWidth() + 3,
+                "Information sits immediately beside Freecam");
             click(screen, keep);
             require(state.preferences().keepFreecam(), "Toolbar click enables retention");
         });
@@ -234,15 +240,18 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
         context.waitTicks(3);
         context.takeScreenshot("codon-icon-keyboard-focus-no-shortcut");
         context.runOnClient(client -> {
-            DebuggerButton details = button(screen, value -> value.equals("Details"));
-            require(details.icon() == DebuggerIcon.DETAILS_OPEN, "Details icon reflects open panel");
-            click(screen, details);
+            click(screen, button(screen, value -> value.equals("View")));
         });
         context.waitTicks(2);
-        context.runOnClient(client -> require(button(screen, value -> value.equals("Details")).icon() == DebuggerIcon.DETAILS_CLOSED,
-            "Details icon reflects closed panel"));
+        context.runOnClient(client -> click(screen, button(screen, value -> value.contains("Details"))));
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            require(Boolean.FALSE.equals(state.preferences().inspectorVisible()), "View menu closes Details");
+            click(screen, button(screen, value -> value.equals("View")));
+        });
         context.takeScreenshot("codon-icon-details-closed");
-        context.runOnClient(client -> click(screen, button(screen, value -> value.equals("Details"))));
+        context.waitTicks(2);
+        context.runOnClient(client -> click(screen, button(screen, value -> value.contains("Details"))));
         context.waitTicks(2);
     }
 

@@ -5,10 +5,14 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import org.jspecify.annotations.Nullable;
 import works.nuty.codon.core.model.BlockLocation;
+import works.nuty.codon.core.model.BreakpointCondition;
+import works.nuty.codon.core.model.BreakpointDefinition;
+import works.nuty.codon.core.model.BreakpointTarget;
 import works.nuty.codon.core.model.FunctionId;
 import works.nuty.codon.core.model.FunctionLocation;
 import works.nuty.codon.core.model.ExecutionFlowTrace;
 import works.nuty.codon.core.model.PauseSnapshot;
+import works.nuty.codon.core.model.SourceLocation;
 import works.nuty.codon.core.port.DebuggerEventSink;
 import works.nuty.codon.core.service.BreakpointRegistry;
 
@@ -16,7 +20,9 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 
@@ -95,15 +101,34 @@ public final class WorldBreakpointPersistence implements DebuggerEventSink {
     }
 
     private void restore(JsonObject document) {
-        if (integer(document, "version") != 1) throw new IllegalArgumentException("Unsupported breakpoint version");
+        int version = integer(document, "version");
+        if (version == 2 || version == 3) {
+            JsonArray entries = array(document, "breakpoints");
+            if (entries.size() > BreakpointRegistry.MAX_DEFINITIONS)
+                throw new IllegalArgumentException("Too many breakpoint definitions");
+            Map<BreakpointTarget, BreakpointDefinition> loaded = new HashMap<>();
+            for (JsonElement element : entries) {
+                BreakpointDefinition definition = readDefinition(element.getAsJsonObject(), version);
+                BreakpointDefinition previous = loaded.putIfAbsent(definition.target(), definition);
+                if (previous != null && !previous.equals(definition))
+                    throw new IllegalArgumentException("Conflicting duplicate breakpoint");
+            }
+            loaded.values().forEach(registry::put);
+            return;
+        }
+        if (version != 1) throw new IllegalArgumentException("Unsupported breakpoint version");
+        JsonArray blockEntries = array(document, "blocks");
+        JsonArray functionEntries = array(document, "functions");
+        if ((long) blockEntries.size() + functionEntries.size() > BreakpointRegistry.MAX_DEFINITIONS)
+            throw new IllegalArgumentException("Too many breakpoint definitions");
         Set<BlockLocation> blocks = new HashSet<>();
         Set<FunctionLocation> functions = new HashSet<>();
-        for (JsonElement entry : array(document, "blocks")) {
+        for (JsonElement entry : blockEntries) {
             JsonObject block = entry.getAsJsonObject();
             String dimension = identifier(string(block, "dimension"));
             blocks.add(new BlockLocation(integer(block, "x"), integer(block, "y"), integer(block, "z"), dimension));
         }
-        for (JsonElement entry : array(document, "functions")) {
+        for (JsonElement entry : functionEntries) {
             JsonObject function = entry.getAsJsonObject();
             String id = identifier(string(function, "function"));
             int separator = id.indexOf(':');
@@ -118,29 +143,62 @@ public final class WorldBreakpointPersistence implements DebuggerEventSink {
 
     private JsonObject snapshot() {
         JsonObject document = new JsonObject();
-        document.addProperty("version", 1);
-        JsonArray blocks = new JsonArray();
-        registry.blocks().stream().sorted(Comparator.comparing(BlockLocation::dimension)
-            .thenComparingInt(BlockLocation::x).thenComparingInt(BlockLocation::y).thenComparingInt(BlockLocation::z))
-            .forEach(location -> {
-                JsonObject block = new JsonObject();
-                block.addProperty("dimension", location.dimension());
-                block.addProperty("x", location.x());
-                block.addProperty("y", location.y());
-                block.addProperty("z", location.z());
-                blocks.add(block);
-            });
-        document.add("blocks", blocks);
-        JsonArray functions = new JsonArray();
-        registry.functions().stream().sorted(Comparator.comparing((FunctionLocation f) -> f.function().toString())
-            .thenComparingInt(FunctionLocation::line)).forEach(location -> {
-                JsonObject function = new JsonObject();
-                function.addProperty("function", location.function().toString());
-                function.addProperty("line", location.line());
-                functions.add(function);
-            });
-        document.add("functions", functions);
+        document.addProperty("version", 3);
+        JsonArray definitions = new JsonArray();
+        registry.definitions().stream().sorted(Comparator.comparing(definition -> definition.target().toString()))
+            .forEach(definition -> definitions.add(writeDefinition(definition)));
+        document.add("breakpoints", definitions);
         return document;
+    }
+
+    private static JsonObject writeDefinition(BreakpointDefinition definition) {
+        JsonObject result = new JsonObject();
+        BreakpointTarget target = definition.target();
+        switch (target.location()) {
+            case SourceLocation.Block block -> {
+                result.addProperty("type", "block");
+                result.addProperty("dimension", block.block().dimension());
+                result.addProperty("x", block.block().x());
+                result.addProperty("y", block.block().y());
+                result.addProperty("z", block.block().z());
+            }
+            case SourceLocation.Function function -> {
+                result.addProperty("type", "function");
+                result.addProperty("function", function.location().function().toString());
+                result.addProperty("line", function.location().line());
+            }
+            case SourceLocation.Player ignored -> throw new IllegalArgumentException("Player breakpoint cannot persist");
+        }
+        result.addProperty("stage", target.stageIndex());
+        result.addProperty("fingerprint", target.commandFingerprint());
+        result.addProperty("enabled", definition.enabled());
+        result.addProperty("staleSource", definition.staleSource());
+        result.addProperty("condition", definition.condition().kind().name());
+        result.addProperty("comparison", definition.condition().comparison().name());
+        result.addProperty("threshold", definition.condition().threshold());
+        return result;
+    }
+
+    private static BreakpointDefinition readDefinition(JsonObject saved, int version) {
+        SourceLocation location = switch (string(saved, "type")) {
+            case "block" -> new SourceLocation.Block(new BlockLocation(integer(saved, "x"), integer(saved, "y"),
+                integer(saved, "z"), identifier(string(saved, "dimension"))));
+            case "function" -> {
+                String id = identifier(string(saved, "function"));
+                int line = integer(saved, "line");
+                if (line < 1) throw new IllegalArgumentException("Function breakpoint lines start at 1");
+                int separator = id.indexOf(':');
+                yield new SourceLocation.Function(new FunctionLocation(
+                    new FunctionId(id.substring(0, separator), id.substring(separator + 1)), line));
+            }
+            default -> throw new IllegalArgumentException("Unknown breakpoint type");
+        };
+        BreakpointTarget target = new BreakpointTarget(location, integer(saved, "stage"), string(saved, "fingerprint"));
+        BreakpointCondition condition = new BreakpointCondition(
+            BreakpointCondition.Kind.valueOf(string(saved, "condition")),
+            BreakpointCondition.Comparison.valueOf(string(saved, "comparison")), integer(saved, "threshold"));
+        return new BreakpointDefinition(target, bool(saved, "enabled"), condition,
+            version >= 3 && bool(saved, "staleSource"));
     }
 
     private static JsonArray array(JsonObject object, String key) {
@@ -167,6 +225,14 @@ public final class WorldBreakpointPersistence implements DebuggerEventSink {
         } catch (ArithmeticException invalid) {
             throw new IllegalArgumentException("Expected integer: " + key, invalid);
         }
+    }
+
+    private static boolean bool(JsonObject object, String key) {
+        JsonElement value = object.get(key);
+        if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isBoolean()) {
+            throw new IllegalArgumentException("Expected boolean: " + key);
+        }
+        return value.getAsBoolean();
     }
 
     private static String identifier(String value) {

@@ -50,10 +50,16 @@ public final class CodonCommand {
     private static int toggleFunctionBreakpoint(CommandContext<CommandSourceStack> context, DebuggerEngine engine) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         Identifier funcId = FunctionArgument.getFunctionOrTag(context, "function").getFirst();
         int line = IntegerArgumentType.getInteger(context, "line");
-        boolean added = engine.toggleFunctionBreakpoint(new FunctionLocation(SourceMapper.toFunctionId(funcId), line));
-        String key = added
+        boolean enabled;
+        try {
+            enabled = engine.toggleFunctionBreakpoint(new FunctionLocation(SourceMapper.toFunctionId(funcId), line));
+        } catch (works.nuty.codon.core.service.BreakpointRegistry.LimitExceeded limit) {
+            context.getSource().sendFailure(Component.literal("Breakpoint limit reached"));
+            return 0;
+        }
+        String key = enabled
             ? "command.codon.breakpoint.function.success.set"
-            : "command.codon.breakpoint.function.success.removed";
+            : "command.codon.breakpoint.function.success.disabled";
         context.getSource().sendSuccess(() -> Component.translatable(key, Component.translationArg(funcId), line), false);
         return 1;
     }
@@ -61,10 +67,16 @@ public final class CodonCommand {
     private static int toggleBlockBreakpoint(CommandContext<CommandSourceStack> context, DebuggerEngine engine) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         BlockPos pos = BlockPosArgument.getBlockPos(context, "pos");
         String dimension = context.getSource().getLevel().dimension().identifier().toString();
-        boolean added = engine.toggleBlockBreakpoint(SourceMapper.toBlockLocation(pos, dimension));
-        String key = added
+        boolean enabled;
+        try {
+            enabled = engine.toggleBlockBreakpoint(SourceMapper.toBlockLocation(pos, dimension));
+        } catch (works.nuty.codon.core.service.BreakpointRegistry.LimitExceeded limit) {
+            context.getSource().sendFailure(Component.literal("Breakpoint limit reached"));
+            return 0;
+        }
+        String key = enabled
             ? "command.codon.breakpoint.block.success.set"
-            : "command.codon.breakpoint.block.success.removed";
+            : "command.codon.breakpoint.block.success.disabled";
         context.getSource().sendSuccess(() -> Component.translatable(key, pos.getX(), pos.getY(), pos.getZ()), false);
         return 1;
     }

@@ -15,6 +15,24 @@ public enum DebuggerIcon {
         "...####"
     }),
     INFORMATION,
+    SOURCE_FILE(new String[]{
+        ".#####.",
+        ".#...#.",
+        ".#..##.",
+        ".#.#.#.",
+        ".##..#.",
+        ".#...#.",
+        ".#####."
+    }),
+    BREAKPOINT_LIST(new String[]{
+        ".......",
+        "##.####",
+        ".......",
+        "##.####",
+        ".......",
+        "##.####",
+        "......."
+    }),
     FREECAM,
     WARNING,
     LINE_WRAP,
@@ -174,7 +192,8 @@ public enum DebuggerIcon {
                 }
                 graphics.fill(x + 5, y + 4, x + 7, y + 8, color);
             }
-            case COMMAND, WATCH_NBT, WATCH_STORAGE, WATCH_SCORE -> drawSmall(graphics, x + 2, y + 2, color);
+            case COMMAND, SOURCE_FILE, BREAKPOINT_LIST, WATCH_NBT, WATCH_STORAGE, WATCH_SCORE ->
+                drawSmall(graphics, x + 2, y + 2, color);
             case PIN -> pin(graphics, x, y, color);
             case EDIT -> {
                 // Outlined diagonal pencil, with a separate eraser and tapered graphite tip.

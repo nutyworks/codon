@@ -13,9 +13,11 @@ import works.nuty.codon.client.camera.DebuggerFreecam;
 import works.nuty.codon.client.config.ClientSettingsStore;
 import works.nuty.codon.client.input.InputManager;
 import works.nuty.codon.client.network.ClientNetworking;
+import works.nuty.codon.client.network.ClientSourceBrowseNetworking;
 import works.nuty.codon.client.render.DebugHudElement;
 import works.nuty.codon.client.render.DebugLevelRenderer;
 import works.nuty.codon.client.state.ClientDebuggerState;
+import works.nuty.codon.client.state.ClientFunctionSourceState;
 import works.nuty.codon.client.state.DebuggerPreferences;
 import works.nuty.codon.client.state.ClientPauseEffects;
 import works.nuty.codon.client.ui.CodonScreen;
@@ -29,11 +31,13 @@ public final class CodonClientMod implements ClientModInitializer {
     private static @Nullable ClientDebuggerState debuggerState;
     private static @Nullable DebuggerFreecam freecam;
     private static volatile @Nullable ClientPauseEffects pauseEffects;
+    private static @Nullable ClientFunctionSourceState sourceState;
 
     /** Client composition seams, including the service used by framework-created mixins. */
     public static @Nullable ClientDebuggerState state() { return debuggerState; }
     public static @Nullable DebuggerFreecam freecam() { return freecam; }
     public static @Nullable ClientPauseEffects pauseEffects() { return pauseEffects; }
+    public static @Nullable ClientFunctionSourceState sources() { return sourceState; }
 
     public static boolean isAudioPaused() {
         return pauseEffects != null && pauseEffects.isPaused();
@@ -66,6 +70,7 @@ public final class CodonClientMod implements ClientModInitializer {
         inputManager.registerKeyMappings();
 
         ClientNetworking.register(state, camera, effects);
+        sourceState = ClientSourceBrowseNetworking.register();
         ClientTickEvents.START_CLIENT_TICK.register(camera::tick);
         ClientTickEvents.END_CLIENT_TICK.register(inputManager);
         LevelRenderEvents.END_MAIN.register(new DebugLevelRenderer(state, inputManager));

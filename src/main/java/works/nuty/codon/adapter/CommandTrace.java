@@ -4,6 +4,7 @@ import org.jspecify.annotations.Nullable;
 import works.nuty.codon.core.model.SourceLocation;
 import works.nuty.codon.core.model.CommandSnippet;
 import works.nuty.codon.core.model.PauseSource;
+import works.nuty.codon.core.model.ExecutionFlowStage;
 import works.nuty.codon.core.model.ExecutionFlowWarning.Reason;
 import works.nuty.codon.core.service.ExecutionFlowRecorder;
 import works.nuty.codon.core.service.ExecutionFlowHistory;
@@ -23,6 +24,7 @@ public final class CommandTrace {
     public final long id;
     public final SourceLocation location;
     private final ExecutionFlowRecorder flow;
+    private final StageResultObserver stageResults;
     private List<Long> contextIds = List.of();
     private int contextCount;
     private List<Long> nextContextIds = List.of();
@@ -46,21 +48,33 @@ public final class CommandTrace {
     private int interruptionLimit = -1;
 
     public CommandTrace(SourceLocation location, ExecutionFlowHistory history) {
+        this(location, history, (id, source, stage) -> { });
+    }
+
+    public CommandTrace(SourceLocation location, ExecutionFlowHistory history, StageResultObserver stageResults) {
         this.id = NEXT_ID.getAndIncrement();
         this.location = location;
         this.flow = history.start(id, location);
+        this.stageResults = stageResults;
     }
 
-    private CommandTrace(long id, SourceLocation location, ExecutionFlowRecorder flow) {
+    private CommandTrace(long id, SourceLocation location, ExecutionFlowRecorder flow,
+                         StageResultObserver stageResults) {
         this.id = id;
         this.location = location;
         this.flow = flow;
+        this.stageResults = stageResults;
+    }
+
+    @FunctionalInterface
+    public interface StageResultObserver {
+        void completed(long chainId, SourceLocation location, ExecutionFlowStage stage);
     }
 
     /** A deferred continuation shares the invocation recorder but owns its occurrence cursor. */
     public CommandTrace forkForContinuation() {
         synchronized (this) {
-            CommandTrace continuation = new CommandTrace(id, location, flow);
+            CommandTrace continuation = new CommandTrace(id, location, flow, stageResults);
             if (deferred) {
                 continuationScheduled = true;
                 continuation.continuationParent = this;
@@ -188,6 +202,7 @@ public final class CommandTrace {
             return;
         }
         flow.finishStage(outputCount, droppedCount);
+        notifyStageCompleted();
         contextIds = List.copyOf(nextContextIds);
         contextCount = outputCount;
         stageActive = false;
@@ -277,6 +292,7 @@ public final class CommandTrace {
 
     private void completeObservedStage() {
         flow.finishStage(outputCount, droppedCount);
+        notifyStageCompleted();
         contextIds = List.copyOf(nextContextIds);
         contextCount = outputCount;
         stageActive = deferred = false;
@@ -415,5 +431,11 @@ public final class CommandTrace {
         contextIds = List.copyOf(ids);
         contextCount = sourceCount;
         initialized = true;
+    }
+
+    private void notifyStageCompleted() {
+        if (flowStageIndex < 0) return;
+        var stages = flow.snapshot().stages();
+        if (flowStageIndex < stages.size()) stageResults.completed(id, location, stages.get(flowStageIndex));
     }
 }

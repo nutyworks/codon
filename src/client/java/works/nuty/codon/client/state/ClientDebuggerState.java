@@ -40,6 +40,8 @@ public final class ClientDebuggerState {
     private final ClientWatchState watches;
     private final ClientWatchEditorState watchEditor;
     private final ClientNbtState nbt;
+    private final ClientBreakpointState breakpoints;
+    private final ClientStagePreviewState stagePreviews;
     private @Nullable PauseSource selectionHint;
     private @Nullable FlowSelectionHint flowSelectionHint;
     private @Nullable PauseSnapshot timelineSnapshot;
@@ -65,6 +67,8 @@ public final class ClientDebuggerState {
         this.watches = new ClientWatchState(clock);
         this.watchEditor = new ClientWatchEditorState(clock);
         this.nbt = new ClientNbtState(clock);
+        this.breakpoints = new ClientBreakpointState(clock);
+        this.stagePreviews = new ClientStagePreviewState();
         this.nbt.setEnabled(preferences.nbtExpanded());
         this.nbt.setEnabledListener(preferences::setNbtExpanded);
     }
@@ -211,6 +215,9 @@ public final class ClientDebuggerState {
     public List<BlockLocation> blockBreakpoints() {
         return blockBreakpoints;
     }
+
+    public ClientBreakpointState breakpoints() { return breakpoints; }
+    public ClientStagePreviewState stagePreviews() { return stagePreviews; }
 
     public int selectedSourceIndex() {
         return selectedSourceIndex;
@@ -690,6 +697,8 @@ public final class ClientDebuggerState {
         selectionHint = null;
         flowSelectionHint = null;
         blockBreakpoints = List.of();
+        breakpoints.reset();
+        stagePreviews.reset();
         watches.reset();
         watchEditor.reset();
         nbt.reset();

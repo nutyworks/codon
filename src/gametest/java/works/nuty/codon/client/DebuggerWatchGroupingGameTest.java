@@ -48,9 +48,11 @@ public final class DebuggerWatchGroupingGameTest implements FabricClientGameTest
                 String previous = current;
                 context.runOnClient(client -> {
                     click(client.gui.screen(), previous);
-                    require(client.gui.screen() instanceof WatchGroupingScreen, "header opens explicit grouping choices");
+                });
+                context.waitTicks(3);
+                context.runOnClient(client -> {
                     click(client.gui.screen(), label);
-                    require(client.gui.screen() instanceof CodonScreen, "selection returns to Watches");
+                    require(client.gui.screen() instanceof CodonScreen, "header popover leaves Watches open");
                     require(state.watches().definitions().equals(definitions), "grouping does not change definitions or bindings");
                 });
                 context.waitTicks(3);
@@ -65,16 +67,19 @@ public final class DebuggerWatchGroupingGameTest implements FabricClientGameTest
             }
             context.getInput().resizeWindow(640, 480);
             context.waitTicks(3);
+            context.runOnClient(client -> click(client.gui.screen(), "View"));
+            context.waitTicks(1);
+            context.runOnClient(client -> click(client.gui.screen(), "Watches"));
+            context.waitTicks(1);
             context.runOnClient(client -> click(client.gui.screen(), "Context"));
             context.waitTicks(3);
-            context.takeScreenshot("codon-group-chooser-compact");
+            context.takeScreenshot("codon-group-popover-compact");
             context.runOnClient(client -> {
                 var screen = client.gui.screen();
                 require(screen.width >= 300, "compact GUI fixture");
-                screen.keyPressed(new KeyEvent(InputConstants.KEY_TAB, InputConstants.KEYCODE_TAB, 0));
-                screen.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, InputConstants.KEYCODE_RETURN, 0));
+                click(screen, "Path");
                 require(client.gui.screen() instanceof CodonScreen && state.watches().grouping() == WatchGrouping.Mode.PATH,
-                    "Tab and Enter select the next grouping by keyboard");
+                    "compact popover selects the next grouping without leaving Watches");
                 client.setScreenAndShow(null);
             });
 
@@ -123,6 +128,9 @@ public final class DebuggerWatchGroupingGameTest implements FabricClientGameTest
         context.takeScreenshot("codon-group-no-executor-context");
         context.runOnClient(client -> {
             click(client.gui.screen(), "Context");
+        });
+        context.waitTicks(3);
+        context.runOnClient(client -> {
             click(client.gui.screen(), "No group");
             require(state.watches().grouping() == WatchGrouping.Mode.NONE, "No group remains selected for no-executor watches");
         });
@@ -191,7 +199,8 @@ public final class DebuggerWatchGroupingGameTest implements FabricClientGameTest
     }
     private static void click(Screen screen, String label) {
         var button = screen.children().stream().filter(DebuggerButton.class::isInstance).map(DebuggerButton.class::cast)
-            .filter(value -> value.getMessage().getString().equals(label)).findFirst().orElseThrow();
+            .filter(value -> value.getMessage().getString().equals(label)
+                || value.getMessage().getString().endsWith(" " + label)).findFirst().orElseThrow();
         var event = new MouseButtonEvent(button.getX() + 2, button.getY() + 2, new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
         require(screen.mouseClicked(event, false), "click " + label);
         screen.mouseReleased(event);

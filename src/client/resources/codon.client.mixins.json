@@ -3,10 +3,13 @@
 	"package": "works.nuty.codon.mixin.client",
 	"compatibilityLevel": "JAVA_25",
 	"client": [
+		"AbstractCommandBlockEditScreenMixin",
 		"CameraMixin",
 		"ChannelMixin",
 		"ClientLevelMixin",
 		"ClientPacketListenerMixin",
+		"CommandBlockEditScreenAccessor",
+		"CommandBlockEditScreenMixin",
 		"DeltaTrackerAccessor",
 		"DeltaTrackerMixin",
 		"EffectClockMixin",

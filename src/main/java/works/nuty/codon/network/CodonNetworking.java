@@ -26,6 +26,7 @@ public final class CodonNetworking {
         PayloadTypeRegistry.serverboundPlay().register(WatchEditorQueryPayload.TYPE, WatchEditorQueryPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(WatchSavePayload.TYPE, WatchSavePayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(NbtTreeQueryPayload.TYPE, NbtTreeQueryPayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(BreakpointEditPayload.TYPE, BreakpointEditPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(PauseSyncPayload.TYPE, PauseSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(WatchSyncPayload.TYPE, WatchSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(WatchChangesSyncPayload.TYPE, WatchChangesSyncPayload.CODEC);
@@ -37,7 +38,11 @@ public final class CodonNetworking {
         PayloadTypeRegistry.clientboundPlay().register(StepSyncPayload.TYPE, StepSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(ContinueSyncPayload.TYPE, ContinueSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(BreakpointSyncPayload.TYPE, BreakpointSyncPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(BreakpointDefinitionsSyncPayload.TYPE, BreakpointDefinitionsSyncPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(BreakpointEditResultPayload.TYPE, BreakpointEditResultPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(ExecutionFlowSyncPayload.TYPE, ExecutionFlowSyncPayload.CODEC);
+        SourceBrowseNetworking.registerPayloadTypes();
+        BreakpointStagePreviewNetworking.registerPayloadTypes();
     }
 
     public static void registerRequests(DebuggerEngine engine, WorldWatchPersistence watches) {
@@ -50,6 +55,11 @@ public final class CodonNetworking {
             (payload, context) -> requests.save(context.player(), payload));
         ServerPlayNetworking.registerGlobalReceiver(NbtTreeQueryPayload.TYPE,
             (payload, context) -> requests.nbt(context.server(), context.player(), payload));
+        var breakpointEdits = new BreakpointEditHandler(engine);
+        ServerPlayNetworking.registerGlobalReceiver(BreakpointEditPayload.TYPE,
+            (payload, context) -> breakpointEdits.edit(context.server(), context.player(), payload));
+        SourceBrowseNetworking.registerServerReceivers();
+        BreakpointStagePreviewNetworking.registerServerReceivers();
     }
 
     public static void registerJoinSync(DebuggerEngine engine, WorldWatchPersistence watches, NetworkDebuggerEventSink eventSink) {
@@ -70,6 +80,7 @@ public final class CodonNetworking {
             if (ServerPlayNetworking.canSend(player, BreakpointSyncPayload.TYPE.id())) {
                 ServerPlayNetworking.send(player, new BreakpointSyncPayload(List.copyOf(engine.blockBreakpoints())));
             }
+            eventSink.sendBreakpointDefinitions(player, engine.breakpointDefinitions());
 
             PauseSnapshot snapshot = engine.currentSnapshot();
             if (snapshot != null && ServerPlayNetworking.canSend(player, PauseSyncPayload.TYPE.id())) {

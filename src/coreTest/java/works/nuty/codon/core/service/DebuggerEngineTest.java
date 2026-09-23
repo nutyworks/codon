@@ -2,9 +2,13 @@ package works.nuty.codon.core.service;
 
 import org.junit.jupiter.api.Test;
 import works.nuty.codon.core.model.BlockLocation;
+import works.nuty.codon.core.model.BreakpointDefinition;
+import works.nuty.codon.core.model.BreakpointCondition;
+import works.nuty.codon.core.model.BreakpointTarget;
 import works.nuty.codon.core.model.CallFrame;
 import works.nuty.codon.core.model.CommandSnippet;
 import works.nuty.codon.core.model.ExecutionFlowTrace;
+import works.nuty.codon.core.model.ExecutionFlowStage;
 import works.nuty.codon.core.model.ExecutionFlowWarning;
 import works.nuty.codon.core.model.FunctionId;
 import works.nuty.codon.core.model.FunctionLocation;
@@ -16,6 +20,7 @@ import works.nuty.codon.core.support.ImmediateExecutionController;
 import works.nuty.codon.core.support.RecordingEventSink;
 
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -154,6 +159,83 @@ class DebuggerEngineTest {
         engine.onTickBoundary();
         engine.resetSession();
         assertEquals(1, sink.resumes, "terminal notification is sent exactly once");
+    }
+
+    @Test
+    void continuingPastAStageBreakpointStillAllowsALaterStageBreakpointInTheSameChain() {
+        SourceLocation location = new SourceLocation.Function(tick(3));
+        CommandSnippet first = CommandSnippet.plain("execute as @s run say first");
+        CommandSnippet second = CommandSnippet.plain("execute at @s run say second");
+        breakpoints.put(BreakpointDefinition.plain(BreakpointTarget.stage(location, 0, first.text())));
+        breakpoints.put(BreakpointDefinition.plain(BreakpointTarget.stage(location, 1, second.text())));
+        engine.onExecutionStarted();
+
+        engine.onCommandStage(new CommandStageEvent(44, 0, location, first, List::of, 0));
+        assertTrue(engine.isPaused());
+        assertEquals(1, sink.pauses.size());
+
+        engine.resume();
+        assertFalse(engine.isPaused());
+        engine.onCommandStage(new CommandStageEvent(44, 0, location, second, List::of, 1));
+
+        assertTrue(engine.isPaused());
+        assertEquals(2, sink.pauses.size());
+        assertEquals(PauseReason.BREAKPOINT, sink.lastPause().reason());
+    }
+
+    @Test
+    void wholeCommandResultBreakpointStopsOnlyOncePerInvocation() {
+        SourceLocation location = new SourceLocation.Function(tick(3));
+        CommandSnippet command = CommandSnippet.plain("execute as @s at @s run say test");
+        BreakpointCondition condition = BreakpointCondition.count(BreakpointCondition.Kind.OUTPUT_COUNT,
+            BreakpointCondition.Comparison.GE, 0);
+        breakpoints.put(new BreakpointDefinition(BreakpointTarget.whole(location), true, condition));
+        engine.onExecutionStarted();
+
+        for (int stageIndex = 0; stageIndex < 2; stageIndex++) {
+            engine.onCommandStage(new CommandStageEvent(45, 0, location, command, List::of, stageIndex));
+            engine.onCommandStageCompleted(45, location, new ExecutionFlowStage(stageIndex, command,
+                List.of(), List.of(), List.of(), List.of(), 0, 0, 0,
+                false, 0, 0, true, true, false));
+            if (stageIndex == 0) engine.resume();
+        }
+
+        assertEquals(1, sink.pauses.size(), "a whole-command result condition belongs to one invocation");
+    }
+
+    @Test
+    void savedCommandChangeDisablesWholeResultConditionButPreservesItsDefinition() {
+        SourceLocation location = new SourceLocation.Block(new BlockLocation(1, 2, 3, "minecraft:overworld"));
+        BreakpointTarget target = BreakpointTarget.whole(location);
+        BreakpointCondition condition = BreakpointCondition.count(BreakpointCondition.Kind.OUTPUT_COUNT,
+            BreakpointCondition.Comparison.EQ, 0);
+        breakpoints.put(new BreakpointDefinition(target, true, condition));
+
+        assertFalse(engine.disableStaleStages(location, "execute if entity @s run say old",
+            "execute if entity @s run say old"));
+        assertTrue(engine.disableStaleStages(location, "execute if entity @s run say old",
+            "execute if entity @s run say new"));
+        assertFalse(breakpoints.get(target).enabled());
+        assertEquals(condition, breakpoints.get(target).condition());
+
+        breakpoints.put(BreakpointDefinition.plain(target));
+        assertFalse(engine.disableStaleStages(location, "say old", "say new"));
+        assertTrue(breakpoints.get(target).enabled(), "an unconditional block stop survives a command edit");
+    }
+
+    @Test
+    void datapackReloadDisablesChangedFunctionStageWithoutLosingItsCondition() {
+        String command = "execute as @a run say old";
+        BreakpointTarget target = BreakpointTarget.stage(new SourceLocation.Function(tick(3)), 0, command);
+        BreakpointCondition condition = BreakpointCondition.count(BreakpointCondition.Kind.OUTPUT_COUNT,
+            BreakpointCondition.Comparison.EQ, 0);
+        breakpoints.put(new BreakpointDefinition(target, true, condition));
+
+        assertEquals(0, engine.revalidateFunctionStages(Map.of(tick(3), command)));
+        assertEquals(1, engine.revalidateFunctionStages(Map.of(tick(3), "execute as @a run say new")));
+        assertFalse(breakpoints.get(target).enabled());
+        assertTrue(breakpoints.get(target).staleSource());
+        assertEquals(condition, breakpoints.get(target).condition());
     }
 
     @Test

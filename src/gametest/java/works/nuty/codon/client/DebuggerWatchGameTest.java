@@ -323,7 +323,29 @@ public final class DebuggerWatchGameTest implements FabricClientGameTest {
         });
         context.getInput().resizeWindow(640, 480);
         context.waitTicks(3);
+        context.runOnClient(client -> {
+            Screen screen = client.gui.screen();
+            click(screen, screen.children().stream().filter(DebuggerButton.class::isInstance)
+                .map(DebuggerButton.class::cast)
+                .filter(button -> button.getMessage().getString().equals("View")).findFirst().orElseThrow());
+        });
+        context.waitTicks(1);
+        context.runOnClient(client -> {
+            Screen screen = client.gui.screen();
+            click(screen, screen.children().stream().filter(DebuggerButton.class::isInstance)
+                .map(DebuggerButton.class::cast)
+                .filter(button -> button.getMessage().getString().contains("Watches")).findFirst().orElseThrow());
+        });
+        context.waitTicks(1);
         context.takeScreenshot("codon-watch-compact");
+        context.runOnClient(client -> {
+            Screen screen = client.gui.screen();
+            click(screen, screen.children().stream().filter(DebuggerButton.class::isInstance)
+                .map(DebuggerButton.class::cast)
+                .filter(button -> button.getMessage().getString().equals("Edit")).findFirst().orElseThrow());
+            require(client.gui.screen() instanceof WatchScreen, "Watch row opens its editor directly");
+            client.gui.screen().onClose();
+        });
     }
 
     private static void click(Screen screen, DebuggerButton button) {

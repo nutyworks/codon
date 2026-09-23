@@ -90,6 +90,39 @@ public record ExecutionFlowStage(
         return hasParent;
     }
 
+    /** Every output of a one-to-many branch, independently of source changes used by the inspector. */
+    public boolean isBranchedContext(long contextId) {
+        long parentId = recordedParent(contextId);
+        return parentId >= 0 && edges.stream().filter(edge -> edge.inputContextId() == parentId).count() > 1;
+    }
+
+    /** A one-to-one output whose executor, position, rotation, or dimension changed. */
+    public boolean isChangedContext(long contextId) {
+        long parentId = recordedParent(contextId);
+        if (parentId < 0 || edges.stream().filter(edge -> edge.inputContextId() == parentId).count() != 1)
+            return false;
+        ExecutionFlowContext input = inputs.stream().filter(context -> context.id() == parentId)
+            .findFirst().orElse(null);
+        ExecutionFlowContext output = outputs.stream().filter(context -> context.id() == contextId)
+            .findFirst().orElse(null);
+        return input != null && output != null && !sameSource(input.source(), output.source());
+    }
+
+    private long recordedParent(long outputContextId) {
+        if (terminal || !complete || !lineageComplete || truncated
+            || inputs.size() != inputCount || outputs.size() != outputCount || edges.size() != outputCount
+            || outputs.stream().noneMatch(context -> context.id() == outputContextId)) return -1;
+        long parentId = -1;
+        for (ExecutionFlowEdge edge : edges) {
+            if (edge.outputContextId() != outputContextId) continue;
+            if (parentId >= 0) return -1;
+            parentId = edge.inputContextId();
+        }
+        if (parentId < 0) return -1;
+        long candidate = parentId;
+        return inputs.stream().anyMatch(context -> context.id() == candidate) ? parentId : -1;
+    }
+
     private static boolean sameSource(PauseSource before, PauseSource after) {
         // Entity names are presentation metadata. Renaming an executor does not create a source.
         boolean sameEntity = before.entity() == null ? after.entity() == null

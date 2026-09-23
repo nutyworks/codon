@@ -30,8 +30,12 @@ public final class WatchDetailsScreen extends Screen {
     private final List<Line> lines = new ArrayList<>();
     private DebuggerButton copyValue;
     private DebuggerButton copyPath;
+    private DebuggerButton edit;
+    private DebuggerButton more;
     private DebuggerButton retry;
     private int left, top, panelWidth, panelHeight, offset;
+    /** Rows open a compact summary first; full wrapping is available for long NBT values. */
+    private boolean expanded;
 
     public WatchDetailsScreen(InputManager input, ClientDebuggerState state, DebuggerOverlay overlay, long entryId) {
         super(WatchUi.text("details.title"));
@@ -42,20 +46,25 @@ public final class WatchDetailsScreen extends Screen {
     }
 
     @Override protected void init() {
-        panelWidth = Math.max(1, Math.min(440, width - 12));
-        panelHeight = Math.max(1, Math.min(300, height - 12));
+        panelWidth = Math.max(1, Math.min(expanded ? 440 : 340, width - 12));
+        panelHeight = Math.max(1, Math.min(expanded ? 300 : 206, height - 12));
         left = (width - panelWidth) / 2;
         top = (height - panelHeight) / 2;
         tabOrder.clear();
         copyValue = addRenderableWidget(WatchUi.button(left + 8, top + panelHeight - 28, 78, 20,
             WatchUi.text("details.copy_value"), this::copyValue));
-        copyPath = addRenderableWidget(WatchUi.button(left + 90, top + panelHeight - 28, 76, 20,
+        copyPath = addRenderableWidget(WatchUi.button(left + 90, top + panelHeight - 28, 56, 20,
             WatchUi.text("details.copy_path"), this::copyPath));
+        more = addRenderableWidget(WatchUi.button(left + 150, top + panelHeight - 28, 50, 20,
+            WatchUi.text(expanded ? "details.less" : "details.more"), this::toggleExpanded));
+        edit = addRenderableWidget(WatchUi.button(left + 204, top + panelHeight - 28, 50, 20,
+            WatchUi.text("edit"), this::edit));
+        edit.visible = edit.active = expanded;
         retry = addRenderableWidget(WatchUi.button(left + panelWidth - 136, top + panelHeight - 28, 62, 20,
             WatchUi.text("details.retry"), () -> state.watches().retry(entryId)));
         var close = addRenderableWidget(WatchUi.button(left + panelWidth - 70, top + panelHeight - 28, 62, 20,
             WatchUi.text("close"), this::onClose));
-        tabOrder.addAll(List.of(copyValue, copyPath, retry, close));
+        tabOrder.addAll(List.of(copyValue, copyPath, more, edit, retry, close));
         for (int i = 0; i < tabOrder.size(); i++) tabOrder.get(i).setTabOrderGroup(i);
         setFocused(copyValue);
         rebuildLines();
@@ -76,6 +85,15 @@ public final class WatchDetailsScreen extends Screen {
             WatchSpec spec = entry.spec();
             Minecraft.getInstance().keyboardHandler.setClipboard(spec.kind() == WatchSpec.Kind.SCORE ? spec.target() : spec.path());
         }
+    }
+
+    private void edit() {
+        if (entry() != null) Minecraft.getInstance().gui.setScreen(WatchScreen.edit(input, state, overlay, entryId));
+    }
+
+    private void toggleExpanded() {
+        expanded = !expanded;
+        rebuildWidgets();
     }
 
     private void rebuildLines() {

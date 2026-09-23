@@ -71,6 +71,9 @@ public final class DebuggerPeekUiGameTest implements FabricClientGameTest {
                 context.takeScreenshot("codon-peek-world-held");
                 context.getInput().releaseKey(options -> fixture.input().hideUiKey);
                 context.runOnClient(client -> {
+                    require(!InputConstants.isKeyDown(InputConstants.KEY_H), "world release lifts the physical H key");
+                    // A screen transition can leave this mapping down after the physical key is released.
+                    fixture.input().hideUiKey.setDown(true);
                     require(!fixture.input().isUiHidden(), "world release restores the passive debugger HUD");
                     preserved(fixture, "world release");
                 });
@@ -104,13 +107,13 @@ public final class DebuggerPeekUiGameTest implements FabricClientGameTest {
 
     private static void checkKeyboardHoldAndBlockedInput(ClientGameTestContext context, Fixture fixture) {
         context.runOnClient(client -> {
-            fixture.screen().setFocused(button(fixture.screen(), "Details"));
+            fixture.screen().setFocused(button(fixture.screen(), "View"));
             client.setLastInputType(InputType.KEYBOARD_TAB);
         });
         context.getInput().holdKey(options -> fixture.input().hideUiKey);
         context.runOnClient(client -> {
             CodonScreen screen = fixture.screen();
-            DebuggerButton details = button(screen, "Details");
+            DebuggerButton details = button(screen, "View");
             require(fixture.input().isUiHidden(), "holding H hides panels, labels, HUD, and world markers");
             Boolean inspectorVisible = fixture.state().preferences().inspectorVisible();
 
@@ -122,7 +125,7 @@ public final class DebuggerPeekUiGameTest implements FabricClientGameTest {
             require(screen.keyPressed(key(InputConstants.KEY_RETURN)), "hidden UI consumes focused-button activation");
             require(screen.getFocused() == details, "hiding does not discard focused control state");
             require(java.util.Objects.equals(inspectorVisible, fixture.state().preferences().inspectorVisible()),
-                "clicking or activating hidden Details must not change inspector visibility");
+                "clicking or activating hidden View must not change inspector visibility");
             preserved(fixture, "hidden interaction");
         });
     }

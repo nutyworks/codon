@@ -58,6 +58,28 @@ public final class CodonScreen extends Screen {
             return true;
         }
         if (input.isUiHidden()) return true;
+        if (overlay.viewMenuOpen()) {
+            DebuggerButton choice = overlay.viewMenuButtonAt(event.x(), event.y());
+            if (choice != null) {
+                if (choice.mouseClicked(event, doubleClick)) setFocused(choice);
+                return true;
+            }
+            if (!overlay.viewTriggerContains(event.x(), event.y())) {
+                overlay.closeViewMenu();
+                if (overlay.viewMenuContains(event.x(), event.y())) return true;
+            }
+        }
+        if (overlay.watchPanel().groupingMenuOpen()) {
+            DebuggerButton choice = overlay.watchPanel().groupingChoiceAt(event.x(), event.y());
+            if (choice != null) {
+                if (choice.mouseClicked(event, doubleClick)) setFocused(choice);
+                return true;
+            }
+            if (!overlay.watchPanel().groupingTriggerContains(event.x(), event.y())) {
+                overlay.watchPanel().closeGroupingMenu();
+                if (overlay.watchPanel().groupingMenuContains(event.x(), event.y())) return true;
+            }
+        }
         if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && overlay.scrollbars().click(event.x(), event.y())) {
             overlay.navigation().mouseScrolled();
             return true;
@@ -86,6 +108,8 @@ public final class CodonScreen extends Screen {
     @Override
     public void removed() {
         suspendPointerInteraction();
+        overlay.closeViewMenu();
+        overlay.watchPanel().closeGroupingMenu();
         super.removed();
     }
 
@@ -131,6 +155,15 @@ public final class CodonScreen extends Screen {
             else input.handleScreenKey(event);
             return true;
         }
+        if (event.key() == InputConstants.KEY_ESCAPE && overlay.viewMenuOpen()) {
+            overlay.closeViewMenu();
+            return true;
+        }
+        if (event.key() == InputConstants.KEY_ESCAPE && overlay.watchPanel().groupingMenuOpen()) {
+            overlay.watchPanel().closeGroupingMenu();
+            return true;
+        }
+        if (event.key() == InputConstants.KEY_ESCAPE && overlay.closeAuxiliaryPanel()) return true;
         if (getFocused() instanceof BackgroundOpacitySlider slider && slider.keyPressed(event)) return true;
         return input.handleScreenKey(event)
             || overlay.navigation().keyPressed(event, getFocused(), this::setFocused)

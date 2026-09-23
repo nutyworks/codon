@@ -38,8 +38,10 @@ public final class WatchScreen extends Screen {
     private final long editId;
     private final EnumMap<WatchSpec.Kind, ClientWatchEditorState.Draft> drafts = new EnumMap<>(WatchSpec.Kind.class);
     private final Map<String, EditBox> fields = new LinkedHashMap<>();
+    private final Map<String, WatchEditorQuery.Mode> fieldModes = new LinkedHashMap<>();
     private final List<AbstractWidget> tabOrder = new ArrayList<>();
     private final List<AbstractWidget> browseControls = new ArrayList<>();
+    private final List<DebuggerButton> inlineSuggestions = new ArrayList<>();
     private WatchSpec.Kind kind;
     private DebuggerButton submit;
     private DebuggerButton retry;
@@ -80,10 +82,13 @@ public final class WatchScreen extends Screen {
         rememberDraft();
         clearWidgets();
         fields.clear();
+        fieldModes.clear();
         tabOrder.clear();
         browseControls.clear();
+        inlineSuggestions.clear();
         panelWidth = Math.max(1, Math.min(460, width - 16));
-        panelHeight = Math.max(1, Math.min(250, height - 12));
+        // Two server-backed short choices fit between fields without covering Save on normal GUI sizes.
+        panelHeight = Math.max(1, Math.min(296, height - 12));
         left = (width - panelWidth) / 2;
         top = (height - panelHeight) / 2;
         int typeWidth = (panelWidth - 20) / 3;
@@ -98,7 +103,7 @@ public final class WatchScreen extends Screen {
         }
         var draft = drafts.getOrDefault(kind, ClientWatchEditorState.Draft.EMPTY);
         int firstY = top + 65;
-        int secondY = top + 112;
+        int secondY = top + (panelHeight >= 280 ? 132 : 112);
         if (kind == WatchSpec.Kind.SCORE) {
             field("target", firstY, text("editor.objective"), "points", draft.target(), WatchEditorQuery.Mode.OBJECTIVES);
             field("entity", secondY, text("editor.score_holder"), text("editor.score_holder_hint").getString(), draft.entity(), WatchEditorQuery.Mode.ENTITIES);
@@ -108,6 +113,12 @@ public final class WatchScreen extends Screen {
         } else {
             field("target", firstY, text("editor.storage"), "demo:state", draft.target(), WatchEditorQuery.Mode.STORAGES);
             field("path", secondY, text("path"), "counter", draft.path(), WatchEditorQuery.Mode.NBT);
+        }
+        for (int index = 0; index < 2; index++) {
+            DebuggerButton choice = addRenderableWidget(WatchUi.button(0, 0, 1, 1, Component.empty(), () -> { }));
+            choice.visible = choice.active = false;
+            inlineSuggestions.add(choice);
+            tabOrder.add(choice);
         }
         submit = addRenderableWidget(WatchUi.button(left + panelWidth - 80, top + panelHeight - 35, 72, 20,
             text(editId > 0 ? "editor.save" : "add"), () -> submit(false)));
@@ -140,6 +151,7 @@ public final class WatchScreen extends Screen {
             refreshValidation();
         });
         fields.put(id, addRenderableWidget(field));
+        fieldModes.put(id, mode);
         tabOrder.add(field);
         DebuggerButton browse = addRenderableWidget(WatchUi.button(left + panelWidth - 62, y, 54, 20,
             text(id.equals("entity") ? "editor.choose" : "editor.browse"), () -> browse(mode, id)));
@@ -326,15 +338,78 @@ public final class WatchScreen extends Screen {
                     graphics.setTooltipForNextFrame(font, error, mouseX, mouseY);
             }
         });
-        renderPreview(graphics, errors.isEmpty());
+        if (!renderInlineSuggestions(graphics)) renderPreview(graphics, errors.isEmpty());
         if (!feedback.isEmpty()) WatchUi.line(graphics, font, feedback, left + 8, top + panelHeight - 49, panelWidth - 16, feedbackColor);
         WatchUi.line(graphics, font, text(editId > 0 ? "editor.edit_keys" : "editor.keys").getString(),
             left + 8, top + panelHeight - 11, panelWidth - 16, MUTED);
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
     }
 
+    /**
+     * The simple server lists (objectives, entities, and storage IDs) are useful while typing.
+     * NBT stays in its hierarchical Picker because selecting a child needs its path stack.
+     */
+    private boolean renderInlineSuggestions(GuiGraphicsExtractor graphics) {
+        for (DebuggerButton choice : inlineSuggestions) choice.visible = choice.active = false;
+        if (panelHeight < 280 || !(getFocused() instanceof EditBox focused)) return false;
+        String field = fields.entrySet().stream().filter(entry -> entry.getValue() == focused).map(Map.Entry::getKey).findFirst().orElse(null);
+        if (field == null) return false;
+        WatchEditorQuery.Mode mode = fieldModes.get(field);
+        if (mode == null || mode == WatchEditorQuery.Mode.NBT) return false;
+
+        String search = suggestionSearch(field);
+        String target = value("target").trim();
+        var query = new WatchEditorQuery(mode, kind, target, "", executor(), search, 0);
+        state.watchEditor().request(WatchUi.pause(state), state.selectedPauseSourceIndex(), query);
+        var page = state.watchEditor().page();
+        int y = focused.getY() + focused.getHeight() + 2;
+        if (page == null) {
+            WatchUi.line(graphics, font, text("editor.loading").getString(), focused.getX(), y + 3, focused.getWidth(), MUTED);
+            return true;
+        }
+        if (page.status() != WatchResult.Status.VALUE) {
+            WatchUi.line(graphics, font, WatchFormatting.status(page.status()).getString(), focused.getX(), y + 3, focused.getWidth(), AMBER);
+            return true;
+        }
+        List<works.nuty.codon.core.model.WatchEditorPage.Option> options = page.options().stream()
+            .filter(option -> !option.expandable()).limit(inlineSuggestions.size()).toList();
+        if (options.isEmpty()) {
+            WatchUi.line(graphics, font, text("picker.empty").getString(), focused.getX(), y + 3, focused.getWidth(), MUTED);
+            return true;
+        }
+        for (int index = 0; index < options.size(); index++) {
+            var option = options.get(index);
+            DebuggerButton choice = inlineSuggestions.get(index);
+            Component label = Component.literal(option.label().isBlank() ? option.value() : option.label());
+            Runnable select = () -> chooseInline(field, option.value());
+            choice.configure(focused.getX(), y + index * 17, focused.getWidth(), 16, label, true, false, false, false, select);
+            choice.setTooltip(Tooltip.create(option.detail().isBlank() ? label : Component.literal(option.detail())));
+            choice.visible = choice.active = true;
+        }
+        return true;
+    }
+
+    private String suggestionSearch(String field) {
+        if (kind == WatchSpec.Kind.SCORE && field.equals("entity")) {
+            try {
+                String holder = scoreHolder();
+                return holder == null ? "" : holder;
+            } catch (IllegalArgumentException ignored) { return ""; }
+        }
+        String input = value(field);
+        return input.length() > WatchEditorQuery.MAX_SEARCH_LENGTH
+            ? input.substring(0, WatchEditorQuery.MAX_SEARCH_LENGTH) : input;
+    }
+
+    private void chooseInline(String field, String selected) {
+        EditBox box = fields.get(field);
+        if (box == null) return;
+        box.setValue(selected);
+        setFocused(box);
+    }
+
     private void renderPreview(GuiGraphicsExtractor graphics, boolean valid) {
-        int y = top + 148;
+        int y = top + panelHeight - 84;
         if (kind != WatchSpec.Kind.STORAGE_NBT) {
             var current = WatchUi.currentEntity(state);
             String holder = valid ? scoreHolder() : null;

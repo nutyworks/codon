@@ -9,7 +9,6 @@ import works.nuty.codon.client.input.InputManager;
 import works.nuty.codon.client.state.ClientDebuggerState;
 import works.nuty.codon.client.state.ClientWatchState;
 import works.nuty.codon.client.state.WatchGrouping;
-import works.nuty.codon.client.ui.layout.DebuggerLayout;
 import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds;
 import works.nuty.codon.client.ui.layout.WatchPanelLayout;
 import works.nuty.codon.core.model.EntityRef;
@@ -58,23 +57,60 @@ public final class WatchPanel {
     private List<Long> previousKeys = List.of();
     private Component notice = Component.empty();
     private long noticeUntil;
+    private ClientWatchState.@Nullable Removed removedWatch;
+    private long undoUntil;
+    /** A header-local menu leaves the watch viewport and its scroll anchor untouched. */
+    private boolean groupingMenuOpen;
+    private Bounds groupingTriggerBounds = EMPTY;
+    private Bounds groupingMenuBounds = EMPTY;
+    private final List<DebuggerButton> groupingChoices = new ArrayList<>();
 
     public WatchPanel(ClientDebuggerState state) { this.state = state; }
     public Bounds bounds() { return bounds; }
     public Bounds scrollBounds() { return scrollBounds; }
     public int offset() { return offset; }
-    public void clearBounds() { bounds = scrollBounds = EMPTY; }
+    public void clearBounds() {
+        bounds = scrollBounds = groupingTriggerBounds = groupingMenuBounds = EMPTY;
+        groupingChoices.clear();
+    }
+    public boolean groupingMenuOpen() { return groupingMenuOpen && groupingMenuBounds.width() > 0; }
+    public boolean groupingTriggerContains(double x, double y) { return groupingTriggerBounds.contains(x, y); }
+    public boolean groupingMenuContains(double x, double y) { return groupingMenuBounds.contains(x, y); }
+    public void closeGroupingMenu() { groupingMenuOpen = false; }
+    public boolean isGroupingChoice(DebuggerButton button) { return groupingChoices.contains(button); }
+
+    public @Nullable DebuggerButton groupingChoiceAt(double x, double y) {
+        if (!groupingMenuOpen() || !groupingMenuBounds.contains(x, y)) return null;
+        return groupingChoices.stream().filter(button -> button.isMouseOver(x, y)).findFirst().orElse(null);
+    }
+
+    public void paintGroupingMenu(GuiGraphicsExtractor graphics, int mouseX, int mouseY,
+                                  float partialTick, boolean interactive) {
+        if (!groupingMenuOpen()) return;
+        graphics.fill(groupingMenuBounds.x(), groupingMenuBounds.y(),
+            groupingMenuBounds.x() + groupingMenuBounds.width(),
+            groupingMenuBounds.y() + groupingMenuBounds.height(), PANEL);
+        graphics.outline(groupingMenuBounds.x(), groupingMenuBounds.y(), groupingMenuBounds.width(),
+            groupingMenuBounds.height(), BORDER);
+        for (DebuggerButton button : groupingChoices) {
+            if (!interactive) button.setFocused(false);
+            button.extractRenderState(graphics, interactive ? mouseX : -1, interactive ? mouseY : -1, partialTick);
+        }
+    }
     public void select(long id) { selectedId = requestedId = id; }
     public void notice(Component text) { notice = text; noticeUntil = System.nanoTime() + 4_000_000_000L; }
 
-    public List<DebuggerButton> render(GuiGraphicsExtractor graphics, DebuggerLayout layout, int mouseX, int mouseY,
+    public List<DebuggerButton> render(GuiGraphicsExtractor graphics, Bounds available, int mouseX, int mouseY,
                                        boolean interactive, InputManager input, DebuggerOverlay overlay,
                                        DebuggerNavigation navigation, ScrollbarInput scrollbars) {
         controls.clear(); used.clear(); clearBounds();
         var client = Minecraft.getInstance();
         var font = client.font;
-        Bounds available = WatchPanelLayout.available(layout, graphics.guiWidth());
         if (available.width() < 72 || available.height() < HEADER + BOTTOM_PADDING) return List.of();
+        boolean undoAvailable = removedWatch != null && removedWatch.generation() == state.watches().generation()
+            && System.nanoTime() < undoUntil;
+        if (!undoAvailable) removedWatch = null;
+        int bodyStart = HEADER + (undoAvailable ? 18 : 0);
         var entries = state.watches().displayedEntries();
         List<Row> rows = rows(entries);
         long firstUngroupedId = state.watches().grouping() == WatchGrouping.Mode.NONE ? 0
@@ -86,7 +122,7 @@ public final class WatchPanel {
             topMargins.add(afterDivider ? DIVIDER_TOP_MARGIN + DIVIDER_MARGIN : 0);
         }
         var rowLayout = new WatchPanelLayout.Rows(rows.stream().map(row -> !row.showScope()).toList(), topMargins);
-        int viewportHeight = Math.max(0, available.height() - HEADER - BOTTOM_PADDING);
+        int viewportHeight = Math.max(0, available.height() - bodyStart - BOTTOM_PADDING);
         maximum = rowLayout.maximumOffset(viewportHeight);
         List<Long> keys = rows.stream().map(Row::key).toList();
         // Preserve a scrolled viewport, but keep the top visible when a quiet first row moves down.
@@ -113,31 +149,56 @@ public final class WatchPanel {
         int displayed = rowLayout.visibleEnd(offset, viewportHeight) - offset;
         int totalHeight = rowLayout.height(0, rows.size());
         int contentHeight = rows.isEmpty() ? 27 : Math.min(viewportHeight, totalHeight);
-        int panelHeight = Math.min(available.height(), HEADER + contentHeight + BOTTOM_PADDING);
+        int panelHeight = Math.min(available.height(), bodyStart + contentHeight + BOTTOM_PADDING);
         bounds = new Bounds(available.x(), available.y(), available.width(), panelHeight);
-        scrollBounds = new Bounds(bounds.x() + 3, bounds.y() + HEADER, bounds.width() - 6, Math.max(0, panelHeight - HEADER - BOTTOM_PADDING));
+        scrollBounds = new Bounds(bounds.x() + 3, bounds.y() + bodyStart, bounds.width() - 6,
+            Math.max(0, panelHeight - bodyStart - BOTTOM_PADDING));
         graphics.fill(bounds.x(), bounds.y(), bounds.x() + bounds.width(), bounds.y() + bounds.height(), DebuggerTheme.color(PANEL));
         graphics.outline(bounds.x(), bounds.y(), bounds.width(), bounds.height(), DebuggerTheme.color(BORDER));
         graphics.fill(bounds.x(), bounds.y(), bounds.x() + 2, bounds.y() + HEADER, DebuggerTheme.color(TEAL));
         WatchUi.line(graphics, font, text("title").getString(),
             bounds.x() + 7, bounds.y() + (HEADER - font.lineHeight) / 2 + 1, Math.max(0, bounds.width() - 74), TEAL);
         button("watch-add", new Bounds(bounds.x() + bounds.width() - 23, bounds.y() + 3, 18, 17), Component.literal("+"),
-            true, false, () -> client.gui.setScreen(new WatchScreen(input, state, overlay)), navigation, -1, 3)
-            .withIcon(DebuggerIcon.SOURCE_CREATED).withIconOffsetY(2).withSingleLineTooltip(text("editor.title"));
-        button("watch-grouping", new Bounds(bounds.x() + bounds.width() - 44, bounds.y() + 3, 18, 17),
+            true, false, () -> client.gui.setScreen(new WatchScreen(input, state, overlay)), navigation, -4, 3)
+            .withIcon(DebuggerIcon.WATCHES).withIconOffsetY(2).withSingleLineTooltip(text("keep"));
+        groupingTriggerBounds = new Bounds(bounds.x() + bounds.width() - 44, bounds.y() + 3, 18, 17);
+        button("watch-grouping", groupingTriggerBounds,
             text("grouping." + state.watches().grouping().name().toLowerCase(java.util.Locale.ROOT)), true, false,
-            () -> client.gui.setScreen(new WatchGroupingScreen(new CodonScreen(input, overlay), state.watches().grouping(), mode -> {
-                state.watches().grouping(mode);
-                offset = 0;
-                previousKeys = List.of();
-                requestedId = 0;
-            })), navigation, -1, 1).withIcon(DebuggerIcon.GIZMO_GROUPED).withIconOffsetY(2)
+            () -> groupingMenuOpen = !groupingMenuOpen, navigation, -4, 1).withIcon(DebuggerIcon.GIZMO_GROUPED).withIconOffsetY(2)
                 .withSingleLineTooltip(text("grouping.tooltip." + state.watches().grouping().name().toLowerCase(java.util.Locale.ROOT)));
+        if (groupingMenuOpen) {
+            int menuWidth = Math.min(112, Math.max(76, bounds.width() - 12));
+            int menuX = bounds.x() + bounds.width() - menuWidth - 5;
+            int menuY = bounds.y() + HEADER - 1;
+            int menuHeight = WatchGrouping.Mode.values().length * 18 + 4;
+            groupingMenuBounds = new Bounds(menuX, menuY, menuWidth, menuHeight);
+            for (WatchGrouping.Mode mode : WatchGrouping.Mode.values()) {
+                int y = menuY + 2 + mode.ordinal() * 18;
+                boolean selected = mode == state.watches().grouping();
+                Component label = selected
+                    ? Component.literal("• ").append(text("grouping." + mode.name().toLowerCase(java.util.Locale.ROOT)))
+                    : text("grouping." + mode.name().toLowerCase(java.util.Locale.ROOT));
+                groupingChoices.add(button("watch-grouping-" + mode.name(), new Bounds(menuX + 2, y, menuWidth - 4, 16), label, true, selected,
+                    () -> {
+                        state.watches().grouping(mode);
+                        groupingMenuOpen = false;
+                    }, navigation, -3 + mode.ordinal(), 0).withSingleLineTooltip(text("grouping.tooltip."
+                    + mode.name().toLowerCase(java.util.Locale.ROOT))).withOpaqueColors());
+            }
+        }
         var save = state.watches().saveStatus();
         if (save == ClientWatchState.SaveStatus.FAILED) {
             button("watch-save-retry", new Bounds(bounds.x() + bounds.width() - 65, bounds.y() + 3, 18, 17), text("save.retry"),
-                true, false, () -> state.watches().retrySave(), navigation, -1, 2).withIcon(DebuggerIcon.WARNING)
+                true, false, () -> state.watches().retrySave(), navigation, -4, 2).withIcon(DebuggerIcon.WARNING)
                 .setTooltip(Tooltip.create(text("save.failed")));
+        }
+        if (undoAvailable) {
+            button("watch-undo", new Bounds(bounds.x() + 4, bounds.y() + HEADER, bounds.width() - 8, 17),
+                text("undo_deleted"), true, false, () -> {
+                    ClientWatchState.Removed removed = removedWatch;
+                    if (removed != null && state.watches().restore(removed)) select(removed.id());
+                    removedWatch = null;
+                }, navigation, -2, 0);
         }
         for (int index = 0; index < rows.size(); index++) {
             Row row = rows.get(index);
@@ -146,19 +207,23 @@ public final class WatchPanel {
             Runnable reveal = () -> offset = Math.min(maximum, rowLayout.reveal(logicalRow, offset, viewportHeight));
             var entry = row.entry();
             navigation.add("watch-row-" + entry.id(), DebuggerNavigation.Group.WATCH, index, 0, reveal);
-            if (entry.automatic()) navigation.add("watch-keep-" + entry.id(), DebuggerNavigation.Group.WATCH, index, 3, reveal);
+            if (entry.automatic()) {
+                navigation.add("watch-copy-" + entry.id(), DebuggerNavigation.Group.WATCH, index, 3, reveal);
+                navigation.add("watch-keep-" + entry.id(), DebuggerNavigation.Group.WATCH, index, 4, reveal);
+            }
             else {
                 if (entry.spec().kind() != WatchSpec.Kind.STORAGE_NBT && (entry.spec().isPinned() || executor(entry) != null))
                     navigation.add("watch-pin-" + entry.id(), DebuggerNavigation.Group.WATCH, index, 1, reveal);
-                navigation.add("watch-edit-" + entry.id(), DebuggerNavigation.Group.WATCH, index, 2, reveal);
-                navigation.add("watch-remove-" + entry.id(), DebuggerNavigation.Group.WATCH, index, 3, reveal);
+                navigation.add("watch-copy-" + entry.id(), DebuggerNavigation.Group.WATCH, index, 2, reveal);
+                navigation.add("watch-edit-" + entry.id(), DebuggerNavigation.Group.WATCH, index, 3, reveal);
+                navigation.add("watch-remove-" + entry.id(), DebuggerNavigation.Group.WATCH, index, 4, reveal);
             }
         }
-        if (rows.isEmpty()) WatchUi.line(graphics, font, text("empty").getString(), bounds.x() + 7, bounds.y() + HEADER + 7, bounds.width() - 14, MUTED);
+        if (rows.isEmpty()) WatchUi.line(graphics, font, text("empty").getString(), bounds.x() + 7, bounds.y() + bodyStart + 7, bounds.width() - 14, MUTED);
         for (int index = 0; index < displayed; index++) {
             Row row = rows.get(offset + index);
             int topMargin = topMargins.get(offset + index);
-            int y = bounds.y() + HEADER + rowLayout.height(offset, offset + index) + topMargin;
+            int y = bounds.y() + bodyStart + rowLayout.height(offset, offset + index) + topMargin;
             int rowHeight = rowLayout.height(offset + index, offset + index + 1) - topMargin;
             if (row.entry() == null) {
                 int dividerY = y - topMargin + DIVIDER_TOP_MARGIN;
@@ -172,7 +237,7 @@ public final class WatchPanel {
                 continue;
             }
             var entry = row.entry();
-            int rowWidth = Math.max(1, bounds.width() - 69);
+            int rowWidth = Math.max(1, bounds.width() - 86);
             if (entry.id() == selectedId && System.nanoTime() < highlightedUntil)
                 graphics.fill(bounds.x() + 3, y, bounds.x() + bounds.width() - 6, y + rowHeight - 1, DebuggerTheme.color(TEAL_SURFACE));
             if (entry.id() == firstUngroupedId) {
@@ -200,13 +265,17 @@ public final class WatchPanel {
             inspect.setTooltip(Tooltip.create(text("section." + entry.spec().kind().name().toLowerCase(java.util.Locale.ROOT))
                 .copy().append(" · ").append(text("inspect", WatchFormatting.specification(entry.spec()).getString()))
                 .append("\n").append(scope(entry))));
-            int actionX = bounds.x() + bounds.width() - 59;
+            int actionX = bounds.x() + bounds.width() - 76;
             int actionY = y + (rowHeight - ACTION_SIZE) / 2;
             if (entry.automatic()) {
-                button("watch-keep-" + entry.id(), new Bounds(actionX + 34, actionY, ACTION_SIZE, ACTION_SIZE), text("keep"), true, false,
+                button("watch-copy-" + entry.id(), new Bounds(actionX + 34, actionY, ACTION_SIZE, ACTION_SIZE), text("details.copy_value"), true, false,
+                    () -> copyValue(entry), navigation, offset + index, 3)
+                    .withSmallIcon(DebuggerIcon.COPY_UUID).withSingleLineTooltip(text("details.copy_value"));
+                button("watch-keep-" + entry.id(), new Bounds(actionX + 51, actionY, ACTION_SIZE, ACTION_SIZE), text("keep"), true, false,
                     () -> {
                         if (state.watches().pinChange(entry.id())) notice(text("feedback.added", WatchFormatting.specification(entry.spec()).getString()));
-                    }, navigation, offset + index, 3).withIcon(DebuggerIcon.SOURCE_CREATED);
+                    }, navigation, offset + index, 4).withIcon(DebuggerIcon.WATCHES)
+                    .withSingleLineTooltip(text("keep"));
             } else {
                 if (entry.spec().kind() != WatchSpec.Kind.STORAGE_NBT) {
                     boolean pinned = entry.spec().isPinned();
@@ -218,12 +287,19 @@ public final class WatchPanel {
                         .withSmallIcon(DebuggerIcon.PIN).withSingleLineTooltip(pinned ? text("unpin")
                             : text("tooltip.pin_context", targetLabel));
                 }
-                button("watch-edit-" + entry.id(), new Bounds(actionX + 17, actionY, ACTION_SIZE, ACTION_SIZE), text("edit"), true, false,
-                    () -> client.gui.setScreen(WatchScreen.edit(input, state, overlay, entry.id())), navigation, offset + index, 2)
-                    .withSmallIcon(DebuggerIcon.EDIT).withSingleLineTooltip(text("edit"));
-                button("watch-remove-" + entry.id(), new Bounds(actionX + 34, actionY, ACTION_SIZE, ACTION_SIZE), text("remove"), true, false,
-                    () -> { state.watches().remove(entry.id()); notice(text("feedback.removed", WatchFormatting.specification(entry.spec()).getString())); },
-                    navigation, offset + index, 3).withSmallIcon(DebuggerIcon.REMOVE).withSingleLineTooltip(text("remove"));
+                button("watch-copy-" + entry.id(), new Bounds(actionX + 17, actionY, ACTION_SIZE, ACTION_SIZE), text("details.copy_value"), true, false,
+                    () -> copyValue(entry), navigation, offset + index, 2)
+                    .withSmallIcon(DebuggerIcon.COPY_UUID).withSingleLineTooltip(text("details.copy_value"));
+                button("watch-edit-" + entry.id(), new Bounds(actionX + 34, actionY, ACTION_SIZE, ACTION_SIZE), text("edit"), true, false,
+                    () -> client.gui.setScreen(WatchScreen.edit(input, state, overlay, entry.id())),
+                    navigation, offset + index, 3).withSmallIcon(DebuggerIcon.EDIT).withSingleLineTooltip(text("edit"));
+                button("watch-remove-" + entry.id(), new Bounds(actionX + 51, actionY, ACTION_SIZE, ACTION_SIZE), text("remove"), true, false,
+                    () -> {
+                        removedWatch = state.watches().removeForUndo(entry.id());
+                        undoUntil = System.nanoTime() + 8_000_000_000L;
+                        notice(text("feedback.removed", WatchFormatting.specification(entry.spec()).getString()));
+                    },
+                    navigation, offset + index, 4).withSmallIcon(DebuggerIcon.REMOVE).withSingleLineTooltip(text("remove"));
             }
         }
         if (focusRequested) navigation.requestFocus("watch-row-" + selectedId);
@@ -340,6 +416,11 @@ public final class WatchPanel {
         EntityRef target = executor(entry);
         boolean changed = entry.spec().isPinned() ? state.watches().unpin(id) : target != null && state.watches().pin(id, target);
         if (!changed) notice(text("feedback.duplicate"));
+    }
+
+    private void copyValue(ClientWatchState.Entry entry) {
+        Minecraft.getInstance().keyboardHandler.setClipboard(WatchFormatting.latestValue(entry, state.isPaused()).getString());
+        notice(text("details.copy_value"));
     }
 
     private DebuggerButton button(String id, Bounds b, Component label, boolean active, boolean selected, Runnable action,

@@ -15,6 +15,7 @@ import works.nuty.codon.client.state.ClientDebuggerState;
 import works.nuty.codon.client.state.DebuggerPreferences.InspectorTab;
 import works.nuty.codon.client.ui.layout.DebuggerLayout;
 import works.nuty.codon.client.ui.layout.GizmoLabelLayout;
+import works.nuty.codon.client.ui.layout.WatchPanelLayout;
 import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Anchor;
 import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds;
 import works.nuty.codon.core.model.ExecutionFlowContext;
@@ -35,6 +36,7 @@ import static works.nuty.codon.client.ui.DebuggerTheme.*;
 
 /** Shared HUD/screen presentation. Only the menu screen registers the rendered controls. */
 public final class DebuggerOverlay {
+    private enum AuxiliaryPanel { NONE, INSPECTOR, WATCHES }
     private static final Bounds EMPTY = new Bounds(0, 0, 0, 0);
     private static final int MAX_WORLD_LABELS = 20;
     private static final int SOURCE_LIST_MIN_HEIGHT = 40;
@@ -63,7 +65,16 @@ public final class DebuggerOverlay {
     private Bounds watchSummaryBounds = EMPTY;
     private final WatchPanel watchPanel;
     private Bounds sourceScrollBounds = EMPTY;
+    private Bounds viewTriggerBounds = EMPTY;
+    private Bounds viewMenuBounds = EMPTY;
+    private final List<DebuggerButton> viewMenuButtons = new ArrayList<>();
+    private boolean viewMenuOpen;
     private boolean showInspector;
+    private boolean showWatches;
+    private boolean compactAuxiliary;
+    private boolean narrowAuxiliary;
+    private int lastAuxiliarySize = -1;
+    private AuxiliaryPanel auxiliaryPanel = AuxiliaryPanel.NONE;
     private int hoverX = -1;
     private int hoverY = -1;
 
@@ -82,6 +93,21 @@ public final class DebuggerOverlay {
     public DebuggerNavigation navigation() { return navigation; }
     public WatchPanel watchPanel() { return watchPanel; }
 
+    boolean viewMenuOpen() { return viewMenuOpen; }
+    boolean viewTriggerContains(double x, double y) { return viewTriggerBounds.contains(x, y); }
+    boolean viewMenuContains(double x, double y) { return viewMenuBounds.contains(x, y); }
+    void closeViewMenu() { viewMenuOpen = false; }
+    boolean closeAuxiliaryPanel() {
+        if (!compactAuxiliary || auxiliaryPanel == AuxiliaryPanel.NONE) return false;
+        auxiliaryPanel = AuxiliaryPanel.NONE;
+        return true;
+    }
+
+    @Nullable DebuggerButton viewMenuButtonAt(double x, double y) {
+        if (!viewMenuOpen || !viewMenuBounds.contains(x, y)) return null;
+        return viewMenuButtons.stream().filter(button -> button.isMouseOver(x, y)).findFirst().orElse(null);
+    }
+
     public List<DebuggerButton> render(GuiGraphicsExtractor graphics, int mouseX, int mouseY,
                                        float partialTick, boolean interactive, InputManager input) {
         controls.clear();
@@ -91,6 +117,8 @@ public final class DebuggerOverlay {
         hoverY = interactive ? mouseY : -1;
         usedButtons.clear();
         sourceScrollBounds = EMPTY;
+        viewTriggerBounds = viewMenuBounds = EMPTY;
+        viewMenuButtons.clear();
         commandPanel.clearBounds();
         watchPanel.clearBounds();
         watchSummaryBounds = EMPTY;
@@ -127,30 +155,61 @@ public final class DebuggerOverlay {
             return List.of();
         }
 
-        showInspector = state.preferences().inspectorVisible() != null ? state.preferences().inspectorVisible()
-            : graphics.guiWidth() >= 420 && graphics.guiHeight() >= 220;
-        DebuggerLayout layout = DebuggerLayout.create(graphics.guiWidth(), graphics.guiHeight(), showInspector,
+        int auxiliarySize = graphics.guiWidth() < 420 ? 2 : graphics.guiWidth() < 600 ? 1 : 0;
+        if (auxiliarySize != lastAuxiliarySize) {
+            auxiliaryPanel = auxiliarySize == 1 ? AuxiliaryPanel.INSPECTOR : AuxiliaryPanel.NONE;
+            lastAuxiliarySize = auxiliarySize;
+        }
+        compactAuxiliary = auxiliarySize != 0;
+        narrowAuxiliary = auxiliarySize == 2;
+        showInspector = compactAuxiliary ? auxiliaryPanel == AuxiliaryPanel.INSPECTOR
+            : state.preferences().inspectorVisible() != null ? state.preferences().inspectorVisible()
+                : graphics.guiWidth() >= 420 && graphics.guiHeight() >= 220;
+        showWatches = compactAuxiliary ? auxiliaryPanel == AuxiliaryPanel.WATCHES
+            : state.preferences().watchesVisible();
+        boolean reserveSide = narrowAuxiliary ? false : showInspector || compactAuxiliary && showWatches;
+        DebuggerLayout layout = DebuggerLayout.create(graphics.guiWidth(), graphics.guiHeight(), reserveSide,
             state.preferences().commandVisible()
                 ? commandPanel.preferredHeight(graphics.guiWidth(), graphics.guiHeight(), snapshot) : 0);
+        Bounds auxiliaryBounds = narrowAuxiliary
+            ? new Bounds(layout.world().x(), layout.world().y(),
+                Math.min(240, Math.max(0, layout.world().width() - 32)), layout.world().height())
+            : layout.inspector();
         navigationGroup = DebuggerNavigation.Group.TOOLBAR;
         renderHeader(graphics, layout, input, snapshot);
         navigationGroup = DebuggerNavigation.Group.WATCH;
-        if (state.preferences().watchesVisible()) {
-            renderWatchSummary(graphics, layout, mouseX, mouseY, interactive, input);
+        if (showWatches) {
+            Bounds available = compactAuxiliary ? auxiliaryBounds
+                : WatchPanelLayout.available(layout, graphics.guiWidth());
+            renderWatchSummary(graphics, available, mouseX, mouseY, interactive, input);
         }
         navigationGroup = DebuggerNavigation.Group.WORLD;
-        renderWorldLabels(graphics, layout.world(), snapshot);
-        if (showInspector) renderInspector(graphics, layout.inspector(), snapshot);
+        if (!narrowAuxiliary || auxiliaryPanel == AuxiliaryPanel.NONE)
+            renderWorldLabels(graphics, layout.world(), snapshot);
+        if (showInspector) renderInspector(graphics, auxiliaryBounds, snapshot);
         if (state.preferences().commandVisible()) {
             controls.addAll(commandPanel.render(graphics, layout.command(), snapshot, input, this, navigation));
         }
+        if (viewMenuOpen) renderViewMenu(graphics);
 
         buttonCache.keySet().retainAll(usedButtons);
         navigation.endFrame();
         scrollbars.endFrame();
         for (DebuggerButton button : controls) {
+            if (viewMenuButtons.contains(button) || watchPanel.isGroupingChoice(button)) continue;
             if (!interactive) button.setFocused(false);
             button.extractRenderState(graphics, interactive ? mouseX : -1, interactive ? mouseY : -1, partialTick);
+        }
+        watchPanel.paintGroupingMenu(graphics, mouseX, mouseY, partialTick, interactive);
+        if (viewMenuOpen) {
+            graphics.fill(viewMenuBounds.x(), viewMenuBounds.y(), viewMenuBounds.x() + viewMenuBounds.width(),
+                viewMenuBounds.y() + viewMenuBounds.height(), PANEL);
+            graphics.outline(viewMenuBounds.x(), viewMenuBounds.y(), viewMenuBounds.width(),
+                viewMenuBounds.height(), BORDER);
+            for (DebuggerButton button : viewMenuButtons) {
+                if (!interactive) button.setFocused(false);
+                button.extractRenderState(graphics, interactive ? mouseX : -1, interactive ? mouseY : -1, partialTick);
+            }
         }
         return List.copyOf(controls);
     }
@@ -191,7 +250,7 @@ public final class DebuggerOverlay {
 
         int gap = DebuggerLayout.ICON_BUTTON_GAP;
         int width = Math.min(DebuggerLayout.ICON_BUTTON_SIZE,
-            Math.max(1, (toolbar.width() - 6 - 8 * gap - DebuggerLayout.ICON_GROUP_GAP) / 10));
+            Math.max(1, (toolbar.width() - 6 - 10 * gap - DebuggerLayout.ICON_GROUP_GAP) / 12));
         int x = toolbar.x() + 3;
         for (InputManager.Control action : InputManager.Control.values()) {
             DebuggerIcon icon = switch (action) {
@@ -210,44 +269,88 @@ public final class DebuggerOverlay {
         }
         x += DebuggerLayout.ICON_GROUP_GAP - gap;
         graphics.fill(x - 4, toolbar.y() + 5, x - 3, toolbar.y() + toolbar.height() - 5, BORDER);
-        Component mode = Component.translatable("codon.ui.gizmo_mode",
-            component("codon.ui.mode." + state.gizmoMode().name().toLowerCase(Locale.ROOT)));
-        DebuggerIcon modeIcon = switch (state.gizmoMode()) {
-            case GROUPED -> DebuggerIcon.GIZMO_GROUPED;
-            case LABELS -> DebuggerIcon.GIZMO_LABELS;
-        };
-        iconButton("mode", new Bounds(x, toolbar.y() + 2, width, DebuggerLayout.ICON_BUTTON_SIZE),
-            mode, modeIcon, true, () -> {
-                state.setGizmoMode(state.gizmoMode().next());
-                expandedGroup = List.of();
-                sourceOffset = 0;
-            });
-        button("inspector", new Bounds(x + width + gap, toolbar.y() + 2, width, DebuggerLayout.ICON_BUTTON_SIZE),
-            component("codon.ui.details"), true, showInspector, false, false,
-            () -> state.preferences().setInspectorVisible(!showInspector))
-            .withIcon(showInspector ? DebuggerIcon.DETAILS_OPEN : DebuggerIcon.DETAILS_CLOSED);
-        boolean showWatches = state.preferences().watchesVisible();
-        button("watches", new Bounds(x + 2 * (width + gap), toolbar.y() + 2, width, DebuggerLayout.ICON_BUTTON_SIZE),
-            component("codon.watch.title"), true, showWatches, false, false,
-            () -> state.preferences().setWatchesVisible(!showWatches))
-            .withIcon(DebuggerIcon.WATCHES);
-        boolean showCommand = state.preferences().commandVisible();
-        button("command", new Bounds(x + 3 * (width + gap), toolbar.y() + 2, width, DebuggerLayout.ICON_BUTTON_SIZE),
-            component("codon.ui.command"), true, showCommand, false, false,
-            () -> state.preferences().setCommandVisible(!showCommand))
-            .withIcon(DebuggerIcon.COMMAND);
+        viewTriggerBounds = new Bounds(x, toolbar.y() + 2, 42, DebuggerLayout.ICON_BUTTON_SIZE);
+        button("view", viewTriggerBounds, component("codon.ui.view"), true, viewMenuOpen, false, false,
+            () -> viewMenuOpen = !viewMenuOpen);
+        int auxiliaryX = x + viewTriggerBounds.width() + gap;
         boolean keepFreecam = state.preferences().keepFreecam();
-        button("keep-freecam", new Bounds(x + 4 * (width + gap), toolbar.y() + 2,
+        button("keep-freecam", new Bounds(auxiliaryX, toolbar.y() + 2,
                 width, DebuggerLayout.ICON_BUTTON_SIZE),
             component(keepFreecam ? "codon.ui.keep_freecam.on" : "codon.ui.keep_freecam.off")
                 .copy().append(" ").append(keybind(input.keepFreecamKey.getTranslatedKeyMessage())),
             true, keepFreecam, false, false,
             input::toggleKeepFreecam)
             .withIcon(DebuggerIcon.FREECAM);
-        iconButton("information", new Bounds(x + 5 * (width + gap), toolbar.y() + 2, width, DebuggerLayout.ICON_BUTTON_SIZE),
+        iconButton("information", new Bounds(auxiliaryX + width + gap, toolbar.y() + 2, width, DebuggerLayout.ICON_BUTTON_SIZE),
             component("codon.ui.information"), DebuggerIcon.INFORMATION, true,
             () -> client.gui.setScreen(new DebuggerHelpScreen(new CodonScreen(input, this), input)));
 
+        iconButton("source", new Bounds(auxiliaryX + 2 * (width + gap), toolbar.y() + 2, width, DebuggerLayout.ICON_BUTTON_SIZE),
+            Component.translatable("codon.source.title"), DebuggerIcon.SOURCE_FILE, CodonClientMod.sources() != null,
+            () -> {
+                if (client.gui.screen() instanceof FunctionSourceScreen open) {
+                    open.onClose();
+                    return;
+                }
+                var sources = CodonClientMod.sources();
+                if (sources != null && client.gui.screen() != null) {
+                    if (state.selectedLocation() instanceof SourceLocation.Function function)
+                        sources.selectAt(function.location());
+                    client.gui.setScreen(new FunctionSourceScreen(client.gui.screen(), sources));
+                }
+            });
+        int breakpointX = auxiliaryX + 3 * (width + gap);
+        int breakpointWidth = Math.max(width,
+            Math.min(70, toolbar.x() + toolbar.width() - breakpointX - 3));
+        button("breakpoints", new Bounds(breakpointX, toolbar.y() + 2, breakpointWidth,
+                DebuggerLayout.ICON_BUTTON_SIZE),
+            Component.translatable("codon.breakpoint.short_count", state.breakpoints().definitions().size()),
+            true, false, false, false,
+            () -> { if (client.gui.screen() != null) client.gui.setScreen(new BreakpointListScreen(client.gui.screen(), state)); })
+            .withTextIcon(DebuggerIcon.BREAKPOINT_LIST)
+            .setTooltip(Tooltip.create(Component.translatable("codon.breakpoint.toolbar",
+                state.breakpoints().definitions().size())));
+
+    }
+
+    private void renderViewMenu(GuiGraphicsExtractor graphics) {
+        int menuWidth = Math.min(154, graphics.guiWidth() - 12);
+        int menuHeight = 4 * 19 + 4;
+        int x = Math.clamp(viewTriggerBounds.x(), 6, graphics.guiWidth() - menuWidth - 6);
+        int below = viewTriggerBounds.y() + viewTriggerBounds.height() + 2;
+        int y = below + menuHeight <= graphics.guiHeight() - 6 ? below
+            : Math.max(6, viewTriggerBounds.y() - menuHeight - 2);
+        viewMenuBounds = new Bounds(x, y, menuWidth, menuHeight);
+        navigationGroup = DebuggerNavigation.Group.VIEW_MENU;
+        Component mode = Component.translatable("codon.ui.gizmo_mode",
+            component("codon.ui.mode." + state.gizmoMode().name().toLowerCase(Locale.ROOT)));
+        viewMenuItem(0, mode, false, () -> {
+            state.setGizmoMode(state.gizmoMode().next());
+            expandedGroup = List.of();
+            sourceOffset = 0;
+        });
+        viewMenuItem(1, component("codon.ui.details"), showInspector, () -> {
+            if (compactAuxiliary) auxiliaryPanel = showInspector ? AuxiliaryPanel.NONE : AuxiliaryPanel.INSPECTOR;
+            else state.preferences().setInspectorVisible(!showInspector);
+        });
+        viewMenuItem(2, component("codon.watch.title"), showWatches, () -> {
+            if (compactAuxiliary) auxiliaryPanel = showWatches ? AuxiliaryPanel.NONE : AuxiliaryPanel.WATCHES;
+            else state.preferences().setWatchesVisible(!showWatches);
+        });
+        boolean command = state.preferences().commandVisible();
+        viewMenuItem(3, component("codon.ui.command"), command,
+            () -> state.preferences().setCommandVisible(!command));
+    }
+
+    private void viewMenuItem(int row, Component label, boolean selected, Runnable action) {
+        Bounds bounds = new Bounds(viewMenuBounds.x() + 2, viewMenuBounds.y() + 2 + row * 19,
+            viewMenuBounds.width() - 4, 18);
+        DebuggerButton button = button("view-option-" + row, bounds,
+            Component.literal(selected ? "● " : "  ").append(label), true, selected, true, false, () -> {
+                action.run();
+                viewMenuOpen = false;
+            });
+        viewMenuButtons.add(button);
     }
 
     private void renderWorldLabels(GuiGraphicsExtractor graphics, Bounds world, @Nullable PauseSnapshot snapshot) {
@@ -315,7 +418,8 @@ public final class DebuggerOverlay {
                     expandedGroup = List.of();
                     sourceOffset = index;
                 }
-                state.preferences().setInspectorVisible(true);
+                if (compactAuxiliary) auxiliaryPanel = AuxiliaryPanel.INSPECTOR;
+                else state.preferences().setInspectorVisible(true);
                 state.preferences().setInspectorTab(InspectorTab.SOURCES);
             }), statusIndex).setTooltip(Tooltip.create(group ? title : worldSourceTooltip(title, index)));
         }
@@ -323,9 +427,9 @@ public final class DebuggerOverlay {
     }
 
     /** Saved pins first, followed by every change captured at this stop. */
-    private void renderWatchSummary(GuiGraphicsExtractor graphics, DebuggerLayout layout,
+    private void renderWatchSummary(GuiGraphicsExtractor graphics, Bounds available,
                                     int mouseX, int mouseY, boolean interactive, InputManager input) {
-        controls.addAll(watchPanel.render(graphics, layout, mouseX, mouseY, interactive, input, this, navigation, scrollbars));
+        controls.addAll(watchPanel.render(graphics, available, mouseX, mouseY, interactive, input, this, navigation, scrollbars));
         watchSummaryBounds = watchPanel.bounds();
     }
 

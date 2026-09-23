@@ -6,9 +6,16 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
 import works.nuty.codon.client.camera.DebuggerFreecam;
 import works.nuty.codon.client.state.ClientDebuggerState;
+import works.nuty.codon.client.state.ClientBreakpointState;
+import works.nuty.codon.client.state.ClientStagePreviewState;
 import works.nuty.codon.client.state.ClientPauseEffects;
 import works.nuty.codon.client.state.ClientWatchState;
 import works.nuty.codon.network.BreakpointSyncPayload;
+import works.nuty.codon.network.BreakpointDefinitionsSyncPayload;
+import works.nuty.codon.network.BreakpointEditPayload;
+import works.nuty.codon.network.BreakpointEditResultPayload;
+import works.nuty.codon.network.BreakpointStagePreviewRequestPayload;
+import works.nuty.codon.network.BreakpointStagePreviewSyncPayload;
 import works.nuty.codon.network.ExecutionFlowSyncPayload;
 import works.nuty.codon.network.PauseSyncPayload;
 import works.nuty.codon.network.ResumeSyncPayload;
@@ -94,6 +101,18 @@ public final class ClientNetworking {
         ClientPlayNetworking.registerGlobalReceiver(BreakpointSyncPayload.TYPE, (payload, context) ->
             context.client().execute(() -> state.applyBreakpoints(payload.blocks())));
 
+        ClientPlayNetworking.registerGlobalReceiver(BreakpointDefinitionsSyncPayload.TYPE, (payload, context) ->
+            context.client().execute(() -> state.breakpoints().acceptPage(payload.transferId(), payload.offset(),
+                payload.last(), payload.definitions())));
+        ClientPlayNetworking.registerGlobalReceiver(BreakpointEditResultPayload.TYPE, (payload, context) ->
+            context.client().execute(() -> state.breakpoints().finish(payload.requestId(),
+                ClientBreakpointState.Result.valueOf(payload.status().name()))));
+        ClientPlayNetworking.registerGlobalReceiver(BreakpointStagePreviewSyncPayload.TYPE, (payload, context) ->
+            context.client().execute(() -> state.stagePreviews().accept(payload.requestId(), payload.location(),
+                ClientStagePreviewState.Status.valueOf(payload.status().name()), payload.savedCommand(),
+                payload.stages().stream().map(span -> new ClientStagePreviewState.StageSpan(span.index(),
+                    span.start(), span.end(), span.terminal())).toList())));
+
         ClientPlayNetworking.registerGlobalReceiver(ExecutionFlowSyncPayload.TYPE, (payload, context) ->
             context.client().execute(() -> state.applyCompletedExecutionFlows(payload.flows())));
     }
@@ -129,6 +148,28 @@ public final class ClientNetworking {
     private static long nextTransferId() {
         nextWatchTransferId = nextWatchTransferId == Long.MAX_VALUE ? 1 : nextWatchTransferId + 1;
         return nextWatchTransferId;
+    }
+
+    public static boolean sendBreakpointEdit(ClientDebuggerState state, ClientBreakpointState.Action action,
+                                             works.nuty.codon.core.model.BreakpointDefinition definition) {
+        Minecraft client = Minecraft.getInstance();
+        if (client.player == null || !state.breakpoints().ready()
+            || !ClientPlayNetworking.canSend(BreakpointEditPayload.TYPE.id())) return false;
+        ClientBreakpointState.Edit edit = state.breakpoints().begin(action, definition);
+        if (edit == null) return false;
+        ClientPlayNetworking.send(new BreakpointEditPayload(edit.requestId(),
+            BreakpointEditPayload.Action.valueOf(edit.action().name()), edit.definition()));
+        return true;
+    }
+
+    public static boolean requestStagePreview(ClientDebuggerState state,
+                                              works.nuty.codon.core.model.SourceLocation location) {
+        Minecraft client = Minecraft.getInstance();
+        if (client.player == null || !ClientPlayNetworking.canSend(BreakpointStagePreviewRequestPayload.TYPE.id()))
+            return false;
+        long requestId = state.stagePreviews().begin(location);
+        ClientPlayNetworking.send(new BreakpointStagePreviewRequestPayload(requestId, location));
+        return true;
     }
 
     /** Enqueue reads before a step command so even immediate input retains its before-step capture. */

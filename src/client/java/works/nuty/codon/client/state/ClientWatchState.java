@@ -36,6 +36,8 @@ public final class ClientWatchState {
         public boolean automatic() { return id < 0; }
     }
     public record Query(long pauseId, long requestId, int sourceIndex, WatchSpec spec, @Nullable UUID capturedEntity) {}
+    /** Short-lived undo token; a world reset invalidates it. */
+    public record Removed(long id, WatchSpec spec, int index, long generation) { }
     private WatchGrouping.Mode grouping = WatchGrouping.Mode.CONTEXT;
     public WatchGrouping.Mode grouping() { return grouping; }
     public void grouping(WatchGrouping.Mode mode) { grouping = java.util.Objects.requireNonNull(mode); }
@@ -62,6 +64,8 @@ public final class ClientWatchState {
     private List<PauseSource> currentSources = List.of();
     private long nextEntryId;
     private long nextRequestId;
+    private long generation;
+    public long generation() { return generation; }
     private long pauseId;
     private int sourceIndex = -1;
     private boolean continuingStep;
@@ -312,14 +316,41 @@ public final class ClientWatchState {
         changeListener.accept(List.of());
     }
 
-    public void remove(long id) {
-        if (slots.remove(id) == null) return;
+    public @Nullable Removed removeForUndo(long id) {
+        int index = new ArrayList<>(slots.keySet()).indexOf(id);
+        Slot removed = slots.remove(id);
+        if (removed == null) return null;
         pendingDisplays.remove(id);
         previous.remove(id);
         targetHistory.remove(id);
         stepTargets.remove(id);
         pruneExecutorNames();
         changeListener.accept(definitions());
+        return new Removed(id, removed.spec, index, generation);
+    }
+
+    public void remove(long id) { removeForUndo(id); }
+
+    public boolean restore(Removed removed) {
+        if (removed == null || removed.generation() != generation || slots.containsKey(removed.id())
+            || findId(removed.spec()) >= 0) return false;
+        Map<Long, Slot> restored = new LinkedHashMap<>();
+        int index = 0;
+        boolean inserted = false;
+        for (var entry : slots.entrySet()) {
+            if (index++ == removed.index()) {
+                restored.put(removed.id(), new Slot(removed.spec()));
+                inserted = true;
+            }
+            restored.put(entry.getKey(), entry.getValue());
+        }
+        if (!inserted) restored.put(removed.id(), new Slot(removed.spec()));
+        slots.clear();
+        slots.putAll(restored);
+        nextEntryId = Math.max(nextEntryId, removed.id());
+        changeListener.accept(definitions());
+        reveal(removed.id());
+        return true;
     }
 
     public boolean pin(long id, EntityRef executor) {
@@ -483,6 +514,7 @@ public final class ClientWatchState {
     }
 
     public void reset() {
+        generation++;
         resumed();
         slots.clear();
         executorNames.clear();

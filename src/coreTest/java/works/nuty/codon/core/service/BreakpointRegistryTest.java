@@ -2,6 +2,9 @@ package works.nuty.codon.core.service;
 
 import org.junit.jupiter.api.Test;
 import works.nuty.codon.core.model.BlockLocation;
+import works.nuty.codon.core.model.BreakpointCondition;
+import works.nuty.codon.core.model.BreakpointDefinition;
+import works.nuty.codon.core.model.BreakpointTarget;
 import works.nuty.codon.core.model.FunctionId;
 import works.nuty.codon.core.model.FunctionLocation;
 import works.nuty.codon.core.model.SourceLocation;
@@ -10,6 +13,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BreakpointRegistryTest {
@@ -66,5 +70,36 @@ class BreakpointRegistryTest {
         assertEquals(3, registry.size());
         registry.clear();
         assertTrue(registry.isEmpty());
+    }
+
+    @Test
+    void togglingEnabledStateKeepsTheSavedStageConditionAndIdentity() {
+        SourceLocation location = new SourceLocation.Function(fn("tick", 3));
+        BreakpointTarget target = BreakpointTarget.stage(location, 1, "execute as @s run say ready");
+        BreakpointCondition condition = BreakpointCondition.count(BreakpointCondition.Kind.OUTPUT_COUNT,
+            BreakpointCondition.Comparison.EQ, 0);
+        registry.put(new BreakpointDefinition(target, true, condition));
+
+        BreakpointDefinition disabled = registry.toggleEnabled(target);
+        assertFalse(disabled.enabled());
+        assertEquals(target, disabled.target());
+        assertEquals(condition, disabled.condition());
+
+        BreakpointDefinition enabled = registry.toggleEnabled(target);
+        assertTrue(enabled.enabled());
+        assertEquals(condition, enabled.condition());
+        assertEquals(enabled, registry.get(target));
+    }
+
+    @Test
+    void definitionLimitRejectsNewTargetsButAllowsExistingEdits() {
+        for (int x = 0; x < BreakpointRegistry.MAX_DEFINITIONS; x++)
+            registry.put(BreakpointDefinition.plain(BreakpointTarget.whole(new SourceLocation.Block(block(x, 2, 3)))));
+        BreakpointTarget existing = BreakpointTarget.whole(new SourceLocation.Block(block(0, 2, 3)));
+        registry.toggleEnabled(existing);
+        assertEquals(BreakpointRegistry.MAX_DEFINITIONS, registry.size());
+        assertThrows(BreakpointRegistry.LimitExceeded.class,
+            () -> registry.put(BreakpointDefinition.plain(
+                BreakpointTarget.whole(new SourceLocation.Block(block(-1, 2, 3))))));
     }
 }

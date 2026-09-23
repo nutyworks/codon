@@ -2,14 +2,22 @@ package works.nuty.codon.core.service;
 
 import org.jspecify.annotations.Nullable;
 import works.nuty.codon.core.model.BlockLocation;
+import works.nuty.codon.core.model.BreakpointCondition;
+import works.nuty.codon.core.model.BreakpointDefinition;
+import works.nuty.codon.core.model.BreakpointTarget;
 import works.nuty.codon.core.model.CallFrame;
+import works.nuty.codon.core.model.ExecutionFlowStage;
 import works.nuty.codon.core.model.FunctionLocation;
 import works.nuty.codon.core.model.PauseReason;
 import works.nuty.codon.core.model.PauseSnapshot;
+import works.nuty.codon.core.model.PauseSource;
+import works.nuty.codon.core.model.SourceLocation;
 import works.nuty.codon.core.port.DebuggerEventSink;
 import works.nuty.codon.core.port.ExecutionController;
 
 import java.util.Set;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -43,6 +51,8 @@ public final class DebuggerEngine {
     private final Set<Long> skippedChainIds = ConcurrentHashMap.newKeySet();
     /** A line breakpoint belongs to the invocation, not each modifier stage within it. */
     private final Set<Long> evaluatedBreakpointChains = ConcurrentHashMap.newKeySet();
+    /** The before-stage event supplies the real invocation and source for a finalized result. */
+    private final Map<StageKey, CommandStageEvent> observedStages = new ConcurrentHashMap<>();
     /** Server-thread scopes: a command-block chain can contain several execution queues. */
     private int executionNesting;
     private boolean executionFailed;
@@ -99,23 +109,85 @@ public final class DebuggerEngine {
 
     // --- Breakpoint management (mutations route through here so the sink is notified) ---
 
-    /** Toggles a block breakpoint; returns {@code true} if added, {@code false} if removed. */
+    /** Toggles a block breakpoint without discarding a saved condition. */
     public boolean toggleBlockBreakpoint(BlockLocation block) {
-        boolean added = breakpoints.toggleBlock(block);
+        boolean enabled = breakpoints.toggleEnabled(BreakpointTarget.whole(new SourceLocation.Block(block))).enabled();
         eventSink.breakpointsChanged(breakpoints.blocks());
-        return added;
+        return enabled;
     }
 
-    /** Toggles a function breakpoint; returns {@code true} if added, {@code false} if removed. */
+    /** Toggles a function-line breakpoint without discarding a saved condition. */
     public boolean toggleFunctionBreakpoint(FunctionLocation location) {
-        boolean added = breakpoints.toggleFunction(location);
+        boolean enabled = breakpoints.toggleEnabled(BreakpointTarget.whole(new SourceLocation.Function(location))).enabled();
         eventSink.breakpointsChanged(breakpoints.blocks());
-        return added;
+        return enabled;
     }
 
     public void clearBreakpoints() {
         breakpoints.clear();
         eventSink.breakpointsChanged(breakpoints.blocks());
+    }
+
+    /** One-click UI action: create or switch the saved definition without losing its condition. */
+    public BreakpointDefinition toggleBreakpoint(BreakpointTarget target) {
+        BreakpointDefinition result = breakpoints.toggleEnabled(target);
+        eventSink.breakpointsChanged(breakpoints.blocks());
+        return result;
+    }
+
+    public void saveBreakpoint(BreakpointDefinition definition) {
+        breakpoints.put(definition);
+        eventSink.breakpointsChanged(breakpoints.blocks());
+    }
+
+    public void deleteBreakpoint(BreakpointTarget target) {
+        if (breakpoints.remove(target) != null) eventSink.breakpointsChanged(breakpoints.blocks());
+    }
+
+    public List<BreakpointDefinition> breakpointDefinitions() {
+        return breakpoints.definitions();
+    }
+
+    /** A saved command changed; keep conditions visible but prevent accidental retargeting. */
+    public boolean disableStaleStages(SourceLocation location, String previousCommand, String savedCommand) {
+        if (location instanceof SourceLocation.Player) return false;
+        boolean sourceChanged = !previousCommand.equals(savedCommand);
+        String fingerprint = BreakpointTarget.fingerprint(savedCommand);
+        boolean changed = false;
+        for (BreakpointDefinition definition : breakpoints.definitions()) {
+            BreakpointTarget target = definition.target();
+            if (!target.location().equals(location)) continue;
+            if (target.wholeCommand()) {
+                if (!sourceChanged || !definition.condition().isResultCondition()) continue;
+            } else {
+                boolean stale = !target.commandFingerprint().equals(fingerprint);
+                if (stale == definition.staleSource()) continue;
+                breakpoints.put(definition.withStaleSource(stale));
+                changed = true;
+                continue;
+            }
+            if (definition.staleSource()) continue;
+            breakpoints.put(definition.withStaleSource(true));
+            changed = true;
+        }
+        if (changed) eventSink.breakpointsChanged(breakpoints.blocks());
+        return changed;
+    }
+
+    /** Revalidate saved function-stage positions after a datapack reload in one sync. */
+    public int revalidateFunctionStages(Map<FunctionLocation, String> currentCommands) {
+        int changed = 0;
+        for (BreakpointDefinition definition : breakpoints.definitions()) {
+            BreakpointTarget target = definition.target();
+            if (target.wholeCommand() || !(target.location() instanceof SourceLocation.Function function)) continue;
+            String command = currentCommands.getOrDefault(function.location(), "");
+            boolean stale = !target.commandFingerprint().equals(BreakpointTarget.fingerprint(command));
+            if (stale == definition.staleSource()) continue;
+            breakpoints.put(definition.withStaleSource(stale));
+            changed++;
+        }
+        if (changed > 0) eventSink.breakpointsChanged(breakpoints.blocks());
+        return changed;
     }
 
     public int breakpointCount() {
@@ -153,6 +225,7 @@ public final class DebuggerEngine {
             event.flowStageIndex()));
         executionFlows.recordCallStack(event.chainId(), event.flowStageIndex(), callStack.frames());
         lastStage = event;
+        if (event.flowStageIndex() >= 0) observedStages.put(new StageKey(event.chainId(), event.flowStageIndex()), event);
 
         if (skippedChainIds.contains(event.chainId())) {
             return;
@@ -160,12 +233,46 @@ public final class DebuggerEngine {
 
         boolean breakpointHit = breakpoints.matches(event.location())
             && evaluatedBreakpointChains.add(event.chainId());
+        if (!breakpointHit && event.flowStageIndex() >= 0 && !(event.location() instanceof SourceLocation.Player)) {
+            BreakpointDefinition stage = breakpoints.get(BreakpointTarget.stage(event.location(),
+                event.flowStageIndex(), event.command().text()));
+            breakpointHit = stage != null && stage.enabled()
+                && stage.condition().equals(BreakpointCondition.ALWAYS);
+        }
         if (breakpointHit || step.shouldPauseAt(event.depth())) {
             pause(event, breakpointHit ? PauseReason.BREAKPOINT : PauseReason.STEP);
         }
     }
 
+    /** Called only after the recorder has finalized this exact stage's observed results. */
+    public void onCommandStageCompleted(long chainId, SourceLocation location, ExecutionFlowStage stage) {
+        if (paused || skippedChainIds.contains(chainId) || location instanceof SourceLocation.Player) return;
+        CommandStageEvent event = observedStages.remove(new StageKey(chainId, stage.index()));
+        if (event == null || !event.location().equals(location)
+            || !event.command().text().equals(stage.command().text())) return;
+        BreakpointDefinition whole = breakpoints.get(BreakpointTarget.whole(location));
+        BreakpointDefinition specific = breakpoints.get(BreakpointTarget.stage(location, stage.index(),
+            stage.command().text()));
+        boolean wholeHit = matchesResult(whole, stage) && evaluatedBreakpointChains.add(chainId);
+        boolean stageHit = matchesResult(specific, stage);
+        if (!wholeHit && !stageHit) return;
+        List<PauseSource> outputs = stage.displayContexts().stream().map(context -> context.source()).toList();
+        CommandStageEvent resultEvent = new CommandStageEvent(chainId, event.depth(), location,
+            stage.command(), () -> outputs, stage.index());
+        pause(resultEvent, PauseReason.BREAKPOINT, stage.callStack().isEmpty() ? callStack.frames() : stage.callStack());
+    }
+
+    private static boolean matchesResult(BreakpointDefinition definition, ExecutionFlowStage stage) {
+        return definition != null && definition.enabled() && definition.condition().isResultCondition()
+            && BreakpointConditionEvaluator.evaluate(definition.condition(), stage)
+                == BreakpointConditionEvaluator.Result.MATCH;
+    }
+
     private void pause(CommandStageEvent event, PauseReason reason) {
+        pause(event, reason, callStack.frames());
+    }
+
+    private void pause(CommandStageEvent event, PauseReason reason, List<CallFrame> recordedStack) {
         paused = true;
         continuing = false;
         pausedChainId = event.chainId();
@@ -176,7 +283,7 @@ public final class DebuggerEngine {
                 event.location(),
                 event.command(),
                 event.depth(),
-                callStack.frames(),
+                recordedStack,
                 event.pauseSources().get(),
                 executionFlows.snapshot(),
                 reason,
@@ -197,7 +304,8 @@ public final class DebuggerEngine {
     /** Resume normal execution (run to the next breakpoint). */
     public void resume() {
         boolean complete = isExecutionComplete();
-        skipRemainingPausedChain();
+        // The whole-command stop is already guarded by evaluatedBreakpointChains. Let later
+        // stages in this invocation hit their own breakpoints after Continue.
         if (!complete && executionNesting > 0 && (paused || step.isStepping() || continuing)) {
             boolean wasStepping = step.isStepping();
             step.clear();
@@ -293,6 +401,7 @@ public final class DebuggerEngine {
         }
         skippedChainIds.clear();
         evaluatedBreakpointChains.clear();
+        observedStages.clear();
         callStack.clear();
         lastStage = null;
         executionFailed = false;
@@ -308,6 +417,7 @@ public final class DebuggerEngine {
         clearAdvancement();
         skippedChainIds.clear();
         evaluatedBreakpointChains.clear();
+        observedStages.clear();
         callStack.clear();
         executionFlows.clear();
         unpause();
@@ -344,4 +454,6 @@ public final class DebuggerEngine {
         // fallback. A later breakpoint within this execution must not reset the camera.
         if (wasAdvancing && !paused) eventSink.resumed();
     }
+
+    private record StageKey(long chainId, int stageIndex) { }
 }

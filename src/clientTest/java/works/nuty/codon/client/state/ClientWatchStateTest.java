@@ -45,6 +45,25 @@ class ClientWatchStateTest {
     }
 
     @Test
+    void deletedWatchCanBeRestoredAtItsOriginalPositionUntilWorldReset() {
+        ClientWatchState state = new ClientWatchState(() -> 0);
+        state.add(SCORE);
+        state.add(ENTITY);
+        state.add(STORAGE);
+        long id = state.entries().get(1).id();
+
+        ClientWatchState.Removed removed = state.removeForUndo(id);
+        assertEquals(List.of(SCORE, STORAGE), state.definitions());
+        assertTrue(state.restore(removed));
+        assertEquals(List.of(SCORE, ENTITY, STORAGE), state.definitions());
+        assertEquals(id, state.entries().get(1).id());
+
+        ClientWatchState.Removed oldWorld = state.removeForUndo(id);
+        state.reset();
+        assertFalse(state.restore(oldWorld), "undo must not restore a watch in another world session");
+    }
+
+    @Test
     void highlightsValueChangesAndKeepsThePreviousValueForTheSameTarget() {
         ClientWatchState state = new ClientWatchState(() -> 0);
         state.add(SCORE);
