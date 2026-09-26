@@ -279,10 +279,12 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
         focusMarker(context, whole);
         context.getInput().pressKey(InputConstants.KEY_SPACE);
         context.waitFor(client -> !CodonClientMod.state().breakpoints().pending(whole)
-            && !CodonClientMod.state().breakpoints().get(whole).enabled(), 200);
+            && !CodonClientMod.state().breakpoints().get(whole).enabled()
+            && focusedMarkerReady(client.gui.screen(), whole), 200);
         context.getInput().pressKey(InputConstants.KEY_RETURN);
         context.waitFor(client -> !CodonClientMod.state().breakpoints().pending(whole)
-            && CodonClientMod.state().breakpoints().get(whole).enabled(), 200);
+            && CodonClientMod.state().breakpoints().get(whole).enabled()
+            && focusedMarkerReady(client.gui.screen(), whole), 200);
         focusMarker(context, first);
         context.runOnClient(client -> {
             client.gui.screen().keyPressed(new KeyEvent(InputConstants.KEY_TAB,
@@ -294,10 +296,12 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
         context.takeScreenshot("codon-breakpoint-keyboard-focus");
         context.getInput().pressKey(InputConstants.KEY_SPACE);
         context.waitFor(client -> !CodonClientMod.state().breakpoints().pending(first)
-            && !CodonClientMod.state().breakpoints().get(first).enabled(), 200);
+            && !CodonClientMod.state().breakpoints().get(first).enabled()
+            && focusedMarkerReady(client.gui.screen(), first), 200);
         context.getInput().pressKey(InputConstants.KEY_RETURN);
         context.waitFor(client -> !CodonClientMod.state().breakpoints().pending(first)
-            && CodonClientMod.state().breakpoints().get(first).enabled(), 200);
+            && CodonClientMod.state().breakpoints().get(first).enabled()
+            && focusedMarkerReady(client.gui.screen(), first), 200);
         // Fabric's TestInput supplies modifiers=0 even while Shift is held.
         context.runOnClient(client -> require(client.gui.screen().keyPressed(
             new KeyEvent(InputConstants.KEY_RETURN, InputConstants.KEYCODE_RETURN, InputConstants.MOD_SHIFT)),
@@ -321,10 +325,18 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
     private static void focusMarker(ClientGameTestContext context, BreakpointTarget target) {
         for (int attempts = 0; attempts < 24; attempts++) {
             if (context.computeOnClient(client -> client.gui.screen().getFocused() instanceof InlineBreakpointButton control
-                    && control.target().equals(target))) return;
+                    && control.target().equals(target))) {
+                context.waitFor(client -> focusedMarkerReady(client.gui.screen(), target), 200);
+                return;
+            }
             context.getInput().pressKey(InputConstants.KEY_TAB);
         }
         throw new AssertionError("Tab can reach marker " + target);
+    }
+
+    private static boolean focusedMarkerReady(Screen screen, BreakpointTarget target) {
+        return screen.getFocused() instanceof InlineBreakpointButton control
+            && control.target().equals(target) && control.isActive();
     }
 
     private static List<DebuggerButton> controls(Screen screen) {
