@@ -29,6 +29,7 @@ import works.nuty.codon.client.state.ClientBreakpointState;
 import works.nuty.codon.client.state.ClientStagePreviewState;
 import works.nuty.codon.client.ui.BreakpointConditionScreen;
 import works.nuty.codon.client.ui.WrappedCommandEditBox;
+import works.nuty.codon.client.ui.InlineBreakpointButton;
 import works.nuty.codon.client.ui.layout.CommandFlowLayout;
 import works.nuty.codon.core.model.BlockLocation;
 import works.nuty.codon.core.model.BreakpointDefinition;
@@ -43,6 +44,7 @@ public abstract class AbstractCommandBlockEditScreenMixin extends Screen {
     @Shadow protected abstract BaseCommandBlock getCommandBlock();
     @Unique private @Nullable String codon$requestedCommand;
     @Unique private @Nullable BreakpointTarget codon$selected;
+    @Unique private final List<InlineBreakpointButton> codon$markerControls = new ArrayList<>();
 
     protected AbstractCommandBlockEditScreenMixin() { super(Component.empty()); }
 
@@ -50,6 +52,7 @@ public abstract class AbstractCommandBlockEditScreenMixin extends Screen {
         target = "Lnet/minecraft/client/gui/components/EditBox;setMaxLength(I)V", ordinal = 0))
     private void codon$wrapCommandInput(CallbackInfo ci) {
         if (codon$entity() == null) return;
+        codon$markerControls.clear();
         commandEdit = new WrappedCommandEditBox(font, commandEdit.getX(), commandEdit.getY(),
             commandEdit.getWidth(), 60, commandEdit.getMessage());
         commandEdit.setMaxLength(32500);
@@ -80,6 +83,7 @@ public abstract class AbstractCommandBlockEditScreenMixin extends Screen {
         if (location == null || state == null || doneButton == null || !doneButton.active
                 || !command.equals(getCommandBlock().getCommand())) {
             editor.setBreakpointMarkers(command, List.of());
+            codon$syncMarkerControls(editor, List.of());
             return;
         }
         if (!command.equals(codon$requestedCommand)) {
@@ -105,6 +109,45 @@ public abstract class AbstractCommandBlockEditScreenMixin extends Screen {
             }
         }
         editor.setBreakpointMarkers(command, markers);
+        codon$syncMarkerControls(editor, markers);
+    }
+
+    @Unique private void codon$syncMarkerControls(WrappedCommandEditBox editor,
+                                                 List<WrappedCommandEditBox.Marker> markers) {
+        if (!codon$markerControls.stream().map(InlineBreakpointButton::target).toList()
+                .equals(markers.stream().map(WrappedCommandEditBox.Marker::target).toList())) {
+            for (var control : codon$markerControls) {
+                if (getFocused() == control) setFocused(editor);
+                control.setFocused(false);
+                removeWidget(control);
+            }
+            codon$markerControls.clear();
+            for (var marker : markers) codon$markerControls.add(addRenderableWidget(
+                new InlineBreakpointButton(editor, marker, condition -> codon$activateMarker(marker.target(), condition))));
+        }
+        var state = CodonClientMod.state();
+        for (int index = 0; index < markers.size(); index++)
+            codon$markerControls.get(index).update(markers.get(index), state == null
+                || state.breakpoints().pending(markers.get(index).target()));
+    }
+
+    @Unique private void codon$activateMarker(BreakpointTarget target, boolean condition) {
+        codon$refreshMarkers();
+        if (!(commandEdit instanceof WrappedCommandEditBox)
+                || codon$markerControls.stream().noneMatch(control -> control.target().equals(target))) return;
+        var state = CodonClientMod.state();
+        if (state == null || state.breakpoints().pending(target)) return;
+        codon$selected = target;
+        BreakpointDefinition definition = state.breakpoints().get(target);
+        if (definition == null) definition = BreakpointDefinition.plain(target);
+        if (!condition) {
+            ClientNetworking.sendBreakpointEdit(state, ClientBreakpointState.Action.TOGGLE, definition);
+        } else {
+            var control = codon$markerControls.stream().filter(value -> value.target().equals(target)).findFirst().orElseThrow();
+            var anchor = new BreakpointConditionScreen.Anchor(control.getX(), control.getY(), 9, 9);
+            Minecraft.getInstance().gui.setScreen(new BreakpointConditionScreen((Screen) (Object) this, state,
+                definition, anchor));
+        }
     }
 
     @Inject(method = "extractRenderState", at = @At("HEAD"))
@@ -126,18 +169,7 @@ public abstract class AbstractCommandBlockEditScreenMixin extends Screen {
         }
         if (state == null) return;
         cir.setReturnValue(true);
-        codon$selected = marker.target();
-        if (state.breakpoints().pending(marker.target())) return;
-        BreakpointDefinition definition = state.breakpoints().get(marker.target());
-        if (definition == null) definition = BreakpointDefinition.plain(marker.target());
-        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
-            ClientNetworking.sendBreakpointEdit(state, ClientBreakpointState.Action.TOGGLE, definition);
-        } else {
-            var point = editor.markerPosition(marker);
-            var anchor = new BreakpointConditionScreen.Anchor(point.x() - 2, point.y() - 2, 5, 5);
-            Minecraft.getInstance().gui.setScreen(new BreakpointConditionScreen((Screen) (Object) this, state,
-                definition, anchor));
-        }
+        codon$activateMarker(marker.target(), event.button() == InputConstants.MOUSE_BUTTON_RIGHT);
     }
 
     @Inject(method = "mouseScrolled", at = @At("HEAD"), cancellable = true)

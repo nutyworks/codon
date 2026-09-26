@@ -57,3 +57,20 @@ Inspect `*codon-breakpoint-*.png` in the shared screenshot directory. The UI tes
 checks editing and transport; use the result test or manual trigger path to prove
 the execution actually pauses. Record manual world reload separately from the
 file-adapter unit test.
+
+When chaining edits in a client GameTest, wait for both the server acknowledgement
+and the next control's enabled state. A received snapshot can precede the frame
+that enables Undo or an inline marker; sending input in that interval tests a
+disabled control instead of the intended follow-up action.
+
+Disable a whole-command breakpoint and a conditional stage breakpoint, then
+reopen the command-block editor. Both saved definitions must remain visible as
+hollow markers without hovering; the stage condition must remain intact.
+`DebuggerBreakpointUiGameTest` covers the real server edit acknowledgements.
+
+In the command-block editor, Tab/Shift+Tab reaches each inline whole-command and
+stage marker, including unused markers. Focus reveals the marker and scrolls its
+row into view. Enter/Space toggles it; Shift+Enter opens its condition. Narration
+announces the target, enabled state, condition and keys, including the default
+Always condition on unused markers. Pending edits and dirty
+commands must not allow stale actions (`DebuggerBreakpointUiGameTest`).

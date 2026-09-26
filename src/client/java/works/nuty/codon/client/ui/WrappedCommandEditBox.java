@@ -30,6 +30,7 @@ public final class WrappedCommandEditBox extends EditBox {
     private List<BreakpointTarget> laidOutMarkers = List.of();
     private List<Marker> shownMarkers = List.of();
     private @Nullable BreakpointTarget hoveredTarget;
+    private @Nullable BreakpointTarget focusedTarget;
     private int hoverLeft, hoverRight, hoverTop, hoverBottom;
 
     private String markerCommand = "";
@@ -45,6 +46,11 @@ public final class WrappedCommandEditBox extends EditBox {
     public void setBreakpointMarkers(String command, List<Marker> markers) {
         markerCommand = command;
         this.markers = List.copyOf(markers);
+    }
+
+    public void focusBreakpoint(BreakpointTarget target) { focusedTarget = target; layout(); }
+    public void clearBreakpointFocus(BreakpointTarget target) {
+        if (target.equals(focusedTarget)) focusedTarget = null;
     }
 
     private int markerOffset(Marker marker) { return Math.max(0, marker.start()); }
@@ -165,13 +171,19 @@ public final class WrappedCommandEditBox extends EditBox {
                     graphics.fill(right, y, right + 1, y + 1, color);
                 }
             }
-            if (marker == hovered) {
+            if (marker.target().equals(focusedTarget))
+                graphics.outline(point.x() - 6, point.y() - 6, 13, 13, DebuggerTheme.TEAL);
+            if (marker == hovered || marker.target().equals(focusedTarget)) {
                 String label = marker.target().wholeCommand()
                     ? Component.translatable("codon.breakpoint.block_stop").getString()
                     : Component.translatable("codon.breakpoint.stage_target", marker.target().stageIndex() + 1).getString();
                 if (marker.definition() != null) label += " · " + BreakpointUi.condition(marker.definition().condition());
-                graphics.setTooltipForNextFrame(font, Component.literal(label).append("\n")
-                    .append(Component.translatable("codon.breakpoint.inline_help")), mouseX, mouseY);
+                graphics.setTooltipForNextFrame(font, font.split(Component.literal(label).append("\n")
+                    .append(Component.translatable(marker.target().equals(focusedTarget)
+                        ? "codon.breakpoint.inline_keyboard_help" : "codon.breakpoint.inline_help")),
+                    Math.min(240, graphics.guiWidth() - 24)),
+                    marker.target().equals(focusedTarget) ? point.x() : mouseX,
+                    marker.target().equals(focusedTarget) ? point.y() : mouseY);
             }
         }
     }
@@ -188,7 +200,8 @@ public final class WrappedCommandEditBox extends EditBox {
         int width = Math.max(1, getWidth() - 12);
         if (!value.equals(laidOutValue)) hoveredTarget = null;
         shownMarkers = value.equals(markerCommand) ? markers.stream()
-            .filter(marker -> marker.enabled() || marker.selected() || marker.target().equals(hoveredTarget))
+            .filter(marker -> marker.definition() != null || marker.selected() || marker.target().equals(hoveredTarget)
+                || marker.target().equals(focusedTarget))
             .sorted(java.util.Comparator.comparingInt(this::markerOffset)).toList() : List.of();
         List<BreakpointTarget> visibleTargets = shownMarkers.stream().map(Marker::target).toList();
         boolean changed = !value.equals(laidOutValue) || width != laidOutWidth || !visibleTargets.equals(laidOutMarkers);
@@ -219,6 +232,13 @@ public final class WrappedCommandEditBox extends EditBox {
             if (row < firstRow) firstRow = row;
             if (row >= firstRow + visibleRows()) firstRow = row - visibleRows() + 1;
             lastCursor = cursor;
+        }
+        if (focusedTarget != null) {
+            markers.stream().filter(marker -> marker.target().equals(focusedTarget)).findFirst().ifPresent(marker -> {
+                int row = rowAt(markerOffset(marker));
+                if (row < firstRow) firstRow = row;
+                if (row >= firstRow + visibleRows()) firstRow = row - visibleRows() + 1;
+            });
         }
         firstRow = Math.clamp(firstRow, 0, Math.max(0, lines.size() - visibleRows()));
     }
