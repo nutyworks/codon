@@ -78,6 +78,7 @@ public final class FunctionSourceScreen extends Screen {
     }
 
     @Override protected void init() {
+        String searchValue = search == null ? "" : search.getValue();
         clearWidgets();
         ClientFunctionSourceState.ScreenLayout layout = ClientFunctionSourceState.ScreenLayout.forScreen(width, height);
         panelWidth = layout.panelWidth();
@@ -96,7 +97,8 @@ public final class FunctionSourceScreen extends Screen {
             Component.translatable("codon.source.search")));
         search.setHint(Component.translatable("codon.source.search"));
         search.setMaxLength(128);
-        search.setResponder(ignored -> { listOffset = 0; rebuildEntries(); });
+        search.setValue(searchValue);
+        search.setResponder(ignored -> { listOffset = 0; rebuildEntries(); rememberView(); });
         refresh = addRenderableWidget(WatchUi.button(drawerMode ? left + 66 : left + treeWidth + 8, top + 5, 58, 18,
             Component.translatable("codon.source.refresh"), () -> { sources.refreshList(); listOffset = 0; }));
         reread = addRenderableWidget(WatchUi.button(drawerMode ? left + 126 : left + treeWidth + 68, top + 5, 54, 18,

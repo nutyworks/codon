@@ -8,6 +8,8 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContex
 import net.minecraft.client.InputType;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.input.MouseButtonInfo;
 import net.minecraft.network.chat.Component;
@@ -84,7 +86,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             });
             context.takeScreenshot("codon-function-source-480x270-stage");
             context.getInput().resizeWindow(1280, 720);
-            context.runOnClient(client -> {
+            ClientFunctionSourceState sourceState = context.computeOnClient(client -> {
                 client.options.guiScale().set(2);
                 client.resizeGui();
                 var debugger = require(CodonClientMod.state(), "client debugger state is initialized");
@@ -102,11 +104,80 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
                 ClientFunctionSourceState wideSources = loadedSource();
                 wideSources.rememberBrowseView(0, 0, 1, 0, 0);
                 client.setScreenAndShow(new FunctionSourceScreen(parent, wideSources));
+                return wideSources;
             });
             context.waitTicks(2);
             context.takeScreenshot("codon-function-source-640x360-docked");
+            context.runOnClient(client -> searchBox(client.gui.screen()).setValue("long_stage"));
+            context.getInput().resizeWindow(1600, 1000);
+            context.waitTicks(2);
+            context.runOnClient(client -> require(searchBox(client.gui.screen()).getValue().equals("long_stage"),
+                "resizing retains the function search query"));
+            context.takeScreenshot("codon-function-source-search-after-resize");
+            context.runOnClient(client -> verifyFilteredSelection(client.gui.screen(), sourceState));
+            context.getInput().resizeWindow(960, 540);
+            context.waitTicks(2);
+            context.runOnClient(client -> {
+                Screen current = client.gui.screen();
+                AbstractButton functions = current.children().stream().filter(AbstractButton.class::isInstance)
+                    .map(AbstractButton.class::cast).filter(button -> button.visible
+                        && button.getMessage().getString().equals("Functions")).findFirst().orElseThrow();
+                MouseButtonEvent click = new MouseButtonEvent(functions.getX() + 2, functions.getY() + 2,
+                    new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
+                current.mouseClicked(click, false);
+                current.mouseReleased(click);
+                require(searchBox(current).getValue().equals("long_stage") && searchBox(current).visible,
+                    "opening the compact function drawer retains the same query");
+            });
+            context.takeScreenshot("codon-function-source-filtered-drawer");
+            context.runOnClient(client -> verifyFilteredSelection(client.gui.screen(), sourceState));
+            verifySearchScrollReset(context);
             context.runOnClient(client -> client.setScreenAndShow(null));
         }
+    }
+
+    private static void verifyFilteredSelection(Screen screen, ClientFunctionSourceState sources) {
+        require(!clickTreeRow(screen, 2), "filtered-out other_function row is not selectable");
+        require(clickTreeRow(screen, 1) && FUNCTION.equals(sources.selected()),
+            "the remaining long_stage row is selectable after rebuilding");
+    }
+
+    private static boolean clickTreeRow(Screen screen, int row) {
+        EditBox search = searchBox(screen);
+        // Namespace row 0 starts five pixels below the search box; rows are 18 pixels high.
+        MouseButtonEvent click = new MouseButtonEvent(search.getX() + 16, search.getBottom() + 9 + row * 18,
+            new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
+        boolean handled = screen.mouseClicked(click, false);
+        screen.mouseReleased(click);
+        return handled;
+    }
+
+    private static void verifySearchScrollReset(ClientGameTestContext context) {
+        context.getInput().resizeWindow(1280, 720);
+        ClientFunctionSourceState sources = context.computeOnClient(client -> {
+            var state = new ClientFunctionSourceState();
+            state.open();
+            long request = state.drainRequests().getFirst().requestId();
+            List<FunctionId> functions = java.util.stream.IntStream.range(0, 32)
+                .mapToObj(index -> new FunctionId("codon_test", "match_%02d".formatted(index))).toList();
+            state.accept(new ClientFunctionSourceState.ListPage(request, ClientFunctionSourceState.Status.READY,
+                0, true, functions));
+            var screen = new FunctionSourceScreen(new Screen(Component.empty()) { }, state);
+            client.setScreenAndShow(screen);
+            EditBox search = searchBox(screen);
+            screen.mouseScrolled(search.getX() + 16, search.getBottom() + 10, 0, -1);
+            require(state.browseView().treeOffset() > 0, "fixture begins with a saved nonzero tree scroll");
+            search.setValue("match");
+            return state;
+        });
+        context.getInput().resizeWindow(1600, 1000);
+        context.waitTicks(2);
+        context.runOnClient(client -> require(searchBox(client.gui.screen()).getValue().equals("match"),
+            "scroll regression retains the new query through resize"));
+        context.takeScreenshot("codon-function-source-query-scroll-after-resize");
+        context.runOnClient(client -> require(clickTreeRow(client.gui.screen(), 1)
+            && new FunctionId("codon_test", "match_00").equals(sources.selected()),
+            "query change stays at the first filtered result after resizing; selected=" + sources.selected()));
     }
 
     private static KeyMapping key(String name, int code, KeyMapping.Category category) {
@@ -119,7 +190,16 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
         long request = ((ClientFunctionSourceState.Request.ReadFunction) sources.drainRequests().getFirst()).requestId();
         sources.accept(new ClientFunctionSourceState.SourcePage(request, ClientFunctionSourceState.Status.READY, FUNCTION,
             "gametest", "source-preview", false, 0, true, List.of(COMMAND)));
+        sources.open();
+        long listRequest = ((ClientFunctionSourceState.Request.ListFunctions) sources.drainRequests().getFirst()).requestId();
+        sources.accept(new ClientFunctionSourceState.ListPage(listRequest, ClientFunctionSourceState.Status.READY,
+            0, true, List.of(FUNCTION, new FunctionId("codon_test", "other_function"))));
         return sources;
+    }
+
+    private static EditBox searchBox(Screen screen) {
+        return screen.children().stream().filter(EditBox.class::isInstance)
+            .map(EditBox.class::cast).findFirst().orElseThrow();
     }
 
     private static <T> T require(T value, String message) {
