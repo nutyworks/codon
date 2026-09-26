@@ -116,7 +116,7 @@ public final class BreakpointListScreen extends Screen {
         int unit = Math.max(42, (panelWidth - 20) / 5);
         BreakpointConditionScreen.Anchor anchor = new BreakpointConditionScreen.Anchor(
             left + 8 + unit, top + panelHeight - 53, unit - 3, 20);
-        Minecraft.getInstance().gui.setScreen(new BreakpointConditionScreen(this, state, definition, anchor));
+        ScreenLayers.open(this, new BreakpointConditionScreen(this, state, definition, anchor));
     }
 
     private void source() {

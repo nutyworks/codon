@@ -21,7 +21,7 @@ import works.nuty.codon.core.model.BreakpointTarget;
 
 import static works.nuty.codon.client.ui.DebuggerTheme.*;
 
-/** Edits the optional condition of one existing breakpoint, retaining the draft on failure. */
+/** Modal condition widgets; hosted by ScreenLayers, never installed as the active screen. */
 public final class BreakpointConditionScreen extends Screen {
     /** Position of the control that opened this editor, in GUI pixels. */
     public record Anchor(int x, int y, int width, int height) { }
@@ -319,7 +319,7 @@ public final class BreakpointConditionScreen extends Screen {
         return super.mouseClicked(event, doubleClick);
     }
 
-    @Override public void onClose() { Minecraft.getInstance().gui.setScreen(parent); }
+    @Override public void onClose() { ScreenLayers.close(this); }
     @Override public void extractBackground(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) { }
     @Override public boolean isPauseScreen() { return false; }
     @Override public boolean isInGameUi() { return true; }

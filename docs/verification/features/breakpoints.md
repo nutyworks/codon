@@ -16,7 +16,11 @@ enter `say codon breakpoint check`, save with Done, and attach a button.
 4. For stage conditions, save this command in the block first:
    `execute as @a if entity @e[tag=codon_verify_absent] run say unreachable`.
    Ensure no entity has that tag. Hover a stage boundary and click its marker;
-   right-click the marker to edit its condition. On the `if` stage, choose output
+   right-click the marker to edit its condition in a modal layer above the current
+   screen. The original editor/source/list stays visible; Save, Cancel, Escape or
+   an outside click dismisses only the layer, preserving the underlying input and
+   navigation state. Mouse and keyboard input must not reach the screen below.
+   On the `if` stage, choose output
    count equal to zero. Disable the whole-command/other stage breakpoints to isolate
    this case. Trigger the block: it stops after the filter records zero output,
    and the `say` command does not run.
@@ -38,7 +42,7 @@ They toggle whole-command targets; use the UI for stage/condition editing.
 
 - [InputManager](../../../src/client/java/works/nuty/codon/client/input/InputManager.java): F10 target and command dispatch.
 - [Command-block editor mixin](../../../src/client/java/works/nuty/codon/mixin/client/AbstractCommandBlockEditScreenMixin.java), [WrappedCommandEditBox](../../../src/client/java/works/nuty/codon/client/ui/WrappedCommandEditBox.java), [BreakpointUi](../../../src/client/java/works/nuty/codon/client/ui/BreakpointUi.java): marker layout and input.
-- [BreakpointConditionScreen](../../../src/client/java/works/nuty/codon/client/ui/BreakpointConditionScreen.java), [ClientBreakpointState](../../../src/client/java/works/nuty/codon/client/state/ClientBreakpointState.java): options, pending edits and acknowledgement.
+- [BreakpointConditionScreen](../../../src/client/java/works/nuty/codon/client/ui/BreakpointConditionScreen.java), [ScreenLayers](../../../src/client/java/works/nuty/codon/client/ui/ScreenLayers.java), [ClientBreakpointState](../../../src/client/java/works/nuty/codon/client/state/ClientBreakpointState.java): modal options, input isolation, pending edits and acknowledgement.
 - [BreakpointRegistry](../../../src/core/java/works/nuty/codon/core/service/BreakpointRegistry.java), [BreakpointConditionEvaluator](../../../src/core/java/works/nuty/codon/core/service/BreakpointConditionEvaluator.java), [DebuggerEngine](../../../src/core/java/works/nuty/codon/core/service/DebuggerEngine.java): definition and stop semantics.
 - [WorldBreakpointPersistence](../../../src/main/java/works/nuty/codon/persistence/WorldBreakpointPersistence.java): world storage.
 
@@ -49,7 +53,7 @@ They toggle whole-command targets; use the UI for stage/condition editing.
 | Definition/condition logic | `coreTest`: `BreakpointRegistryTest`, `BreakpointConditionEvaluatorTest`, `DebuggerEngineTest` |
 | Acknowledgement and pending UI state | `clientTest`: `ClientBreakpointStateTest` |
 | Persistence/preview codec | `test`: `WorldBreakpointPersistenceTest`, `BreakpointStagePreviewPayloadTest` |
-| Native editor input, server edits, wrapping and narrow layouts | `DebuggerBreakpointUiGameTest` |
+| Native editor input, modal details without screen replacement, server edits, wrapping and narrow layouts | `DebuggerBreakpointUiGameTest` |
 | Native execution and measured-zero result breakpoints | `DebuggerBreakpointResultGameTest` |
 
 Example: `./gradlew runClientGameTest -PclientGameTest=DebuggerBreakpointUiGameTest`.

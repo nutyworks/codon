@@ -28,6 +28,7 @@ import works.nuty.codon.client.network.ClientNetworking;
 import works.nuty.codon.client.state.ClientBreakpointState;
 import works.nuty.codon.client.state.ClientStagePreviewState;
 import works.nuty.codon.client.ui.BreakpointConditionScreen;
+import works.nuty.codon.client.ui.ScreenLayers;
 import works.nuty.codon.client.ui.WrappedCommandEditBox;
 import works.nuty.codon.client.ui.InlineBreakpointButton;
 import works.nuty.codon.client.ui.layout.CommandFlowLayout;
@@ -145,7 +146,7 @@ public abstract class AbstractCommandBlockEditScreenMixin extends Screen {
         } else {
             var control = codon$markerControls.stream().filter(value -> value.target().equals(target)).findFirst().orElseThrow();
             var anchor = new BreakpointConditionScreen.Anchor(control.getX(), control.getY(), 9, 9);
-            Minecraft.getInstance().gui.setScreen(new BreakpointConditionScreen((Screen) (Object) this, state,
+            ScreenLayers.open(this, new BreakpointConditionScreen(this, state,
                 definition, anchor));
         }
     }

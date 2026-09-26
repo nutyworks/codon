@@ -550,7 +550,7 @@ public final class FunctionSourceScreen extends Screen {
         BreakpointConditionScreen.Anchor anchor = trigger == null ? null
             : new BreakpointConditionScreen.Anchor(trigger.getX(), trigger.getY(),
                 trigger.getWidth(), trigger.getHeight());
-        Minecraft.getInstance().gui.setScreen(new BreakpointConditionScreen(this, debugger,
+        ScreenLayers.open(this, new BreakpointConditionScreen(this, debugger,
             existing == null ? BreakpointDefinition.plain(target) : existing, anchor));
     }
 

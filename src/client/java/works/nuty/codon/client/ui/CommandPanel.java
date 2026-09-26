@@ -242,7 +242,7 @@ public final class CommandPanel {
         BreakpointConditionScreen.Anchor anchor = conditionAnchor.width() <= 0 ? null
             : new BreakpointConditionScreen.Anchor(conditionAnchor.x(), conditionAnchor.y(),
                 conditionAnchor.width(), conditionAnchor.height());
-        client.gui.setScreen(new BreakpointConditionScreen(client.gui.screen(), state,
+        ScreenLayers.open(client.gui.screen(), new BreakpointConditionScreen(client.gui.screen(), state,
             definition == null ? BreakpointDefinition.plain(target) : definition, anchor));
     }
 

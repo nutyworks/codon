@@ -26,6 +26,7 @@ import works.nuty.codon.client.state.ClientBreakpointState;
 import works.nuty.codon.core.model.SourceLocation;
 import works.nuty.codon.client.state.ClientStagePreviewState;
 import works.nuty.codon.client.ui.BreakpointConditionScreen;
+import works.nuty.codon.client.ui.ScreenLayers;
 import works.nuty.codon.client.ui.BreakpointListScreen;
 import works.nuty.codon.client.ui.DebuggerButton;
 import works.nuty.codon.client.ui.WrappedCommandEditBox;
@@ -134,22 +135,47 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
                 return state != null && state.breakpoints().get(first) != null;
             }, 200);
             context.takeScreenshot("codon-breakpoint-inline-active");
-            context.runOnClient(client -> openFirstCondition(require(client.gui.screen(), "command block editor open")));
-            context.waitFor(client -> client.gui.screen() instanceof BreakpointConditionScreen, 100);
-            context.runOnClient(client -> click(require(client.gui.screen(), "condition editor open"),
-                button(client.gui.screen(), "Save")));
-            context.waitFor(client -> client.gui.screen() instanceof CommandBlockEditScreen, 200);
+            Screen parent = context.computeOnClient(client -> client.gui.screen());
+            WrappedCommandEditBox originalEditor = context.computeOnClient(client -> commandBox(parent));
+            int originalCursor = context.computeOnClient(client -> originalEditor.getCursorPosition());
+            int[] marker = context.computeOnClient(client -> new int[] {
+                originalEditor.getScreenX("execute ".length()) - 8, originalEditor.getY() + 8
+            });
+            nativeClick(context, parent, marker[0], marker[1], InputConstants.MOUSE_BUTTON_RIGHT);
+            context.waitFor(client -> ScreenLayers.get(client.gui.screen()) instanceof BreakpointConditionScreen, 100);
+            context.runOnClient(client -> require(client.gui.screen() == parent && commandBox(parent) == originalEditor,
+                "opening condition details retains the active screen and its input widget"));
+            context.takeScreenshot("codon-breakpoint-condition-layer");
+            // Click the underlying marker and type through Minecraft's real input dispatch.
+            // Neither action may reach the editor below the modal layer.
+            nativeClick(context, parent, marker[0], marker[1], InputConstants.MOUSE_BUTTON_LEFT);
+            context.getInput().typeChars("9");
+            context.runOnClient(client -> {
+                require(CodonClientMod.state().breakpoints().get(first).enabled(), "layer blocks underlying marker clicks");
+                require(COMMAND.equals(originalEditor.getValue()), "layer blocks typing into the underlying command");
+            });
+            AbstractButton save = context.computeOnClient(client -> button(conditionLayer(parent), "Save"));
+            nativeClick(context, parent, save.getX() + 3, save.getY() + 2, InputConstants.MOUSE_BUTTON_LEFT);
+            context.waitFor(client -> client.gui.screen() instanceof CommandBlockEditScreen && ScreenLayers.get(client.gui.screen()) == null, 200);
             context.waitTicks(1);
             context.runOnClient(client -> {
                 Screen screen = require(client.gui.screen(), "command block editor restored");
                 EditBox command = screen.children().stream().filter(EditBox.class::isInstance)
                     .map(EditBox.class::cast).filter(box -> box.getY() == 50).findFirst().orElseThrow();
                 require(COMMAND.equals(command.getValue()), "return retains the loaded command text");
+                require(client.gui.screen() == parent && command == originalEditor
+                    && command.getCursorPosition() == originalCursor, "saving closes only the layer and retains the cursor");
                 require(button(screen, "Done").active,
                     "return restores vanilla controls without another block packet");
                 openFirstCondition(screen);
             });
-            context.waitFor(client -> client.gui.screen() instanceof BreakpointConditionScreen, 100);
+            context.waitFor(client -> ScreenLayers.get(client.gui.screen()) instanceof BreakpointConditionScreen, 100);
+            nativeClick(context, parent, 0, 0, InputConstants.MOUSE_BUTTON_LEFT);
+            context.runOnClient(client -> {
+                require(client.gui.screen() == parent && ScreenLayers.get(parent) == null,
+                    "outside click dismisses only the layer");
+                openFirstCondition(parent);
+            });
             context.getInput().resizeWindow(960, 720);
             context.runOnClient(client -> {
                 client.options.guiScale().set(3);
@@ -158,7 +184,7 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             context.waitTicks(3);
             context.takeScreenshot("codon-breakpoint-condition-320x240");
             context.runOnClient(client -> {
-                Screen screen = require(client.gui.screen(), "condition editor open");
+                Screen screen = conditionLayer(client.gui.screen());
                 require(screen.width == 320 && screen.height == 240,
                     "condition editor uses a 320x240 GUI viewport");
                 for (DebuggerButton control : controls(screen)) {
@@ -174,7 +200,7 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             context.waitTicks(1);
             context.takeScreenshot("codon-breakpoint-condition-menu-320x240");
             context.runOnClient(client -> {
-                Screen screen = require(client.gui.screen(), "condition editor open");
+                Screen screen = conditionLayer(client.gui.screen());
                 require(controls(screen).stream().filter(value -> value.visible
                     && value.getMessage().getString().contains("Context")).count() >= 1,
                     "condition options open directly instead of cycling: "
@@ -182,10 +208,10 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
                             + "=" + value.visible).toList());
             });
             // The first outside click closes the popup; the next activates Delete.
-            context.runOnClient(client -> click(require(client.gui.screen(), "condition editor open"),
-                button(client.gui.screen(), "Delete")));
-            context.runOnClient(client -> click(require(client.gui.screen(), "condition editor open"),
-                button(client.gui.screen(), "Delete")));
+            context.runOnClient(client -> click(conditionLayer(client.gui.screen()),
+                button(conditionLayer(client.gui.screen()), "Delete")));
+            context.runOnClient(client -> click(conditionLayer(client.gui.screen()),
+                button(conditionLayer(client.gui.screen()), "Delete")));
             context.waitFor(client -> client.gui.screen() instanceof BreakpointListScreen, 100);
             context.waitFor(client -> {
                 var state = CodonClientMod.state();
@@ -306,10 +332,10 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
         context.runOnClient(client -> require(client.gui.screen().keyPressed(
             new KeyEvent(InputConstants.KEY_RETURN, InputConstants.KEYCODE_RETURN, InputConstants.MOD_SHIFT)),
             "focused stage handles Shift+Enter"));
-        context.waitFor(client -> client.gui.screen() instanceof BreakpointConditionScreen, 100);
+        context.waitFor(client -> ScreenLayers.get(client.gui.screen()) instanceof BreakpointConditionScreen, 100);
         context.takeScreenshot("codon-breakpoint-keyboard-condition");
         context.getInput().pressKey(InputConstants.KEY_ESCAPE);
-        context.waitFor(client -> client.gui.screen() instanceof CommandBlockEditScreen, 100);
+        context.waitFor(client -> client.gui.screen() instanceof CommandBlockEditScreen && ScreenLayers.get(client.gui.screen()) == null, 100);
         focusMarker(context, first);
         context.runOnClient(client -> commandBox(client.gui.screen()).setValue(COMMAND + " changed"));
         context.getInput().pressKey(InputConstants.KEY_SPACE);
@@ -342,6 +368,19 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
     private static List<DebuggerButton> controls(Screen screen) {
         return screen.children().stream().filter(DebuggerButton.class::isInstance)
             .map(DebuggerButton.class::cast).toList();
+    }
+
+    private static Screen conditionLayer(Screen parent) {
+        return require(ScreenLayers.get(parent), "condition layer open");
+    }
+
+    private static void nativeClick(ClientGameTestContext context, Screen parent, int x, int y, int button) {
+        double[] position = context.computeOnClient(client -> new double[] {
+            (double) x * client.getWindow().getScreenWidth() / parent.width,
+            (double) y * client.getWindow().getScreenHeight() / parent.height
+        });
+        context.getInput().setCursorPos(position[0], position[1]);
+        context.getInput().pressMouse(button);
     }
 
     private static AbstractButton button(Screen screen, String part) {
