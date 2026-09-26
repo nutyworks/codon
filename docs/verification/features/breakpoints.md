@@ -67,3 +67,10 @@ Disable a whole-command breakpoint and a conditional stage breakpoint, then
 reopen the command-block editor. Both saved definitions must remain visible as
 hollow markers without hovering; the stage condition must remain intact.
 `DebuggerBreakpointUiGameTest` covers the real server edit acknowledgements.
+
+In the command-block editor, Tab/Shift+Tab reaches each inline whole-command and
+stage marker, including unused markers. Focus reveals the marker and scrolls its
+row into view. Enter/Space toggles it; Shift+Enter opens its condition. Narration
+announces the target, enabled state, condition and keys, including the default
+Always condition on unused markers. Pending edits and dirty
+commands must not allow stale actions (`DebuggerBreakpointUiGameTest`).

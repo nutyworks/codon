@@ -11,6 +11,7 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.CommandBlockEditScreen;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonInfo;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.Blocks;
@@ -28,6 +29,7 @@ import works.nuty.codon.client.ui.BreakpointConditionScreen;
 import works.nuty.codon.client.ui.BreakpointListScreen;
 import works.nuty.codon.client.ui.DebuggerButton;
 import works.nuty.codon.client.ui.WrappedCommandEditBox;
+import works.nuty.codon.client.ui.InlineBreakpointButton;
 
 /** Opens the native editor and checks that visible breakpoint controls send real edits. */
 @SuppressWarnings("UnstableApiUsage")
@@ -200,6 +202,7 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
                 return state != null && state.breakpoints().get(first) != null;
             }, 200);
             context.takeScreenshot("codon-breakpoint-restored");
+            verifyKeyboardMarkers(context, position, location, first);
             verifyDisabledMarkersAfterReopen(context, position, location, first);
             context.runOnClient(client -> client.setScreenAndShow(null));
         }
@@ -248,6 +251,92 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             require(!editor.markerPosition(absent).visible(), "unsaved marker remains hidden without hover");
         });
         context.takeScreenshot("codon-breakpoint-disabled-reopened");
+    }
+
+    private static void verifyKeyboardMarkers(ClientGameTestContext context, BlockPos position,
+                                              SourceLocation.Block location, BreakpointTarget first) {
+        context.runOnClient(client -> {
+            var screen = new CommandBlockEditScreen((CommandBlockEntity) client.level.getBlockEntity(position));
+            client.setScreenAndShow(screen);
+            screen.updateGui();
+        });
+        context.waitTicks(3);
+        var targets = context.computeOnClient(client -> client.gui.screen().children().stream()
+            .filter(InlineBreakpointButton.class::isInstance).map(InlineBreakpointButton.class::cast)
+            .map(InlineBreakpointButton::target).toList());
+        require(targets.size() >= 3, "whole command and parsed stages have keyboard controls");
+        context.runOnClient(client -> {
+            var unused = client.gui.screen().children().stream().filter(InlineBreakpointButton.class::isInstance)
+                .map(InlineBreakpointButton.class::cast)
+                .filter(control -> CodonClientMod.state().breakpoints().get(control.target()) == null).toList();
+            require(!unused.isEmpty(), "fixture includes unused stage markers");
+            String always = works.nuty.codon.client.ui.BreakpointUi.condition(BreakpointCondition.ALWAYS);
+            require(unused.stream().allMatch(control -> control.getMessage().getString().endsWith(" · " + always)),
+                "unused marker narration includes its default Always condition");
+        });
+        for (var target : targets) focusMarker(context, target);
+        BreakpointTarget whole = BreakpointTarget.whole(location);
+        focusMarker(context, whole);
+        context.getInput().pressKey(InputConstants.KEY_SPACE);
+        context.waitFor(client -> !CodonClientMod.state().breakpoints().pending(whole)
+            && !CodonClientMod.state().breakpoints().get(whole).enabled()
+            && focusedMarkerReady(client.gui.screen(), whole), 200);
+        context.getInput().pressKey(InputConstants.KEY_RETURN);
+        context.waitFor(client -> !CodonClientMod.state().breakpoints().pending(whole)
+            && CodonClientMod.state().breakpoints().get(whole).enabled()
+            && focusedMarkerReady(client.gui.screen(), whole), 200);
+        focusMarker(context, first);
+        context.runOnClient(client -> {
+            client.gui.screen().keyPressed(new KeyEvent(InputConstants.KEY_TAB,
+                InputConstants.KEYCODE_TAB, InputConstants.MOD_SHIFT));
+            require(client.gui.screen().getFocused() instanceof InlineBreakpointButton control
+                && control.target().equals(whole), "Shift+Tab returns to the whole-command marker");
+        });
+        focusMarker(context, first);
+        context.takeScreenshot("codon-breakpoint-keyboard-focus");
+        context.getInput().pressKey(InputConstants.KEY_SPACE);
+        context.waitFor(client -> !CodonClientMod.state().breakpoints().pending(first)
+            && !CodonClientMod.state().breakpoints().get(first).enabled()
+            && focusedMarkerReady(client.gui.screen(), first), 200);
+        context.getInput().pressKey(InputConstants.KEY_RETURN);
+        context.waitFor(client -> !CodonClientMod.state().breakpoints().pending(first)
+            && CodonClientMod.state().breakpoints().get(first).enabled()
+            && focusedMarkerReady(client.gui.screen(), first), 200);
+        // Fabric's TestInput supplies modifiers=0 even while Shift is held.
+        context.runOnClient(client -> require(client.gui.screen().keyPressed(
+            new KeyEvent(InputConstants.KEY_RETURN, InputConstants.KEYCODE_RETURN, InputConstants.MOD_SHIFT)),
+            "focused stage handles Shift+Enter"));
+        context.waitFor(client -> client.gui.screen() instanceof BreakpointConditionScreen, 100);
+        context.takeScreenshot("codon-breakpoint-keyboard-condition");
+        context.getInput().pressKey(InputConstants.KEY_ESCAPE);
+        context.waitFor(client -> client.gui.screen() instanceof CommandBlockEditScreen, 100);
+        focusMarker(context, first);
+        context.runOnClient(client -> commandBox(client.gui.screen()).setValue(COMMAND + " changed"));
+        context.getInput().pressKey(InputConstants.KEY_SPACE);
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            require(CodonClientMod.state().breakpoints().get(first).enabled(),
+                "dirty command cannot activate stale keyboard marker targets");
+            require(client.gui.screen().children().stream().noneMatch(InlineBreakpointButton.class::isInstance),
+                "dirty commands remove breakpoint focus controls");
+        });
+    }
+
+    private static void focusMarker(ClientGameTestContext context, BreakpointTarget target) {
+        for (int attempts = 0; attempts < 24; attempts++) {
+            if (context.computeOnClient(client -> client.gui.screen().getFocused() instanceof InlineBreakpointButton control
+                    && control.target().equals(target))) {
+                context.waitFor(client -> focusedMarkerReady(client.gui.screen(), target), 200);
+                return;
+            }
+            context.getInput().pressKey(InputConstants.KEY_TAB);
+        }
+        throw new AssertionError("Tab can reach marker " + target);
+    }
+
+    private static boolean focusedMarkerReady(Screen screen, BreakpointTarget target) {
+        return screen.getFocused() instanceof InlineBreakpointButton control
+            && control.target().equals(target) && control.isActive();
     }
 
     private static List<DebuggerButton> controls(Screen screen) {
