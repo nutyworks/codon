@@ -36,6 +36,7 @@ public final class DebuggerFreecamGameTest implements FabricClientGameTest {
     public void runTest(ClientGameTestContext context) {
         try (TestSingleplayerContext world = context.worldBuilder().create()) {
             world.getConnection().waitForChunksRender();
+            verifyInitialFirstPersonView(context);
             Fixture fixture = context.computeOnClient(client -> {
                 ClientDebuggerState state = require(CodonClientMod.state(), "client debugger state is initialized");
                 DebuggerFreecam freecam = require(CodonClientMod.freecam(), "client freecam is initialized");
@@ -183,6 +184,8 @@ public final class DebuggerFreecamGameTest implements FabricClientGameTest {
                 require(FreecamRenderProbe.handSubmissions() == 0,
                     "freecam must not render the frozen player's first-person arms or held items; submissions="
                         + FreecamRenderProbe.handSubmissions());
+                require(FreecamRenderProbe.bodySubmissions() > 0,
+                    "the local body is submitted once the camera has moved outside it");
                 require(FreecamRenderProbe.playerPartialTick() == 1.0F,
                     "the paused player body is rendered with a fixed pose from the detached camera; observed partial="
                         + FreecamRenderProbe.playerPartialTick() + "; " + FreecamRenderProbe.visibility() + context.computeOnClient(client ->
@@ -264,6 +267,33 @@ public final class DebuggerFreecamGameTest implements FabricClientGameTest {
                     fixture.toggles().restore(client.options);
                 });
             }
+        }
+    }
+
+    private static void verifyInitialFirstPersonView(ClientGameTestContext context) {
+        CameraType previous = context.computeOnClient(client -> {
+            CameraType perspective = client.options.getCameraType();
+            client.options.setCameraType(CameraType.FIRST_PERSON);
+            CodonClientMod.state().applyPause(pauseFixture(client.player));
+            CodonClientMod.freecam().synchronize(client);
+            FreecamRenderProbe.reset();
+            return perspective;
+        });
+        try {
+            context.waitTicks(3);
+            context.takeScreenshot("codon-freecam-initial-first-person");
+            context.runOnClient(client -> {
+                require(client.player.getBoundingBox().contains(client.gameRenderer.mainCamera().position()),
+                    "initial freecam preserves the player's first-person viewpoint");
+                require(FreecamRenderProbe.bodySubmissions() == 0,
+                    "the local body is not submitted while the camera is inside it");
+            });
+        } finally {
+            context.runOnClient(client -> {
+                CodonClientMod.state().applyResume();
+                CodonClientMod.freecam().synchronize(client);
+                client.options.setCameraType(previous);
+            });
         }
     }
 

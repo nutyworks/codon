@@ -8,8 +8,13 @@ public final class FreecamRenderProbe {
     private static volatile float playerPartialTick = Float.NaN;
     private static volatile String visibility = "not observed";
     private static volatile int handSubmissions;
+    private static volatile int bodySubmissions;
 
-    public static void reset() { playerPartialTick = Float.NaN; visibility = "not observed"; }
+    public static void reset() { playerPartialTick = Float.NaN; visibility = "not observed"; bodySubmissions = 0; }
+    public static int bodySubmissions() { return bodySubmissions; }
+    public static void observeBodySubmission(Entity entity) {
+        if (entity == Minecraft.getInstance().player) bodySubmissions++;
+    }
     public static float playerPartialTick() { return playerPartialTick; }
     public static String visibility() { return visibility; }
     public static void resetHandSubmissions() { handSubmissions = 0; }

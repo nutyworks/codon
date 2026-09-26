@@ -1,6 +1,8 @@
 package works.nuty.codon.client.testmixin;
 
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.extract.LevelExtractor;
@@ -24,8 +26,16 @@ public abstract class LevelExtractorMixin {
         }
     }
 
+    @WrapOperation(method = "extractVisibleEntities", at = @At(value = "INVOKE",
+        target = "Lnet/minecraft/client/renderer/extract/LevelExtractor;extractEntity(Lnet/minecraft/world/entity/Entity;F)Lnet/minecraft/client/renderer/entity/state/EntityRenderState;"))
+    private EntityRenderState codon$observePlayerPose(LevelExtractor extractor, Entity entity, float partialTick,
+                                                     Operation<EntityRenderState> original) {
+        EntityRenderState result = original.call(extractor, entity, partialTick);
+        FreecamRenderProbe.observeBodySubmission(entity);
+        return result;
+    }
     @Inject(method = "extractEntity", at = @At("HEAD"))
-    private void codon$observePlayerPose(Entity entity, float partialTick,
+    private void codon$observeExtractedPose(Entity entity, float partialTick,
                                            CallbackInfoReturnable<EntityRenderState> cir) {
         FreecamRenderProbe.observe(entity, partialTick);
     }
