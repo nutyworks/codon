@@ -368,6 +368,16 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
         context.waitTicks(3);
         context.runOnClient(client -> {
             CodonScreen screen = codonScreen(client.gui.screen());
+            require(findButton(screen, label -> label.equals("NBT")) == null,
+                "compact layout initially folds the Details panel");
+            click(screen, button(screen, label -> label.equals("View")));
+        });
+        context.waitFor(client -> findButton(codonScreen(client.gui.screen()), label -> label.endsWith("Details")) != null, 50);
+        context.runOnClient(client -> click(codonScreen(client.gui.screen()),
+            button(codonScreen(client.gui.screen()), label -> label.endsWith("Details"))));
+        context.waitFor(client -> findButton(codonScreen(client.gui.screen()), label -> label.equals("NBT")) != null, 50);
+        context.runOnClient(client -> {
+            CodonScreen screen = codonScreen(client.gui.screen());
             DebuggerButton heading = button(screen, label -> label.equals("NBT"));
             button(screen, label -> label.startsWith("#2 "));
             require(CodonClientMod.state().nbt().rows(executor).stream()
