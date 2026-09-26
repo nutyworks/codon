@@ -98,7 +98,7 @@ public final class FunctionSourceScreen extends Screen {
         search.setHint(Component.translatable("codon.source.search"));
         search.setMaxLength(128);
         search.setValue(searchValue);
-        search.setResponder(ignored -> { listOffset = 0; rebuildEntries(); });
+        search.setResponder(ignored -> { listOffset = 0; rebuildEntries(); rememberView(); });
         refresh = addRenderableWidget(WatchUi.button(drawerMode ? left + 66 : left + treeWidth + 8, top + 5, 58, 18,
             Component.translatable("codon.source.refresh"), () -> { sources.refreshList(); listOffset = 0; }));
         reread = addRenderableWidget(WatchUi.button(drawerMode ? left + 126 : left + treeWidth + 68, top + 5, 54, 18,

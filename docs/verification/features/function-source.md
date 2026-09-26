@@ -53,3 +53,8 @@ Use the manual loaded-function path for those acceptance criteria.
 For search rebuilds, enter a query that excludes another known function, resize
 the window, and open the compact Functions drawer. The query and filtered list
 must survive both rebuilds (`FunctionSourceScreenGameTest`).
+
+After each rebuild, click the remaining result and the row where the excluded
+function used to appear: only the matching function may be selected. With a long
+list, scroll down, enter a new query, then resize; the first filtered result must
+still be at the top instead of restoring the old scroll position.
