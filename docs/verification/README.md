@@ -102,11 +102,19 @@ registered client suite with JDK 25, Xvfb/Mesa software rendering, and a PulseAu
 null sink for OpenAL channel tests. It uses the same `runClientGameTest` task as
 local development, with no selection property.
 
+Minecraft 26.3 creates its OpenGL windows through SDL. Under Xvfb the job installs
+Mesa EGL and sets [`SDL_VIDEO_FORCE_EGL=1`](https://wiki.libsdl.org/SDL3/SDL_HINT_VIDEO_FORCE_EGL)
+so SDL uses EGL instead of GLX. Without this, client startup can fail with
+`Couldn't find matching GLX visual` before any test executes; a subsequent Vulkan
+fallback error does not establish a Codon test failure.
+
 Artifacts are uploaded even after a failed test step and retained for 14 days:
 `unit-test-results` contains JVM reports; `client-game-test-evidence` contains the
 Gradle console log plus client logs, screenshots and crash reports. A setup failure
-may produce no files. The client job has a 45-minute timeout; it does not suppress
-test failures. Existing JAR artifacts remain available from the build job.
+may produce no files. The client test step has a 15-minute timeout within the
+45-minute job limit, leaving time to upload evidence after a stuck client is
+stopped. Neither limit suppresses test failures. Existing JAR artifacts remain
+available from the build job.
 
 The workflow creates status checks; making both jobs required for merging is a
 separate GitHub branch-protection/ruleset setting. A local macOS run does not prove
