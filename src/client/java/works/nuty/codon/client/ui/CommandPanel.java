@@ -354,7 +354,7 @@ public final class CommandPanel {
                             changed();
                         });
                     breakpoint.withoutChrome().withTextPadding(4);
-                    if (definition == null) breakpoint.revealOnHover(x, y, cell.width(), 16);
+                    if (definition == null || !definition.enabled()) breakpoint.revealOnHover(x, y, cell.width(), 16);
                     breakpoint.withStatusColor(definition != null && definition.enabled() ? RED : MUTED,
                         definition != null && definition.enabled() ? RED_SURFACE : SURFACE);
                     var error = state.breakpoints().error(target);

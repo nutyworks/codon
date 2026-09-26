@@ -27,6 +27,10 @@ be checked. The viewer lists functions actually loaded by the current server.
 Owner permission is required for server source requests. This is a source browser
 and breakpoint editor, not an in-game datapack file editor.
 
+Disabled line/stage markers are hidden until hovered, and are excluded from stage
+breakpoint counts. Hover the original target to enable it again with its saved
+condition; enabled markers remain visible without hovering.
+
 ## Code entry points
 
 - [FunctionSourceScreen](../../../src/client/java/works/nuty/codon/client/ui/FunctionSourceScreen.java), [CommandFlowLayout](../../../src/client/java/works/nuty/codon/client/ui/layout/CommandFlowLayout.java): tree, lines and stage layout.
@@ -45,7 +49,9 @@ and breakpoint editor, not an in-game datapack file editor.
 
 Example: `./gradlew runClientGameTest -PclientGameTest=FunctionSourceScreenGameTest`.
 Inspect `*codon-function-source-*.png`, including 320×240, 480×270 and 640×360 GUI
-layouts. This GameTest injects a source document and stage spans: its function is
+layouts. The disabled-hover capture shows a disabled line and conditional stage
+revealed by hover; the other captures keep them hidden and count only the enabled
+stage. This GameTest injects a source document, breakpoint definitions and stage spans: its function is
 not installed in the server's datapack. It proves presentation/interaction, not
 server source discovery, permission enforcement or native function breakpoints.
 Use the manual loaded-function path for those acceptance criteria.

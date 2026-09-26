@@ -19,6 +19,7 @@ import works.nuty.codon.client.ui.layout.WatchPanelLayout;
 import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Anchor;
 import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds;
 import works.nuty.codon.core.model.ExecutionFlowContext;
+import works.nuty.codon.core.model.BreakpointDefinition;
 import works.nuty.codon.core.model.PauseSnapshot;
 import works.nuty.codon.core.model.PauseSource;
 import works.nuty.codon.core.model.SourceLocation;
@@ -302,14 +303,15 @@ public final class DebuggerOverlay {
         int breakpointX = auxiliaryX + 3 * (width + gap);
         int breakpointWidth = Math.max(width,
             Math.min(70, toolbar.x() + toolbar.width() - breakpointX - 3));
+        long breakpointCount = state.breakpoints().definitions().stream().filter(BreakpointDefinition::enabled).count();
         button("breakpoints", new Bounds(breakpointX, toolbar.y() + 2, breakpointWidth,
                 DebuggerLayout.ICON_BUTTON_SIZE),
-            Component.translatable("codon.breakpoint.short_count", state.breakpoints().definitions().size()),
+            Component.translatable("codon.breakpoint.short_count", breakpointCount),
             true, false, false, false,
             () -> { if (client.gui.screen() != null) client.gui.setScreen(new BreakpointListScreen(client.gui.screen(), state)); })
             .withTextIcon(DebuggerIcon.BREAKPOINT_LIST)
             .setTooltip(Tooltip.create(Component.translatable("codon.breakpoint.toolbar",
-                state.breakpoints().definitions().size())));
+                breakpointCount)));
 
     }
 

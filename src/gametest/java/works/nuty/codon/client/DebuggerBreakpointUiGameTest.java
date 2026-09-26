@@ -108,7 +108,9 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
                     "separate breakpoint controls have been removed");
                 WrappedCommandEditBox command = commandBox(screen);
                 int textX = command.getScreenX(0);
-                command.updateMarkerHover(command.getX() - 10, command.getY() + 8);
+                command.updateMarkerHover(-100, -100);
+                require(command.markerAt(command.getX() - 10, command.getY() + 8) != null,
+                    "unused whole-command marker is visible without hovering");
                 require(command.getScreenX(0) == textX, "block breakpoint sits outside the input without shifting text");
                 click(screen, command.getX() - 10, command.getY() + 8);
             });
@@ -244,6 +246,12 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
                 state.breakpoints().get(stage).withCondition(condition));
         });
         context.waitFor(client -> !CodonClientMod.state().breakpoints().pending(stage), 200);
+        context.runOnClient(client -> client.setScreenAndShow(
+            new BreakpointListScreen(client.gui.screen(), CodonClientMod.state())));
+        context.waitTicks(2);
+        context.runOnClient(client -> require(controls(client.gui.screen()).stream()
+            .filter(control -> control.getTabOrderGroup() < 100).count() == 2,
+            "list initially shows both enabled breakpoints"));
         context.runOnClient(client -> {
             var state = CodonClientMod.state();
             for (var target : List.of(whole, stage))
@@ -253,6 +261,15 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             var state = CodonClientMod.state().breakpoints();
             return !state.pending(target) && state.get(target) != null && !state.get(target).enabled();
         }), 200);
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            require(controls(client.gui.screen()).stream().noneMatch(control -> control.getTabOrderGroup() < 100),
+                "open list removes disabled breakpoints after acknowledgement");
+            require(CodonClientMod.state().breakpoints().definitions().size() == 2,
+                "hiding disabled breakpoints preserves their saved definitions");
+            require(CodonClientMod.state().blockBreakpoints().isEmpty(), "disabled block has no world marker");
+        });
+        context.takeScreenshot("codon-breakpoint-disabled-list");
         context.runOnClient(client -> {
             client.setScreenAndShow(null);
             var entity = (CommandBlockEntity) client.level.getBlockEntity(position);
@@ -267,16 +284,43 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             for (var target : List.of(whole, stage)) {
                 var definition = CodonClientMod.state().breakpoints().get(target);
                 var marker = new WrappedCommandEditBox.Marker(target, target.wholeCommand() ? -1 : 8,
-                    COMMAND.length(), definition, false);
-                require(editor.markerPosition(marker).visible(), "saved disabled marker remains visible after reopening");
+                    COMMAND.length(), definition);
+                require(editor.markerPosition(marker).visible() == target.wholeCommand(),
+                    "only the whole-command marker stays visible without hovering after reopening");
+                var point = editor.markerPosition(marker);
+                require(!target.wholeCommand() || point.x() >= 4,
+                    "whole-command marker stays fully inside the narrow viewport");
+                editor.updateMarkerHover(point.x(), point.y());
+                require(editor.markerPosition(marker).visible(), "hover reveals a disabled marker");
+                editor.updateMarkerHover(-100, -100);
+                editor.focusBreakpoint(target);
+                require(editor.markerPosition(marker).visible(), "keyboard focus reveals a disabled marker");
+                editor.clearBreakpointFocus(target);
+                require(editor.markerPosition(marker).visible() == target.wholeCommand(),
+                    "only the whole-command marker stays visible after hover and focus leave");
             }
             require(CodonClientMod.state().breakpoints().get(stage).condition().equals(condition),
                 "disabled stage retains its condition");
             var absent = new WrappedCommandEditBox.Marker(BreakpointTarget.stage(location, 1, COMMAND), 14,
-                COMMAND.length(), null, false);
+                COMMAND.length(), null);
             require(!editor.markerPosition(absent).visible(), "unsaved marker remains hidden without hover");
         });
         context.takeScreenshot("codon-breakpoint-disabled-reopened");
+        context.runOnClient(client -> {
+            var editor = commandBox(client.gui.screen());
+            var marker = new WrappedCommandEditBox.Marker(stage, 8, COMMAND.length(),
+                CodonClientMod.state().breakpoints().get(stage));
+            var point = editor.markerPosition(marker);
+            editor.updateMarkerHover(point.x(), point.y());
+            point = editor.markerPosition(marker);
+            click(client.gui.screen(), point.x(), point.y());
+        });
+        context.waitFor(client -> {
+            var state = CodonClientMod.state().breakpoints();
+            return !state.pending(stage) && state.get(stage).enabled();
+        }, 200);
+        context.runOnClient(client -> require(CodonClientMod.state().breakpoints().get(stage).condition().equals(condition),
+            "reactivating the hidden stage preserves its condition"));
     }
 
     private static void verifyKeyboardMarkers(ClientGameTestContext context, BlockPos position,

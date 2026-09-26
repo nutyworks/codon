@@ -28,7 +28,12 @@ enter `say codon breakpoint check`, save with Done, and attach a button.
    applied to that edited text. Save and reopen to request fresh stage spans.
 
 Plain markers are circles and conditional markers are diamonds. Empty affordances
-appear on hover/focus; existing breakpoints remain visible. Text selection in the
+appear on hover/focus; disabled markers also appear only on hover/focus, while
+enabled breakpoints remain visible. The management list, toolbar count and source
+stage summaries include only enabled breakpoints. Disabling preserves the saved
+condition; hover/focus its original marker to enable it again. The whole-command
+marker at the front of the command-block editor is always visible, including when
+unused or disabled. Text selection in the
 wrapped editor must not toggle a marker, and soft wrapping must not change the
 stored command. Server acknowledgement determines the displayed breakpoint state.
 Check persistence by leaving/reopening the world after saving a definition.
@@ -68,9 +73,12 @@ that enables Undo or an inline marker; sending input in that interval tests a
 disabled control instead of the intended follow-up action.
 
 Disable a whole-command breakpoint and a conditional stage breakpoint, then
-reopen the command-block editor. Both saved definitions must remain visible as
-hollow markers without hovering; the stage condition must remain intact.
-`DebuggerBreakpointUiGameTest` covers the real server edit acknowledgements.
+reopen the command-block editor. The whole-command marker must remain visible;
+the stage marker must be hidden until hovered or keyboard-focused, then hide again
+when hover/focus leaves. Both definitions must
+also disappear from an already-open management list. The stage condition must
+remain intact when enabled again. `DebuggerBreakpointUiGameTest` covers the real
+server edit acknowledgements.
 
 In the command-block editor, Tab/Shift+Tab reaches each inline whole-command and
 stage marker, including unused markers. Focus reveals the marker and scrolls its

@@ -302,7 +302,7 @@ public final class FunctionSourceScreen extends Screen {
             }
             boolean hovered = mouseX >= sourceLeft + 3 && mouseX < sourceLeft + sourceWidth - 3
                 && mouseY >= y && mouseY < Math.min(y + rowHeight, lineBottom);
-            if (definition != null || hovered && wholeEligible(document, index + 1)) {
+            if (definition != null && definition.enabled() || hovered && wholeEligible(document, index + 1)) {
                 WatchUi.line(graphics, font, BreakpointUi.glyph(definition), sourceLeft + 5, y + 5, 13, color);
             }
             lineHits.add(new LineHit(y, Math.min(rowHeight, lineBottom - y), index + 1));
@@ -317,7 +317,7 @@ public final class FunctionSourceScreen extends Screen {
         if (debugger == null) return counts;
         for (BreakpointDefinition definition : debugger.breakpoints().definitions()) {
             BreakpointTarget target = definition.target();
-            if (target.stageIndex() >= 0 && target.location() instanceof SourceLocation.Function location
+            if (definition.enabled() && target.stageIndex() >= 0 && target.location() instanceof SourceLocation.Function location
                 && location.location().function().equals(function)) {
                 counts.merge(location.location().line(), 1, Integer::sum);
             }
@@ -357,7 +357,7 @@ public final class FunctionSourceScreen extends Screen {
             if (part.first()) {
                 graphics.fill(partX, partY, partX + 18, partY + 17, DebuggerTheme.color(definition != null && definition.enabled()
                     ? RED_SURFACE : surface));
-                if (definition != null || hoveredStages.contains(part.stageIndex())) {
+                if (definition != null && definition.enabled() || hoveredStages.contains(part.stageIndex())) {
                     WatchUi.line(graphics, font, BreakpointUi.glyph(definition), partX + 4, partY + 4, 12,
                         definition != null && definition.enabled() ? RED : MUTED);
                 }

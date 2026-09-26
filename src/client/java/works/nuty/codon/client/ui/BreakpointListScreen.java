@@ -50,6 +50,7 @@ public final class BreakpointListScreen extends Screen {
     private void rebuild() {
         clearWidgets();
         displayed = state.breakpoints().definitions().stream()
+            .filter(BreakpointDefinition::enabled)
             .sorted(Comparator.comparing(definition -> BreakpointUi.target(definition.target()))).toList();
         offset = Math.clamp(offset, 0, Math.max(0, displayed.size() - rows));
         if (selected != null && displayed.stream().noneMatch(definition -> definition.target().equals(selected))) selected = null;
@@ -153,6 +154,7 @@ public final class BreakpointListScreen extends Screen {
 
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         List<BreakpointDefinition> latest = state.breakpoints().definitions().stream()
+            .filter(BreakpointDefinition::enabled)
             .sorted(Comparator.comparing(definition -> BreakpointUi.target(definition.target()))).toList();
         if (!latest.equals(displayed)) rebuild();
         if (undoButton != null) undoButton.active = canUndo() && deleted != null
@@ -160,8 +162,7 @@ public final class BreakpointListScreen extends Screen {
         graphics.fill(0, 0, width, height, DebuggerTheme.color(0x70000000));
         graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.color(PANEL));
         graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.color(BORDER));
-        long active = displayed.stream().filter(BreakpointDefinition::enabled).count();
-        WatchUi.line(graphics, font, tr("codon.breakpoint.list_header", active, displayed.size()),
+        WatchUi.line(graphics, font, tr("codon.breakpoint.list_header", displayed.size()),
             left + 8, top + 10, panelWidth - 16, TEXT);
         if (displayed.isEmpty()) WatchUi.line(graphics, font, tr("codon.breakpoint.list_empty"), left + 12, top + 43,
             panelWidth - 24, MUTED);
