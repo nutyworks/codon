@@ -353,7 +353,7 @@ public final class CommandPanel {
                             state.selectExecutionFlowStage(stageIndex);
                             changed();
                         });
-                    breakpoint.withoutChrome();
+                    breakpoint.withoutChrome().withTextPadding(4);
                     if (definition == null) breakpoint.revealOnHover(x, y, cell.width(), 16);
                     breakpoint.withStatusColor(definition != null && definition.enabled() ? RED : MUTED,
                         definition != null && definition.enabled() ? RED_SURFACE : SURFACE);

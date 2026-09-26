@@ -34,6 +34,7 @@ public class DebuggerButton extends AbstractButton {
     private int revealHeight;
     private int contentOffset;
     private int contentWidth;
+    private int textPadding = 10;
     private @Nullable DebuggerIcon icon;
     private boolean smallIcon;
     private int iconOffsetY;
@@ -70,6 +71,7 @@ public class DebuggerButton extends AbstractButton {
         this.revealOnHover = false;
         this.contentOffset = 0;
         this.contentWidth = width;
+        this.textPadding = 10;
         this.action = action;
         this.secondaryAction = null;
         this.icon = null;
@@ -109,6 +111,11 @@ public class DebuggerButton extends AbstractButton {
 
     public DebuggerButton withoutChrome() {
         this.borderless = true;
+        return this;
+    }
+
+    public DebuggerButton withTextPadding(int padding) {
+        this.textPadding = padding;
         return this;
     }
 
@@ -229,11 +236,11 @@ public class DebuggerButton extends AbstractButton {
         var font = client.font;
         String full = getMessage().getString();
         int inset = iconWithText ? TEXT_ICON_INSET : 0;
-        int available = Math.max(0, contentWidth - 10 - inset);
+        int available = Math.max(0, contentWidth - textPadding - inset);
         String text = font.width(full) <= available ? full
             : font.plainSubstrByWidth(full, Math.max(0, available - font.width("…"))) + "…";
         graphics.enableScissor(getX() + 2, getY(), getRight() - 2, getBottom());
-        graphics.text(font, text, leftAligned ? getX() - contentOffset + 5 + inset
+        graphics.text(font, text, leftAligned ? getX() - contentOffset + textPadding / 2 + inset
             : getX() - contentOffset + inset + (contentWidth - inset - font.width(text)) / 2,
             getY() + (height - font.lineHeight) / 2 + 1, paintColor(foreground), false);
         graphics.disableScissor();
@@ -265,7 +272,7 @@ public class DebuggerButton extends AbstractButton {
             return;
         }
         if ((icon == null || iconWithText) && isHovered()
-            && client.font.width(getMessage()) > Math.max(0, width - 10 - (iconWithText ? TEXT_ICON_INSET : 0))) {
+            && client.font.width(getMessage()) > Math.max(0, width - textPadding - (iconWithText ? TEXT_ICON_INSET : 0))) {
             var lines = new java.util.ArrayList<>(Tooltip.splitTooltip(client, getMessage()));
             if (tooltip != null) {
                 var hint = tooltip.toCharSequence(client);

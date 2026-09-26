@@ -2,12 +2,10 @@ package works.nuty.codon.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import java.util.List;
-import java.util.Comparator;
 import java.util.Optional;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
-import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
@@ -26,6 +24,7 @@ import works.nuty.codon.client.state.ClientStagePreviewState;
 import works.nuty.codon.client.ui.BreakpointConditionScreen;
 import works.nuty.codon.client.ui.BreakpointListScreen;
 import works.nuty.codon.client.ui.DebuggerButton;
+import works.nuty.codon.client.ui.WrappedCommandEditBox;
 
 /** Opens the native editor and checks that visible breakpoint controls send real edits. */
 @SuppressWarnings("UnstableApiUsage")
@@ -74,17 +73,38 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             }, 200);
             context.runOnClient(client -> require(CodonClientMod.state().stagePreviews().get(location).status()
                 == ClientStagePreviewState.Status.READY, "server accepts the saved command stage preview"));
+            context.runOnClient(client -> {
+                Screen screen = require(client.gui.screen(), "command block editor open");
+                WrappedCommandEditBox command = screen.children().stream().filter(WrappedCommandEditBox.class::isInstance)
+                    .map(WrappedCommandEditBox.class::cast).findFirst().orElseThrow();
+                require(command.getHeight() == 60, "command input shows multiple rows");
+                command.moveCursorToStart(false);
+                command.onClick(new MouseButtonEvent(command.getX() + 4, command.getY() + 19,
+                    new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0)), false);
+                require(command.getCursorPosition() > 0, "clicking the second row maps to the wrapped command");
+                require(COMMAND.equals(command.getValue()), "soft wrapping leaves command text unchanged");
+                String longCommand = "say " + "wrapped command ".repeat(80);
+                command.setValue(longCommand);
+                require(command.getValue().equals(longCommand), "long commands retain the vanilla length limit");
+                require(command.mouseScrolled(command.getX() + 8, command.getY() + 8, 0, 1),
+                    "long commands accept vertical scrolling");
+                require(command.markerAt(command.getX() - 10, command.getY() + 8) == null,
+                    "dirty command cannot reuse saved breakpoint markers");
+                command.setValue(COMMAND);
+                command.moveCursorToStart(false);
+            });
             context.takeScreenshot("codon-breakpoint-command-block-480x270");
             context.runOnClient(client -> {
                 Screen screen = require(client.gui.screen(), "command block editor open");
-                AbstractButton block = button(screen, "Block stop");
-                AbstractButton stages = button(screen, "Stages");
-                Button condition = blockControl(screen, 2);
-                require(block.getBottom() <= stages.getY() + stages.getHeight()
-                    && block.getY() >= 135 + 20, "breakpoint controls sit below vanilla previous output");
-                require(block.getRight() <= screen.width && condition.getRight() <= screen.width,
-                    "breakpoint controls remain inside the screen");
-                click(screen, block);
+                require(screen.children().stream().filter(AbstractButton.class::isInstance)
+                    .map(AbstractButton.class::cast).noneMatch(button -> button.getMessage().getString().contains("Stages")
+                        || button.getMessage().getString().contains("Block stop")),
+                    "separate breakpoint controls have been removed");
+                WrappedCommandEditBox command = commandBox(screen);
+                int textX = command.getScreenX(0);
+                command.updateMarkerHover(command.getX() - 10, command.getY() + 8);
+                require(command.getScreenX(0) == textX, "block breakpoint sits outside the input without shifting text");
+                click(screen, command.getX() - 10, command.getY() + 8);
             });
             context.waitFor(client -> {
                 var state = CodonClientMod.state();
@@ -92,17 +112,24 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             }, 200);
             context.runOnClient(client -> {
                 Screen screen = require(client.gui.screen(), "command block editor open");
-                int left = Math.max(4, (screen.width - 300) / 2);
-                int stageY = screen.height / 4 + 153 + 33;
-                click(screen, left + 4 + client.font.width("execute ") + 2, stageY + 2);
+                WrappedCommandEditBox command = commandBox(screen);
+                int markerX = command.getScreenX("execute ".length());
+                click(screen, markerX + 5, command.getY() + 8);
+                require(CodonClientMod.state().breakpoints().get(BreakpointTarget.stage(location, 0, COMMAND)) == null,
+                    "editing text does not toggle a breakpoint");
+                require(COMMAND.equals(command.getValue()), "text click preserves command");
+                command.updateMarkerHover(markerX + 1, command.getY() + 8);
+                require(command.getScreenX("execute ".length()) == markerX + 12,
+                    "showing a stage breakpoint shifts the following text by its slot width");
+                click(screen, command.getScreenX("execute ".length()) - 8, command.getY() + 8);
             });
             BreakpointTarget first = BreakpointTarget.stage(location, 0, COMMAND);
             context.waitFor(client -> {
                 var state = CodonClientMod.state();
                 return state != null && state.breakpoints().get(first) != null;
             }, 200);
-            context.runOnClient(client -> click(require(client.gui.screen(), "command block editor open"),
-                blockControl(client.gui.screen(), 2)));
+            context.takeScreenshot("codon-breakpoint-inline-active");
+            context.runOnClient(client -> openFirstCondition(require(client.gui.screen(), "command block editor open")));
             context.waitFor(client -> client.gui.screen() instanceof BreakpointConditionScreen, 100);
             context.runOnClient(client -> click(require(client.gui.screen(), "condition editor open"),
                 button(client.gui.screen(), "Save")));
@@ -113,9 +140,9 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
                 EditBox command = screen.children().stream().filter(EditBox.class::isInstance)
                     .map(EditBox.class::cast).filter(box -> box.getY() == 50).findFirst().orElseThrow();
                 require(COMMAND.equals(command.getValue()), "return retains the loaded command text");
-                require(button(screen, "Done").active && blockControl(screen, 1).active,
-                    "return restores vanilla and stage controls without another block packet");
-                click(screen, blockControl(screen, 2));
+                require(button(screen, "Done").active,
+                    "return restores vanilla controls without another block packet");
+                openFirstCondition(screen);
             });
             context.waitFor(client -> client.gui.screen() instanceof BreakpointConditionScreen, 100);
             context.getInput().resizeWindow(960, 720);
@@ -182,12 +209,17 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             .findFirst().orElseThrow(() -> new AssertionError("Required button: " + part));
     }
 
-    private static Button blockControl(Screen screen, int index) {
-        int expectedY = screen.height / 4 + 153 + 12;
-        List<Button> controls = screen.children().stream().filter(Button.class::isInstance).map(Button.class::cast)
-            .filter(value -> value.getY() == expectedY).sorted(Comparator.comparingInt(Button::getX)).toList();
-        require(controls.size() == 3, "native command block editor has three breakpoint controls");
-        return controls.get(index);
+    private static WrappedCommandEditBox commandBox(Screen screen) {
+        return screen.children().stream().filter(WrappedCommandEditBox.class::isInstance)
+            .map(WrappedCommandEditBox.class::cast).findFirst().orElseThrow();
+    }
+
+    private static void openFirstCondition(Screen screen) {
+        WrappedCommandEditBox command = commandBox(screen);
+        MouseButtonEvent event = new MouseButtonEvent(command.getScreenX("execute ".length()) - 8, command.getY() + 8,
+            new MouseButtonInfo(InputConstants.MOUSE_BUTTON_RIGHT, 0));
+        require(screen.mouseClicked(event, false), "right-click marker opens condition editor");
+        screen.mouseReleased(event);
     }
 
     private static void click(Screen screen, AbstractButton button) {

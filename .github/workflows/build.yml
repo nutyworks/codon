@@ -6,9 +6,13 @@
 name: build
 on: [pull_request, push]
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - name: checkout repository
         uses: actions/checkout@v4
@@ -28,3 +32,57 @@ jobs:
         with:
           name: Artifacts
           path: build/libs/
+      - name: capture unit test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: |
+            build/reports/tests/
+            build/test-results/
+          retention-days: 14
+
+  client-game-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      LIBGL_ALWAYS_SOFTWARE: 'true'
+      ALSOFT_DRIVERS: pulse
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@v4
+      - name: validate gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+      - name: setup jdk
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'microsoft'
+      - name: install display and audio dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb xauth libgl1-mesa-dri libglx-mesa0 pulseaudio pulseaudio-utils
+      - name: start virtual audio output
+        run: |
+          pulseaudio --start --exit-idle-time=-1
+          pactl load-module module-null-sink sink_name=codon
+          pactl set-default-sink codon
+      - name: make gradle wrapper executable
+        run: chmod +x ./gradlew
+      - name: run client game tests
+        shell: bash
+        run: |
+          mkdir -p build/ci
+          xvfb-run -a -s '-screen 0 1920x1080x24' ./gradlew --no-daemon runClientGameTest --stacktrace 2>&1 | tee build/ci/client-game-test.log
+      - name: capture client game test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-game-test-evidence
+          path: |
+            build/ci/client-game-test.log
+            build/run/clientGameTest/logs/
+            build/run/clientGameTest/screenshots/
+            build/run/clientGameTest/crash-reports/
+            build/run/clientGameTest/hs_err_pid*.log
+          retention-days: 14

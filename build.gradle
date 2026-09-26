@@ -45,7 +45,7 @@ loom {
 
 }
 
-// Opt-in real-client presentation checks, isolated from the developer's run directory.
+// Real-client checks: explicit locally, required by CI, isolated from the developer's run directory.
 fabricApi {
 	configureTests {
 		createSourceSet = true
@@ -54,6 +54,33 @@ fabricApi {
 		enableClientGameTests = true
 		clearRunDirectory = true
 		username = "CodonQA"
+	}
+}
+
+// Fabric filters client tests by mod ID, so select classes in the generated test manifest.
+// Omitting the property restores the complete manifest, including after a focused run.
+def clientGameTests = providers.gradleProperty("clientGameTest")
+	.map { it.split(",", -1).collect { name -> name.trim() } }.orElse([])
+tasks.named("processGametestResources") {
+	inputs.property("clientGameTest", clientGameTests)
+	doLast {
+		def requested = clientGameTests.get()
+		if (requested.isEmpty()) return
+		if (requested.any { it.isEmpty() }) {
+			throw new GradleException("clientGameTest must contain non-empty, comma-separated class names.")
+		}
+		def manifestFile = new File(destinationDir, "fabric.mod.json")
+		def manifest = new groovy.json.JsonSlurper().parse(manifestFile)
+		def registered = manifest.entrypoints["fabric-client-gametest"]
+		def matches = { entry, name -> entry == name || entry.tokenize('.').last() == name }
+		def unknown = requested.findAll { name -> !registered.any { matches(it, name) } }
+		if (!unknown.isEmpty()) {
+			throw new GradleException("Unknown clientGameTest selection: ${unknown}. Use registered class names from src/gametest/resources/fabric.mod.json.")
+		}
+		def selected = registered.findAll { entry -> requested.any { matches(entry, it) } }
+		manifest.entrypoints["fabric-client-gametest"] = selected
+		manifestFile.setText(groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(manifest)) + "\n", "UTF-8")
+		logger.lifecycle("Selected client GameTests: ${selected.join(', ')}")
 	}
 }
 

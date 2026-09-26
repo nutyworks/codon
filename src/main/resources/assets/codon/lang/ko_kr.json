@@ -75,6 +75,7 @@
   "codon.ui.command_block": "명령 블록",
   "codon.ui.breakpoint_actual": "실측 %s",
   "codon.breakpoint.player": "플레이어",
+  "codon.breakpoint.inline_help": "클릭: 켜기/끄기 · 우클릭: 조건 설정",
   "codon.breakpoint.stage_target": "%s단계",
   "codon.breakpoint.kind.always": "항상",
   "codon.breakpoint.kind.created": "컨텍스트 생성",
