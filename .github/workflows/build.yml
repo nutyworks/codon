@@ -47,6 +47,8 @@ jobs:
     timeout-minutes: 45
     env:
       LIBGL_ALWAYS_SOFTWARE: 'true'
+      # Minecraft 26.3's SDL OpenGL window needs EGL under Xvfb.
+      SDL_VIDEO_FORCE_EGL: '1'
       ALSOFT_DRIVERS: pulse
     steps:
       - name: checkout repository
@@ -61,7 +63,7 @@ jobs:
       - name: install display and audio dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb xauth libgl1-mesa-dri libglx-mesa0 pulseaudio pulseaudio-utils
+          sudo apt-get install -y xvfb xauth libgl1-mesa-dri libglx-mesa0 libegl1 libegl-mesa0 pulseaudio pulseaudio-utils
       - name: start virtual audio output
         run: |
           pulseaudio --start --exit-idle-time=-1
@@ -70,6 +72,7 @@ jobs:
       - name: make gradle wrapper executable
         run: chmod +x ./gradlew
       - name: run client game tests
+        timeout-minutes: 15
         shell: bash
         run: |
           mkdir -p build/ci
