@@ -19,6 +19,9 @@ import net.minecraft.server.permissions.LevelBasedPermissionSet;
 import works.nuty.codon.CodonMod;
 import works.nuty.codon.core.model.BlockLocation;
 import works.nuty.codon.core.model.BreakpointTarget;
+import works.nuty.codon.core.model.BreakpointCondition;
+import works.nuty.codon.client.network.ClientNetworking;
+import works.nuty.codon.client.state.ClientBreakpointState;
 import works.nuty.codon.core.model.SourceLocation;
 import works.nuty.codon.client.state.ClientStagePreviewState;
 import works.nuty.codon.client.ui.BreakpointConditionScreen;
@@ -194,8 +197,54 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
                 var state = CodonClientMod.state();
                 return state != null && state.breakpoints().get(first) != null;
             }, 200);
+            verifyDisabledMarkersAfterReopen(context, position, location, first);
             context.runOnClient(client -> client.setScreenAndShow(null));
         }
+    }
+
+    private static void verifyDisabledMarkersAfterReopen(ClientGameTestContext context, BlockPos position,
+                                                         SourceLocation.Block location, BreakpointTarget stage) {
+        BreakpointTarget whole = BreakpointTarget.whole(location);
+        BreakpointCondition condition = BreakpointCondition.event(BreakpointCondition.Kind.CREATED);
+        context.runOnClient(client -> {
+            var state = CodonClientMod.state();
+            ClientNetworking.sendBreakpointEdit(state, ClientBreakpointState.Action.SAVE,
+                state.breakpoints().get(stage).withCondition(condition));
+        });
+        context.waitFor(client -> !CodonClientMod.state().breakpoints().pending(stage), 200);
+        context.runOnClient(client -> {
+            var state = CodonClientMod.state();
+            for (var target : List.of(whole, stage))
+                ClientNetworking.sendBreakpointEdit(state, ClientBreakpointState.Action.TOGGLE, state.breakpoints().get(target));
+        });
+        context.waitFor(client -> List.of(whole, stage).stream().allMatch(target -> {
+            var state = CodonClientMod.state().breakpoints();
+            return !state.pending(target) && state.get(target) != null && !state.get(target).enabled();
+        }), 200);
+        context.runOnClient(client -> {
+            client.setScreenAndShow(null);
+            var entity = (CommandBlockEntity) client.level.getBlockEntity(position);
+            var screen = new CommandBlockEditScreen(entity);
+            client.setScreenAndShow(screen);
+            screen.updateGui();
+        });
+        context.waitTicks(3);
+        context.runOnClient(client -> {
+            WrappedCommandEditBox editor = commandBox(client.gui.screen());
+            editor.updateMarkerHover(-100, -100);
+            for (var target : List.of(whole, stage)) {
+                var definition = CodonClientMod.state().breakpoints().get(target);
+                var marker = new WrappedCommandEditBox.Marker(target, target.wholeCommand() ? -1 : 8,
+                    COMMAND.length(), definition, false);
+                require(editor.markerPosition(marker).visible(), "saved disabled marker remains visible after reopening");
+            }
+            require(CodonClientMod.state().breakpoints().get(stage).condition().equals(condition),
+                "disabled stage retains its condition");
+            var absent = new WrappedCommandEditBox.Marker(BreakpointTarget.stage(location, 1, COMMAND), 14,
+                COMMAND.length(), null, false);
+            require(!editor.markerPosition(absent).visible(), "unsaved marker remains hidden without hover");
+        });
+        context.takeScreenshot("codon-breakpoint-disabled-reopened");
     }
 
     private static List<DebuggerButton> controls(Screen screen) {

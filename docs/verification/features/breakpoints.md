@@ -57,3 +57,8 @@ Inspect `*codon-breakpoint-*.png` in the shared screenshot directory. The UI tes
 checks editing and transport; use the result test or manual trigger path to prove
 the execution actually pauses. Record manual world reload separately from the
 file-adapter unit test.
+
+Disable a whole-command breakpoint and a conditional stage breakpoint, then
+reopen the command-block editor. Both saved definitions must remain visible as
+hollow markers without hovering; the stage condition must remain intact.
+`DebuggerBreakpointUiGameTest` covers the real server edit acknowledgements.

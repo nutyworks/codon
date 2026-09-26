@@ -188,7 +188,7 @@ public final class WrappedCommandEditBox extends EditBox {
         int width = Math.max(1, getWidth() - 12);
         if (!value.equals(laidOutValue)) hoveredTarget = null;
         shownMarkers = value.equals(markerCommand) ? markers.stream()
-            .filter(marker -> marker.enabled() || marker.selected() || marker.target().equals(hoveredTarget))
+            .filter(marker -> marker.definition() != null || marker.selected() || marker.target().equals(hoveredTarget))
             .sorted(java.util.Comparator.comparingInt(this::markerOffset)).toList() : List.of();
         List<BreakpointTarget> visibleTargets = shownMarkers.stream().map(Marker::target).toList();
         boolean changed = !value.equals(laidOutValue) || width != laidOutWidth || !visibleTargets.equals(laidOutMarkers);
