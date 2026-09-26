@@ -5,7 +5,9 @@
 Use the [shared setup](../README.md#prepare-and-launch) and stop at a command-block
 breakpoint. Record the current Keep Freecam While Running setting before changing it.
 
-1. While paused, move the detached camera with the movement keys; jump/sneak move
+1. Enter the first breakpoint from first person. The initial viewpoint must stay
+   at the player's eyes without the head/body obscuring the world. Back away and
+   verify that the stationary body becomes visible. While paused, move the detached camera with the movement keys; jump/sneak move
    vertically and sprint accelerates. The player body stays at its paused position.
    Gameplay/inventory actions must not manipulate the world through the camera.
 2. Press `V` to enter cursor mode. Open screens stop camera motion. Close cursor
