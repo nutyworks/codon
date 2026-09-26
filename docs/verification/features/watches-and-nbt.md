@@ -56,3 +56,7 @@ Example: `./gradlew runClientGameTest -PclientGameTest=DebuggerNbtTreeGameTest`.
 Choose the row for the changed behavior, not the whole table. Inspect the matching
 `*codon-*.png` captures where emitted. UI fixtures alone do not prove paused-server
 query timing; use the pause/transport scenario for that boundary.
+
+At a 320x240 GUI viewport, Details initially folds into the View menu. Open
+`View → Details` before inspecting NBT. `DebuggerNbtTreeGameTest` exercises that
+route and then verifies that both the selected source and NBT data remain visible.
