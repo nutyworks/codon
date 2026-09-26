@@ -76,6 +76,20 @@ jobs:
         shell: bash
         run: |
           mkdir -p build/ci
+          touch build/ci/client-game-test.log
+          # Keep thread stacks when a stalled client cannot report a test failure.
+          (
+            while sleep 60; do
+              if [[ -n "$(find build/ci/client-game-test.log -mmin +2 -print)" ]]; then
+                for pid in $(jps -q); do
+                  timeout 15s jcmd "$pid" Thread.print -l > "build/ci/thread-dump-$pid.txt" 2>&1 || true
+                done
+                break
+              fi
+            done
+          ) &
+          diagnostic_pid=$!
+          trap 'kill "$diagnostic_pid" 2>/dev/null || true' EXIT
           xvfb-run -a -s '-screen 0 1920x1080x24' ./gradlew --no-daemon runClientGameTest --stacktrace 2>&1 | tee build/ci/client-game-test.log
       - name: capture client game test evidence
         if: always()
@@ -83,7 +97,7 @@ jobs:
         with:
           name: client-game-test-evidence
           path: |
-            build/ci/client-game-test.log
+            build/ci/
             build/run/clientGameTest/logs/
             build/run/clientGameTest/screenshots/
             build/run/clientGameTest/crash-reports/

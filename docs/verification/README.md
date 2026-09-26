@@ -116,6 +116,10 @@ may produce no files. The client test step has a 15-minute timeout within the
 stopped. Neither limit suppresses test failures. Existing JAR artifacts remain
 available from the build job.
 
+If the client console stops advancing for two minutes, the job also captures JVM
+thread dumps under `build/ci/` in the same evidence artifact. Use these stacks to
+locate a stalled test, renderer or server handoff before changing test timing.
+
 The workflow creates status checks; making both jobs required for merging is a
 separate GitHub branch-protection/ruleset setting. A local macOS run does not prove
 the Ubuntu CI environment passed. See Fabric's
