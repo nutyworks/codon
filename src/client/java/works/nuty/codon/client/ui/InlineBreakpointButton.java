@@ -9,6 +9,7 @@ import net.minecraft.client.gui.narration.NarratedElementType;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.network.chat.Component;
 import works.nuty.codon.core.model.BreakpointTarget;
+import works.nuty.codon.core.model.BreakpointCondition;
 
 /** Keyboard and narration surface for a marker drawn by the command editor. */
 public final class InlineBreakpointButton extends AbstractWidget {
@@ -37,7 +38,8 @@ public final class InlineBreakpointButton extends AbstractWidget {
             : Component.translatable("codon.breakpoint.stage_target", target.stageIndex() + 1);
         setMessage(name.copy().append(" · ").append(Component.translatable(marker.enabled()
             ? "codon.breakpoint.inline_on" : "codon.breakpoint.inline_off"))
-            .append(marker.definition() == null ? "" : " · " + BreakpointUi.condition(marker.definition().condition())));
+            .append(" · " + BreakpointUi.condition(marker.definition() == null
+                ? BreakpointCondition.ALWAYS : marker.definition().condition())));
     }
 
     @Override public void setFocused(boolean focused) {

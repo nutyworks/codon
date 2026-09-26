@@ -262,6 +262,15 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             .filter(InlineBreakpointButton.class::isInstance).map(InlineBreakpointButton.class::cast)
             .map(InlineBreakpointButton::target).toList());
         require(targets.size() >= 3, "whole command and parsed stages have keyboard controls");
+        context.runOnClient(client -> {
+            var unused = client.gui.screen().children().stream().filter(InlineBreakpointButton.class::isInstance)
+                .map(InlineBreakpointButton.class::cast)
+                .filter(control -> CodonClientMod.state().breakpoints().get(control.target()) == null).toList();
+            require(!unused.isEmpty(), "fixture includes unused stage markers");
+            String always = works.nuty.codon.client.ui.BreakpointUi.condition(BreakpointCondition.ALWAYS);
+            require(unused.stream().allMatch(control -> control.getMessage().getString().endsWith(" · " + always)),
+                "unused marker narration includes its default Always condition");
+        });
         for (var target : targets) focusMarker(context, target);
         BreakpointTarget whole = BreakpointTarget.whole(location);
         focusMarker(context, whole);
