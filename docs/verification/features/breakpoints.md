@@ -58,6 +58,11 @@ checks editing and transport; use the result test or manual trigger path to prov
 the execution actually pauses. Record manual world reload separately from the
 file-adapter unit test.
 
+When chaining edits in a client GameTest, wait for both the server acknowledgement
+and the next control's enabled state. A received snapshot can precede the frame
+that enables Undo or an inline marker; sending input in that interval tests a
+disabled control instead of the intended follow-up action.
+
 Disable a whole-command breakpoint and a conditional stage breakpoint, then
 reopen the command-block editor. Both saved definitions must remain visible as
 hollow markers without hovering; the stage condition must remain intact.
