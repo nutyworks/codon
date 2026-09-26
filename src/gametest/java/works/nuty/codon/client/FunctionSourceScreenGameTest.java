@@ -8,6 +8,8 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContex
 import net.minecraft.client.InputType;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.input.MouseButtonInfo;
 import net.minecraft.network.chat.Component;
@@ -105,6 +107,27 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             });
             context.waitTicks(2);
             context.takeScreenshot("codon-function-source-640x360-docked");
+            context.runOnClient(client -> searchBox(client.gui.screen()).setValue("long_stage"));
+            context.getInput().resizeWindow(1600, 1000);
+            context.waitTicks(2);
+            context.runOnClient(client -> require(searchBox(client.gui.screen()).getValue().equals("long_stage"),
+                "resizing retains the function search query"));
+            context.takeScreenshot("codon-function-source-search-after-resize");
+            context.getInput().resizeWindow(960, 540);
+            context.waitTicks(2);
+            context.runOnClient(client -> {
+                Screen current = client.gui.screen();
+                AbstractButton functions = current.children().stream().filter(AbstractButton.class::isInstance)
+                    .map(AbstractButton.class::cast).filter(button -> button.visible
+                        && button.getMessage().getString().equals("Functions")).findFirst().orElseThrow();
+                MouseButtonEvent click = new MouseButtonEvent(functions.getX() + 2, functions.getY() + 2,
+                    new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
+                current.mouseClicked(click, false);
+                current.mouseReleased(click);
+                require(searchBox(current).getValue().equals("long_stage") && searchBox(current).visible,
+                    "opening the compact function drawer retains the same query");
+            });
+            context.takeScreenshot("codon-function-source-filtered-drawer");
             context.runOnClient(client -> client.setScreenAndShow(null));
         }
     }
@@ -119,7 +142,16 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
         long request = ((ClientFunctionSourceState.Request.ReadFunction) sources.drainRequests().getFirst()).requestId();
         sources.accept(new ClientFunctionSourceState.SourcePage(request, ClientFunctionSourceState.Status.READY, FUNCTION,
             "gametest", "source-preview", false, 0, true, List.of(COMMAND)));
+        sources.open();
+        long listRequest = ((ClientFunctionSourceState.Request.ListFunctions) sources.drainRequests().getFirst()).requestId();
+        sources.accept(new ClientFunctionSourceState.ListPage(listRequest, ClientFunctionSourceState.Status.READY,
+            0, true, List.of(FUNCTION, new FunctionId("codon_test", "other_function"))));
         return sources;
+    }
+
+    private static EditBox searchBox(Screen screen) {
+        return screen.children().stream().filter(EditBox.class::isInstance)
+            .map(EditBox.class::cast).findFirst().orElseThrow();
     }
 
     private static <T> T require(T value, String message) {

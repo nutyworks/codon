@@ -49,3 +49,7 @@ layouts. This GameTest injects a source document and stage spans: its function i
 not installed in the server's datapack. It proves presentation/interaction, not
 server source discovery, permission enforcement or native function breakpoints.
 Use the manual loaded-function path for those acceptance criteria.
+
+For search rebuilds, enter a query that excludes another known function, resize
+the window, and open the compact Functions drawer. The query and filtered list
+must survive both rebuilds (`FunctionSourceScreenGameTest`).
