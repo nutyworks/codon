@@ -57,3 +57,8 @@ Inspect `*codon-breakpoint-*.png` in the shared screenshot directory. The UI tes
 checks editing and transport; use the result test or manual trigger path to prove
 the execution actually pauses. Record manual world reload separately from the
 file-adapter unit test.
+
+When chaining edits in a client GameTest, wait for both the server acknowledgement
+and the next control's enabled state. A received snapshot can precede the frame
+that enables Undo or an inline marker; sending input in that interval tests a
+disabled control instead of the intended follow-up action.

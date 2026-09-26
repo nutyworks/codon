@@ -184,7 +184,9 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             context.waitFor(client -> client.gui.screen() instanceof BreakpointListScreen, 100);
             context.waitFor(client -> {
                 var state = CodonClientMod.state();
-                return state != null && state.breakpoints().get(first) == null;
+                // The snapshot can arrive before the next frame enables Undo.
+                return state != null && state.breakpoints().get(first) == null
+                    && !state.breakpoints().pending(first) && button(client.gui.screen(), "Undo").isActive();
             }, 200);
             context.runOnClient(client -> {
                 Screen screen = require(client.gui.screen(), "breakpoint list open");
@@ -194,6 +196,7 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
                 var state = CodonClientMod.state();
                 return state != null && state.breakpoints().get(first) != null;
             }, 200);
+            context.takeScreenshot("codon-breakpoint-restored");
             context.runOnClient(client -> client.setScreenAndShow(null));
         }
     }
