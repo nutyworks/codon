@@ -120,6 +120,12 @@ If the client console stops advancing for two minutes, the job also captures JVM
 thread dumps under `build/ci/` in the same evidence artifact. Use these stacks to
 locate a stalled test, renderer or server handoff before changing test timing.
 
+The test-only `IntegratedServerGameTestMixin` keeps Fabric's client/server phases
+advancing while `IntegratedServer.halt()` awaits its server cleanup task. Without
+this, the client can block before reaching Fabric's normal disconnect pump while
+the server waits at the next test phase. It retains the server-thread cleanup and
+its completion/error contract; no production shutdown behavior is changed.
+
 The workflow creates status checks; making both jobs required for merging is a
 separate GitHub branch-protection/ruleset setting. A local macOS run does not prove
 the Ubuntu CI environment passed. See Fabric's
