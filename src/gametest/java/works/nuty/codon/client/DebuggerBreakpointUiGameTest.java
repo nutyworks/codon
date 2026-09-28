@@ -26,6 +26,7 @@ import works.nuty.codon.client.state.ClientBreakpointState;
 import works.nuty.codon.core.model.SourceLocation;
 import works.nuty.codon.client.state.ClientStagePreviewState;
 import works.nuty.codon.client.ui.BreakpointConditionScreen;
+import works.nuty.codon.client.ui.ScreenLayers;
 import works.nuty.codon.client.ui.BreakpointListScreen;
 import works.nuty.codon.client.ui.DebuggerButton;
 import works.nuty.codon.client.ui.WrappedCommandEditBox;
@@ -107,7 +108,9 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
                     "separate breakpoint controls have been removed");
                 WrappedCommandEditBox command = commandBox(screen);
                 int textX = command.getScreenX(0);
-                command.updateMarkerHover(command.getX() - 10, command.getY() + 8);
+                command.updateMarkerHover(-100, -100);
+                require(command.markerAt(command.getX() - 10, command.getY() + 8) != null,
+                    "unused whole-command marker is visible without hovering");
                 require(command.getScreenX(0) == textX, "block breakpoint sits outside the input without shifting text");
                 click(screen, command.getX() - 10, command.getY() + 8);
             });
@@ -134,22 +137,55 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
                 return state != null && state.breakpoints().get(first) != null;
             }, 200);
             context.takeScreenshot("codon-breakpoint-inline-active");
-            context.runOnClient(client -> openFirstCondition(require(client.gui.screen(), "command block editor open")));
-            context.waitFor(client -> client.gui.screen() instanceof BreakpointConditionScreen, 100);
-            context.runOnClient(client -> click(require(client.gui.screen(), "condition editor open"),
-                button(client.gui.screen(), "Save")));
-            context.waitFor(client -> client.gui.screen() instanceof CommandBlockEditScreen, 200);
+            Screen parent = context.computeOnClient(client -> client.gui.screen());
+            WrappedCommandEditBox originalEditor = context.computeOnClient(client -> commandBox(parent));
+            int originalCursor = context.computeOnClient(client -> originalEditor.getCursorPosition());
+            int[] marker = context.computeOnClient(client -> new int[] {
+                originalEditor.getScreenX("execute ".length()) - 8, originalEditor.getY() + 8
+            });
+            nativeClick(context, parent, marker[0], marker[1], InputConstants.MOUSE_BUTTON_RIGHT);
+            context.waitFor(client -> ScreenLayers.get(client.gui.screen()) instanceof BreakpointConditionScreen, 100);
+            context.runOnClient(client -> require(client.gui.screen() == parent && commandBox(parent) == originalEditor,
+                "opening condition details retains the active screen and its input widget"));
+            context.takeScreenshot("codon-breakpoint-condition-layer");
+            // Click the underlying marker and type through Minecraft's real input dispatch.
+            // Neither action may reach the editor below the modal layer.
+            nativeClick(context, parent, marker[0], marker[1], InputConstants.MOUSE_BUTTON_LEFT);
+            context.getInput().typeChars("9");
+            context.runOnClient(client -> {
+                require(CodonClientMod.state().breakpoints().get(first).enabled(), "layer blocks underlying marker clicks");
+                require(COMMAND.equals(originalEditor.getValue()), "layer blocks typing into the underlying command");
+            });
+            AbstractButton save = context.computeOnClient(client -> button(conditionLayer(parent), "Save"));
+            nativeClick(context, parent, save.getX() + 3, save.getY() + 2, InputConstants.MOUSE_BUTTON_LEFT);
+            context.waitFor(client -> client.gui.screen() instanceof CommandBlockEditScreen && ScreenLayers.get(client.gui.screen()) == null, 200);
             context.waitTicks(1);
             context.runOnClient(client -> {
                 Screen screen = require(client.gui.screen(), "command block editor restored");
                 EditBox command = screen.children().stream().filter(EditBox.class::isInstance)
                     .map(EditBox.class::cast).filter(box -> box.getY() == 50).findFirst().orElseThrow();
                 require(COMMAND.equals(command.getValue()), "return retains the loaded command text");
+                require(client.gui.screen() == parent && command == originalEditor
+                    && command.getCursorPosition() == originalCursor, "saving closes only the layer and retains the cursor");
                 require(button(screen, "Done").active,
                     "return restores vanilla controls without another block packet");
                 openFirstCondition(screen);
             });
-            context.waitFor(client -> client.gui.screen() instanceof BreakpointConditionScreen, 100);
+            context.waitFor(client -> ScreenLayers.get(client.gui.screen()) instanceof BreakpointConditionScreen, 100);
+            nativeClick(context, parent, 0, 0, InputConstants.MOUSE_BUTTON_LEFT);
+            context.runOnClient(client -> require(client.gui.screen() == parent && ScreenLayers.get(parent) == null,
+                "outside click dismisses only the layer"));
+            int[] reopenedMarker = context.computeOnClient(client -> {
+                var editor = commandBox(parent);
+                var point = editor.markerPosition(new WrappedCommandEditBox.Marker(first, 8, COMMAND.length(),
+                    CodonClientMod.state().breakpoints().get(first)));
+                var hit = editor.markerAt(point.x(), point.y());
+                require(point.visible() && hit != null && hit.target().equals(first),
+                    "stage marker is ready to reopen the condition layer");
+                return new int[] { point.x(), point.y() };
+            });
+            nativeClick(context, parent, reopenedMarker[0], reopenedMarker[1], InputConstants.MOUSE_BUTTON_RIGHT);
+            context.waitFor(client -> ScreenLayers.get(client.gui.screen()) instanceof BreakpointConditionScreen, 100);
             context.getInput().resizeWindow(960, 720);
             context.runOnClient(client -> {
                 client.options.guiScale().set(3);
@@ -158,7 +194,7 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             context.waitTicks(3);
             context.takeScreenshot("codon-breakpoint-condition-320x240");
             context.runOnClient(client -> {
-                Screen screen = require(client.gui.screen(), "condition editor open");
+                Screen screen = conditionLayer(client.gui.screen());
                 require(screen.width == 320 && screen.height == 240,
                     "condition editor uses a 320x240 GUI viewport");
                 for (DebuggerButton control : controls(screen)) {
@@ -166,26 +202,41 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
                     require(control.getX() >= 0 && control.getY() >= 0 && control.getRight() <= screen.width
                         && control.getBottom() <= screen.height, "compact condition control stays in bounds");
                 }
-                DebuggerButton chooser = controls(screen).stream()
-                    .filter(value -> value.getMessage().getString().startsWith("Condition:"))
-                    .findFirst().orElseThrow();
-                click(screen, chooser);
+                require(controls(screen).stream().filter(value -> value.visible && value.icon() != null
+                    && java.util.Arrays.stream(BreakpointCondition.Kind.values()).anyMatch(kind ->
+                        value.getMessage().getString().equals(works.nuty.codon.client.ui.BreakpointUi.kindLabel(kind)))).count() == 9,
+                    "all nine condition icons are directly available without a menu");
+                click(screen, button(screen, "Output context count"));
+                EditBox count = screen.children().stream().filter(EditBox.class::isInstance)
+                    .map(EditBox.class::cast).filter(value -> value.visible).findFirst().orElseThrow();
+                count.setValue("-1");
+                require(!button(screen, "Save").active, "negative count disables save immediately");
+                count.setValue("2");
+                click(screen, button(screen, "≥"));
+                require(button(screen, "Save").active, "valid count and comparison can be saved");
             });
             context.waitTicks(1);
-            context.takeScreenshot("codon-breakpoint-condition-menu-320x240");
+            context.takeScreenshot("codon-breakpoint-condition-count-icons-320x240");
+            AbstractButton resizedSave = context.computeOnClient(client -> button(conditionLayer(client.gui.screen()), "Save"));
+            nativeClick(context, parent, resizedSave.getX() + 3, resizedSave.getY() + 2, InputConstants.MOUSE_BUTTON_LEFT);
+            context.waitFor(client -> ScreenLayers.get(client.gui.screen()) == null
+                && CodonClientMod.state().breakpoints().get(first).condition().equals(
+                    BreakpointCondition.count(BreakpointCondition.Kind.OUTPUT_COUNT, BreakpointCondition.Comparison.GE, 2)), 200);
+            context.runOnClient(client -> openFirstCondition(client.gui.screen()));
+            context.waitFor(client -> ScreenLayers.get(client.gui.screen()) instanceof BreakpointConditionScreen, 100);
             context.runOnClient(client -> {
-                Screen screen = require(client.gui.screen(), "condition editor open");
-                require(controls(screen).stream().filter(value -> value.visible
-                    && value.getMessage().getString().contains("Context")).count() >= 1,
-                    "condition options open directly instead of cycling: "
-                        + controls(screen).stream().map(value -> value.getMessage().getString()
-                            + "=" + value.visible).toList());
+                Screen screen = conditionLayer(client.gui.screen());
+                click(screen, button(screen, "Context changed"));
+                require(screen.children().stream().filter(EditBox.class::isInstance)
+                    .map(EditBox.class::cast).noneMatch(value -> value.visible),
+                    "event conditions hide the count field");
+                require(controls(screen).stream().noneMatch(value -> value.visible && value.getMessage().getString().equals("≥")),
+                    "event conditions hide the comparison controls");
             });
-            // The first outside click closes the popup; the next activates Delete.
-            context.runOnClient(client -> click(require(client.gui.screen(), "condition editor open"),
-                button(client.gui.screen(), "Delete")));
-            context.runOnClient(client -> click(require(client.gui.screen(), "condition editor open"),
-                button(client.gui.screen(), "Delete")));
+            context.waitTicks(1);
+            context.takeScreenshot("codon-breakpoint-condition-event-icons-320x240");
+            context.runOnClient(client -> click(conditionLayer(client.gui.screen()),
+                button(conditionLayer(client.gui.screen()), "Delete")));
             context.waitFor(client -> client.gui.screen() instanceof BreakpointListScreen, 100);
             context.waitFor(client -> {
                 var state = CodonClientMod.state();
@@ -218,6 +269,43 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
                 state.breakpoints().get(stage).withCondition(condition));
         });
         context.waitFor(client -> !CodonClientMod.state().breakpoints().pending(stage), 200);
+        context.runOnClient(client -> client.setScreenAndShow(
+            new BreakpointListScreen(client.gui.screen(), CodonClientMod.state())));
+        context.waitTicks(2);
+        context.runOnClient(client -> require(controls(client.gui.screen()).stream()
+            .filter(control -> control.getTabOrderGroup() < 100).count() == 2,
+            "list initially shows both enabled breakpoints"));
+        context.runOnClient(client -> {
+            Screen list = client.gui.screen();
+            DebuggerButton row = controls(list).stream()
+                .filter(control -> control.getTabOrderGroup() < 100).findFirst().orElseThrow();
+            click(list, row);
+            require(button(list, "Delete").active, "selecting a row enables actions for that breakpoint");
+            require(!list.mouseScrolled(0, 0, 0, -1), "scrolling outside the list is not consumed");
+            DebuggerButton conditionButton = controls(list).stream()
+                .filter(control -> control.getMessage().getString().startsWith("Condition")).findFirst().orElseThrow();
+            client.setLastInputType(net.minecraft.client.InputType.KEYBOARD_TAB);
+            list.setFocused(conditionButton);
+        });
+        context.waitTicks(2);
+        context.takeScreenshot("codon-breakpoint-selected-keyboard-tooltip");
+        for (String label : List.of("Close", "Condition")) {
+            double[] cursor = context.computeOnClient(client -> {
+                Screen list = client.gui.screen();
+                list.setFocused(null);
+                client.setLastInputType(net.minecraft.client.InputType.MOUSE);
+                DebuggerButton control = controls(list).stream()
+                    .filter(value -> value.getMessage().getString().startsWith(label)).findFirst().orElseThrow();
+                return new double[] {
+                    (control.getX() + control.getWidth() / 2.0) * client.getWindow().getScreenWidth() / list.width,
+                    (control.getY() + control.getHeight() / 2.0) * client.getWindow().getScreenHeight() / list.height
+                };
+            });
+            context.getInput().setCursorPos(cursor[0], cursor[1]);
+            context.waitTicks(10);
+            context.takeScreenshot("codon-breakpoint-hover-" + label.toLowerCase(java.util.Locale.ROOT));
+        }
+        context.getInput().setCursorPos(0, 0);
         context.runOnClient(client -> {
             var state = CodonClientMod.state();
             for (var target : List.of(whole, stage))
@@ -227,6 +315,15 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             var state = CodonClientMod.state().breakpoints();
             return !state.pending(target) && state.get(target) != null && !state.get(target).enabled();
         }), 200);
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            require(controls(client.gui.screen()).stream().noneMatch(control -> control.getTabOrderGroup() < 100),
+                "open list removes disabled breakpoints after acknowledgement");
+            require(CodonClientMod.state().breakpoints().definitions().size() == 2,
+                "hiding disabled breakpoints preserves their saved definitions");
+            require(CodonClientMod.state().blockBreakpoints().isEmpty(), "disabled block has no world marker");
+        });
+        context.takeScreenshot("codon-breakpoint-disabled-list");
         context.runOnClient(client -> {
             client.setScreenAndShow(null);
             var entity = (CommandBlockEntity) client.level.getBlockEntity(position);
@@ -241,16 +338,43 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             for (var target : List.of(whole, stage)) {
                 var definition = CodonClientMod.state().breakpoints().get(target);
                 var marker = new WrappedCommandEditBox.Marker(target, target.wholeCommand() ? -1 : 8,
-                    COMMAND.length(), definition, false);
-                require(editor.markerPosition(marker).visible(), "saved disabled marker remains visible after reopening");
+                    COMMAND.length(), definition);
+                require(editor.markerPosition(marker).visible() == target.wholeCommand(),
+                    "only the whole-command marker stays visible without hovering after reopening");
+                var point = editor.markerPosition(marker);
+                require(!target.wholeCommand() || point.x() >= 4,
+                    "whole-command marker stays fully inside the narrow viewport");
+                editor.updateMarkerHover(point.x(), point.y());
+                require(editor.markerPosition(marker).visible(), "hover reveals a disabled marker");
+                editor.updateMarkerHover(-100, -100);
+                editor.focusBreakpoint(target);
+                require(editor.markerPosition(marker).visible(), "keyboard focus reveals a disabled marker");
+                editor.clearBreakpointFocus(target);
+                require(editor.markerPosition(marker).visible() == target.wholeCommand(),
+                    "only the whole-command marker stays visible after hover and focus leave");
             }
             require(CodonClientMod.state().breakpoints().get(stage).condition().equals(condition),
                 "disabled stage retains its condition");
             var absent = new WrappedCommandEditBox.Marker(BreakpointTarget.stage(location, 1, COMMAND), 14,
-                COMMAND.length(), null, false);
+                COMMAND.length(), null);
             require(!editor.markerPosition(absent).visible(), "unsaved marker remains hidden without hover");
         });
         context.takeScreenshot("codon-breakpoint-disabled-reopened");
+        context.runOnClient(client -> {
+            var editor = commandBox(client.gui.screen());
+            var marker = new WrappedCommandEditBox.Marker(stage, 8, COMMAND.length(),
+                CodonClientMod.state().breakpoints().get(stage));
+            var point = editor.markerPosition(marker);
+            editor.updateMarkerHover(point.x(), point.y());
+            point = editor.markerPosition(marker);
+            click(client.gui.screen(), point.x(), point.y());
+        });
+        context.waitFor(client -> {
+            var state = CodonClientMod.state().breakpoints();
+            return !state.pending(stage) && state.get(stage).enabled();
+        }, 200);
+        context.runOnClient(client -> require(CodonClientMod.state().breakpoints().get(stage).condition().equals(condition),
+            "reactivating the hidden stage preserves its condition"));
     }
 
     private static void verifyKeyboardMarkers(ClientGameTestContext context, BlockPos position,
@@ -306,10 +430,10 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
         context.runOnClient(client -> require(client.gui.screen().keyPressed(
             new KeyEvent(InputConstants.KEY_RETURN, InputConstants.KEYCODE_RETURN, InputConstants.MOD_SHIFT)),
             "focused stage handles Shift+Enter"));
-        context.waitFor(client -> client.gui.screen() instanceof BreakpointConditionScreen, 100);
+        context.waitFor(client -> ScreenLayers.get(client.gui.screen()) instanceof BreakpointConditionScreen, 100);
         context.takeScreenshot("codon-breakpoint-keyboard-condition");
         context.getInput().pressKey(InputConstants.KEY_ESCAPE);
-        context.waitFor(client -> client.gui.screen() instanceof CommandBlockEditScreen, 100);
+        context.waitFor(client -> client.gui.screen() instanceof CommandBlockEditScreen && ScreenLayers.get(client.gui.screen()) == null, 100);
         focusMarker(context, first);
         context.runOnClient(client -> commandBox(client.gui.screen()).setValue(COMMAND + " changed"));
         context.getInput().pressKey(InputConstants.KEY_SPACE);
@@ -342,6 +466,19 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
     private static List<DebuggerButton> controls(Screen screen) {
         return screen.children().stream().filter(DebuggerButton.class::isInstance)
             .map(DebuggerButton.class::cast).toList();
+    }
+
+    private static Screen conditionLayer(Screen parent) {
+        return require(ScreenLayers.get(parent), "condition layer open");
+    }
+
+    private static void nativeClick(ClientGameTestContext context, Screen parent, int x, int y, int button) {
+        double[] position = context.computeOnClient(client -> new double[] {
+            (double) x * client.getWindow().getScreenWidth() / parent.width,
+            (double) y * client.getWindow().getScreenHeight() / parent.height
+        });
+        context.getInput().setCursorPos(position[0], position[1]);
+        context.getInput().pressMouse(button);
     }
 
     private static AbstractButton button(Screen screen, String part) {

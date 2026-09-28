@@ -101,7 +101,8 @@ public final class CommandFlowLayout {
 
     /**
      * Lays out every command character without ellipsizing. A part can produce several cells;
-     * all keep its part index and only the first cell asks the renderer to draw its count label.
+     * all keep its part index. Only the first cell reserves leading icons and the minimum
+     * count-label width; continuation cells use the full viewport with ordinary text padding.
      */
     public static Layout layout(List<Part> parts, int width, ToIntFunction<String> measure,
                                 IntUnaryOperator minimumWidth) {
@@ -124,12 +125,13 @@ public final class CommandFlowLayout {
             int clampedMinimum = Math.min(available, requestedMinimum);
             int inset = Math.clamp(leadingInset.applyAsInt(partIndex), 0, available);
             int padding = part.stageIndex() == -2 ? 0 : CELL_HORIZONTAL_PADDING;
-            List<String> fragments = wrap(part.text(), Math.max(1, available - padding - inset), measure);
+            List<String> fragments = wrapCharacters(part.text(), Math.max(1, available - padding - inset),
+                Math.max(1, available - padding), measure);
             boolean first = true;
             for (String fragment : fragments) {
                 int measured = Math.max(0, measure.applyAsInt(fragment));
                 int cellWidth = Math.min(available,
-                    Math.max(clampedMinimum, saturatedAdd(measured, padding + inset)));
+                    Math.max(first ? clampedMinimum : 0, saturatedAdd(measured, padding + (first ? inset : 0))));
                 if (x > 0 && x + GAP + cellWidth > available) {
                     row++;
                     x = 0;
@@ -149,7 +151,13 @@ public final class CommandFlowLayout {
             && command.highlightEnd() <= length;
     }
 
-    private static List<String> wrap(String text, int limit, ToIntFunction<String> measure) {
+    /** Fill each line by code point, preserving spaces and surrogate pairs instead of backing up to a word. */
+    public static List<String> wrapCharacters(String text, int limit, ToIntFunction<String> measure) {
+        return wrapCharacters(text, limit, limit, measure);
+    }
+
+    private static List<String> wrapCharacters(String text, int firstLimit, int continuationLimit,
+                                                ToIntFunction<String> measure) {
         List<String> fragments = new ArrayList<>();
         int codePoints = text.codePointCount(0, text.length());
         int[] boundaries = new int[codePoints + 1];
@@ -159,6 +167,7 @@ public final class CommandFlowLayout {
 
         int start = 0;
         while (start < codePoints) {
+            int limit = start == 0 ? firstLimit : continuationLimit;
             int low = start;
             int high = codePoints;
             while (low < high) {
@@ -174,12 +183,6 @@ public final class CommandFlowLayout {
                 break;
             }
             int end = low == start ? start + 1 : low;
-            for (int index = end; index > start; index--) {
-                if (Character.isWhitespace(text.codePointAt(boundaries[index - 1]))) {
-                    end = index;
-                    break;
-                }
-            }
             fragments.add(text.substring(boundaries[start], boundaries[end]));
             start = end;
         }

@@ -17,6 +17,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CommandFlowLayoutTest {
     @Test
+    void fillsLinesAcrossWordBoundariesWithoutLosingSpacesOrSplittingUnicode() {
+        String command = "ab 😀cd ef";
+        assertEquals(List.of("ab 😀", "cd e", "f"),
+            CommandFlowLayout.wrapCharacters(command, 4, CommandFlowLayoutTest::codePoints));
+        var layout = CommandFlowLayout.layout(List.of(new CommandFlowLayout.Part(command, 2)),
+            14, CommandFlowLayoutTest::codePoints, ignored -> 0);
+        assertEquals(List.of("ab 😀", "cd e", "f"), layout.cells().stream().map(CommandFlowLayout.Cell::text).toList());
+        assertEquals(command, joinCells(layout));
+        assertEquals(1, layout.cells().stream().filter(CommandFlowLayout.Cell::first).count());
+        assertGeometry(layout, 14);
+    }
+
+    @Test
     void reservesIconSpaceWithoutDroppingWrappedCommandText() {
         String command = "tellraw @a abcdefghijklmnopqrstuvwxyz";
         CommandFlowLayout.Layout layout = CommandFlowLayout.layout(
@@ -25,7 +38,18 @@ class CommandFlowLayoutTest {
 
         assertEquals(command, joinCells(layout));
         assertTrue(layout.rows() > 1);
-        assertTrue(layout.cells().stream().allMatch(cell -> codePoints(cell.text()) + 24 <= cell.width()));
+        assertTrue(layout.cells().stream().allMatch(cell -> codePoints(cell.text()) + (cell.first() ? 24 : 10) <= cell.width()));
+        assertGeometry(layout, 40);
+    }
+
+    @Test
+    void continuationUsesIconSpaceAndDoesNotReserveTheFirstRowsCountLabel() {
+        String text = "x".repeat(60);
+        var layout = CommandFlowLayout.layout(List.of(new CommandFlowLayout.Part(text, 0)),
+            40, CommandFlowLayoutTest::codePoints, ignored -> 32, ignored -> 14);
+        assertEquals(List.of(16, 30, 14), layout.cells().stream().map(cell -> codePoints(cell.text())).toList());
+        assertEquals(List.of(40, 40, 24), layout.cells().stream().map(CommandFlowLayout.Cell::width).toList());
+        assertEquals(text, joinCells(layout));
         assertGeometry(layout, 40);
     }
 
@@ -90,7 +114,7 @@ class CommandFlowLayoutTest {
             assertGeometry(layout, width);
             assertEquals("execute as @e run say hello", joinCells(layout));
             assertTrue(layout.rows() >= 1);
-            assertTrue(layout.cells().stream().filter(cell -> cell.partIndex() == 0)
+            assertTrue(layout.cells().stream().filter(cell -> cell.partIndex() == 0 && cell.first())
                 .allMatch(cell -> cell.width() >= Math.min(width, 70)));
         }
     }

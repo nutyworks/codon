@@ -38,10 +38,13 @@ public final class BreakpointUi {
         return tr("codon.breakpoint.kind." + kind.name().toLowerCase(java.util.Locale.ROOT));
     }
 
-    public static String glyph(BreakpointDefinition definition) {
-        if (definition == null) return "○";
-        boolean conditional = definition.condition().kind() != BreakpointCondition.Kind.ALWAYS;
-        return conditional ? (definition.enabled() ? "◆" : "◇") : (definition.enabled() ? "●" : "○");
+    public static DebuggerIcon icon(BreakpointDefinition definition) {
+        boolean enabled = definition != null && definition.enabled();
+        boolean conditional = definition != null
+            && definition.condition().kind() != BreakpointCondition.Kind.ALWAYS;
+        return conditional
+            ? (enabled ? DebuggerIcon.BREAKPOINT_CONDITIONAL : DebuggerIcon.BREAKPOINT_CONDITIONAL_EMPTY)
+            : (enabled ? DebuggerIcon.BREAKPOINT : DebuggerIcon.BREAKPOINT_EMPTY);
     }
 
     private static String tr(String key, Object... args) {

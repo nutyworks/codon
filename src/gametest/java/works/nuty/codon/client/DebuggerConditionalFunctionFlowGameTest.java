@@ -230,14 +230,14 @@ public final class DebuggerConditionalFunctionFlowGameTest implements FabricClie
             context.runOnClient(client -> require(state.displayedCallStack().size() == 1,
                 "Returning to the root retains its horizontal call path"));
             context.takeScreenshot("codon-conditional-returned-parent");
-            clickHistory(context, screen, "‹");
+            clickHistory(context, screen, DebuggerIcon.HISTORY_PREVIOUS);
             context.runOnClient(client -> {
                 require(state.selectedCommand().text().equals("return 0"),
                     "Previous from the returned caller selects the condition function's return command");
                 assertHistoricalStack(screen, state, parentId);
             });
             context.takeScreenshot("codon-conditional-previous-return");
-            clickHistory(context, screen, "‹");
+            clickHistory(context, screen, DebuggerIcon.HISTORY_PREVIOUS);
             context.runOnClient(client -> {
                 require(state.selectedCommand().text().equals("say codon-conditional-false-enter"),
                     "Previous then selects the condition function's body");
@@ -264,17 +264,17 @@ public final class DebuggerConditionalFunctionFlowGameTest implements FabricClie
                 .filter(label -> label.equals(frameLabel(insideFunction.callStack().getFirst())))
                 .findFirst().orElseThrow());
             clickHistory(context, screen, recordedChildLabel);
-            clickHistory(context, screen, "‹");
+            clickHistory(context, screen, DebuggerIcon.HISTORY_PREVIOUS);
             context.runOnClient(client -> require(state.selectedExecutionFlow().invocationId() == parentId
                 && state.selectedExecutionFlowStage().index() == parent.stages().getFirst().index(),
                 "Previous returns to the original condition before function entry, not the caller's later say"));
-            clickHistory(context, screen, "›");
+            clickHistory(context, screen, DebuggerIcon.HISTORY_NEXT);
             context.runOnClient(client -> require(state.selectedCommand().text().equals("say codon-conditional-false-enter"),
                 "Next from the condition enters the recorded function body"));
-            clickHistory(context, screen, "›");
+            clickHistory(context, screen, DebuggerIcon.HISTORY_NEXT);
             context.runOnClient(client -> require(state.selectedCommand().text().equals("return 0"),
                 "Next follows the recorded function return"));
-            clickHistory(context, screen, "›");
+            clickHistory(context, screen, DebuggerIcon.HISTORY_NEXT);
             context.runOnClient(client -> require(state.selectedExecutionFlow().invocationId() == parentId
                 && state.selectedExecutionFlowStage().index() == parent.stages().get(1).index(),
                 "Next returns to the caller's continuation after the function"));
@@ -320,6 +320,14 @@ public final class DebuggerConditionalFunctionFlowGameTest implements FabricClie
         } finally {
             buffer.release();
         }
+    }
+
+    private static void clickHistory(ClientGameTestContext context, CodonScreen screen, DebuggerIcon icon) {
+        String label = context.computeOnClient(client -> screen.children().stream()
+            .filter(DebuggerButton.class::isInstance).map(DebuggerButton.class::cast)
+            .filter(button -> button.icon() == icon).map(button -> button.getMessage().getString())
+            .findFirst().orElseThrow(() -> new AssertionError("History icon missing: " + icon)));
+        clickHistory(context, screen, label);
     }
 
     private static void clickHistory(ClientGameTestContext context, CodonScreen screen, String label) {

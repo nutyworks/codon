@@ -90,7 +90,7 @@ public final class CommandPanel {
 
         // The action row is anchored to the screen's bottom, independently of expansion.
         int actionY = Math.max(area.y() + 1, area.y() + area.height() - 20);
-        int actionLeft = renderActions(new Bounds(area.x() + 4, actionY, area.width() - 8, 17), snapshot, input, overlay);
+        int actionLeft = renderActions(new Bounds(area.x() + 4, actionY, area.width() - 8, 17));
         if (area.height() >= 40) {
             int y = area.y() + 3;
             renderPath(graphics, new Bounds(area.x() + 4, y, area.width() - 8, 17), snapshot);
@@ -183,20 +183,13 @@ public final class CommandPanel {
         }
     }
 
-    private int renderActions(Bounds area, PauseSnapshot snapshot,
-                               InputManager input, DebuggerOverlay overlay) {
+    private int renderActions(Bounds area) {
         navigationGroup = DebuggerNavigation.Group.ACTIONS;
         int right = area.x() + area.width();
         button("expand", new Bounds(right - 17, area.y(), 17, 16),
             Component.translatable(expanded ? "codon.ui.collapse_command" : "codon.ui.expand_command"), true, false,
-            () -> expanded = !expanded).withIcon(expanded ? DebuggerIcon.COLLAPSE : DebuggerIcon.EXPAND);
+            () -> expanded = !expanded).withIcon(expanded ? DebuggerIcon.PANEL_COLLAPSE : DebuggerIcon.PANEL_EXPAND);
         right -= 20;
-        if (area.width() >= 240) {
-            int width = labelWidth("codon.watch.open");
-            button("watch", new Bounds(right - width, area.y(), width, 16), Component.translatable("codon.watch.open"),
-                true, false, () -> client.gui.setScreen(new WatchScreen(input, state, overlay)));
-            right -= width + 3;
-        }
         int width = labelWidth("codon.ui.return_current");
         DebuggerButton current = button("current", new Bounds(right - width, area.y(), width, 16),
             Component.translatable("codon.ui.return_current"),
@@ -205,14 +198,14 @@ public final class CommandPanel {
             .setTooltip(Tooltip.create(Component.translatable("codon.ui.return_pause")));
         right -= width + 3;
         if (right - area.x() >= 38) {
-            button("flow-next", new Bounds(right - 16, area.y(), 16, 16), Component.literal("›"),
+            button("flow-next", new Bounds(right - 16, area.y(), 16, 16), Component.translatable("codon.ui.next_recorded_command"),
                 state.hasAdjacentExecutionVisit(1), false,
                 () -> { state.selectAdjacentExecutionVisit(1); changed(); })
-                .setTooltip(Tooltip.create(Component.translatable("codon.ui.next_recorded_command")));
-            button("flow-prev", new Bounds(right - 34, area.y(), 16, 16), Component.literal("‹"),
+                .withIcon(DebuggerIcon.HISTORY_NEXT);
+            button("flow-prev", new Bounds(right - 34, area.y(), 16, 16), Component.translatable("codon.ui.previous_recorded_command"),
                 state.hasAdjacentExecutionVisit(-1), false,
                 () -> { state.selectAdjacentExecutionVisit(-1); changed(); })
-                .setTooltip(Tooltip.create(Component.translatable("codon.ui.previous_recorded_command")));
+                .withIcon(DebuggerIcon.HISTORY_PREVIOUS);
             right -= 38;
         }
         BreakpointTarget selectedBreakpoint = selectedBreakpoint();
@@ -242,7 +235,7 @@ public final class CommandPanel {
         BreakpointConditionScreen.Anchor anchor = conditionAnchor.width() <= 0 ? null
             : new BreakpointConditionScreen.Anchor(conditionAnchor.x(), conditionAnchor.y(),
                 conditionAnchor.width(), conditionAnchor.height());
-        client.gui.setScreen(new BreakpointConditionScreen(client.gui.screen(), state,
+        ScreenLayers.open(client.gui.screen(), new BreakpointConditionScreen(client.gui.screen(), state,
             definition == null ? BreakpointDefinition.plain(target) : definition, anchor));
     }
 
@@ -344,7 +337,7 @@ public final class CommandPanel {
                     BreakpointTarget target = BreakpointTarget.stage(flow.location(), stage.index(), stage.command().text());
                     BreakpointDefinition definition = state.breakpoints().get(target);
                     DebuggerButton breakpoint = button("breakpoint-" + flow.invocationId() + "-" + stageIndex,
-                        new Bounds(x, y, 14, 16), Component.literal(BreakpointUi.glyph(definition)),
+                        new Bounds(x, y, 14, 16), Component.translatable("codon.breakpoint.toggle"),
                         !state.breakpoints().pending(target), false, () -> {
                             if (state.selectedExecutionFlow() != flow) return;
                             BreakpointDefinition current = state.breakpoints().get(target);
@@ -353,8 +346,8 @@ public final class CommandPanel {
                             state.selectExecutionFlowStage(stageIndex);
                             changed();
                         });
-                    breakpoint.withoutChrome().withTextPadding(4);
-                    if (definition == null) breakpoint.revealOnHover(x, y, cell.width(), 16);
+                    breakpoint.withoutChrome().withSmallIcon(BreakpointUi.icon(definition));
+                    if (definition == null || !definition.enabled()) breakpoint.revealOnHover(x, y, cell.width(), 16);
                     breakpoint.withStatusColor(definition != null && definition.enabled() ? RED : MUTED,
                         definition != null && definition.enabled() ? RED_SURFACE : SURFACE);
                     var error = state.breakpoints().error(target);
@@ -380,7 +373,7 @@ public final class CommandPanel {
                 clause.setTooltip(Tooltip.create(Component.literal(part.text().strip() + "\n" + stageDetails(stage))));
                 if (editableSource) clause.withSecondaryAction(() -> openCondition(
                     BreakpointTarget.stage(flow.location(), stage.index(), stage.command().text())));
-                if (rowHeight < 30 && hasWarning(stage)) clause.withTextIcon(DebuggerIcon.WARNING);
+                if (cell.first() && rowHeight < 30 && hasWarning(stage)) clause.withTextIcon(DebuggerIcon.WARNING);
                 if (stopped && cell.first()) clause.withTextIcon(DebuggerIcon.PAUSE);
                 if (cell.first() && rowHeight >= 30) {
                     String count = counts(stage);
@@ -401,10 +394,9 @@ public final class CommandPanel {
     }
 
     private void renderRawCommand(GuiGraphicsExtractor graphics, Bounds body, CommandSnippet command, PauseSnapshot snapshot) {
-        var lines = client.font.split(ClientFormatting.command(command), Math.max(1, body.width() - 12));
+        var lines = rawCommandLines(command, Math.max(1, body.width() - 12));
         if (lines.size() > 1) {
-            lines = client.font.split(ClientFormatting.command(command),
-                Math.max(1, body.width() - 12 - DebuggerIcon.SIZE));
+            lines = rawCommandLines(command, Math.max(1, body.width() - 12 - DebuggerIcon.SIZE));
         }
         int rows = Math.max(1, body.height() / 11);
         maxCommandOffset = Math.max(0, lines.size() - rows);
@@ -424,6 +416,17 @@ public final class CommandPanel {
         }
         graphics.disableScissor();
         scrollbar(graphics, body.x() + body.width() - 1, body.y(), body.height(), commandOffset, maxCommandOffset, rows);
+    }
+
+    private List<net.minecraft.util.FormattedCharSequence> rawCommandLines(CommandSnippet command, int width) {
+        var lines = new ArrayList<net.minecraft.util.FormattedCharSequence>();
+        int offset = 0;
+        for (String text : CommandFlowLayout.wrapCharacters(command.text(), width, client.font::width)) {
+            lines.add(ClientFormatting.command(new CommandSnippet(text,
+                command.highlightStart() - offset, command.highlightEnd() - offset)).getVisualOrderText());
+            offset += text.length();
+        }
+        return lines;
     }
 
     private String summary() {

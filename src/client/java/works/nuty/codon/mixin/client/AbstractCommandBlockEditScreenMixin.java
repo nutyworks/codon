@@ -28,6 +28,7 @@ import works.nuty.codon.client.network.ClientNetworking;
 import works.nuty.codon.client.state.ClientBreakpointState;
 import works.nuty.codon.client.state.ClientStagePreviewState;
 import works.nuty.codon.client.ui.BreakpointConditionScreen;
+import works.nuty.codon.client.ui.ScreenLayers;
 import works.nuty.codon.client.ui.WrappedCommandEditBox;
 import works.nuty.codon.client.ui.InlineBreakpointButton;
 import works.nuty.codon.client.ui.layout.CommandFlowLayout;
@@ -43,7 +44,6 @@ public abstract class AbstractCommandBlockEditScreenMixin extends Screen {
     @Shadow protected Button doneButton;
     @Shadow protected abstract BaseCommandBlock getCommandBlock();
     @Unique private @Nullable String codon$requestedCommand;
-    @Unique private @Nullable BreakpointTarget codon$selected;
     @Unique private final List<InlineBreakpointButton> codon$markerControls = new ArrayList<>();
 
     protected AbstractCommandBlockEditScreenMixin() { super(Component.empty()); }
@@ -91,10 +91,8 @@ public abstract class AbstractCommandBlockEditScreenMixin extends Screen {
             ClientNetworking.requestStagePreview(state, location);
         }
         BreakpointTarget whole = BreakpointTarget.whole(location);
-        if (codon$selected != null && !codon$selected.location().equals(location)) codon$selected = null;
         List<WrappedCommandEditBox.Marker> markers = new ArrayList<>();
-        markers.add(new WrappedCommandEditBox.Marker(whole, -1, -1, state.breakpoints().get(whole),
-            whole.equals(codon$selected)));
+        markers.add(new WrappedCommandEditBox.Marker(whole, -1, -1, state.breakpoints().get(whole)));
         var preview = state.stagePreviews().get(location);
         if (preview != null && preview.status() == ClientStagePreviewState.Status.READY
                 && command.equals(preview.savedCommand())) {
@@ -104,8 +102,7 @@ public abstract class AbstractCommandBlockEditScreenMixin extends Screen {
                 while (start < span.end() && Character.isWhitespace(command.charAt(start))) start++;
                 if (start >= span.end() || span.end() > command.length()) continue;
                 BreakpointTarget target = BreakpointTarget.stage(location, span.index(), command);
-                markers.add(new WrappedCommandEditBox.Marker(target, start, span.end(), state.breakpoints().get(target),
-                    target.equals(codon$selected)));
+                markers.add(new WrappedCommandEditBox.Marker(target, start, span.end(), state.breakpoints().get(target)));
             }
         }
         editor.setBreakpointMarkers(command, markers);
@@ -137,7 +134,6 @@ public abstract class AbstractCommandBlockEditScreenMixin extends Screen {
                 || codon$markerControls.stream().noneMatch(control -> control.target().equals(target))) return;
         var state = CodonClientMod.state();
         if (state == null || state.breakpoints().pending(target)) return;
-        codon$selected = target;
         BreakpointDefinition definition = state.breakpoints().get(target);
         if (definition == null) definition = BreakpointDefinition.plain(target);
         if (!condition) {
@@ -145,7 +141,7 @@ public abstract class AbstractCommandBlockEditScreenMixin extends Screen {
         } else {
             var control = codon$markerControls.stream().filter(value -> value.target().equals(target)).findFirst().orElseThrow();
             var anchor = new BreakpointConditionScreen.Anchor(control.getX(), control.getY(), 9, 9);
-            Minecraft.getInstance().gui.setScreen(new BreakpointConditionScreen((Screen) (Object) this, state,
+            ScreenLayers.open(this, new BreakpointConditionScreen(this, state,
                 definition, anchor));
         }
     }
@@ -163,10 +159,7 @@ public abstract class AbstractCommandBlockEditScreenMixin extends Screen {
         codon$refreshMarkers();
         var marker = editor.markerAt(event.x(), event.y());
         var state = CodonClientMod.state();
-        if (marker == null) {
-            codon$selected = null;
-            return;
-        }
+        if (marker == null) return;
         if (state == null) return;
         cir.setReturnValue(true);
         codon$activateMarker(marker.target(), event.button() == InputConstants.MOUSE_BUTTON_RIGHT);

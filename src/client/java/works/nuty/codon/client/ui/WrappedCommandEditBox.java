@@ -12,7 +12,6 @@ import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import works.nuty.codon.mixin.client.EditBoxAccessor;
 import org.jspecify.annotations.Nullable;
-import works.nuty.codon.core.model.BreakpointCondition;
 import works.nuty.codon.core.model.BreakpointDefinition;
 import works.nuty.codon.core.model.BreakpointTarget;
 
@@ -37,7 +36,7 @@ public final class WrappedCommandEditBox extends EditBox {
     private List<Marker> markers = List.of();
 
     public record Marker(BreakpointTarget target, int start, int end,
-                         @Nullable BreakpointDefinition definition, boolean selected) {
+                         @Nullable BreakpointDefinition definition) {
         public boolean enabled() { return definition != null && definition.enabled(); }
     }
     public record MarkerPosition(int x, int y, boolean visible) { }
@@ -54,6 +53,7 @@ public final class WrappedCommandEditBox extends EditBox {
     }
 
     private int markerOffset(Marker marker) { return Math.max(0, marker.start()); }
+    private int wholeMarkerX() { return Math.max(MARKER_RADIUS + 1, getX() - 10); }
 
     private int slotWidth(int start, int end) {
         int width = 0;
@@ -72,7 +72,7 @@ public final class WrappedCommandEditBox extends EditBox {
 
     public MarkerPosition markerPosition(Marker marker) {
         layout();
-        if (marker.start() < 0) return new MarkerPosition(getX() - 10, getY() + 8,
+        if (marker.start() < 0) return new MarkerPosition(wholeMarkerX(), getY() + 8,
             shownMarkers.stream().anyMatch(shown -> shown.target().equals(marker.target())));
         int offset = markerOffset(marker);
         int row = rowAt(offset);
@@ -121,7 +121,8 @@ public final class WrappedCommandEditBox extends EditBox {
         int position = hoveredTextPosition(mouseX, mouseY);
         if (hovered == null && getValue().equals(markerCommand)) {
             for (Marker marker : markers) {
-                boolean whole = marker.start() < 0 && mouseX >= getX() - 14 && mouseX <= getX() - 6
+                boolean whole = marker.start() < 0 && mouseX >= wholeMarkerX() - MARKER_RADIUS
+                    && mouseX <= wholeMarkerX() + MARKER_RADIUS
                     && mouseY >= getY() + 4 && mouseY <= getY() + 12;
                 if (whole || (marker.start() >= 0 && position >= marker.start() && position < marker.end())) {
                     hovered = marker;
@@ -133,8 +134,8 @@ public final class WrappedCommandEditBox extends EditBox {
             hoveredTarget = null;
         } else if (hovered.start() < 0) {
             hoveredTarget = hovered.target();
-            hoverLeft = getX() - 14;
-            hoverRight = getX() - 5;
+            hoverLeft = wholeMarkerX() - MARKER_RADIUS;
+            hoverRight = wholeMarkerX() + MARKER_RADIUS + 1;
             hoverTop = getY() + 4;
             hoverBottom = getY() + 13;
         } else {
@@ -157,20 +158,8 @@ public final class WrappedCommandEditBox extends EditBox {
             MarkerPosition point = markerPosition(marker);
             if (!point.visible()) continue;
             int color = marker.enabled() ? DebuggerTheme.RED : DebuggerTheme.MUTED;
-            boolean conditional = marker.definition() != null
-                && marker.definition().condition().kind() != BreakpointCondition.Kind.ALWAYS;
-            for (int dy = -MARKER_RADIUS; dy <= MARKER_RADIUS; dy++) {
-                int half = conditional ? MARKER_RADIUS - Math.abs(dy)
-                    : (int) Math.floor(Math.sqrt(MARKER_RADIUS * MARKER_RADIUS - dy * dy));
-                int left = point.x() - half;
-                int right = point.x() + half;
-                int y = point.y() + dy;
-                if (marker.enabled() || Math.abs(dy) == MARKER_RADIUS) graphics.fill(left, y, right + 1, y + 1, color);
-                else {
-                    graphics.fill(left, y, left + 1, y + 1, color);
-                    graphics.fill(right, y, right + 1, y + 1, color);
-                }
-            }
+            BreakpointUi.icon(marker.definition()).drawSmall(graphics,
+                point.x() - MARKER_RADIUS, point.y() - MARKER_RADIUS, color);
             if (marker.target().equals(focusedTarget))
                 graphics.outline(point.x() - 6, point.y() - 6, 13, 13, DebuggerTheme.TEAL);
             if (marker == hovered || marker.target().equals(focusedTarget)) {
@@ -200,7 +189,7 @@ public final class WrappedCommandEditBox extends EditBox {
         int width = Math.max(1, getWidth() - 12);
         if (!value.equals(laidOutValue)) hoveredTarget = null;
         shownMarkers = value.equals(markerCommand) ? markers.stream()
-            .filter(marker -> marker.definition() != null || marker.selected() || marker.target().equals(hoveredTarget)
+            .filter(marker -> marker.target().wholeCommand() || marker.enabled() || marker.target().equals(hoveredTarget)
                 || marker.target().equals(focusedTarget))
             .sorted(java.util.Comparator.comparingInt(this::markerOffset)).toList() : List.of();
         List<BreakpointTarget> visibleTargets = shownMarkers.stream().map(Marker::target).toList();

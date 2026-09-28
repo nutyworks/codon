@@ -73,6 +73,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
             });
             context.waitTicks(3);
             context.takeScreenshot("codon-command-integrated");
+            checkContinuationWidth(context, screen, state);
             checkIconToolbar(context, screen, state);
             checkCommandPanel(context, screen, state);
             checkStableCommandActions(context, screen, state);
@@ -138,7 +139,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
             context.runOnClient(client -> {
                 require(state.selectedFlowStageIndex() == 2, "The selected condition survives a resize");
                 button(screen, value -> value.contains("if entity"));
-                for (String label : List.of("Current", "Watch")) {
+                for (String label : List.of("Current")) {
                     DebuggerButton control = button(screen, value -> value.equals(label));
                     require(control.getWidth() >= client.font.width(control.getMessage()) + 10,
                         "Command actions keep their complete label at compact width");
@@ -352,7 +353,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
         });
         context.waitTicks(2);
         context.runOnClient(client -> {
-            click(screen, button(screen, value -> value.equals("‹")));
+            click(screen, button(screen, value -> value.equals("Previous recorded command")));
             require(state.selectedExecutionFlow().invocationId() == 76, "Flow previous selects the parent trace");
         });
         context.waitTicks(2);
@@ -368,30 +369,32 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
         Map<String, WidgetBounds> original = context.computeOnClient(client -> {
             require(!button(screen, value -> value.equals("Current")).active,
                 "Current keeps its slot while the live command is selected");
+            require(screen.children().stream().noneMatch(child -> child instanceof DebuggerButton control
+                && control.getMessage().getString().equals("Watch")), "Command actions omit Watch");
             Map<String, WidgetBounds> result = new HashMap<>();
-            for (String label : List.of("‹", "›", "Current", "Watch", "Expand command panel"))
+            for (String label : List.of("Previous recorded command", "Next recorded command", "Current", "Expand command panel"))
                 result.put(label, WidgetBounds.of(button(screen, value -> value.equals(label))));
-            clickAt(screen, result.get("‹"));
+            clickAt(screen, result.get("Previous recorded command"));
             return result;
         });
         context.waitTicks(2);
         context.runOnClient(client -> {
             require(state.selectedExecutionFlow().invocationId() == 76, "Previous enters recorded history");
-            for (String label : List.of("‹", "›", "Current", "Watch"))
+            for (String label : List.of("Previous recorded command", "Next recorded command", "Current"))
                 require(original.get(label).equals(WidgetBounds.of(button(screen, value -> value.equals(label)))),
                     "History keeps the action slot fixed: " + label);
             // Reuse the actual pointer position, including at the disabled history boundary.
-            clickAt(screen, original.get("‹"));
+            clickAt(screen, original.get("Previous recorded command"));
             require(!state.isViewingCurrentCommand(), "A repeated Previous click never activates Current");
         });
         context.waitTicks(2);
         context.takeScreenshot("codon-stable-history-actions");
-        context.runOnClient(client -> clickAt(screen, original.get("›")));
+        context.runOnClient(client -> clickAt(screen, original.get("Next recorded command")));
         context.waitTicks(2);
         context.runOnClient(client -> {
             require(state.selectedExecutionFlow().invocationId() == 77 && state.selectedFlowStageIndex() == 0,
                 "Next selects the first stage of the next recorded command visit");
-            require(original.get("›").equals(WidgetBounds.of(button(screen, value -> value.equals("›")))),
+            require(original.get("Next recorded command").equals(WidgetBounds.of(button(screen, value -> value.equals("Next recorded command")))),
                 "Navigating forward does not move Next");
             require(clickAt(screen, original.get("Current")), "The fixed Current slot accepts its click");
         });
@@ -407,7 +410,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
             require(original.get("Expand command panel").equals(WidgetBounds.of(
                 button(screen, value -> value.equals("Collapse command panel")))),
                 "Expansion keeps its own toggle under the pointer");
-            for (String label : List.of("‹", "›", "Current", "Watch"))
+            for (String label : List.of("Previous recorded command", "Next recorded command", "Current"))
                 require(original.get(label).equals(WidgetBounds.of(button(screen, value -> value.equals(label)))),
                     "Expansion keeps the action row fixed: " + label);
         });
@@ -455,6 +458,40 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
         });
         context.waitTicks(2);
         context.takeScreenshot("codon-visible-clause-stays-put");
+        context.runOnClient(client -> {
+            click(screen, button(screen, value -> value.equals("Collapse command panel")));
+            state.applyPause(fixture(client));
+        });
+        context.waitTicks(2);
+    }
+
+    private static void checkContinuationWidth(ClientGameTestContext context, CodonScreen screen,
+                                               ClientDebuggerState state) {
+        context.runOnClient(client -> {
+            PauseSnapshot base = fixture(client);
+            CommandSnippet command = CommandSnippet.plain("execute as @e[tag=" + "continuation_".repeat(40) + "] run say wrapped");
+            var frame = new CallFrame(0, base.location(), command, 77, 0);
+            var source = new ExecutionFlowContext(1, base.pauseSources().getFirst());
+            var stage = new ExecutionFlowStage(0, command, List.of(source), List.of(source), List.of(), List.of(),
+                1, 1, 0, false, 0, 0, true, true, false, 0, List.of(frame));
+            state.applyPause(new PauseSnapshot(base.location(), command, 0, List.of(frame), base.pauseSources(),
+                List.of(new ExecutionFlowTrace(77, base.location(), List.of(stage), false)), PauseReason.STEP, base.pauseId()));
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> click(screen, button(screen, value -> value.equals("Expand command panel"))));
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            var fragments = screen.children().stream().filter(DebuggerButton.class::isInstance)
+                .map(DebuggerButton.class::cast).filter(value -> value.getMessage().getString().contains("continuation_"))
+                .sorted(java.util.Comparator.comparingInt(DebuggerButton::getY)).toList();
+            require(fragments.size() > 1, "long stopped stage has visible continuation rows");
+            require(fragments.getFirst().icon() == DebuggerIcon.PAUSE, "first fragment retains pause icon");
+            require(fragments.stream().skip(1).allMatch(value -> value.icon() == null),
+                "continuations have no repeated pause icon");
+            require(fragments.get(1).getX() < fragments.getFirst().getX(),
+                "continuation reclaims the first fragment's breakpoint slot");
+        });
+        context.takeScreenshot("codon-command-continuation-width");
         context.runOnClient(client -> {
             click(screen, button(screen, value -> value.equals("Collapse command panel")));
             state.applyPause(fixture(client));

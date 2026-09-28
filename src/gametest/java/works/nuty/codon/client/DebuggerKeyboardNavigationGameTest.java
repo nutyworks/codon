@@ -73,19 +73,26 @@ public final class DebuggerKeyboardNavigationGameTest implements FabricClientGam
     private static void checkActionRowAndToolbar(ClientGameTestContext context, CodonScreen screen,
                                                  ClientDebuggerState state) {
         context.runOnClient(client -> {
-            DebuggerButton watch = button(screen, label -> label.equals("Watch"));
-            screen.setFocused(watch);
+            require(!button(screen, label -> label.equals("Current")).active,
+                "Current is disabled while the live command is already selected");
+            state.selectAdjacentExecutionVisit(-1);
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            DebuggerButton current = button(screen, label -> label.equals("Current"));
+            require(current.active, "Historical selection enables the Current navigation target");
+            screen.setFocused(current);
             press(client, screen, InputConstants.KEY_RIGHT, InputConstants.KEYCODE_RIGHT, 0, InputType.KEYBOARD_ARROW);
             require(focusedLabel(screen).contains("Expand"), "Right moves within the action container");
             var expand = screen.getFocused();
             press(client, screen, InputConstants.KEY_DOWN, InputConstants.KEYCODE_DOWN, 0, InputType.KEYBOARD_ARROW);
             require(screen.getFocused() == expand, "Down cannot leave the action container");
-            screen.setFocused(watch);
+            screen.setFocused(current);
             press(client, screen, InputConstants.KEY_TAB, InputConstants.KEYCODE_TAB, 0, InputType.KEYBOARD_TAB);
             require(focused(screen).getY() < 50, "Tab skips the rest of the action row and enters the toolbar");
             press(client, screen, InputConstants.KEY_TAB, InputConstants.KEYCODE_TAB, InputConstants.MOD_SHIFT,
                 InputType.KEYBOARD_TAB);
-            require(screen.getFocused() == watch, "Shift+Tab restores the previous item in the action container");
+            require(screen.getFocused() == current, "Shift+Tab restores the previous item in the action container");
 
             List<DebuggerButton> toolbar = screen.children().stream().filter(DebuggerButton.class::isInstance)
                 .map(DebuggerButton.class::cast).filter(button -> button.getY() < 50 && button.active)
@@ -97,7 +104,9 @@ public final class DebuggerKeyboardNavigationGameTest implements FabricClientGam
             require(screen.getFocused() == toolbar.get(1), "Toolbar Down cannot enter the source list");
             press(client, screen, InputConstants.KEY_TAB, InputConstants.KEYCODE_TAB, 0, InputType.KEYBOARD_TAB);
             require(sourceIndex(focused(screen), state) == 1, "Tab enters the next container instead of the next toolbar button");
+            state.selectCurrentCommand();
         });
+        context.waitTicks(2);
     }
 
     private static void checkSourceListNavigation(ClientGameTestContext context, CodonScreen screen,

@@ -429,7 +429,6 @@ public final class WatchPanel {
         button.configure(b.x(), b.y(), b.width(), b.height(), label, active, selected, false, false, action);
         button.withoutChrome();
         if (selected) button.withStatusColor(TEAL, TEAL_SURFACE);
-        button.setTooltip(Tooltip.create(label));
         used.add(id); controls.add(button);
         // Logical rows were registered for hidden entries; bind only the controls in the viewport.
         if (row < 0) navigation.add(id, DebuggerNavigation.Group.WATCH, row, column, () -> { });

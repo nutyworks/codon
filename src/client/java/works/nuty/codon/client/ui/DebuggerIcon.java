@@ -4,6 +4,50 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 
 /** Pixel icons used by the debugger toolbar. */
 public enum DebuggerIcon {
+    BREAKPOINT(new String[]{
+        "...###...",
+        ".#######.",
+        ".#######.",
+        "#########",
+        "#########",
+        "#########",
+        ".#######.",
+        ".#######.",
+        "...###..."
+    }),
+    BREAKPOINT_EMPTY(new String[]{
+        "...###...",
+        ".##...##.",
+        ".#.....#.",
+        "#.......#",
+        "#.......#",
+        "#.......#",
+        ".#.....#.",
+        ".##...##.",
+        "...###..."
+    }),
+    BREAKPOINT_CONDITIONAL(new String[]{
+        "....#....",
+        "...###...",
+        "..#####..",
+        ".#######.",
+        "#########",
+        ".#######.",
+        "..#####..",
+        "...###...",
+        "....#...."
+    }),
+    BREAKPOINT_CONDITIONAL_EMPTY(new String[]{
+        "....#....",
+        "...#.#...",
+        "..#...#..",
+        ".#.....#.",
+        "#.......#",
+        ".#.....#.",
+        "..#...#..",
+        "...#.#...",
+        "....#...."
+    }),
     WATCHES,
     COMMAND(new String[]{
         "#......",
@@ -99,10 +143,21 @@ public enum DebuggerIcon {
         ".#...#.",
         "......."
     }),
+    CONFIRM(new String[]{
+        ".......", "......#", ".....#.", "#...#..", ".#.#...", "..#....", "......."
+    }),
+    DELETE(new String[]{
+        "..###..", ".#####.", ".......", ".#.#.#.", ".#.#.#.", ".#...#.", "..###.."
+    }),
+    INPUT_COUNT, OUTPUT_COUNT, CREATED_COUNT, REMOVED_COUNT, CHANGED_COUNT,
     SOURCE_CREATED,
     SOURCE_EXCLUDED,
     OUTSIDE_VIEWPORT,
     COPY_UUID,
+    HISTORY_PREVIOUS,
+    HISTORY_NEXT,
+    PANEL_EXPAND,
+    PANEL_COLLAPSE,
     EXPAND,
     COLLAPSE;
 
@@ -192,7 +247,9 @@ public enum DebuggerIcon {
                 }
                 graphics.fill(x + 5, y + 4, x + 7, y + 8, color);
             }
-            case COMMAND, SOURCE_FILE, BREAKPOINT_LIST, WATCH_NBT, WATCH_STORAGE, WATCH_SCORE ->
+            case BREAKPOINT, BREAKPOINT_EMPTY, BREAKPOINT_CONDITIONAL, BREAKPOINT_CONDITIONAL_EMPTY ->
+                drawSmall(graphics, x + 1, y + 1, color);
+            case COMMAND, SOURCE_FILE, BREAKPOINT_LIST, WATCH_NBT, WATCH_STORAGE, WATCH_SCORE, CONFIRM, DELETE ->
                 drawSmall(graphics, x + 2, y + 2, color);
             case PIN -> pin(graphics, x, y, color);
             case EDIT -> {
@@ -214,6 +271,22 @@ public enum DebuggerIcon {
                     graphics.fill(x + 9 - step, y + 2 + step, x + 10 - step, y + 3 + step, color);
                 }
             }
+            case INPUT_COUNT, OUTPUT_COUNT, CREATED_COUNT, REMOVED_COUNT, CHANGED_COUNT -> {
+                if (this == CREATED_COUNT || this == REMOVED_COUNT) {
+                    graphics.fill(x, y + 3, x + 7, y + 4, color);
+                    if (this == CREATED_COUNT) graphics.fill(x + 3, y, x + 4, y + 7, color);
+                } else if (this == CHANGED_COUNT) {
+                    for (int i = 0; i < 6; i++) graphics.fill(x + i, y + 5 - i, x + i + 2, y + 7 - i, color);
+                } else {
+                    int bar = this == INPUT_COUNT ? 7 : 0;
+                    graphics.fill(x + bar, y, x + bar + 1, y + 7, color);
+                    graphics.fill(x + 1, y + 3, x + 6, y + 4, color);
+                    graphics.fill(x + 4, y + 1, x + 5, y + 6, color);
+                    graphics.fill(x + 5, y + 2, x + 6, y + 5, color);
+                }
+                // A separate tally badge distinguishes counts from context-change events.
+                for (int i = 0; i < 3; i++) graphics.fill(x + 7 + i * 2, y + 8, x + 8 + i * 2, y + 12, color);
+            }
             case SOURCE_CREATED, SOURCE_EXCLUDED -> {
                 graphics.fill(x + 2, y + 5, x + 10, y + 7, color);
                 if (this == SOURCE_CREATED) graphics.fill(x + 5, y + 2, x + 7, y + 10, color);
@@ -227,6 +300,35 @@ public enum DebuggerIcon {
             case COPY_UUID -> {
                 outline(graphics, x + 1, y + 1, 7, 8, color);
                 outline(graphics, x + 4, y + 4, 7, 8, color);
+            }
+            case HISTORY_PREVIOUS, HISTORY_NEXT -> {
+                graphics.fill(x + 2, y + 5, x + 10, y + 6, color);
+                for (int step = 0; step < 4; step++) {
+                    int arrowX = this == HISTORY_NEXT ? x + 9 - step : x + 2 + step;
+                    graphics.fill(arrowX, y + 5 - step, arrowX + 1, y + 6 - step, color);
+                    graphics.fill(arrowX, y + 5 + step, arrowX + 1, y + 6 + step, color);
+                }
+            }
+            case PANEL_EXPAND, PANEL_COLLAPSE -> {
+                // Four outward/inward corners distinguish resizing from history navigation.
+                for (int cornerX : new int[]{0, 1}) {
+                    for (int cornerY : new int[]{0, 1}) {
+                        int dx = cornerX == 0 ? 1 : -1;
+                        int dy = cornerY == 0 ? 1 : -1;
+                        int cx = x + (cornerX == 0 ? 1 : 10);
+                        int cy = y + (cornerY == 0 ? 1 : 10);
+                        if (this == PANEL_COLLAPSE) {
+                            cx += dx * 3;
+                            cy += dy * 3;
+                            dx = -dx;
+                            dy = -dy;
+                        }
+                        for (int step = 0; step < 4; step++) {
+                            graphics.fill(cx + dx * step, cy, cx + dx * step + 1, cy + 1, color);
+                            graphics.fill(cx, cy + dy * step, cx + 1, cy + dy * step + 1, color);
+                        }
+                    }
+                }
             }
             case EXPAND, COLLAPSE -> {
                 for (int step = 0; step < 3; step++) {

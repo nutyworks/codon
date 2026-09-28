@@ -22,6 +22,9 @@ import works.nuty.codon.client.ui.FunctionSourceScreen;
 import works.nuty.codon.core.model.FunctionId;
 import works.nuty.codon.core.model.FunctionLocation;
 import works.nuty.codon.core.model.SourceLocation;
+import works.nuty.codon.core.model.BreakpointCondition;
+import works.nuty.codon.core.model.BreakpointDefinition;
+import works.nuty.codon.core.model.BreakpointTarget;
 
 /** Renders the smallest supported source browser with a wrapped stage command and captures it. */
 @SuppressWarnings("UnstableApiUsage")
@@ -35,6 +38,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             // Minecraft keeps a minimum GUI height of 240, so 320x240 is the
             // smallest native client viewport for this visual check.
             context.getInput().resizeWindow(960, 720);
+            context.getInput().setCursorPos(0, 0);
             context.runOnClient(client -> {
                 client.options.guiScale().set(3);
                 client.resizeGui();
@@ -42,7 +46,14 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             world.getConnection().waitForChunksRender();
             FunctionSourceScreen screen = context.computeOnClient(client -> {
                 ClientFunctionSourceState sources = loadedSource();
-                require(CodonClientMod.state(), "client debugger state is initialized");
+                var debugger = require(CodonClientMod.state(), "client debugger state is initialized");
+                var location = new SourceLocation.Function(new FunctionLocation(FUNCTION, 1));
+                // Synthetic source/definitions exercise visibility, not native function execution.
+                debugger.breakpoints().acceptPage(Long.MAX_VALUE, 0, true, List.of(
+                    BreakpointDefinition.plain(BreakpointTarget.whole(location)).withEnabled(false),
+                    BreakpointDefinition.plain(BreakpointTarget.stage(location, 0, COMMAND))
+                        .withCondition(BreakpointCondition.event(BreakpointCondition.Kind.CREATED)).withEnabled(false),
+                    BreakpointDefinition.plain(BreakpointTarget.stage(location, 1, COMMAND))));
                 FunctionSourceScreen result = new FunctionSourceScreen(new Screen(Component.empty()) { }, sources);
                 client.setScreenAndShow(result);
                 return result;
@@ -72,6 +83,10 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             });
             context.waitTicks(1);
             context.takeScreenshot("codon-function-source-320x240-stage-first");
+            context.getInput().setCursorPos(420, 390);
+            context.waitTicks(2);
+            context.takeScreenshot("codon-function-source-disabled-hover");
+            context.getInput().setCursorPos(0, 0);
             context.runOnClient(client -> screen.mouseScrolled(100, 130, 0, -1));
             context.waitTicks(2);
             context.takeScreenshot("codon-function-source-320x240-stage-scrolled");

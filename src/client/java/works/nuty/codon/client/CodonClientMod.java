@@ -22,6 +22,7 @@ import works.nuty.codon.client.state.DebuggerPreferences;
 import works.nuty.codon.client.state.ClientPauseEffects;
 import works.nuty.codon.client.ui.CodonScreen;
 import works.nuty.codon.client.ui.DebuggerOverlay;
+import works.nuty.codon.client.ui.ScreenLayers;
 
 /**
  * Client composition root. Builds the synced {@link ClientDebuggerState} and wires the client
@@ -53,6 +54,7 @@ public final class CodonClientMod implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
+        ScreenLayers.register();
         DebuggerPreferences preferences = ClientSettingsStore.open(
             FabricLoader.getInstance().getConfigDir().resolve("codon.json"),
             exception -> CodonMod.LOGGER.error("Could not load or save Codon client settings", exception));
