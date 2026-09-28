@@ -173,11 +173,19 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             });
             context.waitFor(client -> ScreenLayers.get(client.gui.screen()) instanceof BreakpointConditionScreen, 100);
             nativeClick(context, parent, 0, 0, InputConstants.MOUSE_BUTTON_LEFT);
-            context.runOnClient(client -> {
-                require(client.gui.screen() == parent && ScreenLayers.get(parent) == null,
-                    "outside click dismisses only the layer");
-                openFirstCondition(parent);
+            context.runOnClient(client -> require(client.gui.screen() == parent && ScreenLayers.get(parent) == null,
+                "outside click dismisses only the layer"));
+            int[] reopenedMarker = context.computeOnClient(client -> {
+                var editor = commandBox(parent);
+                var point = editor.markerPosition(new WrappedCommandEditBox.Marker(first, 8, COMMAND.length(),
+                    CodonClientMod.state().breakpoints().get(first)));
+                var hit = editor.markerAt(point.x(), point.y());
+                require(point.visible() && hit != null && hit.target().equals(first),
+                    "stage marker is ready to reopen the condition layer");
+                return new int[] { point.x(), point.y() };
             });
+            nativeClick(context, parent, reopenedMarker[0], reopenedMarker[1], InputConstants.MOUSE_BUTTON_RIGHT);
+            context.waitFor(client -> ScreenLayers.get(client.gui.screen()) instanceof BreakpointConditionScreen, 100);
             context.getInput().resizeWindow(960, 720);
             context.runOnClient(client -> {
                 client.options.guiScale().set(3);
