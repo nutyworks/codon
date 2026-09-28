@@ -209,8 +209,8 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             });
             context.waitTicks(1);
             context.takeScreenshot("codon-breakpoint-condition-count-icons-320x240");
-            context.runOnClient(client -> click(conditionLayer(client.gui.screen()),
-                button(conditionLayer(client.gui.screen()), "Save")));
+            AbstractButton resizedSave = context.computeOnClient(client -> button(conditionLayer(client.gui.screen()), "Save"));
+            nativeClick(context, parent, resizedSave.getX() + 3, resizedSave.getY() + 2, InputConstants.MOUSE_BUTTON_LEFT);
             context.waitFor(client -> ScreenLayers.get(client.gui.screen()) == null
                 && CodonClientMod.state().breakpoints().get(first).condition().equals(
                     BreakpointCondition.count(BreakpointCondition.Kind.OUTPUT_COUNT, BreakpointCondition.Comparison.GE, 2)), 200);

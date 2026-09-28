@@ -107,3 +107,6 @@ close and delete use distinct icons with localized tooltip/narration labels.
 Pointer hints retain the shared hover delay. The 320×240 count/event captures in
 `DebuggerBreakpointUiGameTest` check compact layout, invalid count rejection,
 real acknowledged count-condition saving and switching back to an event.
+Saving after a resize uses native mouse dispatch, so the same scenario also
+checks that the layer's input and rendering callbacks remain attached to
+Fabric's newly created per-screen events.

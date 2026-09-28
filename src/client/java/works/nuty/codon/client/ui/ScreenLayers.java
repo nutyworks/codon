@@ -1,10 +1,10 @@
 package works.nuty.codon.client.ui;
 
 import java.util.function.Consumer;
-import java.util.Collections;
-import java.util.Set;
+import java.util.Map;
 import java.util.WeakHashMap;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
+import net.fabricmc.fabric.api.event.Event;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenKeyboardEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents;
 import net.minecraft.client.gui.components.events.GuiEventListener;
@@ -16,7 +16,7 @@ public final class ScreenLayers {
     private static @Nullable Screen owner;
     private static @Nullable Screen layer;
     private static @Nullable GuiEventListener previousFocus;
-    private static final Set<Screen> attached = Collections.newSetFromMap(new WeakHashMap<>());
+    private static final Map<Screen, Event<ScreenEvents.AfterTick>> attached = new WeakHashMap<>();
 
     private ScreenLayers() { }
 
@@ -65,12 +65,15 @@ public final class ScreenLayers {
     }
 
     private static void attach(Screen screen) {
-        if (!attached.add(screen)) return;
+        // Fabric replaces per-screen events on init/resize. Deduplicate only callbacks
+        // for the same event instance, not later initializations of the same screen.
+        var tickEvent = ScreenEvents.afterTick(screen);
+        if (attached.put(screen, tickEvent) == tickEvent) return;
         ScreenEvents.remove(screen).register(parent -> {
             close(get(parent));
-            attached.remove(parent);
+            attached.remove(parent, tickEvent);
         });
-        ScreenEvents.afterTick(screen).register(parent -> {
+        tickEvent.register(parent -> {
             Screen current = get(parent);
             if (current != null) current.tick();
         });

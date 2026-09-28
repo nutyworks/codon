@@ -21,6 +21,8 @@ block pointing into an unconditional, always-active chain command block. Give th
 The controls must work from the cursor screen as well as the world view, follow
 remapped key hints and reject duplicate actions while a request is pending.
 After completion, current-stop controls must not act on a historical snapshot.
+The command panel's Current action is disabled at the live command; select a
+historical visit before testing keyboard focus and navigation from that action.
 Camera retention has a separate [freecam](freecam.md) contract.
 
 Shared debugger buttons use a light outline for keyboard focus, distinct from
