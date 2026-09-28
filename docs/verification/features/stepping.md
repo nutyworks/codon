@@ -23,6 +23,14 @@ remapped key hints and reject duplicate actions while a request is pending.
 After completion, current-stop controls must not act on a historical snapshot.
 Camera retention has a separate [freecam](freecam.md) contract.
 
+Shared debugger buttons use a light outline for keyboard focus, distinct from
+teal selection and hover accents. Tab/arrow navigation exposes icon labels and
+truncated text beside the focused button, without requiring pointer hover.
+Borderless controls also show a focus outline; pending controls keep their
+position but show the unavailable cursor while input is blocked. Verify these
+states with keyboard navigation and pointer hover; the breakpoint UI test also
+captures a selected row alongside a keyboard-focused, truncated action label.
+
 ## Code entry points
 
 - [StepController](../../../src/core/java/works/nuty/codon/core/service/StepController.java), [DebuggerEngine](../../../src/core/java/works/nuty/codon/core/service/DebuggerEngine.java): call-depth and execution lifetime.

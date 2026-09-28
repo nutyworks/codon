@@ -40,6 +40,11 @@ wrapped editor must not toggle a marker, and soft wrapping must not change the
 stored command. Server acknowledgement determines the displayed breakpoint state.
 Check persistence by leaving/reopening the world after saving a definition.
 
+Management rows align their labels to the left and retain a teal selected
+surface so the target of the bottom action buttons is visible after the pointer
+moves away. Scrolling applies only over the list rows, not over the title,
+actions, or surrounding world.
+
 Function-line and stage targets use the [Source viewer](function-source.md).
 The command alternatives are `/codon breakpoint block <x> <y> <z>` and
 `/codon breakpoint function <namespace:path> <line>` (one-based file line).

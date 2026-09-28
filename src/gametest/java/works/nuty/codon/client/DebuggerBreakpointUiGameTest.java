@@ -253,6 +253,20 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             .filter(control -> control.getTabOrderGroup() < 100).count() == 2,
             "list initially shows both enabled breakpoints"));
         context.runOnClient(client -> {
+            Screen list = client.gui.screen();
+            DebuggerButton row = controls(list).stream()
+                .filter(control -> control.getTabOrderGroup() < 100).findFirst().orElseThrow();
+            click(list, row);
+            require(button(list, "Delete").active, "selecting a row enables actions for that breakpoint");
+            require(!list.mouseScrolled(0, 0, 0, -1), "scrolling outside the list is not consumed");
+            DebuggerButton conditionButton = controls(list).stream()
+                .filter(control -> control.getMessage().getString().startsWith("Condition")).findFirst().orElseThrow();
+            client.setLastInputType(net.minecraft.client.InputType.KEYBOARD_TAB);
+            list.setFocused(conditionButton);
+        });
+        context.waitTicks(2);
+        context.takeScreenshot("codon-breakpoint-selected-keyboard-tooltip");
+        context.runOnClient(client -> {
             var state = CodonClientMod.state();
             for (var target : List.of(whole, stage))
                 ClientNetworking.sendBreakpointEdit(state, ClientBreakpointState.Action.TOGGLE, state.breakpoints().get(target));

@@ -64,16 +64,16 @@ public final class BreakpointListScreen extends Screen {
                 + " · " + BreakpointUi.condition(definition.condition());
             boolean function = target.location() instanceof SourceLocation.Function;
             int actionWidth = function ? 24 : 0;
-            DebuggerButton button = addRenderableWidget(WatchUi.button(left + 8, y,
-                panelWidth - 16 - actionWidth, 18, Component.literal(label), () -> {
+            DebuggerButton button = addRenderableWidget(new DebuggerButton());
+            button.configure(left + 8, y, panelWidth - 16 - actionWidth, 18, Component.literal(label),
+                true, target.equals(selected), true, false, () -> {
                     selected = target;
                     if (function) source();
                     else rebuild();
-                }));
+                });
             button.withTextIcon(BreakpointUi.icon(definition));
             button.setTooltip(Tooltip.create(Component.literal(label)));
             button.setTabOrderGroup(row);
-            if (target.equals(selected)) button.withStatusColor(TEAL, TEAL_SURFACE);
             if (function) {
                 DebuggerButton actions = addRenderableWidget(WatchUi.button(left + panelWidth - 8 - actionWidth,
                     y, actionWidth, 18, Component.literal("…"), () -> { selected = target; rebuild(); }));
@@ -182,7 +182,8 @@ public final class BreakpointListScreen extends Screen {
     }
 
     @Override public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
-        if (x < left || x >= left + panelWidth) return super.mouseScrolled(x, y, scrollX, scrollY);
+        if (x < left || x >= left + panelWidth || y < top + 30 || y >= top + 30 + rows * 20
+            || scrollY == 0) return super.mouseScrolled(x, y, scrollX, scrollY);
         offset = Math.clamp(offset - (int) Math.signum(scrollY) * 2, 0, Math.max(0, displayed.size() - rows));
         rebuild();
         return true;

@@ -1,11 +1,13 @@
 package works.nuty.codon.client.ui;
 
 import com.mojang.blaze3d.platform.InputConstants;
+import com.mojang.blaze3d.platform.cursor.CursorTypes;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
+import net.minecraft.client.gui.screens.inventory.tooltip.BelowOrAboveWidgetTooltipPositioner;
 import net.minecraft.client.input.InputWithModifiers;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
@@ -201,6 +203,12 @@ public class DebuggerButton extends AbstractButton {
     }
 
     @Override
+    protected void handleCursor(GuiGraphicsExtractor graphics) {
+        if (inputBlocked && isHovered()) graphics.requestCursor(CursorTypes.NOT_ALLOWED);
+        else super.handleCursor(graphics);
+    }
+
+    @Override
     protected void extractContents(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         var client = Minecraft.getInstance();
         boolean keyboardFocus = isFocused() && client.getLastInputType().isKeyboard();
@@ -213,9 +221,12 @@ public class DebuggerButton extends AbstractButton {
         int background = selected && active ? selectedSurface
             : (isHovered() || keyboardFocus) && active ? DebuggerTheme.RAISED : DebuggerTheme.SURFACE;
         int foreground = !active || subdued ? DebuggerTheme.MUTED : foregroundColor;
-        int outline = paintColor(active && (selected || keyboardFocus) ? accentColor : DebuggerTheme.BORDER);
+        int outline = paintColor(active && keyboardFocus ? DebuggerTheme.TEXT
+            : active && (selected || isHovered()) ? accentColor : DebuggerTheme.BORDER);
         if (borderless) {
             if (active && (isHovered() || keyboardFocus)) foreground = accentColor;
+            if (active && keyboardFocus) graphics.outline(getX(), getY(), getWidth(), getHeight(),
+                paintColor(DebuggerTheme.TEXT));
         } else {
             graphics.fill(getX(), getY(), getRight(), getBottom(), paintColor(background));
             graphics.fill(getX(), getY(), getRight(), getY() + 1, outline);
@@ -257,32 +268,46 @@ public class DebuggerButton extends AbstractButton {
     @Override
     protected void extractTooltipForNextRenderPass(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
         var client = Minecraft.getInstance();
+        boolean keyboardFocus = isFocused() && client.getLastInputType().isKeyboard();
+        if (!isHovered() && !keyboardFocus) return;
         if (singleLineTooltip != null) {
-            if (isHovered()) graphics.setTooltipForNextFrame(client.font,
-                java.util.List.of(singleLineTooltip.getVisualOrderText()), mouseX, mouseY);
+            showTooltip(graphics, java.util.List.of(singleLineTooltip.getVisualOrderText()), mouseX, mouseY, keyboardFocus);
             return;
         }
-        if (icon != null && !iconWithText && isHovered()) {
+        boolean iconOnly = icon != null && !iconWithText;
+        boolean clipped = client.font.width(getMessage()) > Math.max(0,
+            width - textPadding - (iconWithText ? TEXT_ICON_INSET : 0));
+        if (iconOnly || clipped) {
             var lines = new java.util.ArrayList<>(Tooltip.splitTooltip(client, getMessage()));
             if (tooltip != null) {
                 var hint = tooltip.toCharSequence(client);
-                if (!hint.equals(lines)) lines.addAll(hint);
+                if (!tooltipText(hint).equals(tooltipText(lines))) lines.addAll(hint);
             }
-            graphics.setTooltipForNextFrame(client.font, lines, mouseX, mouseY);
+            showTooltip(graphics, lines, mouseX, mouseY, keyboardFocus);
             return;
         }
-        if ((icon == null || iconWithText) && isHovered()
-            && client.font.width(getMessage()) > Math.max(0, width - textPadding - (iconWithText ? TEXT_ICON_INSET : 0))) {
-            var lines = new java.util.ArrayList<>(Tooltip.splitTooltip(client, getMessage()));
-            if (tooltip != null) {
-                var hint = tooltip.toCharSequence(client);
-                if (!hint.equals(lines)) lines.addAll(hint);
-            }
-            graphics.setTooltipForNextFrame(client.font, lines, mouseX, mouseY);
-            return;
+        super.extractTooltipForNextRenderPass(graphics, mouseX, mouseY);
+    }
+
+    // FormattedCharSequence instances use identity equality, even for identical labels.
+    private static String tooltipText(java.util.List<net.minecraft.util.FormattedCharSequence> lines) {
+        StringBuilder text = new StringBuilder();
+        for (var line : lines) {
+            line.accept((index, style, codePoint) -> { text.appendCodePoint(codePoint); return true; });
+            text.append('\n');
         }
-        // Icon tooltips require an actual hover; text buttons retain standard focus behavior.
-        if (icon == null || iconWithText || isHovered()) super.extractTooltipForNextRenderPass(graphics, mouseX, mouseY);
+        return text.toString();
+    }
+
+    private void showTooltip(GuiGraphicsExtractor graphics,
+                             java.util.List<net.minecraft.util.FormattedCharSequence> lines,
+                             int mouseX, int mouseY, boolean keyboardFocus) {
+        if (keyboardFocus) {
+            graphics.setTooltipForNextFrame(Minecraft.getInstance().font, lines,
+                new BelowOrAboveWidgetTooltipPositioner(getRectangle()), getX(), getBottom(), true);
+        } else {
+            graphics.setTooltipForNextFrame(Minecraft.getInstance().font, lines, mouseX, mouseY);
+        }
     }
 
     @Override
