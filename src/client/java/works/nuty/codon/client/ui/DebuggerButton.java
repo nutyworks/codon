@@ -37,6 +37,8 @@ public class DebuggerButton extends AbstractButton {
     private int contentOffset;
     private int contentWidth;
     private int textPadding = 10;
+    private long hoverStartedAt = -1;
+    private static final long HOVER_DELAY_NANOS = 350_000_000L;
     private @Nullable DebuggerIcon icon;
     private boolean smallIcon;
     private int iconOffsetY;
@@ -52,6 +54,8 @@ public class DebuggerButton extends AbstractButton {
 
     public void configure(int x, int y, int width, int height, Component label, boolean active,
                           boolean selected, boolean leftAligned, boolean subdued, Runnable action) {
+        if (x != getX() || y != getY() || width != getWidth() || height != getHeight()
+            || !label.equals(getMessage())) hoverStartedAt = -1;
         setX(x);
         setY(y);
         setSize(width, height);
@@ -269,24 +273,25 @@ public class DebuggerButton extends AbstractButton {
     protected void extractTooltipForNextRenderPass(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
         var client = Minecraft.getInstance();
         boolean keyboardFocus = isFocused() && client.getLastInputType().isKeyboard();
-        if (!isHovered() && !keyboardFocus) return;
+        if (!isHovered()) hoverStartedAt = -1;
+        else if (hoverStartedAt < 0) hoverStartedAt = System.nanoTime();
+        if (!keyboardFocus && (!isHovered() || System.nanoTime() - hoverStartedAt < HOVER_DELAY_NANOS)) return;
         if (singleLineTooltip != null) {
             showTooltip(graphics, java.util.List.of(singleLineTooltip.getVisualOrderText()), mouseX, mouseY, keyboardFocus);
             return;
         }
         boolean iconOnly = icon != null && !iconWithText;
-        boolean clipped = client.font.width(getMessage()) > Math.max(0,
+        boolean clipped = !hitSurface && client.font.width(getMessage()) > Math.max(0,
             width - textPadding - (iconWithText ? TEXT_ICON_INSET : 0));
-        if (iconOnly || clipped) {
-            var lines = new java.util.ArrayList<>(Tooltip.splitTooltip(client, getMessage()));
-            if (tooltip != null) {
-                var hint = tooltip.toCharSequence(client);
-                if (!tooltipText(hint).equals(tooltipText(lines))) lines.addAll(hint);
-            }
-            showTooltip(graphics, lines, mouseX, mouseY, keyboardFocus);
-            return;
+        var label = Tooltip.splitTooltip(client, getMessage());
+        var lines = new java.util.ArrayList<net.minecraft.util.FormattedCharSequence>();
+        if (iconOnly || clipped) lines.addAll(label);
+        if (tooltip != null) {
+            var hint = tooltip.toCharSequence(client);
+            // A fully visible label needs no echo. Hit surfaces render their own content.
+            if (hitSurface || !tooltipText(hint).equals(tooltipText(label))) lines.addAll(hint);
         }
-        super.extractTooltipForNextRenderPass(graphics, mouseX, mouseY);
+        if (!lines.isEmpty()) showTooltip(graphics, lines, mouseX, mouseY, keyboardFocus);
     }
 
     // FormattedCharSequence instances use identity equality, even for identical labels.

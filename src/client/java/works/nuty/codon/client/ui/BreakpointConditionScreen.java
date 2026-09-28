@@ -244,7 +244,8 @@ public final class BreakpointConditionScreen extends Screen {
             panelWidth - 16, MUTED);
         String fragment = commandFragment();
         WatchUi.line(graphics, font, fragment, left + 8, top + 42, panelWidth - 16, MUTED);
-        if (mouseX >= left + 8 && mouseX < left + panelWidth - 8
+        if (font.width(fragment) > panelWidth - 16
+            && mouseX >= left + 8 && mouseX < left + panelWidth - 8
             && mouseY >= top + 41 && mouseY < top + 52)
             graphics.setTooltipForNextFrame(font, Component.literal(fragment), mouseX, mouseY);
         if (kind.isCount() && !validCount()) WatchUi.line(graphics, font, tr("codon.breakpoint.invalid_count"),

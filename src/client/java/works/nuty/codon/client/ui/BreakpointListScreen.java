@@ -72,7 +72,6 @@ public final class BreakpointListScreen extends Screen {
                     else rebuild();
                 });
             button.withTextIcon(BreakpointUi.icon(definition));
-            button.setTooltip(Tooltip.create(Component.literal(label)));
             button.setTabOrderGroup(row);
             if (function) {
                 DebuggerButton actions = addRenderableWidget(WatchUi.button(left + panelWidth - 8 - actionWidth,

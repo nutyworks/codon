@@ -19,6 +19,7 @@ import org.joml.Matrix3x2fStack;
 public final class DebuggerEditBox extends EditBox {
     public DebuggerEditBox(Font font, int x, int y, int width, int height, Component label) {
         super(font, x, y, width, height, label);
+        setTooltipDelay(java.time.Duration.ofMillis(350));
     }
 
     @Override

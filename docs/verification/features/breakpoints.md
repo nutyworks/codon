@@ -43,7 +43,11 @@ Check persistence by leaving/reopening the world after saving a definition.
 Management rows align their labels to the left and retain a teal selected
 surface so the target of the bottom action buttons is visible after the pointer
 moves away. Scrolling applies only over the list rows, not over the title,
-actions, or surrounding world.
+actions, or surrounding world. The condition editor repeats its command fragment
+in a tooltip only when the visible fragment is clipped. In
+`DebuggerBreakpointUiGameTest`, the `hover-close` capture should show no redundant
+label tooltip, while `hover-condition` retains the full clipped label after a
+short hover. The keyboard capture keeps immediate access to the same label.
 
 Function-line and stage targets use the [Source viewer](function-source.md).
 The command alternatives are `/codon breakpoint block <x> <y> <z>` and

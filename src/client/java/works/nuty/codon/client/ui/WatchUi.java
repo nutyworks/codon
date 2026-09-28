@@ -2,7 +2,6 @@ package works.nuty.codon.client.ui;
 
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.network.chat.Component;
 import org.jspecify.annotations.Nullable;
 import works.nuty.codon.client.state.ClientDebuggerState;
@@ -37,7 +36,6 @@ final class WatchUi {
     static DebuggerButton button(int x, int y, int width, int height, Component label, Runnable action) {
         DebuggerButton button = new DebuggerButton();
         button.configure(x, y, width, height, label, true, false, false, false, action);
-        button.setTooltip(Tooltip.create(label));
         return button;
     }
 }

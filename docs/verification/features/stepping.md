@@ -26,6 +26,10 @@ Camera retention has a separate [freecam](freecam.md) contract.
 Shared debugger buttons use a light outline for keyboard focus, distinct from
 teal selection and hover accents. Tab/arrow navigation exposes icon labels and
 truncated text beside the focused button, without requiring pointer hover.
+Pointer tooltips wait 350 ms on shared buttons, while keyboard descriptions remain
+immediate. Fully visible labels are not repeated in tooltips; icon labels,
+clipped text and additional explanations remain available. Watch rows use their
+explicit details rather than appending a second generated inspection label.
 Borderless controls also show a focus outline; pending controls keep their
 position but show the unavailable cursor while input is blocked. Verify these
 states with keyboard navigation and pointer hover; the breakpoint UI test also

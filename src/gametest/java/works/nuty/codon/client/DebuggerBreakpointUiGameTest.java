@@ -266,6 +266,23 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
         });
         context.waitTicks(2);
         context.takeScreenshot("codon-breakpoint-selected-keyboard-tooltip");
+        for (String label : List.of("Close", "Condition")) {
+            double[] cursor = context.computeOnClient(client -> {
+                Screen list = client.gui.screen();
+                list.setFocused(null);
+                client.setLastInputType(net.minecraft.client.InputType.MOUSE);
+                DebuggerButton control = controls(list).stream()
+                    .filter(value -> value.getMessage().getString().startsWith(label)).findFirst().orElseThrow();
+                return new double[] {
+                    (control.getX() + control.getWidth() / 2.0) * client.getWindow().getScreenWidth() / list.width,
+                    (control.getY() + control.getHeight() / 2.0) * client.getWindow().getScreenHeight() / list.height
+                };
+            });
+            context.getInput().setCursorPos(cursor[0], cursor[1]);
+            context.waitTicks(10);
+            context.takeScreenshot("codon-breakpoint-hover-" + label.toLowerCase(java.util.Locale.ROOT));
+        }
+        context.getInput().setCursorPos(0, 0);
         context.runOnClient(client -> {
             var state = CodonClientMod.state();
             for (var target : List.of(whole, stage))
