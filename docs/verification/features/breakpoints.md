@@ -97,3 +97,13 @@ row into view. Enter/Space toggles it; Shift+Enter opens its condition. Narratio
 announces the target, enabled state, condition and keys, including the default
 Always condition on unused markers. Pending edits and dirty
 commands must not allow stale actions (`DebuggerBreakpointUiGameTest`).
+
+
+The condition layer exposes all nine kinds as a single icon strip; count icons
+carry a tally badge to distinguish them from created/removed/changed events.
+The selected kind's name stays below the strip. Count conditions expose six
+comparison symbols and a numeric field directly; events hide both. Confirm,
+close and delete use distinct icons with localized tooltip/narration labels.
+Pointer hints retain the shared hover delay. The 320×240 count/event captures in
+`DebuggerBreakpointUiGameTest` check compact layout, invalid count rejection,
+real acknowledged count-condition saving and switching back to an event.

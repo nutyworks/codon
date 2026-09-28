@@ -194,24 +194,39 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
                     require(control.getX() >= 0 && control.getY() >= 0 && control.getRight() <= screen.width
                         && control.getBottom() <= screen.height, "compact condition control stays in bounds");
                 }
-                DebuggerButton chooser = controls(screen).stream()
-                    .filter(value -> value.getMessage().getString().startsWith("Condition:"))
-                    .findFirst().orElseThrow();
-                click(screen, chooser);
+                require(controls(screen).stream().filter(value -> value.visible && value.icon() != null
+                    && java.util.Arrays.stream(BreakpointCondition.Kind.values()).anyMatch(kind ->
+                        value.getMessage().getString().equals(works.nuty.codon.client.ui.BreakpointUi.kindLabel(kind)))).count() == 9,
+                    "all nine condition icons are directly available without a menu");
+                click(screen, button(screen, "Output context count"));
+                EditBox count = screen.children().stream().filter(EditBox.class::isInstance)
+                    .map(EditBox.class::cast).filter(value -> value.visible).findFirst().orElseThrow();
+                count.setValue("-1");
+                require(!button(screen, "Save").active, "negative count disables save immediately");
+                count.setValue("2");
+                click(screen, button(screen, "≥"));
+                require(button(screen, "Save").active, "valid count and comparison can be saved");
             });
             context.waitTicks(1);
-            context.takeScreenshot("codon-breakpoint-condition-menu-320x240");
+            context.takeScreenshot("codon-breakpoint-condition-count-icons-320x240");
+            context.runOnClient(client -> click(conditionLayer(client.gui.screen()),
+                button(conditionLayer(client.gui.screen()), "Save")));
+            context.waitFor(client -> ScreenLayers.get(client.gui.screen()) == null
+                && CodonClientMod.state().breakpoints().get(first).condition().equals(
+                    BreakpointCondition.count(BreakpointCondition.Kind.OUTPUT_COUNT, BreakpointCondition.Comparison.GE, 2)), 200);
+            context.runOnClient(client -> openFirstCondition(client.gui.screen()));
+            context.waitFor(client -> ScreenLayers.get(client.gui.screen()) instanceof BreakpointConditionScreen, 100);
             context.runOnClient(client -> {
                 Screen screen = conditionLayer(client.gui.screen());
-                require(controls(screen).stream().filter(value -> value.visible
-                    && value.getMessage().getString().contains("Context")).count() >= 1,
-                    "condition options open directly instead of cycling: "
-                        + controls(screen).stream().map(value -> value.getMessage().getString()
-                            + "=" + value.visible).toList());
+                click(screen, button(screen, "Context changed"));
+                require(screen.children().stream().filter(EditBox.class::isInstance)
+                    .map(EditBox.class::cast).noneMatch(value -> value.visible),
+                    "event conditions hide the count field");
+                require(controls(screen).stream().noneMatch(value -> value.visible && value.getMessage().getString().equals("≥")),
+                    "event conditions hide the comparison controls");
             });
-            // The first outside click closes the popup; the next activates Delete.
-            context.runOnClient(client -> click(conditionLayer(client.gui.screen()),
-                button(conditionLayer(client.gui.screen()), "Delete")));
+            context.waitTicks(1);
+            context.takeScreenshot("codon-breakpoint-condition-event-icons-320x240");
             context.runOnClient(client -> click(conditionLayer(client.gui.screen()),
                 button(conditionLayer(client.gui.screen()), "Delete")));
             context.waitFor(client -> client.gui.screen() instanceof BreakpointListScreen, 100);

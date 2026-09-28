@@ -99,6 +99,8 @@ public class DebuggerButton extends AbstractButton {
 
     public int foregroundColor() { return foregroundColor; }
 
+    public void setSelected(boolean selected) { this.selected = selected; }
+
     public DebuggerButton withIcon(DebuggerIcon icon) {
         this.icon = icon;
         return this;

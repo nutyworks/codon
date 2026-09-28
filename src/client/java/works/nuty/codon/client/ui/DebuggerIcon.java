@@ -143,6 +143,13 @@ public enum DebuggerIcon {
         ".#...#.",
         "......."
     }),
+    CONFIRM(new String[]{
+        ".......", "......#", ".....#.", "#...#..", ".#.#...", "..#....", "......."
+    }),
+    DELETE(new String[]{
+        "..###..", ".#####.", ".......", ".#.#.#.", ".#.#.#.", ".#...#.", "..###.."
+    }),
+    INPUT_COUNT, OUTPUT_COUNT, CREATED_COUNT, REMOVED_COUNT, CHANGED_COUNT,
     SOURCE_CREATED,
     SOURCE_EXCLUDED,
     OUTSIDE_VIEWPORT,
@@ -242,7 +249,7 @@ public enum DebuggerIcon {
             }
             case BREAKPOINT, BREAKPOINT_EMPTY, BREAKPOINT_CONDITIONAL, BREAKPOINT_CONDITIONAL_EMPTY ->
                 drawSmall(graphics, x + 1, y + 1, color);
-            case COMMAND, SOURCE_FILE, BREAKPOINT_LIST, WATCH_NBT, WATCH_STORAGE, WATCH_SCORE ->
+            case COMMAND, SOURCE_FILE, BREAKPOINT_LIST, WATCH_NBT, WATCH_STORAGE, WATCH_SCORE, CONFIRM, DELETE ->
                 drawSmall(graphics, x + 2, y + 2, color);
             case PIN -> pin(graphics, x, y, color);
             case EDIT -> {
@@ -263,6 +270,22 @@ public enum DebuggerIcon {
                     graphics.fill(x + 2 + step, y + 2 + step, x + 3 + step, y + 3 + step, color);
                     graphics.fill(x + 9 - step, y + 2 + step, x + 10 - step, y + 3 + step, color);
                 }
+            }
+            case INPUT_COUNT, OUTPUT_COUNT, CREATED_COUNT, REMOVED_COUNT, CHANGED_COUNT -> {
+                if (this == CREATED_COUNT || this == REMOVED_COUNT) {
+                    graphics.fill(x, y + 3, x + 7, y + 4, color);
+                    if (this == CREATED_COUNT) graphics.fill(x + 3, y, x + 4, y + 7, color);
+                } else if (this == CHANGED_COUNT) {
+                    for (int i = 0; i < 6; i++) graphics.fill(x + i, y + 5 - i, x + i + 2, y + 7 - i, color);
+                } else {
+                    int bar = this == INPUT_COUNT ? 7 : 0;
+                    graphics.fill(x + bar, y, x + bar + 1, y + 7, color);
+                    graphics.fill(x + 1, y + 3, x + 6, y + 4, color);
+                    graphics.fill(x + 4, y + 1, x + 5, y + 6, color);
+                    graphics.fill(x + 5, y + 2, x + 6, y + 5, color);
+                }
+                // A separate tally badge distinguishes counts from context-change events.
+                for (int i = 0; i < 3; i++) graphics.fill(x + 7 + i * 2, y + 8, x + 8 + i * 2, y + 12, color);
             }
             case SOURCE_CREATED, SOURCE_EXCLUDED -> {
                 graphics.fill(x + 2, y + 5, x + 10, y + 7, color);
