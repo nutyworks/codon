@@ -73,6 +73,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
             });
             context.waitTicks(3);
             context.takeScreenshot("codon-command-integrated");
+            checkContinuationWidth(context, screen, state);
             checkIconToolbar(context, screen, state);
             checkCommandPanel(context, screen, state);
             checkStableCommandActions(context, screen, state);
@@ -457,6 +458,40 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
         });
         context.waitTicks(2);
         context.takeScreenshot("codon-visible-clause-stays-put");
+        context.runOnClient(client -> {
+            click(screen, button(screen, value -> value.equals("Collapse command panel")));
+            state.applyPause(fixture(client));
+        });
+        context.waitTicks(2);
+    }
+
+    private static void checkContinuationWidth(ClientGameTestContext context, CodonScreen screen,
+                                               ClientDebuggerState state) {
+        context.runOnClient(client -> {
+            PauseSnapshot base = fixture(client);
+            CommandSnippet command = CommandSnippet.plain("execute as @e[tag=" + "continuation_".repeat(40) + "] run say wrapped");
+            var frame = new CallFrame(0, base.location(), command, 77, 0);
+            var source = new ExecutionFlowContext(1, base.pauseSources().getFirst());
+            var stage = new ExecutionFlowStage(0, command, List.of(source), List.of(source), List.of(), List.of(),
+                1, 1, 0, false, 0, 0, true, true, false, 0, List.of(frame));
+            state.applyPause(new PauseSnapshot(base.location(), command, 0, List.of(frame), base.pauseSources(),
+                List.of(new ExecutionFlowTrace(77, base.location(), List.of(stage), false)), PauseReason.STEP, base.pauseId()));
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> click(screen, button(screen, value -> value.equals("Expand command panel"))));
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            var fragments = screen.children().stream().filter(DebuggerButton.class::isInstance)
+                .map(DebuggerButton.class::cast).filter(value -> value.getMessage().getString().contains("continuation_"))
+                .sorted(java.util.Comparator.comparingInt(DebuggerButton::getY)).toList();
+            require(fragments.size() > 1, "long stopped stage has visible continuation rows");
+            require(fragments.getFirst().icon() == DebuggerIcon.PAUSE, "first fragment retains pause icon");
+            require(fragments.stream().skip(1).allMatch(value -> value.icon() == null),
+                "continuations have no repeated pause icon");
+            require(fragments.get(1).getX() < fragments.getFirst().getX(),
+                "continuation reclaims the first fragment's breakpoint slot");
+        });
+        context.takeScreenshot("codon-command-continuation-width");
         context.runOnClient(client -> {
             click(screen, button(screen, value -> value.equals("Collapse command panel")));
             state.applyPause(fixture(client));

@@ -373,7 +373,7 @@ public final class CommandPanel {
                 clause.setTooltip(Tooltip.create(Component.literal(part.text().strip() + "\n" + stageDetails(stage))));
                 if (editableSource) clause.withSecondaryAction(() -> openCondition(
                     BreakpointTarget.stage(flow.location(), stage.index(), stage.command().text())));
-                if (rowHeight < 30 && hasWarning(stage)) clause.withTextIcon(DebuggerIcon.WARNING);
+                if (cell.first() && rowHeight < 30 && hasWarning(stage)) clause.withTextIcon(DebuggerIcon.WARNING);
                 if (stopped && cell.first()) clause.withTextIcon(DebuggerIcon.PAUSE);
                 if (cell.first() && rowHeight >= 30) {
                     String count = counts(stage);
@@ -394,10 +394,9 @@ public final class CommandPanel {
     }
 
     private void renderRawCommand(GuiGraphicsExtractor graphics, Bounds body, CommandSnippet command, PauseSnapshot snapshot) {
-        var lines = client.font.split(ClientFormatting.command(command), Math.max(1, body.width() - 12));
+        var lines = rawCommandLines(command, Math.max(1, body.width() - 12));
         if (lines.size() > 1) {
-            lines = client.font.split(ClientFormatting.command(command),
-                Math.max(1, body.width() - 12 - DebuggerIcon.SIZE));
+            lines = rawCommandLines(command, Math.max(1, body.width() - 12 - DebuggerIcon.SIZE));
         }
         int rows = Math.max(1, body.height() / 11);
         maxCommandOffset = Math.max(0, lines.size() - rows);
@@ -417,6 +416,17 @@ public final class CommandPanel {
         }
         graphics.disableScissor();
         scrollbar(graphics, body.x() + body.width() - 1, body.y(), body.height(), commandOffset, maxCommandOffset, rows);
+    }
+
+    private List<net.minecraft.util.FormattedCharSequence> rawCommandLines(CommandSnippet command, int width) {
+        var lines = new ArrayList<net.minecraft.util.FormattedCharSequence>();
+        int offset = 0;
+        for (String text : CommandFlowLayout.wrapCharacters(command.text(), width, client.font::width)) {
+            lines.add(ClientFormatting.command(new CommandSnippet(text,
+                command.highlightStart() - offset, command.highlightEnd() - offset)).getVisualOrderText());
+            offset += text.length();
+        }
+        return lines;
     }
 
     private String summary() {

@@ -27,7 +27,12 @@ execute as @e[type=minecraft:armor_stand,tag=codon_verify] at @s if entity @s[ta
    The command panel uses left/right arrows for recorded-command navigation and
    four-corner icons for expand/collapse. Its action row has no Watch button;
    open Watches from the debugger toolbar. Expanding and collapsing must keep
-   the action buttons in place.
+   the action buttons in place. Command text wraps at character (Unicode code-point)
+   boundaries rather than backing up to spaces, both with recorded stages and in
+   the raw-command view. Spaces and active-range highlighting are preserved;
+   recorded stage fragments retain their stage identity and breakpoint target.
+   Only the first fragment reserves breakpoint/pause/warning icon and count-label
+   space. Continuation rows use the full text width with normal text padding.
 3. After the terminal command executes, the completed record has one execution
    and one success. Before that observation, terminal values may be unmeasured;
    do not display them as measured zero.
