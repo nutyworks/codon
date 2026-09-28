@@ -303,7 +303,7 @@ public final class FunctionSourceScreen extends Screen {
             boolean hovered = mouseX >= sourceLeft + 3 && mouseX < sourceLeft + sourceWidth - 3
                 && mouseY >= y && mouseY < Math.min(y + rowHeight, lineBottom);
             if (definition != null && definition.enabled() || hovered && wholeEligible(document, index + 1)) {
-                WatchUi.line(graphics, font, BreakpointUi.glyph(definition), sourceLeft + 5, y + 5, 13, color);
+                BreakpointUi.icon(definition).drawSmall(graphics, sourceLeft + 5, y + 5, DebuggerTheme.color(color));
             }
             lineHits.add(new LineHit(y, Math.min(rowHeight, lineBottom - y), index + 1));
             y += rowHeight;
@@ -358,8 +358,8 @@ public final class FunctionSourceScreen extends Screen {
                 graphics.fill(partX, partY, partX + 18, partY + 17, DebuggerTheme.color(definition != null && definition.enabled()
                     ? RED_SURFACE : surface));
                 if (definition != null && definition.enabled() || hoveredStages.contains(part.stageIndex())) {
-                    WatchUi.line(graphics, font, BreakpointUi.glyph(definition), partX + 4, partY + 4, 12,
-                        definition != null && definition.enabled() ? RED : MUTED);
+                    BreakpointUi.icon(definition).drawSmall(graphics, partX + 4, partY + 4,
+                        DebuggerTheme.color(definition != null && definition.enabled() ? RED : MUTED));
                 }
                 stageHits.add(new StageHit(partX, partY, 18, 17, target, true));
             }

@@ -60,7 +60,7 @@ public final class BreakpointListScreen extends Screen {
             BreakpointTarget target = definition.target();
             int y = listTop + row * 20;
             String label = (definition.staleSource() ? "! " + tr("codon.breakpoint.location_review") + " · " : "")
-                + BreakpointUi.glyph(definition) + " " + BreakpointUi.target(target)
+                + BreakpointUi.target(target)
                 + " · " + BreakpointUi.condition(definition.condition());
             boolean function = target.location() instanceof SourceLocation.Function;
             int actionWidth = function ? 24 : 0;
@@ -70,6 +70,7 @@ public final class BreakpointListScreen extends Screen {
                     if (function) source();
                     else rebuild();
                 }));
+            button.withTextIcon(BreakpointUi.icon(definition));
             button.setTooltip(Tooltip.create(Component.literal(label)));
             button.setTabOrderGroup(row);
             if (target.equals(selected)) button.withStatusColor(TEAL, TEAL_SURFACE);

@@ -344,7 +344,7 @@ public final class CommandPanel {
                     BreakpointTarget target = BreakpointTarget.stage(flow.location(), stage.index(), stage.command().text());
                     BreakpointDefinition definition = state.breakpoints().get(target);
                     DebuggerButton breakpoint = button("breakpoint-" + flow.invocationId() + "-" + stageIndex,
-                        new Bounds(x, y, 14, 16), Component.literal(BreakpointUi.glyph(definition)),
+                        new Bounds(x, y, 14, 16), Component.translatable("codon.breakpoint.toggle"),
                         !state.breakpoints().pending(target), false, () -> {
                             if (state.selectedExecutionFlow() != flow) return;
                             BreakpointDefinition current = state.breakpoints().get(target);
@@ -353,7 +353,7 @@ public final class CommandPanel {
                             state.selectExecutionFlowStage(stageIndex);
                             changed();
                         });
-                    breakpoint.withoutChrome().withTextPadding(4);
+                    breakpoint.withoutChrome().withSmallIcon(BreakpointUi.icon(definition));
                     if (definition == null || !definition.enabled()) breakpoint.revealOnHover(x, y, cell.width(), 16);
                     breakpoint.withStatusColor(definition != null && definition.enabled() ? RED : MUTED,
                         definition != null && definition.enabled() ? RED_SURFACE : SURFACE);

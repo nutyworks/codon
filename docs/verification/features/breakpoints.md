@@ -27,7 +27,9 @@ enter `say codon breakpoint check`, save with Done, and attach a button.
 5. Change the text without saving. Markers for the old saved command must not be
    applied to that edited text. Save and reopen to request fresh stage spans.
 
-Plain markers are circles and conditional markers are diamonds. Empty affordances
+Plain markers are circles and conditional markers are diamonds. All editor, source,
+flow and management-list markers use the same symmetric 9-pixel artwork, with
+solid enabled markers and hollow disabled/unused markers instead of font glyphs. Empty affordances
 appear on hover/focus; disabled markers also appear only on hover/focus, while
 enabled breakpoints remain visible. The management list, toolbar count and source
 stage summaries include only enabled breakpoints. Disabling preserves the saved

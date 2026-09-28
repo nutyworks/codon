@@ -4,6 +4,50 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 
 /** Pixel icons used by the debugger toolbar. */
 public enum DebuggerIcon {
+    BREAKPOINT(new String[]{
+        "...###...",
+        ".#######.",
+        ".#######.",
+        "#########",
+        "#########",
+        "#########",
+        ".#######.",
+        ".#######.",
+        "...###..."
+    }),
+    BREAKPOINT_EMPTY(new String[]{
+        "...###...",
+        ".##...##.",
+        ".#.....#.",
+        "#.......#",
+        "#.......#",
+        "#.......#",
+        ".#.....#.",
+        ".##...##.",
+        "...###..."
+    }),
+    BREAKPOINT_CONDITIONAL(new String[]{
+        "....#....",
+        "...###...",
+        "..#####..",
+        ".#######.",
+        "#########",
+        ".#######.",
+        "..#####..",
+        "...###...",
+        "....#...."
+    }),
+    BREAKPOINT_CONDITIONAL_EMPTY(new String[]{
+        "....#....",
+        "...#.#...",
+        "..#...#..",
+        ".#.....#.",
+        "#.......#",
+        ".#.....#.",
+        "..#...#..",
+        "...#.#...",
+        "....#...."
+    }),
     WATCHES,
     COMMAND(new String[]{
         "#......",
@@ -192,6 +236,8 @@ public enum DebuggerIcon {
                 }
                 graphics.fill(x + 5, y + 4, x + 7, y + 8, color);
             }
+            case BREAKPOINT, BREAKPOINT_EMPTY, BREAKPOINT_CONDITIONAL, BREAKPOINT_CONDITIONAL_EMPTY ->
+                drawSmall(graphics, x + 1, y + 1, color);
             case COMMAND, SOURCE_FILE, BREAKPOINT_LIST, WATCH_NBT, WATCH_STORAGE, WATCH_SCORE ->
                 drawSmall(graphics, x + 2, y + 2, color);
             case PIN -> pin(graphics, x, y, color);

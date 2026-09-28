@@ -12,7 +12,6 @@ import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import works.nuty.codon.mixin.client.EditBoxAccessor;
 import org.jspecify.annotations.Nullable;
-import works.nuty.codon.core.model.BreakpointCondition;
 import works.nuty.codon.core.model.BreakpointDefinition;
 import works.nuty.codon.core.model.BreakpointTarget;
 
@@ -159,20 +158,8 @@ public final class WrappedCommandEditBox extends EditBox {
             MarkerPosition point = markerPosition(marker);
             if (!point.visible()) continue;
             int color = marker.enabled() ? DebuggerTheme.RED : DebuggerTheme.MUTED;
-            boolean conditional = marker.definition() != null
-                && marker.definition().condition().kind() != BreakpointCondition.Kind.ALWAYS;
-            for (int dy = -MARKER_RADIUS; dy <= MARKER_RADIUS; dy++) {
-                int half = conditional ? MARKER_RADIUS - Math.abs(dy)
-                    : (int) Math.floor(Math.sqrt(MARKER_RADIUS * MARKER_RADIUS - dy * dy));
-                int left = point.x() - half;
-                int right = point.x() + half;
-                int y = point.y() + dy;
-                if (marker.enabled() || Math.abs(dy) == MARKER_RADIUS) graphics.fill(left, y, right + 1, y + 1, color);
-                else {
-                    graphics.fill(left, y, left + 1, y + 1, color);
-                    graphics.fill(right, y, right + 1, y + 1, color);
-                }
-            }
+            BreakpointUi.icon(marker.definition()).drawSmall(graphics,
+                point.x() - MARKER_RADIUS, point.y() - MARKER_RADIUS, color);
             if (marker.target().equals(focusedTarget))
                 graphics.outline(point.x() - 6, point.y() - 6, 13, 13, DebuggerTheme.TEAL);
             if (marker == hovered || marker.target().equals(focusedTarget)) {
