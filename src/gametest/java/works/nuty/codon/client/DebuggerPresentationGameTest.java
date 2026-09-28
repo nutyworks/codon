@@ -138,7 +138,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
             context.runOnClient(client -> {
                 require(state.selectedFlowStageIndex() == 2, "The selected condition survives a resize");
                 button(screen, value -> value.contains("if entity"));
-                for (String label : List.of("Current", "Watch")) {
+                for (String label : List.of("Current")) {
                     DebuggerButton control = button(screen, value -> value.equals(label));
                     require(control.getWidth() >= client.font.width(control.getMessage()) + 10,
                         "Command actions keep their complete label at compact width");
@@ -352,7 +352,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
         });
         context.waitTicks(2);
         context.runOnClient(client -> {
-            click(screen, button(screen, value -> value.equals("‹")));
+            click(screen, button(screen, value -> value.equals("Previous recorded command")));
             require(state.selectedExecutionFlow().invocationId() == 76, "Flow previous selects the parent trace");
         });
         context.waitTicks(2);
@@ -368,30 +368,32 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
         Map<String, WidgetBounds> original = context.computeOnClient(client -> {
             require(!button(screen, value -> value.equals("Current")).active,
                 "Current keeps its slot while the live command is selected");
+            require(screen.children().stream().noneMatch(child -> child instanceof DebuggerButton control
+                && control.getMessage().getString().equals("Watch")), "Command actions omit Watch");
             Map<String, WidgetBounds> result = new HashMap<>();
-            for (String label : List.of("‹", "›", "Current", "Watch", "Expand command panel"))
+            for (String label : List.of("Previous recorded command", "Next recorded command", "Current", "Expand command panel"))
                 result.put(label, WidgetBounds.of(button(screen, value -> value.equals(label))));
-            clickAt(screen, result.get("‹"));
+            clickAt(screen, result.get("Previous recorded command"));
             return result;
         });
         context.waitTicks(2);
         context.runOnClient(client -> {
             require(state.selectedExecutionFlow().invocationId() == 76, "Previous enters recorded history");
-            for (String label : List.of("‹", "›", "Current", "Watch"))
+            for (String label : List.of("Previous recorded command", "Next recorded command", "Current"))
                 require(original.get(label).equals(WidgetBounds.of(button(screen, value -> value.equals(label)))),
                     "History keeps the action slot fixed: " + label);
             // Reuse the actual pointer position, including at the disabled history boundary.
-            clickAt(screen, original.get("‹"));
+            clickAt(screen, original.get("Previous recorded command"));
             require(!state.isViewingCurrentCommand(), "A repeated Previous click never activates Current");
         });
         context.waitTicks(2);
         context.takeScreenshot("codon-stable-history-actions");
-        context.runOnClient(client -> clickAt(screen, original.get("›")));
+        context.runOnClient(client -> clickAt(screen, original.get("Next recorded command")));
         context.waitTicks(2);
         context.runOnClient(client -> {
             require(state.selectedExecutionFlow().invocationId() == 77 && state.selectedFlowStageIndex() == 0,
                 "Next selects the first stage of the next recorded command visit");
-            require(original.get("›").equals(WidgetBounds.of(button(screen, value -> value.equals("›")))),
+            require(original.get("Next recorded command").equals(WidgetBounds.of(button(screen, value -> value.equals("Next recorded command")))),
                 "Navigating forward does not move Next");
             require(clickAt(screen, original.get("Current")), "The fixed Current slot accepts its click");
         });
@@ -407,7 +409,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
             require(original.get("Expand command panel").equals(WidgetBounds.of(
                 button(screen, value -> value.equals("Collapse command panel")))),
                 "Expansion keeps its own toggle under the pointer");
-            for (String label : List.of("‹", "›", "Current", "Watch"))
+            for (String label : List.of("Previous recorded command", "Next recorded command", "Current"))
                 require(original.get(label).equals(WidgetBounds.of(button(screen, value -> value.equals(label)))),
                     "Expansion keeps the action row fixed: " + label);
         });

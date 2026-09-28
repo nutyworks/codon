@@ -147,6 +147,10 @@ public enum DebuggerIcon {
     SOURCE_EXCLUDED,
     OUTSIDE_VIEWPORT,
     COPY_UUID,
+    HISTORY_PREVIOUS,
+    HISTORY_NEXT,
+    PANEL_EXPAND,
+    PANEL_COLLAPSE,
     EXPAND,
     COLLAPSE;
 
@@ -273,6 +277,35 @@ public enum DebuggerIcon {
             case COPY_UUID -> {
                 outline(graphics, x + 1, y + 1, 7, 8, color);
                 outline(graphics, x + 4, y + 4, 7, 8, color);
+            }
+            case HISTORY_PREVIOUS, HISTORY_NEXT -> {
+                graphics.fill(x + 2, y + 5, x + 10, y + 6, color);
+                for (int step = 0; step < 4; step++) {
+                    int arrowX = this == HISTORY_NEXT ? x + 9 - step : x + 2 + step;
+                    graphics.fill(arrowX, y + 5 - step, arrowX + 1, y + 6 - step, color);
+                    graphics.fill(arrowX, y + 5 + step, arrowX + 1, y + 6 + step, color);
+                }
+            }
+            case PANEL_EXPAND, PANEL_COLLAPSE -> {
+                // Four outward/inward corners distinguish resizing from history navigation.
+                for (int cornerX : new int[]{0, 1}) {
+                    for (int cornerY : new int[]{0, 1}) {
+                        int dx = cornerX == 0 ? 1 : -1;
+                        int dy = cornerY == 0 ? 1 : -1;
+                        int cx = x + (cornerX == 0 ? 1 : 10);
+                        int cy = y + (cornerY == 0 ? 1 : 10);
+                        if (this == PANEL_COLLAPSE) {
+                            cx += dx * 3;
+                            cy += dy * 3;
+                            dx = -dx;
+                            dy = -dy;
+                        }
+                        for (int step = 0; step < 4; step++) {
+                            graphics.fill(cx + dx * step, cy, cx + dx * step + 1, cy + 1, color);
+                            graphics.fill(cx, cy + dy * step, cx + 1, cy + dy * step + 1, color);
+                        }
+                    }
+                }
             }
             case EXPAND, COLLAPSE -> {
                 for (int step = 0; step < 3; step++) {

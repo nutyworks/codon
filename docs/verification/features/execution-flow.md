@@ -24,6 +24,10 @@ execute as @e[type=minecraft:armor_stand,tag=codon_verify] at @s if entity @s[ta
 2. Select earlier recorded stages/frames and compare input/output contexts. Their
    counts, anchors and call path must come from the selected record. Browsing a
    previous stage must not change the actual stopped command.
+   The command panel uses left/right arrows for recorded-command navigation and
+   four-corner icons for expand/collapse. Its action row has no Watch button;
+   open Watches from the debugger toolbar. Expanding and collapsing must keep
+   the action buttons in place.
 3. After the terminal command executes, the completed record has one execution
    and one success. Before that observation, terminal values may be unmeasured;
    do not display them as measured zero.

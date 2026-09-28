@@ -90,7 +90,7 @@ public final class CommandPanel {
 
         // The action row is anchored to the screen's bottom, independently of expansion.
         int actionY = Math.max(area.y() + 1, area.y() + area.height() - 20);
-        int actionLeft = renderActions(new Bounds(area.x() + 4, actionY, area.width() - 8, 17), snapshot, input, overlay);
+        int actionLeft = renderActions(new Bounds(area.x() + 4, actionY, area.width() - 8, 17));
         if (area.height() >= 40) {
             int y = area.y() + 3;
             renderPath(graphics, new Bounds(area.x() + 4, y, area.width() - 8, 17), snapshot);
@@ -183,20 +183,13 @@ public final class CommandPanel {
         }
     }
 
-    private int renderActions(Bounds area, PauseSnapshot snapshot,
-                               InputManager input, DebuggerOverlay overlay) {
+    private int renderActions(Bounds area) {
         navigationGroup = DebuggerNavigation.Group.ACTIONS;
         int right = area.x() + area.width();
         button("expand", new Bounds(right - 17, area.y(), 17, 16),
             Component.translatable(expanded ? "codon.ui.collapse_command" : "codon.ui.expand_command"), true, false,
-            () -> expanded = !expanded).withIcon(expanded ? DebuggerIcon.COLLAPSE : DebuggerIcon.EXPAND);
+            () -> expanded = !expanded).withIcon(expanded ? DebuggerIcon.PANEL_COLLAPSE : DebuggerIcon.PANEL_EXPAND);
         right -= 20;
-        if (area.width() >= 240) {
-            int width = labelWidth("codon.watch.open");
-            button("watch", new Bounds(right - width, area.y(), width, 16), Component.translatable("codon.watch.open"),
-                true, false, () -> client.gui.setScreen(new WatchScreen(input, state, overlay)));
-            right -= width + 3;
-        }
         int width = labelWidth("codon.ui.return_current");
         DebuggerButton current = button("current", new Bounds(right - width, area.y(), width, 16),
             Component.translatable("codon.ui.return_current"),
@@ -205,14 +198,14 @@ public final class CommandPanel {
             .setTooltip(Tooltip.create(Component.translatable("codon.ui.return_pause")));
         right -= width + 3;
         if (right - area.x() >= 38) {
-            button("flow-next", new Bounds(right - 16, area.y(), 16, 16), Component.literal("›"),
+            button("flow-next", new Bounds(right - 16, area.y(), 16, 16), Component.translatable("codon.ui.next_recorded_command"),
                 state.hasAdjacentExecutionVisit(1), false,
                 () -> { state.selectAdjacentExecutionVisit(1); changed(); })
-                .setTooltip(Tooltip.create(Component.translatable("codon.ui.next_recorded_command")));
-            button("flow-prev", new Bounds(right - 34, area.y(), 16, 16), Component.literal("‹"),
+                .withIcon(DebuggerIcon.HISTORY_NEXT);
+            button("flow-prev", new Bounds(right - 34, area.y(), 16, 16), Component.translatable("codon.ui.previous_recorded_command"),
                 state.hasAdjacentExecutionVisit(-1), false,
                 () -> { state.selectAdjacentExecutionVisit(-1); changed(); })
-                .setTooltip(Tooltip.create(Component.translatable("codon.ui.previous_recorded_command")));
+                .withIcon(DebuggerIcon.HISTORY_PREVIOUS);
             right -= 38;
         }
         BreakpointTarget selectedBreakpoint = selectedBreakpoint();
