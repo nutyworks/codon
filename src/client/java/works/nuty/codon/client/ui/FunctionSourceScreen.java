@@ -850,12 +850,16 @@ public final class FunctionSourceScreen extends Screen {
     private void selectLine(int line) {
         FunctionSourceDocument document = sources.document();
         if (document == null || document.lines().isEmpty() || sources.selected() == null) return;
-        selectedLine = Math.clamp(line, 1, document.lines().size());
+        int nextLine = Math.clamp(line, 1, document.lines().size());
+        boolean changed = nextLine != selectedLine;
+        selectedLine = nextLine;
         selectedStageIndex = -1;
         stageScrollOffset = 0;
         lineOffset = Math.clamp(lineOffset, Math.max(0, selectedLine - sourceRows()), selectedLine - 1);
         ClientDebuggerState debugger = CodonClientMod.state();
-        if (debugger != null && stageEligible(document, selectedLine)) ClientNetworking.requestStagePreview(debugger,
+        // Find may move between matches on the same line while typing. Retain its acknowledged
+        // preview instead of restarting a server parse and hiding the stage controls each time.
+        if (changed && debugger != null && stageEligible(document, selectedLine)) ClientNetworking.requestStagePreview(debugger,
             new SourceLocation.Function(new FunctionLocation(sources.selected(), selectedLine)));
         rememberView();
     }

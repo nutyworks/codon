@@ -293,7 +293,15 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             Screen screen = client.gui.screen();
             EditBox find = sourceSearchBox(screen);
             screen.setFocused(find);
+            var debugger = require(CodonClientMod.state(), "debugger state exists");
+            var location = new SourceLocation.Function(new FunctionLocation(FUNCTION, 1));
+            long request = debugger.stagePreviews().begin(location);
+            debugger.stagePreviews().accept(request, location, ClientStagePreviewState.Status.READY, COMMAND,
+                List.of(new ClientStagePreviewState.StageSpan(0, 0, COMMAND.length(), true)));
+            var acknowledged = debugger.stagePreviews().get(location);
             find.setValue("preview_value");
+            require(debugger.stagePreviews().get(location) == acknowledged,
+                "finding another match on the same line retains its acknowledged preview instead of reparsing");
             require(sources.browseView().selectedLine() == 1 && sources.browseView().horizontalOffset() > 0,
                 "find moves to a match beyond the initial horizontal viewport");
             require(sources.document().lines().getFirst().equals(COMMAND), "navigation leaves source bytes unchanged");

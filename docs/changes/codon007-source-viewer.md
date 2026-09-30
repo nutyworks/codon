@@ -16,6 +16,8 @@ and space advances, and retains Unicode glyphs without bundling a font binary.
 Glyph positions and syntax spans are cached per source revision/rebuild. Only
 visible source slices are submitted to the renderer; matches are indexed by line.
 Stage details keep the existing server-provided offsets and wrap separately.
+Find preserves the acknowledged stage preview when matches stay on the same line,
+avoiding repeated server parse requests and disappearing stage controls while typing.
 Pause arrows and selection outlines provide a shape cue in addition to color.
 
 The independent clone started at `17cfcb81580ae4c9185786975db22ca15ddd2d84`
