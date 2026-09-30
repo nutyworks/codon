@@ -176,6 +176,14 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             nativeClick(context, parent, 0, 0, InputConstants.MOUSE_BUTTON_LEFT);
             context.runOnClient(client -> require(client.gui.screen() == parent && ScreenLayers.get(parent) == null,
                 "outside click dismisses only the layer"));
+            // The parent refreshes its marker layout during render after the layer closes.
+            context.waitFor(client -> {
+                var editor = commandBox(parent);
+                var point = editor.markerPosition(new WrappedCommandEditBox.Marker(first, 8, COMMAND.length(),
+                    CodonClientMod.state().breakpoints().get(first)));
+                var hit = editor.markerAt(point.x(), point.y());
+                return point.visible() && hit != null && hit.target().equals(first);
+            }, 100);
             int[] reopenedMarker = context.computeOnClient(client -> {
                 var editor = commandBox(parent);
                 var point = editor.markerPosition(new WrappedCommandEditBox.Marker(first, 8, COMMAND.length(),
