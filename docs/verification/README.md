@@ -13,6 +13,7 @@ existing tests; they are not a record of passing runs.
 | Inspect `execute` stages, context changes and recorded calls | [Execution flow](features/execution-flow.md) |
 | Add Watches, browse NBT, pin fields and inspect changed values | [Watches and NBT](features/watches-and-nbt.md) |
 | Navigate while paused and retain/restore the camera | [Freecam](features/freecam.md) |
+| Toggle or temporarily hide debugger panels and markers | [UI visibility](features/ui-visibility.md) |
 | Search loaded functions and inspect line/stage source | [Function source](features/function-source.md) |
 
 ## Prepare and launch
@@ -33,7 +34,8 @@ Default keys come from
 [InputManager](../../src/client/java/works/nuty/codon/client/input/InputManager.java):
 `V` opens/closes cursor mode, `F10` toggles the targeted block breakpoint, `F7`
 continues, `F8` steps over, `F9` steps into, `Shift+F9` steps out, `G` toggles Keep
-Freecam While Running, and holding `H` hides the debugger UI. Remapped keys and
+Freecam While Running, and tapping `H` toggles the debugger UI. Holding `H` for at least 250 ms hides it
+only while pressed, then restores the previous visibility. Remapped keys and
 on-screen hints take precedence. On keyboards with media keys, use the appropriate
 Fn setting. The Source viewer is read-only.
 
