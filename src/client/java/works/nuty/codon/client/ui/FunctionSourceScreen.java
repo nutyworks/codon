@@ -38,7 +38,7 @@ import works.nuty.codon.core.model.SourceLocation;
 import static works.nuty.codon.client.ui.DebuggerTheme.*;
 
 /** Read-only searchable tree and source view for all functions loaded by the current server. */
-public final class FunctionSourceScreen extends Screen {
+public final class FunctionSourceScreen extends ScaledCodonScreen {
     private static final int ROW_HEIGHT = 18;
     private final Screen parent;
     private final ClientFunctionSourceState sources;
@@ -88,7 +88,7 @@ public final class FunctionSourceScreen extends Screen {
     }
 
     public FunctionSourceScreen(Screen parent, ClientFunctionSourceState sources) {
-        super(Component.translatable("codon.source.title"));
+        super(Component.translatable("codon.source.title"), preferencesFor(parent));
         this.parent = Objects.requireNonNull(parent, "parent");
         this.sources = Objects.requireNonNull(sources, "sources");
     }

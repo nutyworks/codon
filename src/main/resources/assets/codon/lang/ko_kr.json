@@ -476,5 +476,13 @@
   "codon.watch.binding.fixed": "고정",
   "codon.watch.binding.context": "컨텍스트를 따름",
   "codon.ui.gizmo_mode": "기즈모: %s",
-  "command.codon.error.execution": "오류: %s"
+  "command.codon.error.execution": "오류: %s",
+  "codon.ui.scale.title": "Codon UI 배율",
+  "codon.ui.scale.follow": "게임 GUI 배율 따르기",
+  "codon.ui.scale.custom": "직접 설정",
+  "codon.ui.scale.requested": "설정값: %s",
+  "codon.ui.scale.units": "게임 GUI 배율과 같은 단위입니다. 처음에는 현재 크기로 시작합니다. Codon만 0.25×씩 조절합니다.",
+  "codon.ui.scale.applied": "적용값: %s",
+  "codon.ui.scale.limited": "창에 맞춰 %s 적용 중입니다. 설정값은 저장되며 큰 창에서 다시 적용됩니다.",
+  "codon.ui.scale.reset": "기본값 복원"
 }

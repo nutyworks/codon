@@ -8,14 +8,14 @@ import net.minecraft.client.gui.screens.Screen;
 import works.nuty.codon.client.state.WatchGrouping;
 
 /** Explicit grouping choices, reachable by mouse or the normal Tab/Enter screen navigation. */
-public final class WatchGroupingScreen extends Screen {
+public final class WatchGroupingScreen extends ScaledCodonScreen {
     private final Screen parent;
     private final WatchGrouping.Mode selected;
     private final Consumer<WatchGrouping.Mode> choose;
     private int left, top, panelWidth;
 
     public WatchGroupingScreen(Screen parent, WatchGrouping.Mode selected, Consumer<WatchGrouping.Mode> choose) {
-        super(WatchUi.text("grouping.title"));
+        super(WatchUi.text("grouping.title"), preferencesFor(parent));
         this.parent = parent;
         this.selected = selected;
         this.choose = choose;
