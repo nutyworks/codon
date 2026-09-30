@@ -24,11 +24,15 @@ public final class ClientFunctionSourceState {
 
     /** Read-only browser presentation retained while its screen is closed or rebuilt for resize. */
     public record BrowseView(int treeOffset, int lineOffset, int selectedLine, int selectedStageIndex,
-                             int stageScrollOffset) {
+                             int stageScrollOffset, int horizontalOffset) {
         public BrowseView {
             if (treeOffset < 0 || lineOffset < 0 || selectedLine < -1 || selectedStageIndex < -1
-                || stageScrollOffset < 0)
+                || stageScrollOffset < 0 || horizontalOffset < 0)
                 throw new IllegalArgumentException("invalid source browser view");
+        }
+
+        public BrowseView(int treeOffset, int lineOffset, int selectedLine, int selectedStageIndex, int stageScrollOffset) {
+            this(treeOffset, lineOffset, selectedLine, selectedStageIndex, stageScrollOffset, 0);
         }
     }
 
@@ -141,7 +145,12 @@ public final class ClientFunctionSourceState {
     /** Saves scroll and exact line/stage selection without changing the live source request. */
     public void rememberBrowseView(int treeOffset, int lineOffset, int selectedLine, int selectedStageIndex,
                                    int stageScrollOffset) {
-        browseView = new BrowseView(treeOffset, lineOffset, selectedLine, selectedStageIndex, stageScrollOffset);
+        rememberBrowseView(treeOffset, lineOffset, selectedLine, selectedStageIndex, stageScrollOffset, browseView.horizontalOffset());
+    }
+
+    public void rememberBrowseView(int treeOffset, int lineOffset, int selectedLine, int selectedStageIndex,
+                                   int stageScrollOffset, int horizontalOffset) {
+        browseView = new BrowseView(treeOffset, lineOffset, selectedLine, selectedStageIndex, stageScrollOffset, horizontalOffset);
         if (selected != null) functionViews.put(selected, browseView);
     }
 

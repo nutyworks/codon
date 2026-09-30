@@ -91,14 +91,14 @@ class ClientFunctionSourceStateTest {
         state.accept(new ClientFunctionSourceState.ListPage(list, ClientFunctionSourceState.Status.READY, 0, true,
             List.of(FIRST, SECOND)));
         state.select(FIRST);
-        state.rememberBrowseView(2, 7, 8, 1, 5);
+        state.rememberBrowseView(2, 7, 8, 1, 5, 275);
 
         assertTrue(state.follow(SECOND));
         state.rememberBrowseView(0, 3, 4, -1, 0);
         assertTrue(state.canGoBack());
         assertTrue(state.goBack());
         assertEquals(FIRST, state.selected());
-        assertEquals(new ClientFunctionSourceState.BrowseView(2, 7, 8, 1, 5), state.browseView());
+        assertEquals(new ClientFunctionSourceState.BrowseView(2, 7, 8, 1, 5, 275), state.browseView());
         assertFalse(state.follow(new FunctionId("demo", "missing")));
     }
 

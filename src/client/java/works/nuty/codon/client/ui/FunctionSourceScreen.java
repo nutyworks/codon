@@ -13,6 +13,8 @@ import java.util.Set;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -24,6 +26,7 @@ import works.nuty.codon.client.state.ClientBreakpointState;
 import works.nuty.codon.client.state.ClientDebuggerState;
 import works.nuty.codon.client.state.ClientStagePreviewState;
 import works.nuty.codon.client.ui.layout.CommandFlowLayout;
+import works.nuty.codon.client.ui.layout.SourceSyntax;
 import works.nuty.codon.core.model.BreakpointDefinition;
 import works.nuty.codon.core.model.BreakpointTarget;
 import works.nuty.codon.core.model.FunctionId;
@@ -46,13 +49,21 @@ public final class FunctionSourceScreen extends Screen {
     private boolean drawerOpen;
     private boolean docked;
     private boolean forwardingParentDrag;
-    private int listOffset, lineOffset, stageScrollOffset;
+    private int listOffset, lineOffset, stageScrollOffset, horizontalOffset;
+    private boolean draggingHorizontal;
+    private FunctionSourceDocument cachedDocument;
+    private final List<SourceCodeLine> codeLines = new ArrayList<>();
+    private List<SourceSyntax.Match> matches = List.of();
+    private final Map<Integer, List<SourceSyntax.Match>> matchesByLine = new HashMap<>();
+    private int matchIndex = -1;
+    private int widestLine;
     private int selectedLine = -1;
     private int selectedStageIndex = -1;
     private final List<StageHit> stageHits = new ArrayList<>();
     private final List<LineHit> lineHits = new ArrayList<>();
     private final List<FunctionHit> functionHits = new ArrayList<>();
-    private EditBox search;
+    private EditBox search, sourceSearch;
+    private DebuggerButton previousMatch, nextMatch;
     private DebuggerButton refresh, close, reread, stageCondition, lineCondition, drawerButton, backButton;
 
 
@@ -79,6 +90,8 @@ public final class FunctionSourceScreen extends Screen {
 
     @Override protected void init() {
         String searchValue = search == null ? "" : search.getValue();
+        String sourceSearchValue = sourceSearch == null ? "" : sourceSearch.getValue();
+        cachedDocument = null;
         clearWidgets();
         ClientFunctionSourceState.ScreenLayout layout = ClientFunctionSourceState.ScreenLayout.forScreen(width, height);
         panelWidth = layout.panelWidth();
@@ -99,9 +112,9 @@ public final class FunctionSourceScreen extends Screen {
         search.setMaxLength(128);
         search.setValue(searchValue);
         search.setResponder(ignored -> { listOffset = 0; rebuildEntries(); rememberView(); });
-        refresh = addRenderableWidget(WatchUi.button(drawerMode ? left + 66 : left + treeWidth + 8, top + 5, 58, 18,
+        refresh = addRenderableWidget(WatchUi.button(drawerMode ? left + 74 : left + treeWidth + 8, top + 5, 58, 18,
             Component.translatable("codon.source.refresh"), () -> { sources.refreshList(); listOffset = 0; }));
-        reread = addRenderableWidget(WatchUi.button(drawerMode ? left + 126 : left + treeWidth + 68, top + 5, 54, 18,
+        reread = addRenderableWidget(WatchUi.button(drawerMode ? left + 134 : left + treeWidth + 68, top + 5, 54, 18,
             Component.translatable("codon.source.reload"), () -> {
                 sources.refreshSource();
                 lineOffset = 0;
@@ -111,14 +124,14 @@ public final class FunctionSourceScreen extends Screen {
                         new FunctionLocation(sources.selected(), selectedLine)));
             }));
         lineCondition = addRenderableWidget(WatchUi.button(compactSourceControls ? sourceLeft : left + treeWidth + 124,
-            compactSourceControls ? top + 29 : top + 5, compactSourceControls ? sourceWidth : 92, 18,
+            compactSourceControls ? top + 29 : top + 5, compactSourceControls ? (sourceWidth - 4) / 2 : 92, 18,
             Component.translatable("codon.source.line_condition"), this::editLineCondition));
-        stageCondition = addRenderableWidget(WatchUi.button(compactSourceControls ? sourceLeft : left + treeWidth + 218,
-            compactSourceControls ? top + 51 : top + 5, compactSourceControls ? sourceWidth : 98, 18,
+        stageCondition = addRenderableWidget(WatchUi.button(compactSourceControls ? sourceLeft + (sourceWidth - 4) / 2 + 4 : left + treeWidth + 218,
+            compactSourceControls ? top + 29 : top + 5, compactSourceControls ? (sourceWidth - 4) / 2 : 98, 18,
             Component.translatable("codon.source.stage_condition"), this::editStageCondition));
         close = addRenderableWidget(WatchUi.button(left + panelWidth - 58, top + 5, 50, 18,
             Component.translatable("codon.breakpoint.close"), this::onClose));
-        drawerButton = addRenderableWidget(WatchUi.button(left + 8, top + 5, 56, 18,
+        drawerButton = addRenderableWidget(WatchUi.button(left + 8, top + 5, 64, 18,
             Component.translatable("codon.source.functions"), () -> setDrawerOpen(!drawerOpen)));
         backButton = addRenderableWidget(WatchUi.button(left + panelWidth - 116, top + 5, 54, 18,
             Component.translatable("codon.source.back"), this::goBack));
@@ -126,13 +139,28 @@ public final class FunctionSourceScreen extends Screen {
         drawerButton.visible = drawerButton.active = drawerMode;
         backButton.visible = backButton.active = !drawerOpen && sources.canGoBack();
         search.visible = search.active = !drawerMode || drawerOpen;
-        setFocused(search);
+        int findY = top + (compactSourceControls ? 92 : 75);
+        sourceSearch = addRenderableWidget(new DebuggerEditBox(font, sourceLeft + 5, findY,
+            Math.max(1, sourceWidth - 85), 20, Component.translatable("codon.source.find")));
+        sourceSearch.setHint(Component.translatable("codon.source.find"));
+        sourceSearch.setTooltip(Tooltip.create(Component.translatable("codon.source.find_hint")));
+        sourceSearch.setMaxLength(128);
+        sourceSearch.setValue(sourceSearchValue);
+        sourceSearch.setResponder(ignored -> { matchIndex = -1; rebuildMatches(); if (!matches.isEmpty()) nextMatch(1); });
+        previousMatch = addRenderableWidget(WatchUi.button(sourceLeft + sourceWidth - 41, findY, 18, 20,
+            Component.literal("<"), () -> nextMatch(-1)));
+        nextMatch = addRenderableWidget(WatchUi.button(sourceLeft + sourceWidth - 21, findY, 18, 20,
+            Component.literal(">"), () -> nextMatch(1)));
+        previousMatch.setTooltip(Tooltip.create(Component.translatable("codon.source.previous_match")));
+        nextMatch.setTooltip(Tooltip.create(Component.translatable("codon.source.next_match")));
+        setFocused(search.visible ? search : null);
         ClientFunctionSourceState.BrowseView view = sources.browseView();
         listOffset = view.treeOffset();
         lineOffset = view.lineOffset();
         selectedLine = view.selectedLine();
         selectedStageIndex = view.selectedStageIndex();
         stageScrollOffset = view.stageScrollOffset();
+        horizontalOffset = view.horizontalOffset();
         sources.open();
         if (sources.selected() != null && selectedLine > 0) {
             ClientDebuggerState debugger = CodonClientMod.state();
@@ -172,8 +200,8 @@ public final class FunctionSourceScreen extends Screen {
 
     private boolean expanded(String key, String needle) { return !needle.isEmpty() || !collapsed.contains(key); }
     private int visibleRows() { return Math.max(1, (panelHeight - 76) / ROW_HEIGHT); }
-    private int sourceLineTop() { return top + (compactSourceControls ? 118 : 76); }
-    private int sourceRows() { return Math.max(1, (top + panelHeight - 38 - sourceLineTop()) / ROW_HEIGHT); }
+    private int sourceLineTop() { return top + (compactSourceControls ? 118 : 100); }
+    private int sourceRows() { return Math.max(1, (top + panelHeight - 46 - sourceLineTop()) / ROW_HEIGHT); }
 
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         stageHits.clear();
@@ -184,6 +212,10 @@ public final class FunctionSourceScreen extends Screen {
         drawerButton.visible = drawerButton.active = drawerMode;
         backButton.visible = backButton.active = !drawerOpen && sources.canGoBack();
         search.visible = search.active = !drawerMode || drawerOpen;
+        updateCodeCache();
+        sourceSearch.visible = sourceSearch.active = !drawerOpen && sources.document() != null;
+        previousMatch.visible = nextMatch.visible = sourceSearch.visible;
+        previousMatch.active = nextMatch.active = !matches.isEmpty();
         updateConditionControls();
         if (docked) parent.extractRenderState(graphics, mouseX, mouseY, partialTick);
         else graphics.fill(0, 0, width, height, DebuggerTheme.color(0x70000000));
@@ -242,21 +274,31 @@ public final class FunctionSourceScreen extends Screen {
                 sourceLeft + 6, top + 48, sourceWidth - 12, MUTED);
             return;
         }
-        WatchUi.line(graphics, font, selected.toString(), sourceLeft + 6, compactSourceControls ? top + 75 : top + 31,
+        String path = "data/" + selected.namespace() + "/function/" + selected.path() + ".mcfunction";
+        WatchUi.line(graphics, font, path, sourceLeft + 6, compactSourceControls ? top + 53 : top + 31,
             sourceWidth - 12, TEAL);
+        int pathY = compactSourceControls ? top + 53 : top + 31;
+        if (mouseX >= sourceLeft + 6 && mouseX < sourceLeft + sourceWidth - 6 && mouseY >= pathY && mouseY < pathY + 10)
+            graphics.setTooltipForNextFrame(font, Component.literal(path), mouseX, mouseY);
         FunctionSourceDocument document = sources.document();
         if (document == null) {
-            WatchUi.line(graphics, font, sourceStatus(), sourceLeft + 6, compactSourceControls ? top + 92 : top + 52, sourceWidth - 12,
+            WatchUi.line(graphics, font, sourceStatus(), sourceLeft + 6, compactSourceControls ? top + 65 : top + 52, sourceWidth - 12,
                 sources.sourceStatus() == ClientFunctionSourceState.Status.ERROR ? AMBER : MUTED);
             return;
         }
         String metadata = (document.provider().isEmpty() ? "" : document.provider() + " · ")
             + document.revision().substring(0, Math.min(12, document.revision().length()));
         if (document.truncated()) metadata += " · " + tr("codon.source.truncated");
-        WatchUi.line(graphics, font, metadata, sourceLeft + 6, compactSourceControls ? top + 92 : top + 48,
+        WatchUi.line(graphics, font, metadata, sourceLeft + 6, compactSourceControls ? top + 65 : top + 48,
             sourceWidth - 12, MUTED);
         WatchUi.line(graphics, font, executionStatus(selected), sourceLeft + 6,
-            compactSourceControls ? top + 104 : top + 60, sourceWidth - 12, MUTED);
+            compactSourceControls ? top + 77 : top + 60, sourceWidth - 12, MUTED);
+        WatchUi.line(graphics, font, matches.isEmpty() ? "0/0" : (matchIndex + 1) + "/" + matches.size(),
+            sourceLeft + sourceWidth - 78, top + (compactSourceControls ? 98 : 81), 34, MUTED);
+        int gutter = gutterWidth();
+        int codeLeft = sourceLeft + gutter;
+        int codeWidth = sourceWidth - gutter - 4;
+        horizontalOffset = Math.clamp(horizontalOffset, 0, maxHorizontalOffset());
         int lineTop = sourceLineTop();
         int rows = sourceRows();
         if (selectedLine > document.lines().size()) {
@@ -268,37 +310,48 @@ public final class FunctionSourceScreen extends Screen {
         int lineBottom = lineTop + rows * ROW_HEIGHT;
         ClientDebuggerState debugger = CodonClientMod.state();
         Map<Integer, Integer> stageCounts = stageBreakpointCounts(selected, debugger);
+        graphics.fill(sourceLeft + 3, lineTop, sourceLeft + sourceWidth - 3, lineBottom, DebuggerTheme.color(SURFACE));
+        graphics.fill(sourceLeft + gutter - 3, lineTop, sourceLeft + gutter - 2, lineBottom, DebuggerTheme.color(BORDER));
         graphics.enableScissor(sourceLeft + 3, lineTop, sourceLeft + sourceWidth - 3, lineBottom);
         for (int index = lineOffset, y = lineTop; index < document.lines().size() && y < lineBottom; index++) {
             String number = Integer.toString(index + 1);
             SourceLocation.Function location = new SourceLocation.Function(new FunctionLocation(selected, index + 1));
             BreakpointDefinition definition = breakpoint(location);
             int color = definition == null ? MUTED : definition.enabled() ? RED : MUTED;
-            if (isActualStop(selected, index + 1)) graphics.fill(sourceLeft + 3, y, sourceLeft + 5, y + ROW_HEIGHT - 1,
-                DebuggerTheme.color(AMBER));
-            WatchUi.line(graphics, font, number, sourceLeft + 21, y + 5, 30, MUTED);
-            if (selectedLine == index + 1) graphics.fill(sourceLeft + 52, y, sourceLeft + sourceWidth - 4,
-                y + ROW_HEIGHT - 1, DebuggerTheme.color(TEAL_SURFACE));
+            boolean stopped = isActualStop(selected, index + 1);
+            boolean inspected = selectedLine == index + 1;
+            if (stopped) {
+                graphics.fill(codeLeft, y, sourceLeft + sourceWidth - 4, y + ROW_HEIGHT - 1, DebuggerTheme.color(AMBER_SURFACE));
+                // Arrow + border retain the stop/selection distinction without relying on hue.
+                graphics.text(font, ">", sourceLeft + 17, y + 5, DebuggerTheme.color(AMBER), false);
+            }
+            if (inspected) {
+                if (!stopped) graphics.fill(codeLeft, y, sourceLeft + sourceWidth - 4, y + ROW_HEIGHT - 1, DebuggerTheme.color(TEAL_SURFACE));
+                graphics.outline(codeLeft, y, codeWidth, ROW_HEIGHT - 1, DebuggerTheme.color(TEAL));
+            }
+            graphics.text(font, SourceCodeLine.plain(number), codeLeft - 7 - font.width(SourceCodeLine.plain(number)),
+                y + 5, DebuggerTheme.color(stopped ? AMBER : MUTED), false);
+            graphics.enableScissor(codeLeft, y, sourceLeft + sourceWidth - 4, y + ROW_HEIGHT);
+            renderSourceText(graphics, codeLines.get(index), index + 1, selected, codeLeft, y + 5, codeWidth);
+            graphics.disableScissor();
+            int count = stageCounts.getOrDefault(index + 1, 0);
+            if (count > 0 && !stopped) {
+                // Compact count is separate from the horizontally scrolling source.
+                String badge = count > 99 ? "+" : Integer.toString(count);
+                graphics.outline(sourceLeft + 15, y + 3, 14, 12, DebuggerTheme.color(BORDER));
+                graphics.text(font, SourceCodeLine.plain(badge), sourceLeft + 22 - codeWidth(badge) / 2,
+                    y + 5, DebuggerTheme.color(MUTED), false);
+            }
+            if (count > 0 && mouseX >= sourceLeft + 15 && mouseX < sourceLeft + 30 && mouseY >= y && mouseY < y + ROW_HEIGHT)
+                graphics.setTooltipForNextFrame(font, Component.translatable("codon.source.stage_breakpoints", count), mouseX, mouseY);
             int rowHeight = ROW_HEIGHT;
             ClientStagePreviewState.Preview preview = debugger == null ? null : debugger.stagePreviews().get(location);
-            if (selectedLine == index + 1 && stageEligible(document, index + 1)
-                && previewMatchesLine(document, index + 1, preview)) {
-                stageScrollOffset = Math.clamp(stageScrollOffset, 0, Math.max(0,
-                    inlineStageRows(preview, sourceWidth - 62) - sourceRows()));
-                rowHeight = renderInlineStages(graphics, sourceLeft + 55, sourceWidth - 62, y, lineBottom, location,
+            if (inspected && stageEligible(document, index + 1) && previewMatchesLine(document, index + 1, preview)
+                && y + ROW_HEIGHT < lineBottom) {
+                int stageRows = Math.max(1, (lineBottom - y - ROW_HEIGHT) / ROW_HEIGHT);
+                stageScrollOffset = Math.clamp(stageScrollOffset, 0, Math.max(0, inlineStageRows(preview, codeWidth) - stageRows));
+                rowHeight += renderInlineStages(graphics, codeLeft, codeWidth, y + ROW_HEIGHT, lineBottom, location,
                     preview, debugger, stageScrollOffset, mouseX, mouseY);
-            } else {
-                int textWidth = sourceWidth - 62;
-                int count = stageCounts.getOrDefault(index + 1, 0);
-                if (count > 0 && selectedLine != index + 1) {
-                    String summary = tr("codon.source.stage_breakpoints", count);
-                    int summaryWidth = Math.min(textWidth / 2, font.width(summary) + 4);
-                    textWidth -= summaryWidth + 3;
-                    WatchUi.line(graphics, font, summary, sourceLeft + 55 + textWidth + 3, y + 5,
-                        summaryWidth, MUTED);
-                }
-                renderSourceText(graphics, document.lines().get(index), selected, sourceLeft + 55, y + 5,
-                    Math.max(1, textWidth));
             }
             boolean hovered = mouseX >= sourceLeft + 3 && mouseX < sourceLeft + sourceWidth - 3
                 && mouseY >= y && mouseY < Math.min(y + rowHeight, lineBottom);
@@ -309,6 +362,10 @@ public final class FunctionSourceScreen extends Screen {
             y += rowHeight;
         }
         graphics.disableScissor();
+        renderHorizontalScrollbar(graphics, sourceLeft, sourceWidth);
+        if (mouseX >= codeLeft && mouseX < sourceLeft + sourceWidth - 4
+            && mouseY >= top + panelHeight - 44 && mouseY < top + panelHeight - 34)
+            graphics.setTooltipForNextFrame(font, Component.translatable("codon.source.navigation_hint"), mouseX, mouseY);
         renderSelectedStageDetail(graphics, sourceLeft, sourceWidth, null);
     }
 
@@ -346,7 +403,7 @@ public final class FunctionSourceScreen extends Screen {
             int partY = y + (part.row() - scrollOffset) * ROW_HEIGHT;
             int partX = x + part.x();
             if (part.stageIndex() == -2) {
-                WatchUi.line(graphics, font, part.text(), partX, partY + 4, part.textWidth(), TEXT);
+                graphics.text(font, SourceCodeLine.plain(part.text()), partX, partY + 4, DebuggerTheme.color(TEXT), false);
                 continue;
             }
             BreakpointTarget target = BreakpointTarget.stage(location, part.stageIndex(), preview.savedCommand());
@@ -364,7 +421,7 @@ public final class FunctionSourceScreen extends Screen {
                 stageHits.add(new StageHit(partX, partY, 18, 17, target, true));
             }
             graphics.fill(textX, partY, textX + part.textWidth() + 7, partY + 17, DebuggerTheme.color(surface));
-            WatchUi.line(graphics, font, part.text(), textX + 4, partY + 4, part.textWidth(), TEXT);
+            graphics.text(font, SourceCodeLine.plain(part.text()), textX + 4, partY + 4, DebuggerTheme.color(TEXT), false);
             stageHits.add(new StageHit(textX, partY, part.textWidth() + 7, 17, target, false));
         }
         return Math.max(ROW_HEIGHT, Math.min(visibleRows, inlineStageRows(parts) - scrollOffset) * ROW_HEIGHT);
@@ -385,15 +442,15 @@ public final class FunctionSourceScreen extends Screen {
         int prefixEnd = CommandFlowLayout.executePrefixEnd(preview.savedCommand());
         if (prefixEnd > 0 && !preview.spans().isEmpty()) {
             String prefix = preview.savedCommand().substring(0, prefixEnd);
-            parts.add(new InlinePart(-2, row, x, false, prefix, font.width(prefix)));
-            x = font.width(prefix);
+            parts.add(new InlinePart(-2, row, x, false, prefix, codeWidth(prefix)));
+            x = codeWidth(prefix);
         }
         boolean firstSpan = true;
         for (ClientStagePreviewState.StageSpan span : preview.spans()) {
             int start = firstSpan ? Math.max(span.start(), prefixEnd) : span.start();
             String fragment = preview.savedCommand().substring(start, span.end()).trim();
             if (fragment.isEmpty()) continue;
-            if (x > 0 && !firstSpan && font.width(fragment) + 26 > width - x) { row++; x = 0; }
+            if (x > 0 && !firstSpan && codeWidth(fragment) + 26 > width - x) { row++; x = 0; }
             int from = 0;
             boolean first = true;
             while (from < fragment.length()) {
@@ -401,9 +458,9 @@ public final class FunctionSourceScreen extends Screen {
                 int available = width - x - lead - 7;
                 if (available <= 0 && x > 0) { row++; x = 0; continue; }
                 available = Math.max(1, available);
-                String text = font.plainSubstrByWidth(fragment.substring(from), available);
+                String text = font.substrByWidth(SourceCodeLine.plain(fragment.substring(from)), available).getString();
                 if (text.isEmpty()) text = fragment.substring(from, from + 1);
-                int textWidth = Math.min(available, font.width(text));
+                int textWidth = Math.min(available, codeWidth(text));
                 parts.add(new InlinePart(span.index(), row, x, first, text, textWidth));
                 from += text.length();
                 x += lead + textWidth + 11;
@@ -430,41 +487,116 @@ public final class FunctionSourceScreen extends Screen {
         ClientStagePreviewState.Preview preview = state.stagePreviews().get(location);
         FunctionSourceDocument document = sources.document();
         return document == null || !previewMatchesLine(document, selectedLine, preview) ? 0
-            : inlineStageRows(preview, panelWidth - treeWidth - 78);
+            : inlineStageRows(preview, panelWidth - treeWidth - 20 - gutterWidth());
     }
 
-    private void renderSourceText(GuiGraphicsExtractor graphics, String source, FunctionId current, int x, int y, int width) {
-        FunctionId called = calledFunction(source, current.namespace());
-        if (called == null) {
-            WatchUi.line(graphics, font, source, x, y, width, TEXT);
-            return;
+    private int codeWidth(String text) { return font.width(SourceCodeLine.plain(text)); }
+
+    private int gutterWidth() {
+        int digits = sources.document() == null ? 1 : Integer.toString(sources.document().lines().size()).length();
+        return Math.max(48, 31 + digits * 5);
+    }
+
+    private int maxHorizontalOffset() { return Math.max(0, widestLine - (panelWidth - treeWidth - 20 - gutterWidth())); }
+
+    private void updateCodeCache() {
+        FunctionSourceDocument document = sources.document();
+        if (cachedDocument == document) return;
+        cachedDocument = document;
+        codeLines.clear();
+        widestLine = 0;
+        Map<Integer, Integer> glyphWidths = new HashMap<>();
+        if (document != null) for (String line : document.lines()) {
+            SourceCodeLine code = new SourceCodeLine(line, font, glyphWidths);
+            codeLines.add(code);
+            widestLine = Math.max(widestLine, code.width());
         }
-        String token = source.substring(source.indexOf("function") + "function".length()).trim().split("\\s+", 2)[0];
-        int tokenAt = source.indexOf(token);
-        if (tokenAt < 0) { WatchUi.line(graphics, font, source, x, y, width, TEXT); return; }
-        String before = source.substring(0, tokenAt);
-        String after = source.substring(tokenAt + token.length());
-        int beforeWidth = Math.min(font.width(before), width);
-        WatchUi.line(graphics, font, before, x, y, width, TEXT);
-        WatchUi.line(graphics, font, token, x + beforeWidth, y, Math.max(0, width - beforeWidth), TEAL);
-        WatchUi.line(graphics, font, after, x + beforeWidth + font.width(token), y,
-            Math.max(0, width - beforeWidth - font.width(token)), TEXT);
-        int visibleTokenWidth = Math.min(font.width(token), width - beforeWidth);
-        if (visibleTokenWidth > 0)
-            functionHits.add(new FunctionHit(x + beforeWidth, y - 4, visibleTokenWidth, ROW_HEIGHT, called));
+        rebuildMatches();
     }
 
-    private FunctionId calledFunction(String source, String defaultNamespace) {
-        String trimmed = source.stripLeading();
-        int index = trimmed.indexOf("function");
-        if (index < 0 || (index > 0 && Character.isLetterOrDigit(trimmed.charAt(index - 1)))) return null;
-        String tail = trimmed.substring(index + "function".length()).trim();
-        if (tail.isEmpty()) return null;
-        String token = tail.split("\\s+", 2)[0];
+    private void rebuildMatches() {
+        SourceSyntax.Match previous = matchIndex < 0 || matchIndex >= matches.size() ? null : matches.get(matchIndex);
+        matches = sources.document() == null || sourceSearch == null ? List.of()
+            : SourceSyntax.find(sources.document().lines(), sourceSearch.getValue());
+        matchesByLine.clear();
+        for (SourceSyntax.Match match : matches) matchesByLine.computeIfAbsent(match.line(), ignored -> new ArrayList<>()).add(match);
+        matchIndex = previous == null ? -1 : matches.indexOf(previous);
+    }
+
+    private void nextMatch(int direction) {
+        if (matches.isEmpty()) return;
+        matchIndex = matchIndex < 0 ? (direction > 0 ? 0 : matches.size() - 1)
+            : Math.floorMod(matchIndex + direction, matches.size());
+        SourceSyntax.Match match = matches.get(matchIndex);
+        selectLine(match.line());
+        lineOffset = match.line() - 1;
+        if (match.line() <= codeLines.size()) {
+            int start = codeLines.get(match.line() - 1).x(match.start());
+            int end = codeLines.get(match.line() - 1).x(match.end());
+            int visible = panelWidth - treeWidth - 20 - gutterWidth();
+            if (start < horizontalOffset || end > horizontalOffset + visible)
+                horizontalOffset = Math.clamp(start - 10, 0, maxHorizontalOffset());
+        }
+        rememberView();
+    }
+
+    private void renderSourceText(GuiGraphicsExtractor graphics, SourceCodeLine code, int line, FunctionId current,
+                                  int x, int y, int width) {
+        SourceSyntax.Match currentMatch = matchIndex < 0 ? null : matches.get(matchIndex);
+        for (SourceSyntax.Match match : matchesByLine.getOrDefault(line, List.of())) {
+            int start = x + code.x(match.start()) - horizontalOffset;
+            int end = x + code.x(match.end()) - horizontalOffset;
+            if (end < x || start > x + width) continue;
+            graphics.fill(Math.max(x, start), y - 2, Math.min(x + width, end), y + 10, DebuggerTheme.color(AMBER_SURFACE));
+            if (match.equals(currentMatch)) graphics.outline(Math.max(x, start), y - 2,
+                Math.max(1, Math.min(x + width, end) - Math.max(x, start)), 12, DebuggerTheme.color(AMBER));
+        }
+        SourceCodeLine.Slice slice = code.slice(horizontalOffset, width);
+        graphics.text(font, slice.text(), x + slice.x(), y, DebuggerTheme.color(TEXT), false);
+        List<SourceSyntax.Span> spans = code.spans();
+        for (int i = 0; i + 1 < spans.size(); i++) {
+            SourceSyntax.Span span = spans.get(i);
+            boolean functionCommand = span.kind() == SourceSyntax.Kind.COMMAND;
+            boolean functionCondition = i > 0 && spans.get(i - 1).kind() == SourceSyntax.Kind.KEYWORD
+                && Set.of("if", "unless").contains(code.source().substring(spans.get(i - 1).start(), spans.get(i - 1).end()));
+            if ((!functionCommand && !functionCondition) || !code.source().substring(span.start(), span.end()).equals("function")) continue;
+            SourceSyntax.Span reference = spans.get(i + 1);
+            String token = code.source().substring(reference.start(), reference.end());
+            FunctionId called = calledFunction(token, current.namespace());
+            if (called == null) continue;
+            int start = x + code.x(reference.start()) - horizontalOffset;
+            int end = x + code.x(reference.end()) - horizontalOffset;
+            int visibleStart = Math.max(x, start), visibleEnd = Math.min(x + width, end);
+            if (visibleEnd > visibleStart) {
+                graphics.fill(visibleStart, y + 9, visibleEnd, y + 10, DebuggerTheme.color(TEAL));
+                functionHits.add(new FunctionHit(visibleStart, y - 4, visibleEnd - visibleStart, ROW_HEIGHT, called));
+            }
+        }
+    }
+
+    private FunctionId calledFunction(String token, String defaultNamespace) {
         if (!token.matches("(?:[a-z0-9_.-]+:)?[a-z0-9_./-]+")) return null;
         FunctionId id = token.contains(":") ? new FunctionId(token.substring(0, token.indexOf(':')),
             token.substring(token.indexOf(':') + 1)) : new FunctionId(defaultNamespace, token);
         return sources.functions().contains(id) ? id : null;
+    }
+
+    private void renderHorizontalScrollbar(GuiGraphicsExtractor graphics, int sourceLeft, int sourceWidth) {
+        int x = sourceLeft + gutterWidth();
+        int width = sourceWidth - gutterWidth() - 4;
+        int y = top + panelHeight - 42;
+        graphics.fill(x, y, x + width, y + 6, DebuggerTheme.color(RAISED));
+        int thumb = Math.max(18, width * width / Math.max(width, widestLine));
+        int offset = maxHorizontalOffset() == 0 ? 0 : horizontalOffset * (width - thumb) / maxHorizontalOffset();
+        graphics.fill(x + offset, y, x + offset + thumb, y + 6, DebuggerTheme.color(maxHorizontalOffset() == 0 ? BORDER : TEAL));
+    }
+
+    private void scrollHorizontally(double x) {
+        int leftEdge = left + treeWidth + 8 + gutterWidth();
+        int width = panelWidth - treeWidth - 20 - gutterWidth();
+        int thumb = Math.max(18, width * width / Math.max(width, widestLine));
+        horizontalOffset = width <= thumb ? 0 : Math.clamp((int) ((x - leftEdge - thumb / 2.0) * maxHorizontalOffset() / (width - thumb)), 0, maxHorizontalOffset());
+        rememberView();
     }
 
     private BreakpointDefinition breakpoint(SourceLocation.Function location) {
@@ -484,8 +616,8 @@ public final class FunctionSourceScreen extends Screen {
 
     private boolean isActualStop(FunctionId function, int line) {
         ClientDebuggerState state = CodonClientMod.state();
-        if (state == null || state.inspectionSnapshot() == null) return false;
-        return state.inspectionSnapshot().location() instanceof SourceLocation.Function location
+        if (state == null || !state.isPaused() || state.snapshot() == null) return false;
+        return state.snapshot().location() instanceof SourceLocation.Function location
             && location.location().function().equals(function) && location.location().line() == line;
     }
 
@@ -493,7 +625,8 @@ public final class FunctionSourceScreen extends Screen {
         ClientDebuggerState state = CodonClientMod.state();
         if (state == null || state.inspectionSnapshot() == null) return tr("codon.source.record_unavailable");
         if (state.inspectionSnapshot().location() instanceof SourceLocation.Function location
-            && location.location().function().equals(function)) return tr("codon.source.actual_stop", location.location().line());
+            && location.location().function().equals(function)) return tr(state.isPaused() ? "codon.source.actual_stop"
+                : "codon.source.record_line", location.location().line());
         boolean inStack = state.inspectionSnapshot().callStack().stream().anyMatch(frame ->
             frame.location() instanceof SourceLocation.Function location && location.location().function().equals(function));
         return inStack ? tr("codon.source.record_in_stack") : tr("codon.source.record_unavailable");
@@ -581,7 +714,7 @@ public final class FunctionSourceScreen extends Screen {
     }
 
     private void rememberView() {
-        sources.rememberBrowseView(listOffset, lineOffset, selectedLine, selectedStageIndex, stageScrollOffset);
+        sources.rememberBrowseView(listOffset, lineOffset, selectedLine, selectedStageIndex, stageScrollOffset, horizontalOffset);
     }
 
     private void setDrawerOpen(boolean open) {
@@ -603,12 +736,21 @@ public final class FunctionSourceScreen extends Screen {
         selectedLine = view.selectedLine();
         selectedStageIndex = view.selectedStageIndex();
         stageScrollOffset = view.stageScrollOffset();
+        horizontalOffset = view.horizontalOffset();
     }
 
     @Override public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         if (docked && event.y() < top) {
             forwardingParentDrag = parent.mouseClicked(event, doubleClick);
             return forwardingParentDrag;
+        }
+        if (!drawerOpen && event.button() == InputConstants.MOUSE_BUTTON_LEFT
+            && event.y() >= top + panelHeight - 44 && event.y() < top + panelHeight - 34
+            && event.x() >= left + treeWidth + 8 + gutterWidth() && event.x() < left + panelWidth - 12) {
+            draggingHorizontal = true;
+            scrollHorizontally(event.x());
+            setFocused(null);
+            return true;
         }
         ClientDebuggerState debugger = CodonClientMod.state();
         for (FunctionHit hit : functionHits) {
@@ -624,6 +766,7 @@ public final class FunctionSourceScreen extends Screen {
             selectedStageIndex = hit.target().stageIndex();
             selectedLine = ((SourceLocation.Function) hit.target().location()).location().line();
             rememberView();
+            setFocused(null);
             if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && hit.control()) {
                 ClientNetworking.sendBreakpointEdit(debugger, ClientBreakpointState.Action.TOGGLE,
                     definition == null ? BreakpointDefinition.plain(hit.target()) : definition);
@@ -636,13 +779,13 @@ public final class FunctionSourceScreen extends Screen {
             FunctionSourceDocument document = sources.document();
             int sourceLeft = left + treeWidth + 8;
             int lineTop = sourceLineTop();
-            if (document != null && event.x() >= sourceLeft + 3 && event.x() < left + panelWidth - 8
+            if (!drawerOpen && document != null && event.x() >= sourceLeft + 3 && event.x() < left + panelWidth - 8
                 && event.y() >= lineTop && event.y() < lineTop + sourceRows() * ROW_HEIGHT) {
                 int line = lineHits.stream().filter(hit -> hit.contains(event.y())).map(LineHit::line)
                     .findFirst().orElse(-1);
-                if (line >= 1 && line <= document.lines().size() && debugger != null && sources.selected() != null) {
+                if (line >= 1 && line <= document.lines().size() && sources.selected() != null) {
                     SourceLocation.Function location = new SourceLocation.Function(new FunctionLocation(sources.selected(), line));
-                    if (event.x() < sourceLeft + 20 && wholeEligible(document, line)) {
+                    if (event.x() < sourceLeft + 17 && debugger != null && wholeEligible(document, line)) {
                         selectedLine = line;
                         selectedStageIndex = -1;
                         stageScrollOffset = 0;
@@ -651,13 +794,8 @@ public final class FunctionSourceScreen extends Screen {
                         ClientNetworking.sendBreakpointEdit(debugger, ClientBreakpointState.Action.TOGGLE,
                             definition == null ? BreakpointDefinition.plain(target) : definition);
                         rememberView();
-                    } else {
-                        selectedLine = line;
-                        selectedStageIndex = -1;
-                        stageScrollOffset = 0;
-                        if (stageEligible(document, line)) ClientNetworking.requestStagePreview(debugger, location);
-                        rememberView();
-                    }
+                    } else selectLine(line);
+                    setFocused(null);
                     return true;
                 }
             }
@@ -691,25 +829,88 @@ public final class FunctionSourceScreen extends Screen {
         if (docked && y < top) return parent.mouseScrolled(x, y, scrollX, scrollY);
         int delta = -(int) Math.signum(scrollY) * 3;
         if (x < left + treeWidth) listOffset = Math.clamp(listOffset + delta, 0, Math.max(0, entries.size() - visibleRows()));
-        else if (sources.document() != null) {
-            int stageRows = selectedInlineStageRows();
-            if (stageRows > sourceRows()) stageScrollOffset = Math.clamp(stageScrollOffset + delta, 0, stageRows - sourceRows());
-            else lineOffset = Math.clamp(lineOffset + delta, 0, Math.max(0, sources.document().lines().size() - sourceRows()));
+        else if (!drawerOpen && sources.document() != null) {
+            boolean shift = Minecraft.getInstance().hasShiftDown();
+            if (scrollX != 0 || shift) {
+                horizontalOffset = Math.clamp(horizontalOffset - (int) ((shift ? scrollY : scrollX) * 30), 0, maxHorizontalOffset());
+            } else {
+                int stageRows = selectedInlineStageRows();
+                int stageVisible = Math.max(1, sourceRows() - 1);
+                // Scroll stage detail only while pointing at it; the rest of the pane scrolls original lines.
+                LineHit selectedHit = lineHits.stream().filter(hit -> hit.line() == selectedLine).findFirst().orElse(null);
+                if (selectedHit != null && y >= selectedHit.y() + ROW_HEIGHT && y < selectedHit.y() + selectedHit.height()
+                    && stageRows > stageVisible) stageScrollOffset = Math.clamp(stageScrollOffset + delta, 0, stageRows - stageVisible);
+                else lineOffset = Math.clamp(lineOffset + delta, 0, Math.max(0, sources.document().lines().size() - sourceRows()));
+            }
         }
         rememberView();
         return true;
     }
 
+    private void selectLine(int line) {
+        FunctionSourceDocument document = sources.document();
+        if (document == null || document.lines().isEmpty() || sources.selected() == null) return;
+        selectedLine = Math.clamp(line, 1, document.lines().size());
+        selectedStageIndex = -1;
+        stageScrollOffset = 0;
+        lineOffset = Math.clamp(lineOffset, Math.max(0, selectedLine - sourceRows()), selectedLine - 1);
+        ClientDebuggerState debugger = CodonClientMod.state();
+        if (debugger != null && stageEligible(document, selectedLine)) ClientNetworking.requestStagePreview(debugger,
+            new SourceLocation.Function(new FunctionLocation(sources.selected(), selectedLine)));
+        rememberView();
+    }
+
     @Override public boolean keyPressed(KeyEvent event) {
-        if (event.key() == InputConstants.KEY_ESCAPE) { onClose(); return true; }
+        if (event.key() == InputConstants.KEY_F && event.hasControlDownWithQuirk() && sourceSearch.visible) {
+            setFocused(sourceSearch);
+            sourceSearch.setHighlightPos(0);
+            return true;
+        }
+        if (event.key() == InputConstants.KEY_F3 || sourceSearch.isFocused() && event.key() == InputConstants.KEY_RETURN) {
+            nextMatch(event.hasShiftDown() ? -1 : 1);
+            return true;
+        }
+        if (event.key() == InputConstants.KEY_ESCAPE) {
+            if (sourceSearch.isFocused()) { setFocused(null); return true; }
+            onClose(); return true;
+        }
+        if (event.key() == InputConstants.KEY_TAB) {
+            List<AbstractWidget> eligible = children().stream().filter(AbstractWidget.class::isInstance)
+                .map(AbstractWidget.class::cast).filter(widget -> widget.visible && widget.active).toList();
+            if (!eligible.isEmpty()) {
+                int index = eligible.indexOf(getFocused());
+                setFocused(eligible.get(Math.floorMod(index + (event.hasShiftDown() ? -1 : 1), eligible.size())));
+            }
+            return true;
+        }
+        boolean typing = search.visible && search.isFocused() || sourceSearch.visible && sourceSearch.isFocused();
+        if (!typing && !drawerOpen && sources.document() != null) {
+            int delta = switch (event.key()) {
+                case InputConstants.KEY_UP -> -1;
+                case InputConstants.KEY_DOWN -> 1;
+                case InputConstants.KEY_PAGEUP -> -sourceRows();
+                case InputConstants.KEY_PAGEDOWN -> sourceRows();
+                default -> 0;
+            };
+            if (delta != 0) { selectLine((selectedLine > 0 ? selectedLine : lineOffset + 1) + delta); return true; }
+            if (event.key() == InputConstants.KEY_HOME || event.key() == InputConstants.KEY_END) {
+                selectLine(event.key() == InputConstants.KEY_HOME ? 1 : sources.document().lines().size()); return true;
+            }
+            if (event.key() == InputConstants.KEY_LEFT || event.key() == InputConstants.KEY_RIGHT) {
+                horizontalOffset = Math.clamp(horizontalOffset + (event.key() == InputConstants.KEY_RIGHT ? 30 : -30), 0, maxHorizontalOffset());
+                rememberView(); return true;
+            }
+        }
         return super.keyPressed(event) || docked && parent.keyPressed(event);
     }
 
     @Override public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
+        if (draggingHorizontal) { scrollHorizontally(event.x()); return true; }
         return forwardingParentDrag ? parent.mouseDragged(event, dx, dy) : super.mouseDragged(event, dx, dy);
     }
 
     @Override public boolean mouseReleased(MouseButtonEvent event) {
+        if (draggingHorizontal) { draggingHorizontal = false; return true; }
         if (!forwardingParentDrag) return super.mouseReleased(event);
         forwardingParentDrag = false;
         return parent.mouseReleased(event);

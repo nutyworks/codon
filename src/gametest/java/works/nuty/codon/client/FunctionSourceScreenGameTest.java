@@ -12,6 +12,13 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.input.MouseButtonInfo;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.network.chat.FontDescription;
+import net.minecraft.network.chat.Style;
+import net.minecraft.resources.Identifier;
+import works.nuty.codon.core.model.PauseSnapshot;
+import works.nuty.codon.core.model.PauseReason;
+import works.nuty.codon.core.model.CommandSnippet;
 import net.minecraft.network.chat.Component;
 import works.nuty.codon.client.state.ClientFunctionSourceState;
 import works.nuty.codon.client.state.ClientStagePreviewState;
@@ -83,13 +90,27 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             });
             context.waitTicks(1);
             context.takeScreenshot("codon-function-source-320x240-stage-first");
-            context.getInput().setCursorPos(420, 390);
+            context.getInput().setCursorPos(330, 444);
             context.waitTicks(2);
             context.takeScreenshot("codon-function-source-disabled-hover");
             context.getInput().setCursorPos(0, 0);
-            context.runOnClient(client -> screen.mouseScrolled(100, 130, 0, -1));
+            context.runOnClient(client -> screen.mouseScrolled(100, 160, 0, -1));
             context.waitTicks(2);
             context.takeScreenshot("codon-function-source-320x240-stage-scrolled");
+            context.runOnClient(client -> {
+                MouseButtonEvent click = new MouseButtonEvent(90, 149,
+                    new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
+                require(screen.mouseClicked(click, false), "selects scrolled stage text without toggling its marker");
+                screen.mouseReleased(click);
+            });
+            context.waitTicks(1);
+            context.runOnClient(client -> {
+                require(screen.children().stream().filter(AbstractButton.class::isInstance).map(AbstractButton.class::cast)
+                    .anyMatch(button -> button.visible && button.active && button.getMessage().getString().equals("Stage condition…")),
+                    "selected server-provided stage retains its condition control");
+            });
+            context.waitTicks(1);
+            context.takeScreenshot("codon-function-source-stage-selected");
             context.getInput().resizeWindow(960, 540);
             context.waitTicks(2);
             context.runOnClient(client -> {
@@ -147,6 +168,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             context.takeScreenshot("codon-function-source-filtered-drawer");
             context.runOnClient(client -> verifyFilteredSelection(client.gui.screen(), sourceState));
             verifySearchScrollReset(context);
+            verifyCodeReader(context);
             context.runOnClient(client -> client.setScreenAndShow(null));
         }
     }
@@ -195,6 +217,119 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             "query change stays at the first filtered result after resizing; selected=" + sources.selected()));
     }
 
+    private static void verifyCodeReader(ClientGameTestContext context) {
+        context.getInput().resizeWindow(1600, 1000);
+        ClientFunctionSourceState sources = context.computeOnClient(client -> {
+            client.options.guiScale().set(2);
+            client.resizeGui();
+            var state = loadedSource();
+            state.rememberBrowseView(0, 0, 3, -1, 0);
+            var debugger = require(CodonClientMod.state(), "debugger state exists");
+            debugger.applyPause(new PauseSnapshot(new SourceLocation.Function(new FunctionLocation(FUNCTION, 4)),
+                CommandSnippet.plain("say source_reader"), 0, List.of(), List.of(), PauseReason.BREAKPOINT));
+            Screen screen = new FunctionSourceScreen(new Screen(Component.empty()) { }, state);
+            client.setScreenAndShow(screen);
+            Style code = Style.EMPTY.withFont(new FontDescription.Resource(Identifier.fromNamespaceAndPath("codon", "code")));
+            int advance = client.font.width(Component.literal("W").setStyle(code));
+            require(advance == 5, "code resource font has a five-pixel ASCII advance, actual " + advance);
+            for (char ch = 32; ch < 127; ch++) require(client.font.width(Component.literal(String.valueOf(ch)).setStyle(code)) == advance,
+                "ASCII glyph has fixed advance: " + ch);
+            require(client.font.width(Component.literal("한글😀").setStyle(code)) > 0, "Unicode text retains glyph geometry");
+            return state;
+        });
+        context.waitTicks(2);
+        context.takeScreenshot("codon-function-source-code-stop-and-selection");
+        context.runOnClient(client -> {
+            Screen screen = client.gui.screen();
+            screen.setFocused(null);
+            screen.keyPressed(new KeyEvent(InputConstants.KEY_END, 0, 0));
+            screen.keyPressed(new KeyEvent(InputConstants.KEY_RIGHT, 0, 0));
+        });
+        context.waitTicks(1);
+        context.runOnClient(client -> {
+            Screen screen = client.gui.screen();
+            EditBox find = sourceSearchBox(screen);
+            MouseButtonEvent click = new MouseButtonEvent(find.getX() + 48 - 5 + 45 - 30 + 5,
+                find.getBottom() + 5 + 4 * 18 + 7, new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
+            require(screen.mouseClicked(click, false), "follows the visible underlined function reference");
+            screen.mouseReleased(click);
+            require(new FunctionId("codon_test", "other_function").equals(sources.selected()), "reference selects the loaded target");
+        });
+        context.waitTicks(1);
+        context.runOnClient(client -> {
+            Screen screen = client.gui.screen();
+            AbstractButton back = screen.children().stream().filter(AbstractButton.class::isInstance).map(AbstractButton.class::cast)
+                .filter(button -> button.visible && button.getMessage().getString().equals("Back")).findFirst().orElseThrow();
+            MouseButtonEvent click = new MouseButtonEvent(back.getX() + 2, back.getY() + 2,
+                new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
+            screen.mouseClicked(click, false);
+            screen.mouseReleased(click);
+            require(FUNCTION.equals(sources.selected()) && sources.browseView().selectedLine() == 5
+                && sources.browseView().horizontalOffset() == 30, "Back restores caller line and horizontal viewport");
+            long request = sources.drainRequests().stream().filter(ClientFunctionSourceState.Request.ReadFunction.class::isInstance)
+                .map(ClientFunctionSourceState.Request.ReadFunction.class::cast).filter(read -> read.function().equals(FUNCTION))
+                .reduce((first, last) -> last).orElseThrow().requestId();
+            sources.accept(new ClientFunctionSourceState.SourcePage(request, ClientFunctionSourceState.Status.READY, FUNCTION,
+                "gametest", "source-preview", false, 0, true, List.of(COMMAND, "", "# Source comment · 한글",
+                "say source_reader", "function codon_test:other_function")));
+            screen.keyPressed(new KeyEvent(InputConstants.KEY_HOME, 0, 0));
+            screen.keyPressed(new KeyEvent(InputConstants.KEY_DOWN, 0, 0));
+            screen.keyPressed(new KeyEvent(InputConstants.KEY_DOWN, 0, 0));
+        });
+        context.waitTicks(1);
+        context.runOnClient(client -> {
+            Screen screen = client.gui.screen();
+            screen.setFocused(null);
+            require(screen.keyPressed(new KeyEvent(InputConstants.KEY_DOWN, 0, 0)), "arrow key navigates source lines");
+            require(sources.browseView().selectedLine() == 4, "keyboard selection uses original file line numbers");
+            screen.keyPressed(new KeyEvent(InputConstants.KEY_HOME, 0, 0));
+            screen.mouseScrolled(screen.width - 120, 180, -10, 0);
+            require(sources.browseView().horizontalOffset() > 0, "horizontal wheel exposes the long source tail");
+            require(sources.browseView().selectedLine() == 1, "horizontal movement preserves the selected original line");
+        });
+        context.waitTicks(2);
+        context.takeScreenshot("codon-function-source-code-horizontal");
+        context.runOnClient(client -> {
+            Screen screen = client.gui.screen();
+            EditBox find = sourceSearchBox(screen);
+            screen.setFocused(find);
+            find.setValue("preview_value");
+            require(sources.browseView().selectedLine() == 1 && sources.browseView().horizontalOffset() > 0,
+                "find moves to a match beyond the initial horizontal viewport");
+            require(sources.document().lines().getFirst().equals(COMMAND), "navigation leaves source bytes unchanged");
+        });
+        context.waitTicks(2);
+        context.takeScreenshot("codon-function-source-code-find-tail");
+        context.getInput().resizeWindow(960, 720);
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            client.options.guiScale().set(3);
+            client.resizeGui();
+            Screen screen = client.gui.screen();
+            require(sourceSearchBox(screen).getValue().equals("preview_value"), "source find survives a compact rebuild");
+            require(sources.browseView().horizontalOffset() > 0, "horizontal viewport survives resize");
+            sourceSearchBox(screen).setValue("source");
+            screen.setFocused(sourceSearchBox(screen));
+            screen.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
+            require(sources.browseView().selectedLine() == 3, "next result includes comments at the original line");
+            screen.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 1));
+            require(sources.browseView().selectedLine() == 1, "Shift+Enter returns to the previous literal result");
+        });
+        context.waitTicks(2);
+        context.takeScreenshot("codon-function-source-code-find-compact");
+        context.runOnClient(client -> {
+            var debugger = require(CodonClientMod.state(), "debugger state exists");
+            debugger.applyResume();
+            sourceSearchBox(client.gui.screen()).setValue("not_present");
+        });
+        context.waitTicks(2);
+        context.takeScreenshot("codon-function-source-code-find-empty-resumed");
+    }
+
+    private static EditBox sourceSearchBox(Screen screen) {
+        return screen.children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast).skip(1).findFirst().orElseThrow();
+    }
+
     private static KeyMapping key(String name, int code, KeyMapping.Category category) {
         return new KeyMapping("key.codon." + name, InputConstants.Type.KEYBOARD, code, category);
     }
@@ -204,7 +339,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
         sources.select(FUNCTION);
         long request = ((ClientFunctionSourceState.Request.ReadFunction) sources.drainRequests().getFirst()).requestId();
         sources.accept(new ClientFunctionSourceState.SourcePage(request, ClientFunctionSourceState.Status.READY, FUNCTION,
-            "gametest", "source-preview", false, 0, true, List.of(COMMAND)));
+            "gametest", "source-preview", false, 0, true, List.of(COMMAND, "", "# Source comment · 한글", "say source_reader", "function codon_test:other_function")));
         sources.open();
         long listRequest = ((ClientFunctionSourceState.Request.ListFunctions) sources.drainRequests().getFirst()).requestId();
         sources.accept(new ClientFunctionSourceState.ListPage(listRequest, ClientFunctionSourceState.Status.READY,

@@ -1,0 +1,12 @@
+{
+  "providers": [
+    { "type": "space", "advances": { " ": 5, "\t": 20 } },
+    {
+      "type": "unihex",
+      "hex_file": "minecraft:font/unifont.zip",
+      "size_overrides": [
+        { "from": "\u0021", "to": "\u007e", "left": 0, "right": 7 }
+      ]
+    }
+  ]
+}
