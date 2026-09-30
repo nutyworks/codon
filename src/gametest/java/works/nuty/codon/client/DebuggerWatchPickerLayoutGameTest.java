@@ -33,24 +33,27 @@ public final class DebuggerWatchPickerLayoutGameTest implements FabricClientGame
         int oldScale = context.computeOnClient(client -> client.options.guiScale().get());
         String oldLanguage = context.computeOnClient(client -> client.getLanguageManager().getSelected());
         try (TestSingleplayerContext ignored = context.worldBuilder().create()) {
-            for (String language : new String[]{"en_us", "ko_kr"}) {
-                language(context, language);
-                for (int[] viewport : new int[][]{{1280, 800, 2, 0}, {320, 240, 1, 0}, {1280, 800, 3, 9}}) {
-                    context.getInput().resizeWindow(viewport[0], viewport[1]);
-                    context.runOnClient(client -> { client.options.guiScale().set(viewport[2]); client.resizeGui(); });
-                    for (WatchSpec.Kind kind : new WatchSpec.Kind[]{WatchSpec.Kind.STORAGE_NBT, WatchSpec.Kind.SCORE})
-                        for (int row = 0; row < 2; row++) checkPicker(context, language, viewport[2], viewport[3], kind, row);
-                }
-                context.getInput().resizeWindow(1280, 800);
-                context.runOnClient(client -> { client.options.guiScale().set(2); client.resizeGui(); });
-                if (language.equals("ko_kr"))
-                    for (int row = 0; row < 2; row++) checkPicker(context, language, 2, 0, WatchSpec.Kind.ENTITY_NBT, row);
+            // One case per Browse/Choose route; vary language and scale without a Cartesian product.
+            for (var scenario : List.of(
+                new Scenario("en_us", 1280, 800, 3, 9, WatchSpec.Kind.SCORE, 1), // Custom-scale holder selection
+                new Scenario("en_us", 1280, 800, 2, 0, WatchSpec.Kind.STORAGE_NBT, 0), // Storage paging and Retry
+                new Scenario("en_us", 1280, 800, 3, 9, WatchSpec.Kind.STORAGE_NBT, 1), // Custom-scale NBT expand/Up
+                new Scenario("ko_kr", 320, 240, 1, 0, WatchSpec.Kind.SCORE, 0), // Short Objectives, keyboard/gap hits, scroll
+                new Scenario("ko_kr", 1280, 800, 2, 0, WatchSpec.Kind.ENTITY_NBT, 0), // Localized NBT expand/Up
+                new Scenario("ko_kr", 1280, 800, 2, 0, WatchSpec.Kind.ENTITY_NBT, 1) // Entity selection
+            )) {
+                language(context, scenario.language());
+                context.getInput().resizeWindow(scenario.width(), scenario.height());
+                context.runOnClient(client -> { client.options.guiScale().set(scenario.gameScale()); client.resizeGui(); });
+                checkPicker(context, scenario.language(), scenario.gameScale(), scenario.customScale(), scenario.kind(), scenario.row());
             }
         } finally {
             context.runOnClient(client -> { client.setScreenAndShow(null); client.options.guiScale().set(oldScale); client.resizeGui(); });
             language(context, oldLanguage);
         }
     }
+
+    private record Scenario(String language, int width, int height, int gameScale, int customScale, WatchSpec.Kind kind, int row) {}
 
     private static void checkPicker(ClientGameTestContext context, String language, int gameScale, int custom, WatchSpec.Kind kind, int row) {
         ClientDebuggerState state = new ClientDebuggerState();

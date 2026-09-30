@@ -73,6 +73,14 @@ display during a pending reply must not enable actions on stale data.
 | Pinning, grouping, persistence | `DebuggerWatchPinGameTest`, `DebuggerWatchGroupingGameTest`, `DebuggerWatchPersistenceGameTest` |
 | Pause-time changes and command chains | `PauseWatchChangesGameTest`, `DebuggerWatchChainGameTest`, `DebuggerAutomaticWatchGameTest` |
 
+The two layout GameTests use six representative cases each, not a language ×
+viewport × Watch-kind matrix. The form cases retain all three kinds in both
+languages, normal/compact layouts, custom-scale resize/clamping, validation,
+Retry, and Add/Save. The picker cases exercise each kind/field route once,
+including two short Objectives, paging/Retry, NBT expand/Up, narrow Korean
+scrolling and custom-scale selection. `WatchFormLayoutTest` and
+`WatchPickerLayoutTest` retain the focused geometry and viewport boundary checks.
+
 Example: `./gradlew runClientGameTest -PclientGameTest=DebuggerNbtTreeGameTest`.
 Choose the row for the changed behavior, not the whole table. Inspect the matching
 `*codon-*.png` captures where emitted. UI fixtures alone do not prove paused-server
