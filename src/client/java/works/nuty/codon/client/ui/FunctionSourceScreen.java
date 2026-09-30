@@ -30,6 +30,7 @@ import works.nuty.codon.client.ui.layout.CommandFlowLayout;
 import works.nuty.codon.client.ui.layout.SourceSyntax;
 import works.nuty.codon.client.ui.layout.SourceLineLayout;
 import works.nuty.codon.client.ui.layout.SourceInteraction;
+import works.nuty.codon.client.ui.layout.SourceReferences;
 import works.nuty.codon.core.model.BreakpointDefinition;
 import works.nuty.codon.core.model.BreakpointTarget;
 import works.nuty.codon.core.model.FunctionId;
@@ -87,10 +88,12 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
     private record InlineStage(int index, int start, int end, BreakpointTarget target) { }
     private record InlineRow(ClientStagePreviewState.Preview preview, List<InlineStage> stages) { }
     private final Map<Integer, InlineRow> inlineRows = new HashMap<>();
+    private final Map<Integer, String> sourceFingerprints = new HashMap<>();
     private SourceLineLayout inlineLayout;
-    private record FunctionHit(int x, int y, int width, int height, FunctionId function) {
-        boolean contains(double px, double py) { return px >= x && px < x + width && py >= y && py < y + height; }
+    private record FunctionHit(SourceInteraction.HitBox bounds, FunctionId function) {
+        boolean contains(double px, double py) { return bounds.contains(px, py); }
     }
+    private record StageCounts(int enabled, int obsolete) { }
 
     public FunctionSourceScreen(Screen parent, ClientFunctionSourceState sources) {
         super(Component.translatable("codon.source.title"), preferencesFor(parent));
@@ -182,8 +185,8 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             if (debugger != null) {
                 var location = new SourceLocation.Function(new FunctionLocation(sources.selected(), selectedLine));
                 var preview = debugger.stagePreviews().get(location);
-                if (preview == null || preview.status() == ClientStagePreviewState.Status.READY
-                    && sources.document() != null && !previewMatchesLine(sources.document(), selectedLine, preview))
+                if (preview == null || sources.document() != null && selectedLine <= sources.document().lines().size()
+                    && ClientStagePreviewState.needsRefresh(preview, sources.document().lines().get(selectedLine - 1).trim()))
                     ClientNetworking.requestStagePreview(debugger, location);
             }
         }
@@ -389,7 +392,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         lineOffset = Math.clamp(lineOffset, 0, maximumLineOffset());
         int lineBottom = lineTop + rows * ROW_HEIGHT;
         ClientDebuggerState debugger = CodonClientMod.state();
-        Map<Integer, Integer> stageCounts = stageBreakpointCounts(selected, debugger);
+        Map<Integer, StageCounts> stageCounts = stageBreakpointCounts(selected, debugger);
         int nextHoveredLine = -1, nextHoveredStage = -1;
         expandedWidth = widestLine;
         graphics.fill(sourceLeft + 3, lineTop, codeRight(), lineBottom, DebuggerTheme.color(SURFACE));
@@ -412,7 +415,8 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             graphics.text(font, SourceCodeLine.plain(number), lineMarkerX() - 4 - font.width(SourceCodeLine.plain(number)),
                 y + 5, DebuggerTheme.color(stopped ? AMBER : MUTED), false);
             SourceCodeLine code = codeLines.get(index);
-            List<InlineStage> stages = stagesForLine(line, hovered || stageCounts.containsKey(line));
+            StageCounts counts = stageCounts.getOrDefault(line, new StageCounts(0, 0));
+            List<InlineStage> stages = stagesForLine(line, hovered || counts.enabled() > 0);
             SourceLineLayout layout = visibleLayout(code, stages, hovered && hoveredLine == line ? hoveredStage : -1);
             int rowHoveredStage = -1;
             if (hovered && mouseX >= codeLeft) {
@@ -430,19 +434,26 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             expandedWidth = Math.max(expandedWidth, layout.width());
             if (inspected) inlineLayout = layout;
             graphics.enableScissor(codeLeft, y, codeRight(), y + ROW_HEIGHT);
-            renderSourceText(graphics, code, layout, line, selected, codeLeft, y + 5, codeWidth);
+            renderSourceText(graphics, code, layout, line, codeLeft, y, codeWidth);
             renderInlineMarkers(graphics, stages, layout, line, rowHoveredStage, codeLeft, y, codeWidth, mouseX, mouseY);
             graphics.disableScissor();
             boolean enabled = definition != null && definition.enabled();
             if (enabled || hovered && wholeEligible(document, line)) {
                 BreakpointUi.icon(definition).drawSmall(graphics, lineMarkerX(), y + 5,
                     DebuggerTheme.color(enabled ? RED : MUTED));
-            } else if (stageCounts.containsKey(line) && stages.isEmpty()) {
+            } else if (counts.enabled() > 0 && stages.isEmpty()) {
                 // Acknowledged stages stay visible in the gutter while their server preview loads.
                 DebuggerIcon.BREAKPOINT.drawSmall(graphics, lineMarkerX(), y + 5, DebuggerTheme.color(RED));
             }
-            if (hovered && mouseX >= lineMarkerX() - 2 && mouseX < lineMarkerX() + 10 && stageCounts.containsKey(line))
-                graphics.setTooltipForNextFrame(font, Component.translatable("codon.source.stage_breakpoints", stageCounts.get(line)), mouseX, mouseY);
+            if (counts.obsolete() > 0) {
+                // A changed fingerprint has no valid marker in the new command. Keep a
+                // separate review warning; never disguise it as a current stage control.
+                graphics.text(font, "!", sourceLeft + 10, y + 5, DebuggerTheme.color(AMBER), false);
+                if (hovered && mouseX >= sourceLeft + 8 && mouseX < sourceLeft + 15)
+                    graphics.setTooltipForNextFrame(font, Component.translatable("codon.breakpoint.error.stale_source"), mouseX, mouseY);
+            }
+            if (hovered && mouseX >= lineMarkerX() - 2 && mouseX < lineMarkerX() + 10 && counts.enabled() > 0)
+                graphics.setTooltipForNextFrame(font, Component.translatable("codon.source.stage_breakpoints", counts.enabled()), mouseX, mouseY);
             lineHits.add(new LineHit(y, ROW_HEIGHT, line));
         }
         hoveredLine = nextHoveredLine; hoveredStage = nextHoveredStage;
@@ -454,14 +465,21 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             graphics.setTooltipForNextFrame(font, font.split(Component.translatable("codon.source.navigation_hint"), Math.min(240, width - 24)), mouseX, mouseY);
     }
 
-    private static Map<Integer, Integer> stageBreakpointCounts(FunctionId function, ClientDebuggerState debugger) {
-        Map<Integer, Integer> counts = new HashMap<>();
+    private Map<Integer, StageCounts> stageBreakpointCounts(FunctionId function, ClientDebuggerState debugger) {
+        Map<Integer, StageCounts> counts = new HashMap<>();
         if (debugger == null) return counts;
         for (BreakpointDefinition definition : debugger.breakpoints().definitions()) {
             BreakpointTarget target = definition.target();
-            if (definition.enabled() && target.stageIndex() >= 0 && target.location() instanceof SourceLocation.Function location
+            if (target.stageIndex() >= 0 && target.location() instanceof SourceLocation.Function location
                 && location.location().function().equals(function)) {
-                counts.merge(location.location().line(), 1, Integer::sum);
+                int line = location.location().line();
+                if (line < 1 || line > codeLines.size()) continue;
+                String fingerprint = sourceFingerprints.computeIfAbsent(line,
+                    key -> BreakpointTarget.fingerprint(codeLines.get(key - 1).source().trim()));
+                boolean obsolete = SourceInteraction.stageNeedsReview(definition, fingerprint);
+                if (!obsolete && !definition.enabled()) continue;
+                counts.merge(line, new StageCounts(obsolete ? 0 : 1, obsolete ? 1 : 0),
+                    (a, b) -> new StageCounts(a.enabled() + b.enabled(), a.obsolete() + b.obsolete()));
             }
         }
         return counts;
@@ -481,7 +499,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         SourceCodeLine code = codeLines.get(line - 1);
         var location = new SourceLocation.Function(new FunctionLocation(sources.selected(), line));
         var preview = state.stagePreviews().get(location);
-        if (preview == null && requestIfMissing) {
+        if (requestIfMissing && ClientStagePreviewState.needsRefresh(preview, document.lines().get(line - 1).trim())) {
             ClientNetworking.requestStagePreview(state, location);
             preview = state.stagePreviews().get(location);
         }
@@ -569,6 +587,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         cachedDocument = document;
         codeLines.clear();
         inlineRows.clear();
+        sourceFingerprints.clear();
         expandedWidth = widestLine = 0;
         Map<Integer, Float> glyphWidths = new HashMap<>();
         if (document != null) for (String line : document.lines()) {
@@ -614,8 +633,9 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         rememberView();
     }
 
-    private void renderSourceText(GuiGraphicsExtractor graphics, SourceCodeLine code, SourceLineLayout layout, int line, FunctionId current,
-                                  int x, int y, int width) {
+    private void renderSourceText(GuiGraphicsExtractor graphics, SourceCodeLine code, SourceLineLayout layout, int line,
+                                  int x, int rowY, int width) {
+        int y = rowY + 5;
         SourceSyntax.Match currentMatch = matchIndex < 0 ? null : matches.get(matchIndex);
         for (SourceLineLayout.Segment segment : layout.segments()) {
             for (SourceSyntax.Match match : matchesByLine.getOrDefault(line, List.of())) {
@@ -640,23 +660,18 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             if ((!functionCommand && !functionCondition) || !code.source().substring(span.start(), span.end()).equals("function")) continue;
             SourceSyntax.Span reference = spans.get(i + 1);
             String token = code.source().substring(reference.start(), reference.end());
-            FunctionId called = calledFunction(token, current.namespace());
+            FunctionId called = SourceReferences.loadedFunction(token, sources.functions());
             if (called == null) continue;
             int start = x + layout.x(reference.start()) - horizontalOffset;
             int end = x + layout.before(reference.end()) - horizontalOffset;
             int visibleStart = Math.max(x, start), visibleEnd = Math.min(x + width, end);
             if (visibleEnd > visibleStart) {
                 graphics.fill(visibleStart, y + 9, visibleEnd, y + 10, DebuggerTheme.color(TEAL));
-                functionHits.add(new FunctionHit(visibleStart, y - 4, visibleEnd - visibleStart, ROW_HEIGHT, called));
+                var bounds = SourceInteraction.clippedRowHit(visibleStart, visibleEnd, rowY, ROW_HEIGHT,
+                    x, sourceLineTop(), width, sourceRows() * ROW_HEIGHT);
+                if (bounds != null) functionHits.add(new FunctionHit(bounds, called));
             }
         }
-    }
-
-    private FunctionId calledFunction(String token, String defaultNamespace) {
-        if (!token.matches("(?:[a-z0-9_.-]+:)?[a-z0-9_./-]+")) return null;
-        FunctionId id = token.contains(":") ? new FunctionId(token.substring(0, token.indexOf(':')),
-            token.substring(token.indexOf(':') + 1)) : new FunctionId(defaultNamespace, token);
-        return sources.functions().contains(id) ? id : null;
     }
 
     private void renderHorizontalScrollbar(GuiGraphicsExtractor graphics, int sourceLeft, int sourceWidth) {

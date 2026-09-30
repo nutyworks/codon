@@ -37,7 +37,12 @@ be checked. The viewer lists functions actually loaded by the current server.
    location is labelled as a recorded line and has no live-pause arrow.
 4. With execution resumed, change/reload the scratch datapack. Use Refresh to
    update the function list and Reload to reread the selected source. Removed
-   functions and stale stage targets must be represented explicitly.
+   functions and stale stage targets must be represented explicitly. Hover a changed,
+   unselected line after reload: a READY preview for the old command must refresh
+   once; LOADING retains its in-flight request. An obsolete enabled fingerprint or
+   server-confirmed stale target keeps an amber `!` review warning left of the line
+   number, including after the new preview has nonempty stages. It never becomes a
+   current stage marker or click target.
 5. At a narrow GUI, open the Functions drawer, select the long line and scroll horizontally to its
    later stage markers. At a wider GUI, verify the docked viewer and parent controls. Text,
    markers and condition controls must remain reachable after resizing. Drag the
@@ -60,7 +65,11 @@ be checked. The viewer lists functions actually loaded by the current server.
    controls; with no focused widget, Tab starts at the first active visible control
    and Shift+Tab starts at the last. Follow underlined loaded function references and use Back; the caller's
    line/stage and horizontal viewport must return. References in `return run function`
-   and `schedule function` are linked; matching words in `say` text or comments are not. Source text remains read-only.
+   and `schedule function` are linked; matching words in `say` text or comments are not.
+   Unqualified `function helper` follows Minecraft 26.3's `minecraft:helper` default,
+   even when the caller is `pack:main` and `pack:helper` is also loaded. Link hit boxes
+   share the source row's half-open bounds and are clipped to the source viewport;
+   the first pixel of the next row belongs to that next row. Source text remains read-only.
 
 Owner permission is required for server source requests. This is a source browser
 and breakpoint editor, not an in-game datapack file editor.
@@ -87,9 +96,9 @@ scroll settings. Synthetic callback input does not verify a physical trackpad.
 | Concern | Existing tests |
 | --- | --- |
 | Line/source model | `coreTest`: `FunctionSourceDocumentTest` |
-| Requests, selection and layout | `clientTest`: `ClientFunctionSourceStateTest`, `FunctionSourceScreenLayoutTest`, `SourceSyntaxTest`, `SourceLineLayoutTest`, `SourceInteractionTest`, `ScrollbarInputTest`, `CommandFlowLayoutTest` |
+| Requests, selection and layout | `clientTest`: `ClientFunctionSourceStateTest`, `FunctionSourceScreenLayoutTest`, `SourceSyntaxTest`, `SourceLineLayoutTest`, `SourceInteractionTest`, `ClientStagePreviewStateTest`, `ScrollbarInputTest`, `CommandFlowLayoutTest` |
 | Network payloads | `test`: `FunctionSourcePayloadTest`, `BreakpointStagePreviewPayloadTest` |
-| Real rendering, selection, resize and inline stage markers | `FunctionSourceScreenGameTest`, `FunctionSourceInteractionGameTest` |
+| Real rendering, selection, resize and inline stage markers | `FunctionSourceScreenGameTest`, `FunctionSourceInteractionGameTest`, `FunctionSourceReviewGameTest` |
 
 Example: `./gradlew runClientGameTest -PclientGameTest=FunctionSourceScreenGameTest`.
 The same GameTest checks the proportional default font, Unicode geometry, inline
@@ -145,3 +154,11 @@ maximum/minimum, custom scale, the compact drawer, a real HUD control before/aft
 Source covers it, a modal blocking Source and Korean minimum layout. It uses the
 same injected-source limitation as the other UI fixture. Physical trackpad input
 and the manual loaded-function path remain separate acceptance checks.
+
+`FunctionSourceReviewGameTest` targets the adjacent-row link boundary, unqualified
+identifier collision and two cached previews followed by reload of an unselected
+row. Its `review-*` captures show the reference targets and an obsolete fingerprint's
+persistent amber review warning beside the new candidate. It asserts no repeated
+LOADING request, no selection change during hover, retention of the other preview,
+and no obsolete stage hit target. `test --tests '*SourceReviewRuntimeTest'` also
+calls the actual 26.3 `Identifier.parse` without opening a game window.

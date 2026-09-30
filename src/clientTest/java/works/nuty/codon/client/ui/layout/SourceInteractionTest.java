@@ -2,9 +2,34 @@ package works.nuty.codon.client.ui.layout;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import works.nuty.codon.core.model.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SourceInteractionTest {
+    @Test void linksStayInsideTheirOwnRowAndVisibleViewport() {
+        var first = SourceInteraction.clippedRowHit(190, 260, 100, 18, 200, 100, 40, 36);
+        var second = SourceInteraction.clippedRowHit(190, 260, 118, 18, 200, 100, 40, 36);
+        assertTrue(first.contains(220, 100));
+        assertTrue(first.contains(220, 117.999));
+        assertFalse(first.contains(220, 118));
+        assertTrue(second.contains(220, 118));
+        assertFalse(first.contains(199, 110));
+        assertFalse(first.contains(240, 110));
+        var finalRow = SourceInteraction.clippedRowHit(200, 260, 118, 18, 200, 100, 40, 30);
+        assertFalse(finalRow.contains(220, 130));
+        assertNull(SourceInteraction.clippedRowHit(200, 260, 136, 18, 200, 100, 40, 36));
+    }
+
+    @Test void obsoleteStageFingerprintIsAReviewWarningRatherThanAReplacementControl() {
+        var location = new SourceLocation.Function(new FunctionLocation(new FunctionId("pack", "main"), 1));
+        var old = BreakpointDefinition.plain(BreakpointTarget.stage(location, 0, "execute run say old"));
+        String next = BreakpointTarget.fingerprint("execute run say new");
+        assertTrue(SourceInteraction.stageNeedsReview(old, next));
+        assertFalse(SourceInteraction.stageNeedsReview(old, old.target().commandFingerprint()));
+        assertTrue(SourceInteraction.stageNeedsReview(old.withStaleSource(true), next));
+        assertFalse(SourceInteraction.stageNeedsReview(BreakpointDefinition.plain(BreakpointTarget.stage(location, 0, "execute run say new")), next));
+        assertFalse(SourceInteraction.stageNeedsReview(BreakpointDefinition.plain(BreakpointTarget.whole(location)), next));
+    }
     @Test void nativeHorizontalAndShiftWheelKeepTheirOwnDirection() {
         assertEquals(60, SourceInteraction.horizontalMovement(2, 0, false));
         assertEquals(-60, SourceInteraction.horizontalMovement(-2, 0, false));
