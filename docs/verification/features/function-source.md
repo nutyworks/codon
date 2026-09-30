@@ -113,8 +113,14 @@ scroll settings. Synthetic callback input does not verify a physical trackpad.
 | Requests, selection and layout | `clientTest`: `ClientFunctionSourceStateTest`, `FunctionSourceScreenLayoutTest`, `SourceSyntaxTest`, `SourceLineLayoutTest`, `SourceInteractionTest`, `ClientStagePreviewStateTest`, `ScrollbarInputTest`, `CommandFlowLayoutTest` |
 | Network payloads | `test`: `FunctionSourcePayloadTest`, `BreakpointStagePreviewPayloadTest` |
 | Real rendering, selection, resize and inline stage markers | `FunctionSourceScreenGameTest`, `FunctionSourceInteractionGameTest`, `FunctionSourceReviewGameTest` |
+| F3/Shift+F3 press/repeat/release ownership and vanilla behavior outside Source | `FunctionSourceKeyboardGameTest` |
 
 Example: `./gradlew runClientGameTest -PclientGameTest=FunctionSourceScreenGameTest`.
+
+Source owns F3/Shift+F3 releases as well as their Find navigation presses, so the
+vanilla debug overlay retains its current visibility. `FunctionSourceKeyboardGameTest`
+calls the real KeyboardHandler with press/repeat/release events, checks both overlay
+states and unfocused/empty Find, then verifies vanilla F3/Shift+F3 after closing Source.
 The same GameTest checks the proportional default font, Unicode geometry, inline
 stage targeting and condition preservation, keyboard selection, horizontal-wheel
 state, literal search next/previous,
