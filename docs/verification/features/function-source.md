@@ -80,6 +80,10 @@ be checked. The viewer lists functions actually loaded by the current server.
    do not begin a nested command. The lexical viewer skips known clause arguments;
    an unknown or incomplete clause suppresses subsequent nested links instead of
    guessing a delimiter. Server stage parsing and command execution are unchanged.
+   The 26.3 `if`/`unless items` and `slots` entity/block forms are recognized:
+   `items` consumes a slot source and item predicate; `slots` consumes only a slot
+   source. Player names such as `run`, wildcard slots and quoted component predicates
+   keep their argument positions and do not invent a nested function link.
 
 Owner permission is required for server source requests. This is a source browser
 and breakpoint editor, not an in-game datapack file editor.
@@ -176,3 +180,10 @@ The same GameTest's `followup-*` captures and assertions cover score arguments
 named `run`, loaded function names that occur as score arguments, Find retained
 through loading/function switch/Reload, and all eight navigation keys while a
 toolbar button has focus. Code focus keeps its original keyboard navigation.
+Its `items-slots-*` captures additionally verify the standard entity/block ×
+if/unless × items/slots forms against the actual 26.3 server dispatcher (parse only),
+then assert and click exactly the loaded nested function target. Relative/absolute
+block positions, literal/wildcard slots, item/wildcard/component predicates and a
+condition chain retain their links. Unit checks also cover literal `run` slot and
+predicate tokens, unsupported target kinds and incomplete arguments. The lexical
+viewer does not validate item/slot registry entries or execute these conditions.
