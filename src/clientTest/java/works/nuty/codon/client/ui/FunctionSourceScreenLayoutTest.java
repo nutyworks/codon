@@ -8,6 +8,15 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FunctionSourceScreenLayoutTest {
+    @Test void sourceRowsStayAboveTheScrollbarAtSmallLogicalSizes() {
+        for (int height : new int[]{180, 240, 270}) {
+            var layout = ClientFunctionSourceState.ScreenLayout.forScreen(320, height);
+            int sourceBottom = ClientFunctionSourceState.ScreenLayout.sourceInset(true)
+                + ClientFunctionSourceState.ScreenLayout.sourceRows(layout.panelHeight(), true) * 18;
+            int scrollbarHitTop = ClientFunctionSourceState.ScreenLayout.scrollbarInset(layout.panelHeight()) - 2;
+            assertTrue(sourceBottom <= scrollbarHitTop, "source rows do not overlap scrollbar input at height " + height);
+        }
+    }
     @Test
     void narrowMinecraftGuiSizesUseOnePaneFunctionDrawer() {
         ClientFunctionSourceState.ScreenLayout tiny = ClientFunctionSourceState.ScreenLayout.forScreen(320, 180);

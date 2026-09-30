@@ -38,6 +38,11 @@ public final class ClientStagePreviewState {
         return entry == null ? null : entry.preview();
     }
 
+    /** A reload invalidates READY text; an in-flight request must retain its request id. */
+    public static boolean needsRefresh(@Nullable Preview preview, String savedCommand) {
+        return preview == null || preview.status() == Status.READY && !preview.savedCommand().equals(savedCommand);
+    }
+
     public synchronized void reset() { entries.clear(); nextRequestId = 0; }
 
     private record Entry(long requestId, Preview preview) { }

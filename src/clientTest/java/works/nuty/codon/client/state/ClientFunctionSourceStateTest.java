@@ -14,6 +14,16 @@ class ClientFunctionSourceStateTest {
     private static final FunctionId FIRST = new FunctionId("demo", "tick");
     private static final FunctionId SECOND = new FunctionId("demo", "sub/hit");
 
+    @Test void sidebarWidthIsSessionStateIndependentOfFunctionHistory() {
+        var state = new ClientFunctionSourceState();
+        state.rememberTreeWidth(410);
+        state.select(FIRST);
+        state.select(SECOND);
+        assertEquals(410, state.treeWidth());
+        state.reset();
+        assertEquals(0, state.treeWidth());
+    }
+
     @Test
     void assemblesContiguousListAndSourcePages() {
         ClientFunctionSourceState state = new ClientFunctionSourceState();
@@ -91,14 +101,14 @@ class ClientFunctionSourceStateTest {
         state.accept(new ClientFunctionSourceState.ListPage(list, ClientFunctionSourceState.Status.READY, 0, true,
             List.of(FIRST, SECOND)));
         state.select(FIRST);
-        state.rememberBrowseView(2, 7, 8, 1, 5);
+        state.rememberBrowseView(2, 7, 8, 1, 5, 275);
 
         assertTrue(state.follow(SECOND));
         state.rememberBrowseView(0, 3, 4, -1, 0);
         assertTrue(state.canGoBack());
         assertTrue(state.goBack());
         assertEquals(FIRST, state.selected());
-        assertEquals(new ClientFunctionSourceState.BrowseView(2, 7, 8, 1, 5), state.browseView());
+        assertEquals(new ClientFunctionSourceState.BrowseView(2, 7, 8, 1, 5, 275), state.browseView());
         assertFalse(state.follow(new FunctionId("demo", "missing")));
     }
 

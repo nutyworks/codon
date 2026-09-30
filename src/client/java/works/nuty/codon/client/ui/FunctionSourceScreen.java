@@ -1,6 +1,7 @@
 package works.nuty.codon.client.ui;
 
 import com.mojang.blaze3d.platform.InputConstants;
+import com.mojang.blaze3d.platform.cursor.CursorTypes;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -13,6 +14,8 @@ import java.util.Set;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -24,6 +27,10 @@ import works.nuty.codon.client.state.ClientBreakpointState;
 import works.nuty.codon.client.state.ClientDebuggerState;
 import works.nuty.codon.client.state.ClientStagePreviewState;
 import works.nuty.codon.client.ui.layout.CommandFlowLayout;
+import works.nuty.codon.client.ui.layout.SourceSyntax;
+import works.nuty.codon.client.ui.layout.SourceLineLayout;
+import works.nuty.codon.client.ui.layout.SourceInteraction;
+import works.nuty.codon.client.ui.layout.SourceReferences;
 import works.nuty.codon.core.model.BreakpointDefinition;
 import works.nuty.codon.core.model.BreakpointTarget;
 import works.nuty.codon.core.model.FunctionId;
@@ -46,13 +53,25 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
     private boolean drawerOpen;
     private boolean docked;
     private boolean forwardingParentDrag;
-    private int listOffset, lineOffset, stageScrollOffset;
+    private int listOffset, lineOffset, horizontalOffset;
+    private final ScrollbarInput scrollbars = new ScrollbarInput();
+    private boolean resizingTree;
+    private double treeGrab, horizontalRemainder;
+    private int hoveredLine = -1, hoveredStage = -1, expandedWidth;
+    private FunctionSourceDocument cachedDocument;
+    private final List<SourceCodeLine> codeLines = new ArrayList<>();
+    private List<SourceSyntax.Match> matches = List.of();
+    private boolean matchesLimited;
+    private final Map<Integer, List<SourceSyntax.Match>> matchesByLine = new HashMap<>();
+    private int matchIndex = -1;
+    private int widestLine;
     private int selectedLine = -1;
     private int selectedStageIndex = -1;
     private final List<StageHit> stageHits = new ArrayList<>();
     private final List<LineHit> lineHits = new ArrayList<>();
     private final List<FunctionHit> functionHits = new ArrayList<>();
-    private EditBox search;
+    private EditBox search, sourceSearch;
+    private DebuggerButton previousMatch, nextMatch;
     private DebuggerButton refresh, close, reread, stageCondition, lineCondition, drawerButton, backButton;
 
 
@@ -66,10 +85,15 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
     private record LineHit(int y, int height, int line) {
         boolean contains(double py) { return py >= y && py < y + height; }
     }
-    private record InlinePart(int stageIndex, int row, int x, boolean first, String text, int textWidth) { }
-    private record FunctionHit(int x, int y, int width, int height, FunctionId function) {
-        boolean contains(double px, double py) { return px >= x && px < x + width && py >= y && py < y + height; }
+    private record InlineStage(int index, int start, int end, BreakpointTarget target) { }
+    private record InlineRow(ClientStagePreviewState.Preview preview, List<InlineStage> stages) { }
+    private final Map<Integer, InlineRow> inlineRows = new HashMap<>();
+    private final Map<Integer, String> sourceFingerprints = new HashMap<>();
+    private SourceLineLayout inlineLayout;
+    private record FunctionHit(SourceInteraction.HitBox bounds, FunctionId function) {
+        boolean contains(double px, double py) { return bounds.contains(px, py); }
     }
+    private record StageCounts(int enabled, int obsolete) { }
 
     public FunctionSourceScreen(Screen parent, ClientFunctionSourceState sources) {
         super(Component.translatable("codon.source.title"), preferencesFor(parent));
@@ -79,6 +103,12 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
 
     @Override protected void init() {
         String searchValue = search == null ? "" : search.getValue();
+        String sourceSearchValue = sourceSearch == null ? "" : sourceSearch.getValue();
+        cachedDocument = null;
+        clearSourceHits();
+        scrollbars.release();
+        resizingTree = forwardingParentDrag = false;
+        horizontalRemainder = 0;
         clearWidgets();
         ClientFunctionSourceState.ScreenLayout layout = ClientFunctionSourceState.ScreenLayout.forScreen(width, height);
         panelWidth = layout.panelWidth();
@@ -88,20 +118,22 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         left = (width - panelWidth) / 2;
         top = docked ? height - panelHeight - 6 : (height - panelHeight) / 2;
         drawerMode = layout.drawerMode();
+        if (!drawerMode) drawerOpen = false;
         if (drawerMode && sources.selected() == null) drawerOpen = true;
-        treeWidth = drawerMode ? (drawerOpen ? panelWidth : 0) : layout.treeWidth();
+        treeWidth = drawerMode ? (drawerOpen ? panelWidth : 0)
+            : SourceInteraction.treeWidth(panelWidth, sources.treeWidth() == 0 ? layout.treeWidth() : sources.treeWidth());
         int sourceLeft = left + treeWidth + 8;
         int sourceWidth = panelWidth - treeWidth - 16;
-        compactSourceControls = !drawerMode && sourceWidth < 330 || drawerMode;
+        compactSourceControls = sourceWidth < 450 || drawerMode;
         search = addRenderableWidget(new DebuggerEditBox(font, left + 8, top + 29, Math.max(1, treeWidth - 16), 20,
             Component.translatable("codon.source.search")));
         search.setHint(Component.translatable("codon.source.search"));
         search.setMaxLength(128);
         search.setValue(searchValue);
         search.setResponder(ignored -> { listOffset = 0; rebuildEntries(); rememberView(); });
-        refresh = addRenderableWidget(WatchUi.button(drawerMode ? left + 66 : left + treeWidth + 8, top + 5, 58, 18,
+        refresh = addRenderableWidget(WatchUi.button(drawerMode ? left + 74 : left + treeWidth + 8, top + 5, 58, 18,
             Component.translatable("codon.source.refresh"), () -> { sources.refreshList(); listOffset = 0; }));
-        reread = addRenderableWidget(WatchUi.button(drawerMode ? left + 126 : left + treeWidth + 68, top + 5, 54, 18,
+        reread = addRenderableWidget(WatchUi.button(drawerMode ? left + 134 : left + treeWidth + 68, top + 5, 54, 18,
             Component.translatable("codon.source.reload"), () -> {
                 sources.refreshSource();
                 lineOffset = 0;
@@ -111,14 +143,14 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                         new FunctionLocation(sources.selected(), selectedLine)));
             }));
         lineCondition = addRenderableWidget(WatchUi.button(compactSourceControls ? sourceLeft : left + treeWidth + 124,
-            compactSourceControls ? top + 29 : top + 5, compactSourceControls ? sourceWidth : 92, 18,
+            compactSourceControls ? top + 29 : top + 5, compactSourceControls ? (sourceWidth - 4) / 2 : 92, 18,
             Component.translatable("codon.source.line_condition"), this::editLineCondition));
-        stageCondition = addRenderableWidget(WatchUi.button(compactSourceControls ? sourceLeft : left + treeWidth + 218,
-            compactSourceControls ? top + 51 : top + 5, compactSourceControls ? sourceWidth : 98, 18,
+        stageCondition = addRenderableWidget(WatchUi.button(compactSourceControls ? sourceLeft + (sourceWidth - 4) / 2 + 4 : left + treeWidth + 218,
+            compactSourceControls ? top + 29 : top + 5, compactSourceControls ? (sourceWidth - 4) / 2 : 98, 18,
             Component.translatable("codon.source.stage_condition"), this::editStageCondition));
         close = addRenderableWidget(WatchUi.button(left + panelWidth - 58, top + 5, 50, 18,
             Component.translatable("codon.breakpoint.close"), this::onClose));
-        drawerButton = addRenderableWidget(WatchUi.button(left + 8, top + 5, 56, 18,
+        drawerButton = addRenderableWidget(WatchUi.button(left + 8, top + 5, 64, 18,
             Component.translatable("codon.source.functions"), () -> setDrawerOpen(!drawerOpen)));
         backButton = addRenderableWidget(WatchUi.button(left + panelWidth - 116, top + 5, 54, 18,
             Component.translatable("codon.source.back"), this::goBack));
@@ -126,20 +158,83 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         drawerButton.visible = drawerButton.active = drawerMode;
         backButton.visible = backButton.active = !drawerOpen && sources.canGoBack();
         search.visible = search.active = !drawerMode || drawerOpen;
-        setFocused(search);
+        int findY = top + (compactSourceControls ? 92 : 75);
+        sourceSearch = addRenderableWidget(new DebuggerEditBox(font, sourceLeft + 5, findY,
+            Math.max(1, sourceWidth - 117), 20, Component.translatable("codon.source.find")));
+        sourceSearch.setHint(Component.translatable("codon.source.find"));
+        sourceSearch.setTooltip(Tooltip.create(Component.translatable("codon.source.find_hint")));
+        sourceSearch.setMaxLength(128);
+        sourceSearch.setValue(sourceSearchValue);
+        sourceSearch.setResponder(ignored -> { matchIndex = -1; rebuildMatches(); if (!matches.isEmpty()) nextMatch(1); });
+        previousMatch = addRenderableWidget(WatchUi.button(sourceLeft + sourceWidth - 41, findY, 18, 20,
+            Component.literal("<"), () -> nextMatch(-1)));
+        nextMatch = addRenderableWidget(WatchUi.button(sourceLeft + sourceWidth - 21, findY, 18, 20,
+            Component.literal(">"), () -> nextMatch(1)));
+        previousMatch.setTooltip(Tooltip.create(Component.translatable("codon.source.previous_match")));
+        nextMatch.setTooltip(Tooltip.create(Component.translatable("codon.source.next_match")));
+        setFocused(search.visible ? search : null);
         ClientFunctionSourceState.BrowseView view = sources.browseView();
         listOffset = view.treeOffset();
         lineOffset = view.lineOffset();
         selectedLine = view.selectedLine();
         selectedStageIndex = view.selectedStageIndex();
-        stageScrollOffset = view.stageScrollOffset();
+        horizontalOffset = view.horizontalOffset();
         sources.open();
         if (sources.selected() != null && selectedLine > 0) {
             ClientDebuggerState debugger = CodonClientMod.state();
-            if (debugger != null) ClientNetworking.requestStagePreview(debugger, new SourceLocation.Function(
-                new FunctionLocation(sources.selected(), selectedLine)));
+            if (debugger != null) {
+                var location = new SourceLocation.Function(new FunctionLocation(sources.selected(), selectedLine));
+                var preview = debugger.stagePreviews().get(location);
+                if (preview == null || sources.document() != null && selectedLine <= sources.document().lines().size()
+                    && ClientStagePreviewState.needsRefresh(preview, sources.document().lines().get(selectedLine - 1).trim()))
+                    ClientNetworking.requestStagePreview(debugger, location);
+            }
         }
         rebuildEntries();
+    }
+
+    private void clearSourceHits() {
+        stageHits.clear(); lineHits.clear(); functionHits.clear();
+        hoveredLine = hoveredStage = -1;
+    }
+
+    private boolean containsPanel(double x, double y) {
+        return x >= left && x < left + panelWidth && y >= top && y < top + panelHeight;
+    }
+
+    private int sourceLeft() { return left + treeWidth + 8; }
+    private int sourceWidth() { return panelWidth - treeWidth - 16; }
+    private int codeRight() { return sourceLeft() + sourceWidth() - 12; }
+    private int codeWidth() { return Math.max(1, sourceWidth() - gutterWidth() - 12); }
+    private int lineMarkerX() { return sourceLeft() + gutterWidth() - 12; }
+    private int maximumLineOffset() { return sources.document() == null ? 0 : Math.max(0, codeLines.size() - sourceRows()); }
+
+    private boolean splitterContains(double x, double y) {
+        return !drawerMode && x >= left + treeWidth - 3 && x < left + treeWidth + 4
+            && y >= top + 25 && y < top + panelHeight - 8;
+    }
+
+    private void resizeTree(double x) {
+        treeWidth = SourceInteraction.treeWidth(panelWidth, (int) Math.round(x - left - treeGrab));
+        sources.rememberTreeWidth(treeWidth);
+        int sourceLeft = sourceLeft(), sourceWidth = sourceWidth();
+        compactSourceControls = sourceWidth < 450;
+        search.setWidth(treeWidth - 16);
+        refresh.setX(sourceLeft); reread.setX(sourceLeft + 60);
+        lineCondition.setX(compactSourceControls ? sourceLeft : sourceLeft + 116);
+        lineCondition.setY(top + (compactSourceControls ? 29 : 5));
+        lineCondition.setWidth(compactSourceControls ? (sourceWidth - 4) / 2 : 92);
+        stageCondition.setX(compactSourceControls ? sourceLeft + (sourceWidth - 4) / 2 + 4 : sourceLeft + 210);
+        stageCondition.setY(lineCondition.getY());
+        stageCondition.setWidth(compactSourceControls ? (sourceWidth - 4) / 2 : 98);
+        int findY = top + (compactSourceControls ? 92 : 75);
+        sourceSearch.setX(sourceLeft + 5); sourceSearch.setY(findY); sourceSearch.setWidth(Math.max(1, sourceWidth - 117));
+        previousMatch.setX(sourceLeft + sourceWidth - 41); previousMatch.setY(findY);
+        nextMatch.setX(sourceLeft + sourceWidth - 21); nextMatch.setY(findY);
+        horizontalOffset = Math.clamp(horizontalOffset, 0, maxHorizontalOffset());
+        lineOffset = Math.clamp(lineOffset, 0, maximumLineOffset());
+        clearSourceHits();
+        rememberView();
     }
 
     private void rebuildEntries() {
@@ -172,20 +267,29 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
 
     private boolean expanded(String key, String needle) { return !needle.isEmpty() || !collapsed.contains(key); }
     private int visibleRows() { return Math.max(1, (panelHeight - 76) / ROW_HEIGHT); }
-    private int sourceLineTop() { return top + (compactSourceControls ? 118 : 76); }
-    private int sourceRows() { return Math.max(1, (top + panelHeight - 38 - sourceLineTop()) / ROW_HEIGHT); }
+    private int sourceLineTop() { return top + ClientFunctionSourceState.ScreenLayout.sourceInset(compactSourceControls); }
+    private int sourceRows() { return ClientFunctionSourceState.ScreenLayout.sourceRows(panelHeight, compactSourceControls); }
 
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         stageHits.clear();
         lineHits.clear();
         functionHits.clear();
+        scrollbars.beginFrame();
         rebuildEntries();
         reread.visible = reread.active = !drawerOpen && sources.selected() != null && sources.sourceStatus() != ClientFunctionSourceState.Status.LOADING;
         drawerButton.visible = drawerButton.active = drawerMode;
         backButton.visible = backButton.active = !drawerOpen && sources.canGoBack();
         search.visible = search.active = !drawerMode || drawerOpen;
+        updateCodeCache();
+        updateInlineLayout();
+        sourceSearch.visible = sourceSearch.active = !drawerOpen && sources.document() != null;
+        previousMatch.visible = nextMatch.visible = sourceSearch.visible;
+        previousMatch.active = nextMatch.active = !matches.isEmpty();
         updateConditionControls();
-        if (docked) parent.extractRenderState(graphics, mouseX, mouseY, partialTick);
+        if (docked) {
+            boolean covered = containsPanel(mouseX, mouseY) || ScreenLayers.get(this) != null;
+            parent.extractRenderState(graphics, covered ? -1 : mouseX, covered ? -1 : mouseY, partialTick);
+        }
         else graphics.fill(0, 0, width, height, DebuggerTheme.color(0x70000000));
         graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.color(PANEL));
         graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.color(BORDER));
@@ -193,11 +297,20 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         WatchUi.line(graphics, font, tr(drawerOpen ? "codon.source.functions" : "codon.source.title"),
             left + 8, top + 9, Math.max(1, treeWidth - 20), TEXT);
         if (!drawerMode || drawerOpen) {
-            if (!drawerMode) graphics.fill(left + treeWidth, top + 25, left + treeWidth + 1, top + panelHeight - 8, DebuggerTheme.color(BORDER));
+            if (!drawerMode) {
+                boolean hovered = splitterContains(mouseX, mouseY);
+                graphics.fill(left + treeWidth - 1, top + 25, left + treeWidth + 2, top + panelHeight - 8,
+                    DebuggerTheme.color(hovered || resizingTree ? TEAL : BORDER));
+                if (hovered) {
+                    graphics.requestCursor(CursorTypes.RESIZE_EW);
+                    graphics.setTooltipForNextFrame(font, Component.translatable("codon.source.resize_tree"), mouseX, mouseY);
+                }
+            }
             renderTree(graphics, mouseX, mouseY);
             if (!drawerOpen) renderSource(graphics, mouseX, mouseY);
         } else renderSource(graphics, mouseX, mouseY);
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+        scrollbars.endFrame();
     }
 
     private void renderTree(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
@@ -242,177 +355,215 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                 sourceLeft + 6, top + 48, sourceWidth - 12, MUTED);
             return;
         }
-        WatchUi.line(graphics, font, selected.toString(), sourceLeft + 6, compactSourceControls ? top + 75 : top + 31,
+        String path = "data/" + selected.namespace() + "/function/" + selected.path() + ".mcfunction";
+        WatchUi.line(graphics, font, path, sourceLeft + 6, compactSourceControls ? top + 53 : top + 31,
             sourceWidth - 12, TEAL);
+        int pathY = compactSourceControls ? top + 53 : top + 31;
+        if (mouseX >= sourceLeft + 6 && mouseX < sourceLeft + sourceWidth - 6 && mouseY >= pathY && mouseY < pathY + 10)
+            graphics.setTooltipForNextFrame(font, Component.literal(path), mouseX, mouseY);
         FunctionSourceDocument document = sources.document();
         if (document == null) {
-            WatchUi.line(graphics, font, sourceStatus(), sourceLeft + 6, compactSourceControls ? top + 92 : top + 52, sourceWidth - 12,
+            WatchUi.line(graphics, font, sourceStatus(), sourceLeft + 6, compactSourceControls ? top + 65 : top + 52, sourceWidth - 12,
                 sources.sourceStatus() == ClientFunctionSourceState.Status.ERROR ? AMBER : MUTED);
             return;
         }
         String metadata = (document.provider().isEmpty() ? "" : document.provider() + " · ")
             + document.revision().substring(0, Math.min(12, document.revision().length()));
         if (document.truncated()) metadata += " · " + tr("codon.source.truncated");
-        WatchUi.line(graphics, font, metadata, sourceLeft + 6, compactSourceControls ? top + 92 : top + 48,
+        WatchUi.line(graphics, font, metadata, sourceLeft + 6, compactSourceControls ? top + 65 : top + 48,
             sourceWidth - 12, MUTED);
         WatchUi.line(graphics, font, executionStatus(selected), sourceLeft + 6,
-            compactSourceControls ? top + 104 : top + 60, sourceWidth - 12, MUTED);
-        int lineTop = sourceLineTop();
-        int rows = sourceRows();
+            compactSourceControls ? top + 77 : top + 60, sourceWidth - 12, MUTED);
+        int countX = sourceLeft + sourceWidth - 110;
+        int countY = top + (compactSourceControls ? 98 : 81);
+        WatchUi.line(graphics, font, matches.isEmpty() ? "0/0"
+            : (matchIndex + 1) + "/" + matches.size() + (matchesLimited ? "+" : ""), countX, countY, 66, MUTED);
+        if (matchesLimited && mouseX >= countX && mouseX < countX + 66 && mouseY >= countY && mouseY < countY + 10)
+            graphics.setTooltipForNextFrame(font, font.split(Component.translatable("codon.source.find_limit", SourceSyntax.MAX_MATCHES),
+                Math.min(200, width - 24)), mouseX, mouseY);
+        int gutter = gutterWidth();
+        int codeLeft = sourceLeft + gutter, codeWidth = codeWidth();
+        horizontalOffset = Math.clamp(horizontalOffset, 0, maxHorizontalOffset());
+        int lineTop = sourceLineTop(), rows = sourceRows();
         if (selectedLine > document.lines().size()) {
-            selectedLine = -1;
-            selectedStageIndex = -1;
+            selectedLine = selectedStageIndex = -1;
             rememberView();
         }
-        lineOffset = Math.clamp(lineOffset, 0, Math.max(0, document.lines().size() - rows));
+        lineOffset = Math.clamp(lineOffset, 0, maximumLineOffset());
         int lineBottom = lineTop + rows * ROW_HEIGHT;
         ClientDebuggerState debugger = CodonClientMod.state();
-        Map<Integer, Integer> stageCounts = stageBreakpointCounts(selected, debugger);
-        graphics.enableScissor(sourceLeft + 3, lineTop, sourceLeft + sourceWidth - 3, lineBottom);
-        for (int index = lineOffset, y = lineTop; index < document.lines().size() && y < lineBottom; index++) {
-            String number = Integer.toString(index + 1);
-            SourceLocation.Function location = new SourceLocation.Function(new FunctionLocation(selected, index + 1));
+        Map<Integer, StageCounts> stageCounts = stageBreakpointCounts(selected, debugger);
+        int nextHoveredLine = -1, nextHoveredStage = -1;
+        expandedWidth = widestLine;
+        graphics.fill(sourceLeft + 3, lineTop, codeRight(), lineBottom, DebuggerTheme.color(SURFACE));
+        graphics.enableScissor(sourceLeft + 3, lineTop, codeRight(), lineBottom);
+        for (int index = lineOffset, y = lineTop; index < document.lines().size() && y < lineBottom; index++, y += ROW_HEIGHT) {
+            int line = index + 1;
+            String number = Integer.toString(line);
+            SourceLocation.Function location = new SourceLocation.Function(new FunctionLocation(selected, line));
             BreakpointDefinition definition = breakpoint(location);
-            int color = definition == null ? MUTED : definition.enabled() ? RED : MUTED;
-            if (isActualStop(selected, index + 1)) graphics.fill(sourceLeft + 3, y, sourceLeft + 5, y + ROW_HEIGHT - 1,
-                DebuggerTheme.color(AMBER));
-            WatchUi.line(graphics, font, number, sourceLeft + 21, y + 5, 30, MUTED);
-            if (selectedLine == index + 1) graphics.fill(sourceLeft + 52, y, sourceLeft + sourceWidth - 4,
-                y + ROW_HEIGHT - 1, DebuggerTheme.color(TEAL_SURFACE));
-            int rowHeight = ROW_HEIGHT;
-            ClientStagePreviewState.Preview preview = debugger == null ? null : debugger.stagePreviews().get(location);
-            if (selectedLine == index + 1 && stageEligible(document, index + 1)
-                && previewMatchesLine(document, index + 1, preview)) {
-                stageScrollOffset = Math.clamp(stageScrollOffset, 0, Math.max(0,
-                    inlineStageRows(preview, sourceWidth - 62) - sourceRows()));
-                rowHeight = renderInlineStages(graphics, sourceLeft + 55, sourceWidth - 62, y, lineBottom, location,
-                    preview, debugger, stageScrollOffset, mouseX, mouseY);
-            } else {
-                int textWidth = sourceWidth - 62;
-                int count = stageCounts.getOrDefault(index + 1, 0);
-                if (count > 0 && selectedLine != index + 1) {
-                    String summary = tr("codon.source.stage_breakpoints", count);
-                    int summaryWidth = Math.min(textWidth / 2, font.width(summary) + 4);
-                    textWidth -= summaryWidth + 3;
-                    WatchUi.line(graphics, font, summary, sourceLeft + 55 + textWidth + 3, y + 5,
-                        summaryWidth, MUTED);
+            boolean hovered = mouseX >= sourceLeft + 3 && mouseX < codeRight() && mouseY >= y && mouseY < y + ROW_HEIGHT;
+            boolean stopped = isActualStop(selected, line), inspected = selectedLine == line;
+            if (stopped) {
+                graphics.fill(codeLeft, y, codeRight(), y + ROW_HEIGHT - 1, DebuggerTheme.color(AMBER_SURFACE));
+                graphics.text(font, ">", sourceLeft + 3, y + 5, DebuggerTheme.color(AMBER), false);
+            }
+            if (inspected) {
+                if (!stopped) graphics.fill(codeLeft, y, codeRight(), y + ROW_HEIGHT - 1, DebuggerTheme.color(TEAL_SURFACE));
+                graphics.outline(codeLeft, y, codeWidth, ROW_HEIGHT - 1, DebuggerTheme.color(TEAL));
+            }
+            graphics.text(font, SourceCodeLine.plain(number), lineMarkerX() - 4 - font.width(SourceCodeLine.plain(number)),
+                y + 5, DebuggerTheme.color(stopped ? AMBER : MUTED), false);
+            SourceCodeLine code = codeLines.get(index);
+            StageCounts counts = stageCounts.getOrDefault(line, new StageCounts(0, 0));
+            List<InlineStage> stages = stagesForLine(line, hovered || counts.enabled() > 0);
+            SourceLineLayout layout = visibleLayout(code, stages, hovered && hoveredLine == line ? hoveredStage : -1);
+            int rowHoveredStage = -1;
+            if (hovered && mouseX >= codeLeft) {
+                for (InlineStage stage : stages) {
+                    int start = codeLeft + layout.before(stage.start()) - horizontalOffset;
+                    int end = codeLeft + layout.before(stage.end()) - horizontalOffset;
+                    if (mouseX >= Math.max(codeLeft, start) && mouseX < Math.min(codeRight(), end)) {
+                        rowHoveredStage = stage.index();
+                        break;
+                    }
                 }
-                renderSourceText(graphics, document.lines().get(index), selected, sourceLeft + 55, y + 5,
-                    Math.max(1, textWidth));
             }
-            boolean hovered = mouseX >= sourceLeft + 3 && mouseX < sourceLeft + sourceWidth - 3
-                && mouseY >= y && mouseY < Math.min(y + rowHeight, lineBottom);
-            if (definition != null && definition.enabled() || hovered && wholeEligible(document, index + 1)) {
-                BreakpointUi.icon(definition).drawSmall(graphics, sourceLeft + 5, y + 5, DebuggerTheme.color(color));
+            if (hovered) { nextHoveredLine = line; nextHoveredStage = rowHoveredStage; }
+            layout = visibleLayout(code, stages, rowHoveredStage);
+            expandedWidth = Math.max(expandedWidth, layout.width());
+            if (inspected) inlineLayout = layout;
+            graphics.enableScissor(codeLeft, y, codeRight(), y + ROW_HEIGHT);
+            renderSourceText(graphics, code, layout, line, codeLeft, y, codeWidth);
+            renderInlineMarkers(graphics, stages, layout, line, rowHoveredStage, codeLeft, y, codeWidth, mouseX, mouseY);
+            graphics.disableScissor();
+            boolean enabled = definition != null && definition.enabled();
+            if (enabled || hovered && wholeEligible(document, line)) {
+                BreakpointUi.icon(definition).drawSmall(graphics, lineMarkerX(), y + 5,
+                    DebuggerTheme.color(enabled ? RED : MUTED));
+            } else if (counts.enabled() > 0 && stages.isEmpty()) {
+                // Acknowledged stages stay visible in the gutter while their server preview loads.
+                DebuggerIcon.BREAKPOINT.drawSmall(graphics, lineMarkerX(), y + 5, DebuggerTheme.color(RED));
             }
-            lineHits.add(new LineHit(y, Math.min(rowHeight, lineBottom - y), index + 1));
-            y += rowHeight;
+            if (counts.obsolete() > 0) {
+                // A changed fingerprint has no valid marker in the new command. Keep a
+                // separate review warning; never disguise it as a current stage control.
+                graphics.text(font, "!", sourceLeft + 10, y + 5, DebuggerTheme.color(AMBER), false);
+                if (hovered && mouseX >= sourceLeft + 8 && mouseX < sourceLeft + 15)
+                    graphics.setTooltipForNextFrame(font, Component.translatable("codon.breakpoint.error.stale_source"), mouseX, mouseY);
+            }
+            if (hovered && mouseX >= lineMarkerX() - 2 && mouseX < lineMarkerX() + 10 && counts.enabled() > 0)
+                graphics.setTooltipForNextFrame(font, Component.translatable("codon.source.stage_breakpoints", counts.enabled()), mouseX, mouseY);
+            lineHits.add(new LineHit(y, ROW_HEIGHT, line));
         }
+        hoveredLine = nextHoveredLine; hoveredStage = nextHoveredStage;
         graphics.disableScissor();
-        renderSelectedStageDetail(graphics, sourceLeft, sourceWidth, null);
+        renderHorizontalScrollbar(graphics, sourceLeft, sourceWidth);
+        renderVerticalScrollbar(graphics, "source", sourceLeft + sourceWidth - 7, lineTop, rows * ROW_HEIGHT,
+            lineOffset, maximumLineOffset(), rows, value -> { lineOffset = value; clearSourceHits(); rememberView(); });
+        if (mouseX >= codeLeft && mouseX < codeRight() && mouseY >= horizontalTrackY() - 2 && mouseY < horizontalTrackY() + 8)
+            graphics.setTooltipForNextFrame(font, font.split(Component.translatable("codon.source.navigation_hint"), Math.min(240, width - 24)), mouseX, mouseY);
     }
 
-    private static Map<Integer, Integer> stageBreakpointCounts(FunctionId function, ClientDebuggerState debugger) {
-        Map<Integer, Integer> counts = new HashMap<>();
+    private Map<Integer, StageCounts> stageBreakpointCounts(FunctionId function, ClientDebuggerState debugger) {
+        Map<Integer, StageCounts> counts = new HashMap<>();
         if (debugger == null) return counts;
         for (BreakpointDefinition definition : debugger.breakpoints().definitions()) {
             BreakpointTarget target = definition.target();
-            if (definition.enabled() && target.stageIndex() >= 0 && target.location() instanceof SourceLocation.Function location
+            if (target.stageIndex() >= 0 && target.location() instanceof SourceLocation.Function location
                 && location.location().function().equals(function)) {
-                counts.merge(location.location().line(), 1, Integer::sum);
+                int line = location.location().line();
+                if (line < 1 || line > codeLines.size()) continue;
+                String fingerprint = sourceFingerprints.computeIfAbsent(line,
+                    key -> BreakpointTarget.fingerprint(codeLines.get(key - 1).source().trim()));
+                boolean obsolete = SourceInteraction.stageNeedsReview(definition, fingerprint);
+                if (!obsolete && !definition.enabled()) continue;
+                counts.merge(line, new StageCounts(obsolete ? 0 : 1, obsolete ? 1 : 0),
+                    (a, b) -> new StageCounts(a.enabled() + b.enabled(), a.obsolete() + b.obsolete()));
             }
         }
         return counts;
     }
 
-    /** Draws stages in command order, using the next row only when the next stage cannot fit. */
-    private int renderInlineStages(GuiGraphicsExtractor graphics, int x, int width, int y, int bottom,
-                                   SourceLocation.Function location, ClientStagePreviewState.Preview preview,
-                                   ClientDebuggerState state, int scrollOffset, int mouseX, int mouseY) {
-        List<InlinePart> parts = layoutInlineStages(preview, width);
-        int visibleRows = Math.max(1, (bottom - y) / ROW_HEIGHT);
-        Set<Integer> hoveredStages = new HashSet<>();
-        for (InlinePart part : parts) {
-            if (part.stageIndex() < 0 || part.row() < scrollOffset || part.row() >= scrollOffset + visibleRows) continue;
-            int partX = x + part.x();
-            int partY = y + (part.row() - scrollOffset) * ROW_HEIGHT;
-            int partWidth = part.textWidth() + 7 + (part.first() ? 19 : 0);
-            if (mouseX >= partX && mouseX < partX + partWidth && mouseY >= partY && mouseY < partY + ROW_HEIGHT) {
-                hoveredStages.add(part.stageIndex());
-            }
+    private void updateInlineLayout() {
+        SourceCodeLine code = selectedLine >= 1 && selectedLine <= codeLines.size() ? codeLines.get(selectedLine - 1) : null;
+        inlineLayout = code == null ? null : visibleLayout(code, stagesForLine(selectedLine, false),
+            hoveredLine == selectedLine ? hoveredStage : -1);
+    }
+
+    /** Only server-confirmed offsets may create an inline control, including on unselected rows. */
+    private List<InlineStage> stagesForLine(int line, boolean requestIfMissing) {
+        FunctionSourceDocument document = sources.document();
+        ClientDebuggerState state = CodonClientMod.state();
+        if (state == null || document == null || sources.selected() == null || !stageEligible(document, line)) return List.of();
+        SourceCodeLine code = codeLines.get(line - 1);
+        var location = new SourceLocation.Function(new FunctionLocation(sources.selected(), line));
+        var preview = state.stagePreviews().get(location);
+        if (requestIfMissing && ClientStagePreviewState.needsRefresh(preview, document.lines().get(line - 1).trim())) {
+            ClientNetworking.requestStagePreview(state, location);
+            preview = state.stagePreviews().get(location);
         }
-        for (InlinePart part : parts) {
-            if (part.row() < scrollOffset || part.row() >= scrollOffset + visibleRows) continue;
-            int partY = y + (part.row() - scrollOffset) * ROW_HEIGHT;
-            int partX = x + part.x();
-            if (part.stageIndex() == -2) {
-                WatchUi.line(graphics, font, part.text(), partX, partY + 4, part.textWidth(), TEXT);
-                continue;
-            }
-            BreakpointTarget target = BreakpointTarget.stage(location, part.stageIndex(), preview.savedCommand());
-            BreakpointDefinition definition = state.breakpoints().get(target);
-            boolean selected = part.stageIndex() == selectedStageIndex;
-            int surface = selected ? TEAL_SURFACE : RAISED;
-            int textX = partX + (part.first() ? 19 : 0);
-            if (part.first()) {
-                graphics.fill(partX, partY, partX + 18, partY + 17, DebuggerTheme.color(definition != null && definition.enabled()
-                    ? RED_SURFACE : surface));
-                if (definition != null && definition.enabled() || hoveredStages.contains(part.stageIndex())) {
-                    BreakpointUi.icon(definition).drawSmall(graphics, partX + 4, partY + 4,
-                        DebuggerTheme.color(definition != null && definition.enabled() ? RED : MUTED));
+        InlineRow cached = inlineRows.get(line);
+        if (cached != null && cached.preview() == preview) return cached.stages();
+        List<InlineStage> stages = new ArrayList<>();
+        if (previewMatchesLine(document, line, preview)) {
+            int leading = code.source().indexOf(preview.savedCommand());
+            int prefixEnd = CommandFlowLayout.executePrefixEnd(preview.savedCommand()), previousEnd = 0;
+            for (var span : preview.spans()) {
+                if (span.start() < previousEnd || span.end() > preview.savedCommand().length() || span.start() >= span.end()) {
+                    stages.clear(); break;
                 }
-                stageHits.add(new StageHit(partX, partY, 18, 17, target, true));
+                int start = Math.max(prefixEnd, span.start());
+                while (start < span.end() && Character.isWhitespace(preview.savedCommand().charAt(start))) start++;
+                previousEnd = span.end();
+                if (start < span.end()) stages.add(new InlineStage(span.index(), leading + start, leading + span.end(),
+                    BreakpointTarget.stage(location, span.index(), preview.savedCommand())));
             }
-            graphics.fill(textX, partY, textX + part.textWidth() + 7, partY + 17, DebuggerTheme.color(surface));
-            WatchUi.line(graphics, font, part.text(), textX + 4, partY + 4, part.textWidth(), TEXT);
-            stageHits.add(new StageHit(textX, partY, part.textWidth() + 7, 17, target, false));
         }
-        return Math.max(ROW_HEIGHT, Math.min(visibleRows, inlineStageRows(parts) - scrollOffset) * ROW_HEIGHT);
+        List<InlineStage> result = List.copyOf(stages);
+        inlineRows.put(line, new InlineRow(preview, result));
+        return result;
     }
 
-    private int inlineStageRows(ClientStagePreviewState.Preview preview, int width) {
-        return inlineStageRows(layoutInlineStages(preview, width));
+    private boolean stageEnabled(InlineStage stage) {
+        var definition = CodonClientMod.state().breakpoints().get(stage.target());
+        return definition != null && definition.enabled();
     }
 
-    private static int inlineStageRows(List<InlinePart> parts) {
-        return parts.isEmpty() ? 1 : parts.getLast().row() + 1;
+    private SourceLineLayout visibleLayout(SourceCodeLine code, List<InlineStage> stages, int hover) {
+        return new SourceLineLayout(code.source().length(), stages.stream()
+            .filter(stage -> SourceInteraction.markerVisible(stageEnabled(stage), stage.index() == hover))
+            .map(InlineStage::start).toList(), code::x);
     }
 
-    private List<InlinePart> layoutInlineStages(ClientStagePreviewState.Preview preview, int width) {
-        List<InlinePart> parts = new ArrayList<>();
-        int row = 0;
-        int x = 0;
-        int prefixEnd = CommandFlowLayout.executePrefixEnd(preview.savedCommand());
-        if (prefixEnd > 0 && !preview.spans().isEmpty()) {
-            String prefix = preview.savedCommand().substring(0, prefixEnd);
-            parts.add(new InlinePart(-2, row, x, false, prefix, font.width(prefix)));
-            x = font.width(prefix);
-        }
-        boolean firstSpan = true;
-        for (ClientStagePreviewState.StageSpan span : preview.spans()) {
-            int start = firstSpan ? Math.max(span.start(), prefixEnd) : span.start();
-            String fragment = preview.savedCommand().substring(start, span.end()).trim();
-            if (fragment.isEmpty()) continue;
-            if (x > 0 && !firstSpan && font.width(fragment) + 26 > width - x) { row++; x = 0; }
-            int from = 0;
-            boolean first = true;
-            while (from < fragment.length()) {
-                int lead = first ? 19 : 0;
-                int available = width - x - lead - 7;
-                if (available <= 0 && x > 0) { row++; x = 0; continue; }
-                available = Math.max(1, available);
-                String text = font.plainSubstrByWidth(fragment.substring(from), available);
-                if (text.isEmpty()) text = fragment.substring(from, from + 1);
-                int textWidth = Math.min(available, font.width(text));
-                parts.add(new InlinePart(span.index(), row, x, first, text, textWidth));
-                from += text.length();
-                x += lead + textWidth + 11;
-                first = false;
-                if (from < fragment.length()) { row++; x = 0; }
+    private void renderInlineMarkers(GuiGraphicsExtractor graphics, List<InlineStage> stages, SourceLineLayout layout,
+                                     int line, int hover, int x, int y, int width, int mouseX, int mouseY) {
+        ClientDebuggerState state = CodonClientMod.state();
+        if (state == null) return;
+        for (InlineStage stage : stages) {
+            int markerX = x + layout.before(stage.start()) - horizontalOffset;
+            int start = x + layout.x(stage.start()) - horizontalOffset;
+            int end = x + layout.before(stage.end()) - horizontalOffset;
+            BreakpointDefinition definition = state.breakpoints().get(stage.target());
+            boolean enabled = definition != null && definition.enabled(), hovered = hover == stage.index();
+            if (selectedLine == line && selectedStageIndex == stage.index() && end > x && start < x + width)
+                graphics.outline(Math.max(x, start), y + 2, Math.min(x + width, end) - Math.max(x, start), 13, DebuggerTheme.color(TEAL));
+            if (SourceInteraction.markerVisible(enabled, hovered)) {
+                DebuggerIcon icon = BreakpointUi.icon(definition);
+                icon.drawSmall(graphics, markerX + (SourceLineLayout.MARKER_WIDTH - icon.smallSize()) / 2,
+                    y + 5, DebuggerTheme.color(enabled ? RED : MUTED));
+                addStageHit(markerX, y, start, x, width, stage.target(), true);
             }
-            firstSpan = false;
+            addStageHit(start, y, end, x, width, stage.target(), false);
+            if (hovered && mouseX < start)
+                graphics.setTooltipForNextFrame(font, Component.translatable("codon.breakpoint.stage_target", stage.index() + 1)
+                    .append(" · " + (definition == null ? tr("codon.source.no_breakpoint") : BreakpointUi.condition(definition.condition()))), mouseX, mouseY);
         }
-        return parts;
+    }
+
+    private void addStageHit(int start, int y, int end, int viewportX, int width, BreakpointTarget target, boolean control) {
+        int from = Math.max(start, viewportX), to = Math.min(end, viewportX + width);
+        if (to > from) stageHits.add(new StageHit(from, y, to - from, ROW_HEIGHT, target, control));
     }
 
     private static boolean previewMatchesLine(FunctionSourceDocument document, int line,
@@ -422,49 +573,125 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             && preview.savedCommand().equals(document.lines().get(line - 1).trim());
     }
 
-    private int selectedInlineStageRows() {
-        if (selectedLine < 1 || sources.selected() == null) return 0;
-        ClientDebuggerState state = CodonClientMod.state();
-        if (state == null) return 0;
-        SourceLocation.Function location = new SourceLocation.Function(new FunctionLocation(sources.selected(), selectedLine));
-        ClientStagePreviewState.Preview preview = state.stagePreviews().get(location);
+    private int gutterWidth() {
+        return 32 + font.width(Integer.toString(sources.document() == null ? 1 : sources.document().lines().size()));
+    }
+
+    private int displayedWidth() { return Math.max(Math.max(widestLine, expandedWidth), inlineLayout == null ? 0 : inlineLayout.width()); }
+    private int maxHorizontalOffset() { return Math.max(0, displayedWidth() - codeWidth()); }
+    private int horizontalTrackY() { return top + ClientFunctionSourceState.ScreenLayout.scrollbarInset(panelHeight); }
+
+    private void updateCodeCache() {
         FunctionSourceDocument document = sources.document();
-        return document == null || !previewMatchesLine(document, selectedLine, preview) ? 0
-            : inlineStageRows(preview, panelWidth - treeWidth - 78);
-    }
-
-    private void renderSourceText(GuiGraphicsExtractor graphics, String source, FunctionId current, int x, int y, int width) {
-        FunctionId called = calledFunction(source, current.namespace());
-        if (called == null) {
-            WatchUi.line(graphics, font, source, x, y, width, TEXT);
-            return;
+        if (cachedDocument == document) return;
+        cachedDocument = document;
+        codeLines.clear();
+        inlineRows.clear();
+        sourceFingerprints.clear();
+        expandedWidth = widestLine = 0;
+        Map<Integer, Float> glyphWidths = new HashMap<>();
+        if (document != null) for (String line : document.lines()) {
+            SourceCodeLine code = new SourceCodeLine(line, font, glyphWidths);
+            codeLines.add(code);
+            widestLine = Math.max(widestLine, code.width());
         }
-        String token = source.substring(source.indexOf("function") + "function".length()).trim().split("\\s+", 2)[0];
-        int tokenAt = source.indexOf(token);
-        if (tokenAt < 0) { WatchUi.line(graphics, font, source, x, y, width, TEXT); return; }
-        String before = source.substring(0, tokenAt);
-        String after = source.substring(tokenAt + token.length());
-        int beforeWidth = Math.min(font.width(before), width);
-        WatchUi.line(graphics, font, before, x, y, width, TEXT);
-        WatchUi.line(graphics, font, token, x + beforeWidth, y, Math.max(0, width - beforeWidth), TEAL);
-        WatchUi.line(graphics, font, after, x + beforeWidth + font.width(token), y,
-            Math.max(0, width - beforeWidth - font.width(token)), TEXT);
-        int visibleTokenWidth = Math.min(font.width(token), width - beforeWidth);
-        if (visibleTokenWidth > 0)
-            functionHits.add(new FunctionHit(x + beforeWidth, y - 4, visibleTokenWidth, ROW_HEIGHT, called));
+        rebuildMatches();
     }
 
-    private FunctionId calledFunction(String source, String defaultNamespace) {
-        String trimmed = source.stripLeading();
-        int index = trimmed.indexOf("function");
-        if (index < 0 || (index > 0 && Character.isLetterOrDigit(trimmed.charAt(index - 1)))) return null;
-        String tail = trimmed.substring(index + "function".length()).trim();
-        if (tail.isEmpty()) return null;
-        String token = tail.split("\\s+", 2)[0];
-        if (!token.matches("(?:[a-z0-9_.-]+:)?[a-z0-9_./-]+")) return null;
-        FunctionId id = token.contains(":") ? new FunctionId(token.substring(0, token.indexOf(':')),
-            token.substring(token.indexOf(':') + 1)) : new FunctionId(defaultNamespace, token);
-        return sources.functions().contains(id) ? id : null;
+    private void rebuildMatches() {
+        SourceSyntax.Match previous = matchIndex < 0 || matchIndex >= matches.size() ? null : matches.get(matchIndex);
+        SourceSyntax.SearchResults results = sources.document() == null || sourceSearch == null
+            ? new SourceSyntax.SearchResults(List.of(), false)
+            : SourceSyntax.find(sources.document().lines(), sourceSearch.getValue());
+        matches = results.matches();
+        matchesLimited = results.hasMore();
+        if (sourceSearch != null) sourceSearch.setTooltip(Tooltip.create(matchesLimited
+            ? Component.translatable("codon.source.find_hint").append("\n")
+                .append(Component.translatable("codon.source.find_limit", SourceSyntax.MAX_MATCHES))
+            : Component.translatable("codon.source.find_hint")));
+        matchesByLine.clear();
+        for (SourceSyntax.Match match : matches) matchesByLine.computeIfAbsent(match.line(), ignored -> new ArrayList<>()).add(match);
+        matchIndex = previous == null ? -1 : matches.indexOf(previous);
+    }
+
+    private void nextMatch(int direction) {
+        if (matches.isEmpty()) return;
+        matchIndex = matchIndex < 0 ? (direction > 0 ? 0 : matches.size() - 1)
+            : Math.floorMod(matchIndex + direction, matches.size());
+        SourceSyntax.Match match = matches.get(matchIndex);
+        selectLine(match.line());
+        lineOffset = match.line() - 1;
+        if (match.line() <= codeLines.size()) {
+            updateInlineLayout();
+            SourceCodeLine code = codeLines.get(match.line() - 1);
+            int start = inlineLayout == null ? code.x(match.start()) : inlineLayout.x(match.start());
+            int end = inlineLayout == null ? code.x(match.end()) : inlineLayout.before(match.end());
+            int visible = codeWidth();
+            if (start < horizontalOffset || end > horizontalOffset + visible)
+                horizontalOffset = Math.clamp(start - 10, 0, maxHorizontalOffset());
+        }
+        rememberView();
+    }
+
+    private void renderSourceText(GuiGraphicsExtractor graphics, SourceCodeLine code, SourceLineLayout layout, int line,
+                                  int x, int rowY, int width) {
+        int y = rowY + 5;
+        SourceSyntax.Match currentMatch = matchIndex < 0 ? null : matches.get(matchIndex);
+        for (SourceLineLayout.Segment segment : layout.segments()) {
+            for (SourceSyntax.Match match : matchesByLine.getOrDefault(line, List.of())) {
+                int from = Math.max(match.start(), segment.start()), to = Math.min(match.end(), segment.end());
+                if (from >= to) continue;
+                int start = x + layout.x(from) - horizontalOffset;
+                int end = x + layout.before(to) - horizontalOffset;
+                if (end <= x || start >= x + width) continue;
+                graphics.fill(Math.max(x, start), y - 2, Math.min(x + width, end), y + 10, DebuggerTheme.color(AMBER_SURFACE));
+                if (match.equals(currentMatch)) graphics.outline(Math.max(x, start), y - 2,
+                    Math.max(1, Math.min(x + width, end) - Math.max(x, start)), 12, DebuggerTheme.color(AMBER));
+            }
+            SourceCodeLine.Slice slice = code.slice(horizontalOffset - segment.inset(), width, segment.start(), segment.end());
+            graphics.text(font, slice.text(), x + slice.x(), y, DebuggerTheme.color(TEXT), false);
+        }
+        List<SourceSyntax.Span> spans = code.spans();
+        for (int i = 0; i + 1 < spans.size(); i++) {
+            SourceSyntax.Span span = spans.get(i);
+            boolean functionCommand = span.kind() == SourceSyntax.Kind.COMMAND;
+            boolean functionCondition = i > 0 && spans.get(i - 1).kind() == SourceSyntax.Kind.KEYWORD
+                && Set.of("if", "unless").contains(code.source().substring(spans.get(i - 1).start(), spans.get(i - 1).end()));
+            if ((!functionCommand && !functionCondition) || !code.source().substring(span.start(), span.end()).equals("function")) continue;
+            SourceSyntax.Span reference = spans.get(i + 1);
+            String token = code.source().substring(reference.start(), reference.end());
+            FunctionId called = SourceReferences.loadedFunction(token, sources.functions());
+            if (called == null) continue;
+            int start = x + layout.x(reference.start()) - horizontalOffset;
+            int end = x + layout.before(reference.end()) - horizontalOffset;
+            int visibleStart = Math.max(x, start), visibleEnd = Math.min(x + width, end);
+            if (visibleEnd > visibleStart) {
+                graphics.fill(visibleStart, y + 9, visibleEnd, y + 10, DebuggerTheme.color(TEAL));
+                var bounds = SourceInteraction.clippedRowHit(visibleStart, visibleEnd, rowY, ROW_HEIGHT,
+                    x, sourceLineTop(), width, sourceRows() * ROW_HEIGHT);
+                if (bounds != null) functionHits.add(new FunctionHit(bounds, called));
+            }
+        }
+    }
+
+    private void renderHorizontalScrollbar(GuiGraphicsExtractor graphics, int sourceLeft, int sourceWidth) {
+        int x = sourceLeft + gutterWidth(), width = codeWidth(), y = horizontalTrackY();
+        int maximum = maxHorizontalOffset();
+        int thumb = Math.min(width, Math.max(18, width * width / Math.max(width, displayedWidth())));
+        int offset = maximum == 0 ? 0 : horizontalOffset * (width - thumb) / maximum;
+        graphics.fill(x, y, x + width, y + 6, DebuggerTheme.color(RAISED));
+        graphics.fill(x + offset, y, x + offset + thumb, y + 6, DebuggerTheme.color(maximum == 0 ? BORDER : TEAL));
+        scrollbars.add("horizontal", true, x, y, width, 6, thumb, horizontalOffset, maximum,
+            value -> { horizontalOffset = value; horizontalRemainder = 0; clearSourceHits(); rememberView(); });
+    }
+
+    private void renderVerticalScrollbar(GuiGraphicsExtractor graphics, String id, int x, int y, int height,
+                                         int offset, int maximum, int rows, java.util.function.IntConsumer setter) {
+        int thumb = Math.min(height, Math.max(12, height * rows / Math.max(rows, rows + maximum)));
+        int at = maximum == 0 ? 0 : offset * (height - thumb) / maximum;
+        graphics.fill(x, y, x + 4, y + height, DebuggerTheme.color(RAISED));
+        graphics.fill(x, y + at, x + 4, y + at + thumb, DebuggerTheme.color(maximum == 0 ? BORDER : TEAL));
+        scrollbars.add(id, false, x, y, height, 4, thumb, offset, maximum, setter);
     }
 
     private BreakpointDefinition breakpoint(SourceLocation.Function location) {
@@ -484,8 +711,8 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
 
     private boolean isActualStop(FunctionId function, int line) {
         ClientDebuggerState state = CodonClientMod.state();
-        if (state == null || state.inspectionSnapshot() == null) return false;
-        return state.inspectionSnapshot().location() instanceof SourceLocation.Function location
+        if (state == null || !state.isPaused() || state.snapshot() == null) return false;
+        return state.snapshot().location() instanceof SourceLocation.Function location
             && location.location().function().equals(function) && location.location().line() == line;
     }
 
@@ -493,7 +720,8 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         ClientDebuggerState state = CodonClientMod.state();
         if (state == null || state.inspectionSnapshot() == null) return tr("codon.source.record_unavailable");
         if (state.inspectionSnapshot().location() instanceof SourceLocation.Function location
-            && location.location().function().equals(function)) return tr("codon.source.actual_stop", location.location().line());
+            && location.location().function().equals(function)) return tr(state.isPaused() ? "codon.source.actual_stop"
+                : "codon.source.record_line", location.location().line());
         boolean inStack = state.inspectionSnapshot().callStack().stream().anyMatch(frame ->
             frame.location() instanceof SourceLocation.Function location && location.location().function().equals(function));
         return inStack ? tr("codon.source.record_in_stack") : tr("codon.source.record_unavailable");
@@ -554,34 +782,8 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             existing == null ? BreakpointDefinition.plain(target) : existing, anchor));
     }
 
-    private void renderSelectedStageDetail(GuiGraphicsExtractor graphics, int sourceLeft, int sourceWidth,
-                                           ClientStagePreviewState.@org.jspecify.annotations.Nullable Preview preview) {
-        int y = top + panelHeight - 30;
-        BreakpointTarget stage = selectedStageTarget();
-        BreakpointTarget line = selectedLineTarget();
-        if (stage != null) {
-            ClientDebuggerState state = CodonClientMod.state();
-            BreakpointDefinition definition = state == null ? null : state.breakpoints().get(stage);
-            String detail = tr("codon.breakpoint.stage_target", selectedStageIndex + 1) + " · "
-                + (definition == null ? tr("codon.source.no_breakpoint") : BreakpointUi.condition(definition.condition()));
-            WatchUi.line(graphics, font, detail, sourceLeft + 5, y + 4, sourceWidth - 10, TEXT);
-        } else if (line != null) {
-            ClientDebuggerState state = CodonClientMod.state();
-            BreakpointDefinition definition = state == null ? null : state.breakpoints().get(line);
-            WatchUi.line(graphics, font, tr("codon.source.line") + " · "
-                    + (definition == null ? tr("codon.source.no_breakpoint") : BreakpointUi.condition(definition.condition())),
-                sourceLeft + 5, y + 4, sourceWidth - 10, TEXT);
-        } else {
-            WatchUi.line(graphics, font, tr("codon.source.select_command_or_stage"), sourceLeft + 5,
-                y + 4, sourceWidth - 10, MUTED);
-        }
-        if (preview != null && preview.spans().isEmpty())
-            WatchUi.line(graphics, font, tr("codon.source.no_stage_here"),
-                sourceLeft + 5, y + 16, sourceWidth - 10, MUTED);
-    }
-
     private void rememberView() {
-        sources.rememberBrowseView(listOffset, lineOffset, selectedLine, selectedStageIndex, stageScrollOffset);
+        sources.rememberBrowseView(listOffset, lineOffset, selectedLine, selectedStageIndex, 0, horizontalOffset);
     }
 
     private void setDrawerOpen(boolean open) {
@@ -602,13 +804,25 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         lineOffset = view.lineOffset();
         selectedLine = view.selectedLine();
         selectedStageIndex = view.selectedStageIndex();
-        stageScrollOffset = view.stageScrollOffset();
+        horizontalOffset = view.horizontalOffset();
     }
 
     @Override public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-        if (docked && event.y() < top) {
+        if (ScreenLayers.get(this) != null) return true;
+        if (!containsPanel(event.x(), event.y())) {
+            if (!docked) return false;
             forwardingParentDrag = parent.mouseClicked(event, doubleClick);
             return forwardingParentDrag;
+        }
+        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
+            if (splitterContains(event.x(), event.y())) {
+                resizingTree = true;
+                treeGrab = event.x() - left - treeWidth;
+                scrollbars.release();
+                setFocused(null);
+                return true;
+            }
+            if (scrollbars.click(event.x(), event.y())) { setFocused(null); return true; }
         }
         ClientDebuggerState debugger = CodonClientMod.state();
         for (FunctionHit hit : functionHits) {
@@ -624,7 +838,8 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             selectedStageIndex = hit.target().stageIndex();
             selectedLine = ((SourceLocation.Function) hit.target().location()).location().line();
             rememberView();
-            if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && hit.control()) {
+            setFocused(null);
+            if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && hit.control() && !debugger.breakpoints().pending(hit.target())) {
                 ClientNetworking.sendBreakpointEdit(debugger, ClientBreakpointState.Action.TOGGLE,
                     definition == null ? BreakpointDefinition.plain(hit.target()) : definition);
             } else if (event.button() == InputConstants.MOUSE_BUTTON_RIGHT) {
@@ -636,28 +851,23 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             FunctionSourceDocument document = sources.document();
             int sourceLeft = left + treeWidth + 8;
             int lineTop = sourceLineTop();
-            if (document != null && event.x() >= sourceLeft + 3 && event.x() < left + panelWidth - 8
+            if (!drawerOpen && document != null && event.x() >= sourceLeft + 3 && event.x() < codeRight()
                 && event.y() >= lineTop && event.y() < lineTop + sourceRows() * ROW_HEIGHT) {
                 int line = lineHits.stream().filter(hit -> hit.contains(event.y())).map(LineHit::line)
                     .findFirst().orElse(-1);
-                if (line >= 1 && line <= document.lines().size() && debugger != null && sources.selected() != null) {
+                if (line >= 1 && line <= document.lines().size() && sources.selected() != null) {
                     SourceLocation.Function location = new SourceLocation.Function(new FunctionLocation(sources.selected(), line));
-                    if (event.x() < sourceLeft + 20 && wholeEligible(document, line)) {
+                    if (event.x() >= lineMarkerX() - 2 && event.x() < lineMarkerX() + 10
+                        && debugger != null && wholeEligible(document, line)) {
                         selectedLine = line;
                         selectedStageIndex = -1;
-                        stageScrollOffset = 0;
                         BreakpointTarget target = BreakpointTarget.whole(location);
                         BreakpointDefinition definition = debugger.breakpoints().get(target);
                         ClientNetworking.sendBreakpointEdit(debugger, ClientBreakpointState.Action.TOGGLE,
                             definition == null ? BreakpointDefinition.plain(target) : definition);
                         rememberView();
-                    } else {
-                        selectedLine = line;
-                        selectedStageIndex = -1;
-                        stageScrollOffset = 0;
-                        if (stageEligible(document, line)) ClientNetworking.requestStagePreview(debugger, location);
-                        rememberView();
-                    }
+                    } else selectLine(line);
+                    setFocused(null);
                     return true;
                 }
             }
@@ -688,28 +898,103 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
     }
 
     @Override public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
-        if (docked && y < top) return parent.mouseScrolled(x, y, scrollX, scrollY);
+        if (ScreenLayers.get(this) != null) return true;
+        if (!containsPanel(x, y)) return docked && parent.mouseScrolled(x, y, scrollX, scrollY);
         int delta = -(int) Math.signum(scrollY) * 3;
-        if (x < left + treeWidth) listOffset = Math.clamp(listOffset + delta, 0, Math.max(0, entries.size() - visibleRows()));
-        else if (sources.document() != null) {
-            int stageRows = selectedInlineStageRows();
-            if (stageRows > sourceRows()) stageScrollOffset = Math.clamp(stageScrollOffset + delta, 0, stageRows - sourceRows());
-            else lineOffset = Math.clamp(lineOffset + delta, 0, Math.max(0, sources.document().lines().size() - sourceRows()));
+        if (x < left + treeWidth && y >= top + 54 && y < top + 54 + visibleRows() * ROW_HEIGHT)
+            listOffset = Math.clamp(listOffset + delta, 0, Math.max(0, entries.size() - visibleRows()));
+        else if (!drawerOpen && sources.document() != null && x >= sourceLeft() + 3
+            && y >= sourceLineTop() && y < horizontalTrackY() + 6) {
+            boolean shift = Minecraft.getInstance().hasShiftDown();
+            if (scrollX != 0 || shift) {
+                horizontalRemainder += SourceInteraction.horizontalMovement(scrollX, scrollY, shift);
+                int movement = (int) horizontalRemainder;
+                horizontalRemainder -= movement;
+                horizontalOffset = Math.clamp(horizontalOffset + movement, 0, maxHorizontalOffset());
+                if (horizontalOffset == 0 || horizontalOffset == maxHorizontalOffset()) horizontalRemainder = 0;
+            } else {
+                lineOffset = Math.clamp(lineOffset + delta, 0, maximumLineOffset());
+            }
+            clearSourceHits();
         }
         rememberView();
         return true;
     }
 
+    private void selectLine(int line) {
+        FunctionSourceDocument document = sources.document();
+        if (document == null || document.lines().isEmpty() || sources.selected() == null) return;
+        int nextLine = Math.clamp(line, 1, document.lines().size());
+        boolean changed = nextLine != selectedLine;
+        selectedLine = nextLine;
+        selectedStageIndex = -1;
+        lineOffset = Math.clamp(lineOffset, Math.max(0, selectedLine - sourceRows()), selectedLine - 1);
+        ClientDebuggerState debugger = CodonClientMod.state();
+        // Find may move between matches on the same line while typing. Retain its acknowledged
+        // preview instead of restarting a server parse and hiding the stage controls each time.
+        if (changed && debugger != null && stageEligible(document, selectedLine)) ClientNetworking.requestStagePreview(debugger,
+            new SourceLocation.Function(new FunctionLocation(sources.selected(), selectedLine)));
+        rememberView();
+    }
+
     @Override public boolean keyPressed(KeyEvent event) {
-        if (event.key() == InputConstants.KEY_ESCAPE) { onClose(); return true; }
+        if (ScreenLayers.get(this) != null) return true;
+        if (event.key() == InputConstants.KEY_F && event.hasControlDownWithQuirk() && sourceSearch.visible) {
+            setFocused(sourceSearch);
+            sourceSearch.setHighlightPos(0);
+            return true;
+        }
+        if (event.key() == InputConstants.KEY_F3 || sourceSearch.isFocused() && event.key() == InputConstants.KEY_RETURN) {
+            nextMatch(event.hasShiftDown() ? -1 : 1);
+            return true;
+        }
+        if (event.key() == InputConstants.KEY_ESCAPE) {
+            if (sourceSearch.isFocused()) { setFocused(null); return true; }
+            onClose(); return true;
+        }
+        if (event.key() == InputConstants.KEY_TAB) {
+            List<AbstractWidget> eligible = children().stream().filter(AbstractWidget.class::isInstance)
+                .map(AbstractWidget.class::cast).filter(widget -> widget.visible && widget.active).toList();
+            if (!eligible.isEmpty()) {
+                int index = eligible.indexOf(getFocused());
+                int next = index < 0 ? (event.hasShiftDown() ? eligible.size() - 1 : 0)
+                    : Math.floorMod(index + (event.hasShiftDown() ? -1 : 1), eligible.size());
+                setFocused(eligible.get(next));
+            }
+            return true;
+        }
+        boolean typing = search.visible && search.isFocused() || sourceSearch.visible && sourceSearch.isFocused();
+        if (!typing && !drawerOpen && sources.document() != null) {
+            int delta = switch (event.key()) {
+                case InputConstants.KEY_UP -> -1;
+                case InputConstants.KEY_DOWN -> 1;
+                case InputConstants.KEY_PAGEUP -> -sourceRows();
+                case InputConstants.KEY_PAGEDOWN -> sourceRows();
+                default -> 0;
+            };
+            if (delta != 0) { selectLine((selectedLine > 0 ? selectedLine : lineOffset + 1) + delta); return true; }
+            if (event.key() == InputConstants.KEY_HOME || event.key() == InputConstants.KEY_END) {
+                selectLine(event.key() == InputConstants.KEY_HOME ? 1 : sources.document().lines().size()); return true;
+            }
+            if (event.key() == InputConstants.KEY_LEFT || event.key() == InputConstants.KEY_RIGHT) {
+                horizontalOffset = Math.clamp(horizontalOffset + (event.key() == InputConstants.KEY_RIGHT ? 30 : -30), 0, maxHorizontalOffset());
+                rememberView(); return true;
+            }
+        }
         return super.keyPressed(event) || docked && parent.keyPressed(event);
     }
 
     @Override public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
+        if (ScreenLayers.get(this) != null) { resizingTree = forwardingParentDrag = false; scrollbars.release(); return true; }
+        if (resizingTree) { resizeTree(event.x()); return true; }
+        if (scrollbars.drag(event.x(), event.y())) return true;
         return forwardingParentDrag ? parent.mouseDragged(event, dx, dy) : super.mouseDragged(event, dx, dy);
     }
 
     @Override public boolean mouseReleased(MouseButtonEvent event) {
+        if (ScreenLayers.get(this) != null) { resizingTree = forwardingParentDrag = false; scrollbars.release(); return true; }
+        if (resizingTree) { resizingTree = false; return true; }
+        if (scrollbars.release()) return true;
         if (!forwardingParentDrag) return super.mouseReleased(event);
         forwardingParentDrag = false;
         return parent.mouseReleased(event);

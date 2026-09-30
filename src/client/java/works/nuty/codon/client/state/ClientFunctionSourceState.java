@@ -24,16 +24,25 @@ public final class ClientFunctionSourceState {
 
     /** Read-only browser presentation retained while its screen is closed or rebuilt for resize. */
     public record BrowseView(int treeOffset, int lineOffset, int selectedLine, int selectedStageIndex,
-                             int stageScrollOffset) {
+                             int stageScrollOffset, int horizontalOffset) {
         public BrowseView {
             if (treeOffset < 0 || lineOffset < 0 || selectedLine < -1 || selectedStageIndex < -1
-                || stageScrollOffset < 0)
+                || stageScrollOffset < 0 || horizontalOffset < 0)
                 throw new IllegalArgumentException("invalid source browser view");
+        }
+
+        public BrowseView(int treeOffset, int lineOffset, int selectedLine, int selectedStageIndex, int stageScrollOffset) {
+            this(treeOffset, lineOffset, selectedLine, selectedStageIndex, stageScrollOffset, 0);
         }
     }
 
     /** Minecraft-free source browser geometry for direct GUI-scale regression tests. */
     public record ScreenLayout(int panelWidth, int panelHeight, int treeWidth, boolean drawerMode) {
+        public static int sourceInset(boolean compact) { return compact ? 118 : 100; }
+        public static int scrollbarInset(int panelHeight) { return panelHeight - 16; }
+        public static int sourceRows(int panelHeight, boolean compact) {
+            return Math.max(1, (scrollbarInset(panelHeight) - 6 - sourceInset(compact)) / 18);
+        }
         public static ScreenLayout forScreen(int width, int height) {
             int panelWidth = Math.max(1, Math.min(760, width - 12));
             int panelHeight = Math.max(1, Math.min(440, height - 12));
@@ -81,6 +90,7 @@ public final class ClientFunctionSourceState {
     private Status sourceStatus = Status.IDLE;
     private final List<Request> outgoing = new ArrayList<>();
     private BrowseView browseView = new BrowseView(0, 0, -1, -1, 0);
+    private int treeWidth;
     private final Map<FunctionId, BrowseView> functionViews = new HashMap<>();
     private final Deque<FunctionId> backStack = new ArrayDeque<>();
 
@@ -137,11 +147,18 @@ public final class ClientFunctionSourceState {
     public @Nullable FunctionSourceDocument document() { return document; }
     public Status sourceStatus() { return sourceStatus; }
     public BrowseView browseView() { return browseView; }
+    public int treeWidth() { return treeWidth; }
+    public void rememberTreeWidth(int width) { treeWidth = Math.max(0, width); }
 
     /** Saves scroll and exact line/stage selection without changing the live source request. */
     public void rememberBrowseView(int treeOffset, int lineOffset, int selectedLine, int selectedStageIndex,
                                    int stageScrollOffset) {
-        browseView = new BrowseView(treeOffset, lineOffset, selectedLine, selectedStageIndex, stageScrollOffset);
+        rememberBrowseView(treeOffset, lineOffset, selectedLine, selectedStageIndex, stageScrollOffset, browseView.horizontalOffset());
+    }
+
+    public void rememberBrowseView(int treeOffset, int lineOffset, int selectedLine, int selectedStageIndex,
+                                   int stageScrollOffset, int horizontalOffset) {
+        browseView = new BrowseView(treeOffset, lineOffset, selectedLine, selectedStageIndex, stageScrollOffset, horizontalOffset);
         if (selected != null) functionViews.put(selected, browseView);
     }
 
@@ -224,6 +241,7 @@ public final class ClientFunctionSourceState {
         functions = List.of();
         listStatus = Status.IDLE;
         browseView = new BrowseView(0, 0, -1, -1, 0);
+        treeWidth = 0;
         functionViews.clear();
         backStack.clear();
         clearSelection();
