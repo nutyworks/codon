@@ -991,6 +991,11 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         return super.keyPressed(event) || docked && parent.keyPressed(event);
     }
 
+    @Override public boolean keyReleased(KeyEvent event) {
+        // Vanilla toggles its debug overlay on F3 release, after an unconsumed screen event.
+        return event.key() == InputConstants.KEY_F3 || super.keyReleased(event);
+    }
+
     @Override public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
         if (ScreenLayers.get(this) != null) { resizingTree = forwardingParentDrag = false; scrollbars.release(); return true; }
         if (resizingTree) { resizeTree(event.x()); return true; }
