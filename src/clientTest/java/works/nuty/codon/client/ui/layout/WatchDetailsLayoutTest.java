@@ -25,10 +25,10 @@ class WatchDetailsLayoutTest {
     }
 
     @Test void wrapsExactlyWhenTheSingleFooterRowRunsOutOfRoom() {
-        assertTrue(WatchDetailsLayout.create(351, 240, false).splitFooter());
-        assertFalse(WatchDetailsLayout.create(352, 240, false).splitFooter());
-        assertTrue(WatchDetailsLayout.create(405, 240, true).splitFooter());
-        assertFalse(WatchDetailsLayout.create(406, 240, true).splitFooter());
+        assertTrue(WatchDetailsLayout.create(361, 240, false).splitFooter());
+        assertFalse(WatchDetailsLayout.create(362, 240, false).splitFooter());
+        assertTrue(WatchDetailsLayout.create(415, 240, true).splitFooter());
+        assertFalse(WatchDetailsLayout.create(416, 240, true).splitFooter());
         var compact = WatchDetailsLayout.create(320, 240, true);
         assertEquals(compact.more().y(), compact.edit().y());
         assertEquals(compact.more().y() + 24, compact.retry().y());

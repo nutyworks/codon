@@ -56,6 +56,7 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
         language(context, scenario.language());
         context.getInput().resizeWindow(scenario.width(), scenario.height());
         var fixture = context.computeOnClient(client -> {
+            client.gui.hud.getChat().clearMessages(false);
             client.options.guiScale().set(scenario.gameScale());
             client.resizeGui();
             var state = new ClientDebuggerState();
@@ -68,11 +69,12 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
             state.selectSource(0);
             state.watches().grouping(WatchGrouping.Mode.NONE);
             var definitions = new ArrayList<>(List.of(SCORE, NBT));
-            for (int i = 0; i < 10; i++) definitions.add(new WatchSpec(WatchSpec.Kind.STORAGE_NBT, "demo:compact", "row_" + i));
+            for (int i = 0; i < 16; i++) definitions.add(new WatchSpec(WatchSpec.Kind.STORAGE_NBT, "demo:compact", "row_" + i));
             state.watches().addAll(definitions);
             accept(state, "123456789");
             state.applyPause(pause(base, 102, PauseReason.STEP));
             accept(state, "-2147483648");
+            state.watches().reveal(state.watches().findId(SCORE));
             var input = DebuggerPresentationGameTest.input(client, state);
             var overlay = new DebuggerOverlay(state);
             client.setScreenAndShow(new CodonScreen(input, overlay));
@@ -111,8 +113,8 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
         context.runOnClient(client -> require(screen(client) instanceof WatchScreen, "Edit hitbox opens the editor"));
         click(context, "codon.watch.close");
         clickLabel(context, context.computeOnClient(client -> Component.translatable("codon.watch.inspect", WatchFormatting.specification(NBT).getString()).getString()));
-        context.runOnClient(DebuggerCompactWatchGameTest::checkDetailsGeometry);
         capture(context, name + "-details");
+        context.runOnClient(DebuggerCompactWatchGameTest::checkDetailsGeometry);
         click(context, "codon.watch.details.copy_value");
         context.runOnClient(client -> require(client.keyboardHandler.getClipboard().equals(LONG_VALUE), "Full inspection copies the entire shortened value"));
         click(context, "codon.watch.details.copy_path");
@@ -124,6 +126,11 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
         });
         context.getInput().pressKey(InputConstants.KEY_TAB);
         context.runOnClient(client -> require(screen(client).getFocused() == button(screen(client), text("codon.watch.edit")), "Tab after More reaches visible Edit"));
+        click(context, "codon.watch.edit");
+        context.runOnClient(client -> require(screen(client) instanceof WatchScreen, "Expanded Details Edit hitbox opens the same Watch editor"));
+        click(context, "codon.watch.close");
+        clickLabel(context, context.computeOnClient(client -> Component.translatable("codon.watch.inspect", WatchFormatting.specification(NBT).getString()).getString()));
+        click(context, "codon.watch.details.more");
         context.getInput().pressKey(InputConstants.KEY_END);
         capture(context, name + "-details-expanded-end");
         click(context, "codon.watch.details.less");
@@ -133,6 +140,13 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
         });
         context.getInput().pressKey(InputConstants.KEY_TAB);
         context.runOnClient(client -> require(screen(client).getFocused() == button(screen(client), text("codon.watch.details.retry")), "Collapsed Tab skips hidden Edit"));
+        context.runOnClient(client -> {
+            fixture.state().applyPause(pause(fixture.state().snapshot(), 103, PauseReason.STEP));
+            accept(fixture.state(), "-2147483648", true);
+            require(fixture.state().watches().entries().stream().anyMatch(entry -> entry.spec().equals(NBT)
+                && entry.result().status() == WatchResult.Status.ERROR), "Retry is exercised on a failed read");
+        });
+        context.waitTicks(3);
         click(context, "codon.watch.details.retry");
         context.runOnClient(client -> require(fixture.state().watches().drainQueries().stream().anyMatch(query -> query.spec().equals(NBT)), "Retry hitbox starts the same read-only query"));
         click(context, "codon.watch.close");
@@ -145,15 +159,19 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
         click(context, "codon.watch.close");
         context.runOnClient(client -> {
             var base = fixture.state().snapshot();
-            fixture.state().applyPause(pause(base, 103, PauseReason.EXECUTION_COMPLETE));
+            fixture.state().applyPause(pause(base, 104, PauseReason.EXECUTION_COMPLETE));
             accept(fixture.state(), "-2147483648");
         });
         context.waitTicks(3);
         capture(context, name + "-finished");
-        context.runOnClient(client -> fixture.state().beginControlRequest());
+        clickLabel(context, context.computeOnClient(client -> text("codon.ui.control.resume") + " "
+            + fixture.input().keyLabel(InputManager.Control.RESUME).getString()));
         context.waitTicks(6);
-        context.runOnClient(client -> require(!button(screen(client), text("codon.ui.control.resume") + " "
-            + fixture.input().keyLabel(InputManager.Control.RESUME).getString()).active, "Pending control still disables execution buttons"));
+        context.runOnClient(client -> {
+            for (var action : InputManager.Control.values()) require(!button(screen(client), text(action.translationKey()) + " "
+                + fixture.input().keyLabel(action).getString()).active, "Pending control still disables every execution button");
+            client.gui.hud.getChat().clearMessages(false);
+        });
         capture(context, name + "-waiting");
         context.runOnClient(client -> client.setScreenAndShow(null));
     }
@@ -163,9 +181,14 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
     }
 
     private static void accept(ClientDebuggerState state, String score) {
+        accept(state, score, false);
+    }
+
+    private static void accept(ClientDebuggerState state, String score, boolean nbtFailure) {
         for (var query : state.watches().drainQueries()) {
             WatchResult result = query.spec().equals(SCORE) ? new WatchResult(WatchResult.Status.VALUE, score, "entity:00000000-0000-0000-0000-000000000001")
-                : query.spec().equals(NBT) ? new WatchResult(WatchResult.Status.VALUE, LONG_VALUE, "storage:demo:compact")
+                : query.spec().equals(NBT) ? nbtFailure ? WatchResult.absent(WatchResult.Status.ERROR, "storage:demo:compact")
+                    : new WatchResult(WatchResult.Status.VALUE, LONG_VALUE, "storage:demo:compact")
                 : query.spec().path().equals("row_0") ? WatchResult.absent(WatchResult.Status.ERROR, "storage:demo:compact")
                 : new WatchResult(WatchResult.Status.VALUE, "0", "storage:demo:compact");
             state.watches().accept(query.pauseId(), query.requestId(), result);
@@ -200,7 +223,8 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
         for (var widget : buttons(screen)) {
             require(widget.getX() >= layout.panel().x() + 8 && widget.getRight() <= layout.panel().x() + layout.panel().width() - 8, "Footer stays inside the panel");
             require(widget.getY() >= layout.textBottom() + 6 && widget.getBottom() <= screen.height, "Text and footer have a gap");
-            require(client.font.width(widget.getMessage()) <= widget.getWidth() - 10, "Localized footer text fits its native hitbox");
+            require(client.font.width(widget.getMessage()) <= widget.getWidth() - 10, "Localized footer text fits its native hitbox: "
+                + widget.getMessage().getString() + " text=" + client.font.width(widget.getMessage()) + " available=" + (widget.getWidth() - 10));
             for (var other : buttons(screen)) if (widget != other) require(!overlaps(widget, other), "Visible Details footer targets are disjoint");
         }
     }
