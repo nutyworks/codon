@@ -11,6 +11,8 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import works.nuty.codon.client.state.ClientDebuggerState;
+import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds;
+import works.nuty.codon.client.ui.layout.WatchPickerLayout;
 import works.nuty.codon.core.model.WatchEditorPage;
 import works.nuty.codon.core.model.WatchEditorQuery;
 import works.nuty.codon.core.model.WatchSpec;
@@ -25,7 +27,6 @@ import static works.nuty.codon.client.ui.DebuggerTheme.*;
 
 /** Read-only paged chooser used by the Watch expression form. */
 public final class WatchPickerScreen extends ScaledCodonScreen {
-    private static final int ROW_HEIGHT = 26;
     private final Screen parent;
     private final ClientDebuggerState state;
     private final WatchEditorQuery initial;
@@ -42,6 +43,7 @@ public final class WatchPickerScreen extends ScaledCodonScreen {
     private int rowOffset;
     private int focusedOption = -1;
     private int left, top, panelWidth, panelHeight;
+    private WatchPickerLayout layout;
     private EditBox search;
     private DebuggerButton previous, next, up, retry, close;
     private WatchEditorPage presentedPage;
@@ -67,12 +69,10 @@ public final class WatchPickerScreen extends ScaledCodonScreen {
     @Override protected void init() {
         clearWidgets();
         tabOrder.clear();
-        panelWidth = Math.max(1, Math.min(560, width - 16));
-        panelHeight = Math.max(1, Math.min(360, height - 12));
-        left = (width - panelWidth) / 2;
-        top = (height - panelHeight) / 2;
+        layout = WatchPickerLayout.create(width, height, 1);
+        updateLayout(1);
 
-        search = addRenderableWidget(new DebuggerEditBox(font, left + 8, top + 29, Math.max(1, panelWidth - 84), 20,
+        search = addRenderableWidget(new DebuggerEditBox(font, layout.search().x(), layout.search().y(), layout.search().width(), 20,
             WatchUi.text("picker.search")));
         search.setMaxLength(WatchEditorQuery.MAX_SEARCH_LENGTH);
         Component searchHint = mode == WatchEditorQuery.Mode.NBT
@@ -89,21 +89,21 @@ public final class WatchPickerScreen extends ScaledCodonScreen {
         });
         tabOrder.add(search);
 
-        previous = addRenderableWidget(WatchUi.button(left + 8, top + panelHeight - 28, 46, 20,
+        previous = addRenderableWidget(WatchUi.button(layout.previous().x(), layout.previous().y(), 54, 20,
             WatchUi.text("picker.previous"), () -> {
                 if (interactionAvailable()) request(Math.max(0, pageOffset - WatchEditorPage.PAGE_SIZE));
             }));
-        next = addRenderableWidget(WatchUi.button(left + 56, top + panelHeight - 28, 46, 20,
+        next = addRenderableWidget(WatchUi.button(layout.next().x(), layout.next().y(), 54, 20,
             WatchUi.text("picker.next"), () -> {
                 if (interactionAvailable()) request(pageOffset + currentPageSize());
             }));
-        up = addRenderableWidget(WatchUi.button(left + 104, top + panelHeight - 28, 42, 20,
+        up = addRenderableWidget(WatchUi.button(layout.up().x(), layout.up().y(), 54, 20,
             WatchUi.text("picker.up"), this::up));
-        retry = addRenderableWidget(WatchUi.button(left + panelWidth - 112, top + panelHeight - 28, 50, 20,
+        retry = addRenderableWidget(WatchUi.button(layout.retry().x(), layout.retry().y(), 54, 20,
             WatchUi.text("retry"), () -> {
                 if (interactionAvailable()) state.watchEditor().retry();
             }));
-        close = addRenderableWidget(WatchUi.button(left + panelWidth - 58, top + 5, 50, 18,
+        close = addRenderableWidget(WatchUi.button(layout.close().x(), layout.close().y(), 54, 18,
             WatchUi.text("close"), this::onClose));
         tabOrder.add(previous);
         tabOrder.add(next);
@@ -143,13 +143,34 @@ public final class WatchPickerScreen extends ScaledCodonScreen {
             || option.detail().toLowerCase(Locale.ROOT).contains(needle)).toList();
     }
 
-    private int visibleRows() { return Math.max(1, (panelHeight - 106) / ROW_HEIGHT); }
+    private int visibleRows() { return layout.visibleRows(); }
     private int currentPageSize() { WatchEditorPage page = state.watchEditor().page(); return page == null ? 0 : page.options().size(); }
     private int maxRowOffset(List<WatchEditorPage.Option> options) { return Math.max(0, options.size() - visibleRows()); }
 
     private boolean interactionAvailable() { return state.watchEditor().page() != null; }
 
+    private void updateLayout(int optionCount) {
+        layout = WatchPickerLayout.create(width, height, optionCount);
+        left = layout.panel().x();
+        top = layout.panel().y();
+        panelWidth = layout.panel().width();
+        panelHeight = layout.panel().height();
+        if (previous != null) {
+            position(previous, layout.previous());
+            position(next, layout.next());
+            position(up, layout.up());
+            position(retry, layout.retry());
+        }
+    }
+
+    private static void position(AbstractWidget widget, Bounds bounds) {
+        widget.setX(bounds.x());
+        widget.setY(bounds.y());
+    }
+
     private void updatePresentation(WatchEditorPage page, List<WatchEditorPage.Option> options, boolean authoritative) {
+        // A pending reply keeps the last presented size, just as it retains its rows.
+        if (page != null) updateLayout(options.size());
         if (page != presentedPage) {
             presentedPage = page;
             rowOffset = 0;
@@ -218,35 +239,40 @@ public final class WatchPickerScreen extends ScaledCodonScreen {
             : WatchUi.text(mode == WatchEditorQuery.Mode.ENTITIES && kind == WatchSpec.Kind.SCORE
                 ? "picker.score_holders" : "picker." + mode.name().toLowerCase(Locale.ROOT)).getString();
         WatchUi.line(graphics, font, place, left + 8, top + 55, panelWidth - 16, MUTED);
-        int listTop = top + 70;
-        int listBottom = listTop + visibleRows() * ROW_HEIGHT;
-        graphics.enableScissor(left + 7, listTop, left + panelWidth - 7, listBottom);
+        int listTop = layout.listTop();
+        int listBottom = layout.listBottom();
+        boolean scrollable = options.size() > visibleRows();
+        graphics.enableScissor(layout.contentX(), listTop, layout.contentRight(), listBottom);
         for (int index = rowOffset; index < Math.min(options.size(), rowOffset + visibleRows()); index++) {
             WatchEditorPage.Option option = options.get(index);
-            int y = listTop + (index - rowOffset) * ROW_HEIGHT;
+            int visibleIndex = index - rowOffset;
+            Bounds row = layout.row(visibleIndex, scrollable);
             boolean focused = authoritative && index == focusedOption;
-            boolean hovered = authoritative && mouseX >= left + 8 && mouseX < left + panelWidth - 8 && mouseY >= y && mouseY < y + ROW_HEIGHT - 2;
+            boolean hovered = authoritative && row.contains(mouseX, mouseY);
             boolean expandable = option.expandable() && mode == WatchEditorQuery.Mode.NBT;
             int surface = focused || hovered ? RAISED : SURFACE;
-            graphics.fill(left + 8, y, left + panelWidth - 8, y + ROW_HEIGHT - 2, DebuggerTheme.color(surface));
-            if (focused) graphics.outline(left + 8, y, panelWidth - 16, ROW_HEIGHT - 2, DebuggerTheme.color(TEAL));
+            graphics.fill(row.x(), row.y(), row.x() + row.width(), row.y() + row.height(), DebuggerTheme.color(surface));
+            if (focused) graphics.outline(row.x(), row.y(), row.width(), row.height(), DebuggerTheme.color(TEAL));
             int labelColor = selectable(option) ? TEXT : MUTED;
-            WatchUi.line(graphics, font, option.label(), left + 13, y + 4, panelWidth - (expandable ? 54 : 28), labelColor);
-            if (!option.detail().isBlank()) WatchUi.line(graphics, font, option.detail(), left + 13, y + 14,
-                panelWidth - (expandable ? 54 : 28), MUTED);
+            WatchUi.line(graphics, font, option.label(), row.x() + 5,
+                layout.labelY(visibleIndex, !option.detail().isBlank(), font.lineHeight),
+                layout.textWidth(expandable, scrollable), labelColor);
+            if (!option.detail().isBlank()) WatchUi.line(graphics, font, option.detail(), row.x() + 5, row.y() + 13,
+                layout.textWidth(expandable, scrollable), MUTED);
             if (expandable) {
-                graphics.fill(left + panelWidth - 28, y + 5, left + panelWidth - 15, y + 18, DebuggerTheme.color(TEAL_SURFACE));
-                WatchUi.line(graphics, font, ">", left + panelWidth - 24, y + 5, 8, TEAL);
+                Bounds arrow = layout.expand(visibleIndex, scrollable);
+                graphics.fill(arrow.x(), arrow.y(), arrow.x() + arrow.width(), arrow.y() + arrow.height(), DebuggerTheme.color(TEAL_SURFACE));
+                WatchUi.line(graphics, font, ">", arrow.x() + 4, arrow.y(), 8, TEAL);
             }
             if (authoritative && hovered && !selectable(option)) graphics.setTooltipForNextFrame(font,
                 WatchUi.text("picker.path_too_long", WatchSpec.MAX_INPUT_LENGTH), mouseX, mouseY);
         }
         graphics.disableScissor();
-        if (options.size() > visibleRows()) {
+        if (scrollable) {
             int track = Math.max(1, listBottom - listTop);
             int thumb = Math.max(4, track * visibleRows() / options.size());
             int thumbY = listTop + (track - thumb) * rowOffset / maxRowOffset(options);
-            graphics.fill(left + panelWidth - 5, thumbY, left + panelWidth - 3, thumbY + thumb, DebuggerTheme.color(TEAL));
+            graphics.fill(layout.scrollbarX(), thumbY, layout.contentRight(), thumbY + thumb, DebuggerTheme.color(TEAL));
         }
         if (options.isEmpty()) {
             String status = page == null ? WatchUi.text("picker.loading").getString()
@@ -261,14 +287,16 @@ public final class WatchPickerScreen extends ScaledCodonScreen {
     @Override public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         if (interactionAvailable() && event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
             List<WatchEditorPage.Option> options = options(state.watchEditor().page(), true);
-            int listTop = top + 70;
-            if (event.x() >= left + 8 && event.x() < left + panelWidth - 8 && event.y() >= listTop
-                && event.y() < listTop + visibleRows() * ROW_HEIGHT) {
-                int index = rowOffset + (int) ((event.y() - listTop) / ROW_HEIGHT);
-                if (index < options.size()) {
+            int listTop = layout.listTop();
+            if (event.y() >= listTop && event.y() < layout.listBottom()) {
+                int visibleIndex = (int) ((event.y() - listTop) / WatchPickerLayout.ROW_HEIGHT);
+                int index = rowOffset + visibleIndex;
+                boolean scrollable = options.size() > visibleRows();
+                if (index < options.size() && layout.row(visibleIndex, scrollable).contains(event.x(), event.y())) {
                     WatchEditorPage.Option option = options.get(index);
                     focusedOption = index;
-                    if (mode == WatchEditorQuery.Mode.NBT && option.expandable() && event.x() >= left + panelWidth - 34) expand(option);
+                    if (mode == WatchEditorQuery.Mode.NBT && option.expandable()
+                        && layout.expand(visibleIndex, scrollable).contains(event.x(), event.y())) expand(option);
                     else choose(option);
                     return true;
                 }
