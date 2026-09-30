@@ -74,6 +74,7 @@ public final class DebuggerPeekUiGameTest implements FabricClientGameTest {
 
                 checkMouseRebind(context, fixture);
                 checkTypingGuard(context, fixture);
+                checkMouseFocusRecovery(context, fixture);
                 checkFocusReset(context, fixture);
                 context.getInput().holdKey(options -> fixture.input().hideUiKey);
                 context.getInput().pressKey(options -> fixture.input().menuKey);
@@ -123,6 +124,54 @@ public final class DebuggerPeekUiGameTest implements FabricClientGameTest {
         try (TestSingleplayerContext rejoined = context.worldBuilder().create()) {
             rejoined.getConnection().waitForChunksRender();
             context.runOnClient(client -> require(!CodonClientMod.input().isUiHidden(), "rejoin starts with visible UI"));
+        }
+    }
+
+    private static void checkMouseFocusRecovery(ClientGameTestContext context, Fixture fixture) {
+        MouseButtonInfo right = new MouseButtonInfo(InputConstants.MOUSE_BUTTON_RIGHT, 0);
+        try {
+            context.runOnClient(client -> {
+                fixture.input().hideUiKey.setKey(InputConstants.Type.MOUSE.getOrCreate(right.button()));
+                KeyMapping.resetMapping();
+                client.mouseHandler.onButton(client.getWindow().handle(), right, InputConstants.PRESS);
+                require(fixture.input().isUiHidden(), "mouse press hides before focus loss");
+                WindowFocusAccessor window = (WindowFocusAccessor) (Object) client.getWindow();
+                try {
+                    window.codon$focus(false);
+                    require(!fixture.input().isUiHidden(), "focus loss cancels a held mouse gesture");
+                } finally {
+                    window.codon$focus(true);
+                }
+                require(!fixture.input().isUiHidden(), "focus regain does not restart a still-held mouse button");
+                // The button was released outside the window, so no RELEASE callback arrives.
+                client.mouseHandler.onButton(client.getWindow().handle(), right, InputConstants.PRESS);
+                require(fixture.input().isUiHidden(), "first fresh mouse press recovers a missed outside release");
+                client.mouseHandler.onButton(client.getWindow().handle(), right, InputConstants.RELEASE);
+                require(fixture.input().isUiHidden(), "first recovered mouse tap toggles without a second click");
+                preserved(fixture, "mouse focus recovery");
+            });
+            context.waitTicks(2);
+            context.runOnClient(client -> require(fixture.input().isUiHidden(), "recovered mouse toggle survives rendering"));
+            context.takeScreenshot("codon-peek-mouse-focus-recovered");
+            context.runOnClient(client -> {
+                fixture.input().resetUiVisibility();
+                client.mouseHandler.onButton(client.getWindow().handle(), right, InputConstants.PRESS);
+                require(fixture.input().isUiHidden(), "mouse press hides before text focus cancels it");
+                fixture.screen().setFocused(new EditBox(client.font, 0, 0, 100, 20, Component.empty()));
+                require(!fixture.input().isUiHidden(), "text focus cancels the held mouse gesture");
+                client.mouseHandler.onButton(client.getWindow().handle(), right, InputConstants.PRESS);
+                require(!fixture.input().isUiHidden(), "mouse recovery does not bypass a focused text field");
+                client.mouseHandler.onButton(client.getWindow().handle(), right, InputConstants.RELEASE);
+                require(!fixture.input().isUiHidden(), "mouse release in a text field cannot toggle");
+            });
+        } finally {
+            context.runOnClient(client -> {
+                client.mouseHandler.onButton(client.getWindow().handle(), right, InputConstants.RELEASE);
+                fixture.screen().setFocused(null);
+                fixture.input().hideUiKey.setKey(fixture.defaultHideKey());
+                KeyMapping.resetMapping();
+                fixture.input().resetUiVisibility();
+            });
         }
     }
 

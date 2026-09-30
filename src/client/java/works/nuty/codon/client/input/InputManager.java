@@ -141,6 +141,10 @@ public final class InputManager implements ClientTickEvents.EndTick {
     public boolean handleHideMouse(MouseButtonEvent event, int action) {
         synchronizeUiVisibility(Minecraft.getInstance());
         if (hideUiKey == null || !hideUiKey.matchesMouse(event)) return false;
+        // Mouse buttons do not repeat PRESS. A new press follows a physical release,
+        // even when that release happened outside the window and its callback was lost.
+        if (action == InputConstants.PRESS && uiHide.awaitingRelease()
+            && acceptsHideInput(Minecraft.getInstance())) uiHide.release(System.nanoTime());
         return handleHideAction(action);
     }
 

@@ -13,6 +13,8 @@ The default binding is `H`; the same gesture works in world and debugger cursor 
 4. Type the binding in chat or a focused text field: it must not hide the debugger.
 5. Change screens, leave the window, rebind/unbind the key, or disconnect/rejoin:
    visibility resets to shown. Releasing a cancelled gesture cannot toggle it.
+   Regaining focus while still holding a mouse button must not restart hiding.
+   If its release was missed outside the window, the first fresh click must work.
 6. Resume and step normally: hiding does not send a debugger control request or change
    client/server pause snapshots. Visibility is session state and is not saved to settings.
 
@@ -28,7 +30,7 @@ The default binding is `H`; the same gesture works in world and debugger cursor 
 | Concern | Existing tests |
 | --- | --- |
 | Short/long boundary, repeated events and cancellation | `clientTest`: `UiHideGestureTest` |
-| Native keyboard/mouse dispatch, screen input, rebind, chat, focus flag and rejoin | `DebuggerPeekUiGameTest` |
+| Native keyboard/mouse dispatch, screen input, rebind, chat, missed mouse release, focus flag and rejoin | `DebuggerPeekUiGameTest` |
 | Real server breakpoint stays paused, then each command executes once after Resume | `DebuggerFreecamResumeGameTest` |
 
 ```sh
@@ -39,7 +41,9 @@ The default binding is `H`; the same gesture works in world and debugger cursor 
 Inspect the `codon-peek-*` screenshots: compare world and cursor-mode baselines,
 held/toggled hidden presentation, and restored UI. The peek fixture injects a client
 pause for visual coverage; the freecam resume fixture executes real command blocks.
-The focus check invokes the native window focus flag without switching OS apps;
-manual window switching remains necessary to observe platform-specific lost releases.
+The focus check sets the window's focused flag because Fabric cancels native focus
+callbacks. The mouse regression omits the outside-window release callback and
+checks the first fresh press, continued-hold suppression and text-field guard.
+Manual window switching remains necessary to observe platform-specific lost releases.
 Use real short taps and sustained holds when judging the 250 ms threshold; automated
 boundary assertions establish classification, not a user's timing preference.
