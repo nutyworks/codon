@@ -7,18 +7,25 @@ layers. Inline controls embedded in vanilla command text retain their host's uni
 so they stay aligned with that text. Minecraft's GUI option and other menus stay
 unchanged.
 
-The requested range is **1.00×–4.00× in 0.25× steps**, initially 2.00×. The current
-renderer lays out integer logical coordinates, while its pose supports fractional
-scaling. A custom request is limited to the largest quarter step that leaves at
-least 320×240 logical pixels, with a lower limit of 1.00×. The settings display both
+First selection of Custom starts at the **actual applied game GUI scale**, including
+Auto, without changing size. Later mode changes and client restarts retain the
+user's request. Controls use **0.25× steps** from 1.00×; the usual upper endpoint is
+4.00×, expanded when a larger window or Minecraft's font rounding permits more.
+The renderer uses integer logical coordinates and Minecraft's ceiling convention,
+while its pose supports fractional scaling. A custom request is limited to the
+largest quarter step that leaves at least 320×240 logical pixels, or Minecraft's
+font-rounded automatic limit if higher. This cap depends on the framebuffer/font
+setting, not the selected game GUI scale. The settings display both
 the request and the applied value, with an explanation when limited. Enlarging the
 window restores the saved request. Windows physically smaller than 320×240 can
 still exceed the existing layouts' limits even at 1.00×.
 
 Mode and requested scale save immediately in `config/codon.json`. Missing fields
-in existing v1 files use the default. Invalid values preserve the original file
+in existing v1 files use the default. An absent custom request means first use;
+legacy files with a numeric request keep it in either mode. Invalid values preserve the original file
 and disable writes for that session, like other settings. **Restore defaults**
-resets only these two preferences; choosing Follow retains a custom request.
+resets only the scale preferences and clears the request so the next Custom
+selection starts from the game scale again; choosing Follow retains a custom request.
 
 ## Code path
 
@@ -39,7 +46,8 @@ resets only these two preferences; choosing Follow retains a custom request.
 ./gradlew runClientGameTest -PclientGameTest=DebuggerUiScaleGameTest
 ```
 
-The client scenario uses a synthetic pause to check native clicks and keyboard
+The client scenario uses a synthetic pause to check first manual/Auto mode switching,
+reset and mode-round-trip preservation, native clicks and keyboard
 activation of settings, GUI-scale changes, all Codon screens' Close hitboxes,
 edit-field focus, help wheel/scrollbar dragging, a condition popup over an unchanged
 vanilla-sized parent, a 640×480 window with a 320×240 logical viewport, a native 320×240 window,
@@ -52,4 +60,4 @@ Existing `DebuggerPresentationGameTest`, `DebuggerKeyboardNavigationGameTest`,
 Compilation and screenshots alone do not establish all interactions. When doing
 manual QA, also check language-dependent wrapping, full-screen/window changes,
 large tooltips and legibility at the smallest scale. An independent scale option
-does not automatically resolve CODON-003 small-screen Watch/status clipping.
+does not automatically resolve small-screen Watch/status clipping.

@@ -28,6 +28,7 @@ class ClientSettingsStoreTest {
         var preferences = ClientSettingsStore.open(file, exception -> { throw new AssertionError(exception); });
         assertEquals(DebuggerPreferences.UiScaleMode.FOLLOW_GAME, preferences.uiScaleMode());
         assertEquals(8, preferences.customUiScale());
+        assertFalse(preferences.customUiScaleInitialized());
         preferences.setBackgroundOpacity(37);
         preferences.setUiScaleMode(DebuggerPreferences.UiScaleMode.CUSTOM);
         for (int scale : new int[]{4, 9, 16}) {
@@ -42,13 +43,56 @@ class ClientSettingsStoreTest {
         var reset = ClientSettingsStore.open(file, exception -> { throw new AssertionError(exception); });
         assertEquals(DebuggerPreferences.UiScaleMode.FOLLOW_GAME, reset.uiScaleMode());
         assertEquals(8, reset.customUiScale());
+        assertFalse(reset.customUiScaleInitialized());
         assertEquals(37, reset.backgroundOpacity());
+    }
+
+    @Test
+    void firstUseAndUserRequestSurviveFreshSettingsLoadsAndReset() throws IOException {
+        Path file = temporaryDirectory.resolve("first-scale.json");
+        var preferences = ClientSettingsStore.open(file, exception -> { throw new AssertionError(exception); });
+        preferences.setBackgroundOpacity(37);
+        assertFalse(Files.readString(file).contains("customUiScale"));
+        preferences = ClientSettingsStore.open(file, exception -> { throw new AssertionError(exception); });
+        preferences.selectCustomUiScale(6);
+        assertEquals(24, preferences.customUiScale());
+        preferences.setCustomUiScale(17);
+        preferences.setUiScaleMode(DebuggerPreferences.UiScaleMode.FOLLOW_GAME);
+        var reloaded = ClientSettingsStore.open(file, exception -> { throw new AssertionError(exception); });
+        assertTrue(reloaded.customUiScaleInitialized());
+        reloaded.selectCustomUiScale(3);
+        assertEquals(17, reloaded.customUiScale());
+        reloaded.resetUiScale();
+        assertFalse(Files.readString(file).contains("customUiScale"));
+        var reset = ClientSettingsStore.open(file, exception -> { throw new AssertionError(exception); });
+        assertFalse(reset.customUiScaleInitialized());
+        reset.selectCustomUiScale(3);
+        assertEquals(12, reset.customUiScale());
+        assertEquals(37, reset.backgroundOpacity());
+    }
+
+    @Test
+    void legacyRequestsRemainInitializedInEitherMode() throws IOException {
+        Path file = temporaryDirectory.resolve("legacy-scale.json");
+        for (var mode : DebuggerPreferences.UiScaleMode.values()) {
+            for (int saved : new int[]{4, 8, 16}) {
+                Files.writeString(file, "{\"version\":1,\"uiScaleMode\":\"" + mode + "\",\"customUiScale\":" + saved + "}");
+                var preferences = ClientSettingsStore.open(file, exception -> { throw new AssertionError(exception); });
+                assertTrue(preferences.customUiScaleInitialized());
+                preferences.selectCustomUiScale(3);
+                assertEquals(saved, preferences.customUiScale());
+                preferences.resetUiScale();
+                var reset = ClientSettingsStore.open(file, exception -> { throw new AssertionError(exception); });
+                reset.selectCustomUiScale(3);
+                assertEquals(12, reset.customUiScale());
+            }
+        }
     }
 
     @Test
     void invalidScaleSettingsArePreservedWithoutWrites() throws IOException {
         Path file = temporaryDirectory.resolve("invalid-scale.json");
-        for (String property : List.of("\"customUiScale\":3", "\"customUiScale\":17", "\"customUiScale\":8.5",
+        for (String property : List.of("\"customUiScale\":3", "\"customUiScale\":2147483645", "\"customUiScale\":8.5",
             "\"customUiScale\":\"8\"", "\"customUiScale\":null", "\"uiScaleMode\":\"OTHER\"", "\"uiScaleMode\":true")) {
             String original = "{\"version\":1," + property + "}";
             Files.writeString(file, original);

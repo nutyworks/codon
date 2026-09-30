@@ -409,7 +409,9 @@ Client and server must both use the updated mod for pause visualization and watc
 Client preferences are shared across worlds and servers in the Minecraft instance's
 `config/codon.json`: gizmo mode, inspector visibility, and inspector tab. Changes save immediately.
 Codon UI scale defaults to following the game's actual GUI scale. A retained custom
-request (1.00×–4.00×, quarter steps) scales only Codon's HUD, screens and modal layers;
+request (quarter steps from 1.00×, normally up to 4.00× with a larger-window extension)
+scales only Codon's HUD, screens and modal layers. First use captures the actual
+game scale; a saved request survives mode changes/restarts, and reset clears it;
 it does not mutate Minecraft options. `UiScale` limits the applied value for small
 windows without discarding the request. `ScaledCodonScreen` owns logical dimensions,
 and the shared screen extraction boundary scales the full pass including deferred

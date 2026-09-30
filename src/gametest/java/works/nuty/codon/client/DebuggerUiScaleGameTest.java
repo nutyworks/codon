@@ -51,10 +51,15 @@ public final class DebuggerUiScaleGameTest implements FabricClientGameTest {
             context.runOnClient(client -> {
                 require(state.preferences().uiScaleMode() == DebuggerPreferences.UiScaleMode.CUSTOM, "Native click selects custom mode");
                 require(client.options.guiScale().get() == 3, "Custom mode does not change game GUI option");
+                require(state.preferences().customUiScale() == client.getWindow().getGuiScale() * 4,
+                    "First custom selection starts from the actual applied manual game scale");
+                require(settings.width == client.getWindow().getGuiScaledWidth() && settings.height == client.getWindow().getGuiScaledHeight(),
+                    "First custom selection retains exact game GUI dimensions");
             });
+            context.takeScreenshot("codon-scale-first-custom-manual-3");
             click(context, settings, "+");
-            context.runOnClient(client -> require(state.preferences().customUiScale() == 9, "Native plus increments by 0.25x"));
-            context.takeScreenshot("codon-scale-settings-custom-2_25");
+            context.runOnClient(client -> require(state.preferences().customUiScale() == 13, "Native plus increments by 0.25x"));
+            context.takeScreenshot("codon-scale-settings-custom-3_25");
             context.runOnClient(client -> {
                 client.setLastInputType(InputType.KEYBOARD_TAB);
                 settings.setFocused(button(settings, "+"));
@@ -62,10 +67,30 @@ public final class DebuggerUiScaleGameTest implements FabricClientGameTest {
             context.getInput().pressKey(InputConstants.KEY_RETURN);
             context.waitTicks(2);
             context.runOnClient(client -> {
-                require(state.preferences().customUiScale() == 10, "Keyboard activation adjusts the same scale");
+                require(state.preferences().customUiScale() == 14, "Keyboard activation adjusts the same scale");
                 require(settings.getFocused() == button(settings, "+"), "Scale relayout retains keyboard focus");
             });
             click(context, settings, "−");
+            click(context, settings, "Follow game GUI scale");
+            setGameScale(context, 2);
+            click(context, settings, "Custom scale");
+            context.runOnClient(client -> require(state.preferences().customUiScale() == 13, "Mode round trip preserves the user request"));
+            click(context, settings, "Restore defaults");
+            setGameScale(context, 0);
+            context.takeScreenshot("codon-scale-follow-auto-before-first-custom");
+            click(context, settings, "Custom scale");
+            context.runOnClient(client -> {
+                require(client.options.guiScale().get() == 0 && client.getWindow().getGuiScale() > 1, "Game Auto is applied rather than the option value zero");
+                require(state.preferences().customUiScale() == client.getWindow().getGuiScale() * 4,
+                    "Reset clears initialization and first custom captures the actual Auto scale");
+                require(settings.width == client.getWindow().getGuiScaledWidth() && settings.height == client.getWindow().getGuiScaledHeight(),
+                    "Auto mode switching does not move or shrink the UI");
+            });
+            context.takeScreenshot("codon-scale-first-custom-auto");
+            setGameScale(context, 3);
+            context.runOnClient(client -> state.preferences().setCustomUiScale(9));
+            context.waitTicks(3);
+            context.takeScreenshot("codon-scale-settings-custom-2_25");
             click(context, settings, "Done");
             context.waitTicks(2);
             int customWidth = context.computeOnClient(client -> fixture.screen().width);
@@ -125,6 +150,7 @@ public final class DebuggerUiScaleGameTest implements FabricClientGameTest {
             context.runOnClient(client -> {
                 require(state.preferences().uiScaleMode() == DebuggerPreferences.UiScaleMode.FOLLOW_GAME, "Defaults restore follow mode");
                 require(state.preferences().customUiScale() == 8, "Defaults restore custom request");
+                require(!state.preferences().customUiScaleInitialized(), "Defaults clear first-use initialization");
                 require(client.options.guiScale().get() == 2, "Reset leaves game GUI setting alone");
             });
             context.takeScreenshot("codon-scale-settings-defaults-restored");

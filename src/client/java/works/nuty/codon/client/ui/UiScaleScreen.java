@@ -7,6 +7,7 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import works.nuty.codon.client.state.DebuggerPreferences;
+import works.nuty.codon.client.ui.layout.UiScale;
 
 import static works.nuty.codon.client.ui.DebuggerTheme.*;
 
@@ -31,9 +32,9 @@ public final class UiScaleScreen extends ScaledCodonScreen {
         left = (width - panelWidth) / 2;
         top = Math.max(6, (height - 218) / 2);
         add("follow", left + 8, top + 28, panelWidth - 16, text("follow"), () -> uiPreferences().setUiScaleMode(DebuggerPreferences.UiScaleMode.FOLLOW_GAME));
-        add("custom", left + 8, top + 52, panelWidth - 16, text("custom"), () -> uiPreferences().setUiScaleMode(DebuggerPreferences.UiScaleMode.CUSTOM));
-        add("minus", left + 8, top + 78, 30, Component.literal("−"), () -> uiPreferences().setCustomUiScale(uiPreferences().customUiScale() - 1));
-        add("plus", left + panelWidth - 38, top + 78, 30, Component.literal("+"), () -> uiPreferences().setCustomUiScale(uiPreferences().customUiScale() + 1));
+        add("custom", left + 8, top + 52, panelWidth - 16, text("custom"), () -> uiPreferences().selectCustomUiScale(minecraft.getWindow().getGuiScale()));
+        add("minus", left + 8, top + 78, 30, Component.literal("−"), () -> uiPreferences().setCustomUiScale(requestedScale() - 1));
+        add("plus", left + panelWidth - 38, top + 78, 30, Component.literal("+"), () -> uiPreferences().setCustomUiScale(requestedScale() + 1));
         int half = (panelWidth - 20) / 2;
         add("reset", left + 8, top + 190, half, text("reset"), uiPreferences()::resetUiScale);
         add("done", left + 12 + half, top + 190, half, Component.translatable("gui.done"), this::onClose);
@@ -53,17 +54,23 @@ public final class UiScaleScreen extends ScaledCodonScreen {
         buttons.put(key, addRenderableWidget(button));
     }
 
+    private int requestedScale() {
+        return uiPreferences().customUiScaleInitialized() ? uiPreferences().customUiScale()
+            : DebuggerPreferences.gameUiScaleRequest(minecraft.getWindow().getGuiScale());
+    }
+
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int x, int y, float delta) {
         buttons.forEach((key, button) -> { if (getFocused() == button) focusKey = key; });
         boolean custom = uiPreferences().uiScaleMode() == DebuggerPreferences.UiScaleMode.CUSTOM;
         buttons.get("follow").setMessage(Component.literal(custom ? "  " : "● ").append(text("follow")));
         buttons.get("custom").setMessage(Component.literal(custom ? "● " : "  ").append(text("custom")));
-        buttons.get("minus").active = custom && uiPreferences().customUiScale() > DebuggerPreferences.MIN_UI_SCALE;
-        buttons.get("plus").active = custom && uiPreferences().customUiScale() < DebuggerPreferences.MAX_UI_SCALE;
+        buttons.get("minus").active = custom && requestedScale() > DebuggerPreferences.MIN_UI_SCALE;
+        var window = minecraft.getWindow();
+        buttons.get("plus").active = custom && requestedScale() < UiScale.maximumRequest(window.getWidth(), window.getHeight(), minecraft.isEnforceUnicode());
         graphics.fill(left, top, left + panelWidth, top + 218, color(PANEL));
         graphics.outline(left, top, panelWidth, 218, color(BORDER));
         graphics.text(font, title, left + 8, top + 10, color(TEAL), false);
-        graphics.centeredText(font, text("requested", number(uiPreferences().customUiScale() / 4.0)),
+        graphics.centeredText(font, text("requested", number(requestedScale() / 4.0)),
             left + panelWidth / 2, top + 84, color(custom ? TEXT : MUTED));
         int lineY = top + 106;
         for (var line : font.split(text("units"), panelWidth - 16)) {

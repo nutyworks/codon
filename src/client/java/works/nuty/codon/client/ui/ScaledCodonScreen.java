@@ -42,7 +42,7 @@ public abstract class ScaledCodonScreen extends Screen {
     public static UiScale scale(DebuggerPreferences preferences) {
         var window = Minecraft.getInstance().getWindow();
         return UiScale.create(preferences, window.getWidth(), window.getHeight(), window.getGuiScale(),
-            window.getGuiScaledWidth(), window.getGuiScaledHeight());
+            window.getGuiScaledWidth(), window.getGuiScaledHeight(), Minecraft.getInstance().isEnforceUnicode());
     }
 
     /** Before Fabric dispatch, including a Codon modal hosted over a vanilla editor. */

@@ -154,7 +154,8 @@ public final class ClientSettingsStore {
         JsonObject json = new JsonObject();
         json.addProperty("version", VERSION);
         json.addProperty("uiScaleMode", preferences.uiScaleMode().name());
-        json.addProperty("customUiScale", preferences.customUiScale());
+        // Absence means first use. Legacy files containing a request keep that value.
+        if (preferences.customUiScaleInitialized()) json.addProperty("customUiScale", preferences.customUiScale());
         json.addProperty("backgroundOpacity", preferences.backgroundOpacity());
         json.addProperty("gizmoMode", preferences.gizmoMode().name());
         if (preferences.inspectorVisible() == null) {
