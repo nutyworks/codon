@@ -168,6 +168,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             context.takeScreenshot("codon-function-source-filtered-drawer");
             context.runOnClient(client -> verifyFilteredSelection(client.gui.screen(), sourceState));
             verifySearchScrollReset(context);
+            verifyStageDetailBelowSecondLine(context);
             verifyCodeReader(context);
             context.runOnClient(client -> client.setScreenAndShow(null));
         }
@@ -215,6 +216,44 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
         context.runOnClient(client -> require(clickTreeRow(client.gui.screen(), 1)
             && new FunctionId("codon_test", "match_00").equals(sources.selected()),
             "query change stays at the first filtered result after resizing; selected=" + sources.selected()));
+    }
+
+    private static void verifyStageDetailBelowSecondLine(ClientGameTestContext context) {
+        context.getInput().resizeWindow(960, 720);
+        String command = "execute as @e[tag=small_preview] run say next_stage_command";
+        ClientFunctionSourceState sources = context.computeOnClient(client -> {
+            client.options.guiScale().set(3);
+            client.resizeGui();
+            var state = new ClientFunctionSourceState();
+            state.select(FUNCTION);
+            long request = state.drainRequests().getFirst().requestId();
+            state.accept(new ClientFunctionSourceState.SourcePage(request, ClientFunctionSourceState.Status.READY,
+                FUNCTION, "gametest", "stage-scroll", false, 0, true,
+                List.of("# two stages on line 2", command, "say end")));
+            state.rememberBrowseView(0, 0, 2, -1, 0);
+            client.setScreenAndShow(new FunctionSourceScreen(new Screen(Component.empty()) { }, state));
+            return state;
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            var debugger = require(CodonClientMod.state(), "client debugger state is initialized");
+            var location = new SourceLocation.Function(new FunctionLocation(FUNCTION, 2));
+            long request = debugger.stagePreviews().begin(location);
+            int run = command.indexOf("run");
+            debugger.stagePreviews().accept(request, location, ClientStagePreviewState.Status.READY, command,
+                List.of(new ClientStagePreviewState.StageSpan(0, 0, run - 1, false),
+                    new ClientStagePreviewState.StageSpan(1, run, command.length(), true)));
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            client.gui.screen().mouseScrolled(100, 166, 0, -1);
+            require(sources.browseView().selectedLine() == 2 && sources.browseView().lineOffset() == 0,
+                "scrolling the detail retains the original selected line and file viewport");
+            require(sources.browseView().stageScrollOffset() == 1,
+                "detail below line 2 scrolls using its one visible row rather than the whole pane");
+        });
+        context.waitTicks(2);
+        context.takeScreenshot("codon-function-source-stage-detail-below-second-line");
     }
 
     private static void verifyCodeReader(ClientGameTestContext context) {

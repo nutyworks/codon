@@ -6,7 +6,8 @@ The viewer keeps original mcfunction lines visible in a Minecraft resource font
 with fixed ASCII advances and Unicode glyphs. Display-only highlighting separates
 commands, arguments and comments. Line numbers and breakpoint controls stay fixed
 while long source lines scroll horizontally; existing stage controls wrap below
-the selected line.
+the selected line. Stage scrolling uses the detail rows actually visible below
+that line, including near the bottom of a small pane.
 
 Literal source search, keyboard navigation, full path tooltips and retained
 function-reference Back navigation improve browsing. A live pause uses an arrow

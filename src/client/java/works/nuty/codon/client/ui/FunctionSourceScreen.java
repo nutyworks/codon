@@ -835,9 +835,9 @@ public final class FunctionSourceScreen extends Screen {
                 horizontalOffset = Math.clamp(horizontalOffset - (int) ((shift ? scrollY : scrollX) * 30), 0, maxHorizontalOffset());
             } else {
                 int stageRows = selectedInlineStageRows();
-                int stageVisible = Math.max(1, sourceRows() - 1);
-                // Scroll stage detail only while pointing at it; the rest of the pane scrolls original lines.
+                // A selected line near the pane bottom has fewer detail rows than the whole pane.
                 LineHit selectedHit = lineHits.stream().filter(hit -> hit.line() == selectedLine).findFirst().orElse(null);
+                int stageVisible = selectedHit == null ? 0 : Math.max(1, (selectedHit.height() - ROW_HEIGHT) / ROW_HEIGHT);
                 if (selectedHit != null && y >= selectedHit.y() + ROW_HEIGHT && y < selectedHit.y() + selectedHit.height()
                     && stageRows > stageVisible) stageScrollOffset = Math.clamp(stageScrollOffset + delta, 0, stageRows - stageVisible);
                 else lineOffset = Math.clamp(lineOffset + delta, 0, Math.max(0, sources.document().lines().size() - sourceRows()));

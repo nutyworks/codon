@@ -73,6 +73,8 @@ geometry, keyboard selection, horizontal-wheel state, literal search next/previo
 compact query/viewport retention and source immutability. Inspect the `code-*`
 captures for distinct pause/selection rows, a long-line tail, highlighted search,
 Unicode comments and the empty result/resumed-record presentation.
+The `stage-detail-below-second-line` capture verifies that a stage detail with
+only one visible row scrolls without moving the original source viewport.
 
 Inspect `*codon-function-source-*.png`, including 320×240, 480×270 and 640×360 GUI
 layouts. The disabled-hover capture shows a disabled line and conditional stage
