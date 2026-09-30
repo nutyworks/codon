@@ -104,6 +104,7 @@ public final class DebuggerHelpScreen extends Screen {
                 entry("coordinates", null, TEAL);
                 entry("move_camera", DebuggerIcon.FREECAM, TEAL);
                 entry("created", DebuggerIcon.SOURCE_CREATED, GREEN);
+                entry("changed", DebuggerIcon.SOURCE_CHANGED, PURPLE);
                 entry("excluded", DebuggerIcon.SOURCE_EXCLUDED, RED);
                 entry("offscreen", DebuggerIcon.OUTSIDE_VIEWPORT, AMBER);
                 entry("uuid", DebuggerIcon.COPY_UUID, TEAL);

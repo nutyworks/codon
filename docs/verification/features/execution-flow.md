@@ -40,7 +40,8 @@ execute as @e[type=minecraft:armor_stand,tag=codon_verify] at @s if entity @s[ta
    measured zero output and no terminal execution. For nested/conditional function
    cases, use the native fixture tests below and inspect their chronology.
 
-Created, removed and changed contexts use distinct presentation. Incomplete or
+Created contexts are green, removed contexts are red, and changed contexts are
+purple in both the inspector and world markers. Incomplete or
 truncated lineage must retain its warning/unknown state. Do not infer edges from
 similar UUIDs/positions or replay a command to reconstruct its effects.
 

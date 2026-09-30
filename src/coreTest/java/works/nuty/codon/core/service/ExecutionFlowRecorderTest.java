@@ -67,8 +67,8 @@ class ExecutionFlowRecorderTest {
         assertEquals(2, as.edges().size());
         assertEquals(8, as.command().highlightStart());
         assertEquals(13, as.command().highlightEnd());
-        assertTrue(as.isCreatedContext(firstId), "a changed executor is a new source");
-        assertTrue(as.isCreatedContext(secondId), "a changed source is a new source");
+        assertTrue(as.isCreatedContext(firstId), "each output of a one-to-many branch is created");
+        assertTrue(as.isCreatedContext(secondId), "each output of a one-to-many branch is created");
 
         ExecutionFlowStage at = trace.stages().get(1);
         assertEquals(2, at.inputCount());
@@ -76,7 +76,7 @@ class ExecutionFlowRecorderTest {
         assertEquals(1, at.droppedCount());
         assertEquals(List.of(secondId), at.droppedContextIds());
         assertTrue(at.isDroppedContext(secondId));
-        assertTrue(at.isCreatedContext(movedId), "the same executor at a different anchor is a new context");
+        assertFalse(at.isCreatedContext(movedId), "a one-to-one source change does not create a branch");
         assertFalse(at.isBranchedContext(movedId), "one-to-one movement is not a created branch");
         assertTrue(at.isChangedContext(movedId), "one-to-one movement changes the recorded source");
         assertEquals(2, at.displayContexts().size(), "output plus the explicitly dropped input are inspectable");

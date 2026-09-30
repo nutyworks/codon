@@ -71,26 +71,12 @@ public record ExecutionFlowStage(
         return !terminal && complete && lineageComplete && droppedContextIds.contains(contextId);
     }
 
-    /** A changed source relative to its recorded parent; a fresh occurrence ID alone is not new. */
+    /** An output created by a one-to-many branch; a fresh occurrence ID alone is not new. */
     public boolean isCreatedContext(long contextId) {
-        if (terminal || !complete || !lineageComplete) return false;
-        if (inputs.stream().anyMatch(context -> context.id() == contextId)) return false;
-        ExecutionFlowContext output = outputs.stream().filter(context -> context.id() == contextId)
-            .findFirst().orElse(null);
-        if (output == null) return false;
-        boolean hasParent = false;
-        for (ExecutionFlowEdge edge : edges) {
-            if (edge.outputContextId() != contextId) continue;
-            for (ExecutionFlowContext input : inputs) {
-                if (input.id() != edge.inputContextId()) continue;
-                hasParent = true;
-                if (sameSource(input.source(), output.source())) return false;
-            }
-        }
-        return hasParent;
+        return isBranchedContext(contextId);
     }
 
-    /** Every output of a one-to-many branch, independently of source changes used by the inspector. */
+    /** Every output of a one-to-many branch. */
     public boolean isBranchedContext(long contextId) {
         long parentId = recordedParent(contextId);
         return parentId >= 0 && edges.stream().filter(edge -> edge.inputContextId() == parentId).count() > 1;
