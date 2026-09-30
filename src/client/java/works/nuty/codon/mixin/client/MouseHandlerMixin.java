@@ -5,6 +5,8 @@ import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.MouseHandler;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.input.MouseButtonInfo;
 import net.minecraft.client.player.LocalPlayer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -14,6 +16,14 @@ import works.nuty.codon.client.CodonClientMod;
 
 @Mixin(MouseHandler.class)
 public abstract class MouseHandlerMixin {
+    @Inject(method = "onButton", at = @At("HEAD"))
+    private void codon$hideUi(long window, MouseButtonInfo button, int action, CallbackInfo ci) {
+        Minecraft client = Minecraft.getInstance();
+        var input = CodonClientMod.input();
+        if (input != null && window == client.getWindow().handle())
+            input.handleHideMouse(new MouseButtonEvent(0, 0, button), action);
+    }
+
     @ModifyExpressionValue(method = {"onButton", "onScroll", "handleAccumulatedMovement"}, at = {
         @At(value = "INVOKE", target = "Lnet/minecraft/client/MouseHandler;getScaledXPos(Lcom/mojang/blaze3d/platform/Window;)D"),
         @At(value = "INVOKE", target = "Lnet/minecraft/client/MouseHandler;getScaledYPos(Lcom/mojang/blaze3d/platform/Window;)D")

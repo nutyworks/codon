@@ -17,6 +17,8 @@
 		"DeltaTrackerMixin",
 		"EffectClockMixin",
 		"GameRendererMixin",
+		"GuiMixin",
+		"KeyboardHandlerMixin",
 		"KeyboardInputMixin",
 		"LevelExtractorMixin",
 		"LocalPlayerMixin",

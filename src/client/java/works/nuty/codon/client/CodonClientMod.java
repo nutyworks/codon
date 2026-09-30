@@ -33,11 +33,13 @@ public final class CodonClientMod implements ClientModInitializer {
     private static @Nullable DebuggerFreecam freecam;
     private static volatile @Nullable ClientPauseEffects pauseEffects;
     private static @Nullable ClientFunctionSourceState sourceState;
+    private static @Nullable InputManager input;
 
     /** Client composition seams, including the service used by framework-created mixins. */
     public static @Nullable ClientDebuggerState state() { return debuggerState; }
     public static @Nullable DebuggerFreecam freecam() { return freecam; }
     public static @Nullable ClientPauseEffects pauseEffects() { return pauseEffects; }
+    public static @Nullable InputManager input() { return input; }
     public static @Nullable ClientFunctionSourceState sources() { return sourceState; }
 
     public static boolean isAudioPaused() {
@@ -70,6 +72,7 @@ public final class CodonClientMod implements ClientModInitializer {
         InputManager inputManager = new InputManager(state,
             im -> Minecraft.getInstance().gui.setScreen(new CodonScreen(im, overlay)));
         inputManager.registerKeyMappings();
+        input = inputManager;
 
         ClientNetworking.register(state, camera, effects);
         sourceState = ClientSourceBrowseNetworking.register();

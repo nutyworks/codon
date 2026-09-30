@@ -25,7 +25,7 @@ public final class CodonScreen extends ScaledCodonScreen {
     }
 
     @Override
-    protected void init() { overlay.commitBackgroundOpacity(); registered = List.of(); overlay.scrollbars().release(); }
+    protected void init() { input.resetUiVisibility(); overlay.commitBackgroundOpacity(); registered = List.of(); overlay.scrollbars().release(); }
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
@@ -52,8 +52,7 @@ public final class CodonScreen extends ScaledCodonScreen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-        if (input.hideUiKey != null && input.hideUiKey.matchesMouse(event)) {
-            input.hideUiKey.setDown(true);
+        if (input.handleHideMouse(event, InputConstants.PRESS)) {
             suspendPointerInteraction();
             return true;
         }
@@ -96,8 +95,7 @@ public final class CodonScreen extends ScaledCodonScreen {
 
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
-        if (input.hideUiKey != null && input.hideUiKey.matchesMouse(event)) {
-            input.hideUiKey.setDown(false);
+        if (input.handleHideMouse(event, InputConstants.RELEASE)) {
             return true;
         }
         if (input.isUiHidden()) return true;
@@ -107,6 +105,7 @@ public final class CodonScreen extends ScaledCodonScreen {
 
     @Override
     public void removed() {
+        input.resetUiVisibility();
         suspendPointerInteraction();
         overlay.closeViewMenu();
         overlay.watchPanel().closeGroupingMenu();
@@ -117,14 +116,6 @@ public final class CodonScreen extends ScaledCodonScreen {
         overlay.commitBackgroundOpacity();
         overlay.scrollbars().release();
         setDragging(false);
-    }
-
-    @Override
-    public void onClose() {
-        boolean hidden = input.isUiHidden();
-        super.onClose();
-        // Mouse capture may refresh keyboard mappings; retain the hold across cursor/world mode.
-        if (input.hideUiKey != null) input.hideUiKey.setDown(hidden);
     }
 
     @Override
@@ -139,9 +130,7 @@ public final class CodonScreen extends ScaledCodonScreen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
-        // Screen key events bypass gameplay mappings, so track this held key explicitly here.
-        if (input.hideUiKey != null && input.hideUiKey.matches(event)) {
-            input.hideUiKey.setDown(true);
+        if (input.handleHideKey(event, InputConstants.PRESS)) {
             suspendPointerInteraction();
             return true;
         }
@@ -172,8 +161,7 @@ public final class CodonScreen extends ScaledCodonScreen {
 
     @Override
     public boolean keyReleased(KeyEvent event) {
-        if (input.hideUiKey != null && input.hideUiKey.matches(event)) {
-            input.hideUiKey.setDown(false);
+        if (input.handleHideKey(event, InputConstants.RELEASE)) {
             return true;
         }
         return super.keyReleased(event);
