@@ -148,9 +148,10 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             context.runOnClient(client -> require(client.gui.screen() == parent && commandBox(parent) == originalEditor,
                 "opening condition details retains the active screen and its input widget"));
             context.takeScreenshot("codon-breakpoint-condition-layer");
-            // Click the underlying marker and type through Minecraft's real input dispatch.
-            // Neither action may reach the editor below the modal layer.
-            nativeClick(context, parent, marker[0], marker[1], InputConstants.MOUSE_BUTTON_LEFT);
+            // Interact inside the compact layer through Minecraft's real input dispatch.
+            // Neither the click nor typed text may reach the editor underneath.
+            AbstractButton initialKind = context.computeOnClient(client -> button(conditionLayer(parent), "Always ▾"));
+            nativeClick(context, parent, initialKind.getX() + 3, initialKind.getY() + 3, InputConstants.MOUSE_BUTTON_LEFT);
             context.getInput().typeChars("9");
             context.runOnClient(client -> {
                 require(CodonClientMod.state().breakpoints().get(first).enabled(), "layer blocks underlying marker clicks");
@@ -202,39 +203,87 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
                     require(control.getX() >= 0 && control.getY() >= 0 && control.getRight() <= screen.width
                         && control.getBottom() <= screen.height, "compact condition control stays in bounds");
                 }
-                require(controls(screen).stream().filter(value -> value.visible && value.icon() != null
+                require(controls(screen).stream().filter(value -> value.icon() != null
                     && java.util.Arrays.stream(BreakpointCondition.Kind.values()).anyMatch(kind ->
                         value.getMessage().getString().equals(works.nuty.codon.client.ui.BreakpointUi.kindLabel(kind)))).count() == 9,
-                    "all nine condition icons are directly available without a menu");
-                click(screen, button(screen, "Output context count"));
+                    "the dropdown retains all nine condition kinds");
+                require(!button(screen, "Context created").visible, "choices stay hidden until the dropdown opens");
+                require(button(screen, "Save").getBottom() - button(screen, "Cancel").getY() <= 137,
+                    "compact condition panel fits within 150 GUI pixels vertically");
+            });
+            AbstractButton kindTrigger = context.computeOnClient(client -> button(conditionLayer(parent), "Always ▾"));
+            nativeHover(context, parent, kindTrigger.getX() + 3, kindTrigger.getY() + 3);
+            context.waitFor(client -> button(conditionLayer(parent), "Context created").visible, 100);
+            context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_LEFT);
+            context.runOnClient(client -> require(button(conditionLayer(parent), "Context created").visible,
+                "clicking the trigger just after hover-open keeps the menu open"));
+            context.runOnClient(client -> require(CodonClientMod.state().breakpoints().get(first).condition().equals(BreakpointCondition.ALWAYS),
+                "hovering opens the menu without changing the saved condition"));
+            context.takeScreenshot("codon-breakpoint-condition-hover-menu-320x240");
+            nativeHover(context, parent, 0, 0);
+            context.waitFor(client -> !button(conditionLayer(parent), "Context created").visible, 100);
+            nativeHover(context, parent, kindTrigger.getX() + 3, kindTrigger.getY() + 3);
+            context.waitFor(client -> button(conditionLayer(parent), "Context created").visible, 100);
+            AbstractButton visibleOption = context.computeOnClient(client -> button(conditionLayer(parent), "Context created"));
+            int bridgeY = visibleOption.getY() < kindTrigger.getY() ? kindTrigger.getY() - 1 : kindTrigger.getBottom() + 1;
+            nativeHover(context, parent, kindTrigger.getX() + 3, bridgeY);
+            context.waitTicks(6);
+            context.runOnClient(client -> require(button(conditionLayer(parent), "Context created").visible,
+                "crossing the trigger/menu gap keeps the menu open"));
+            nativeHover(context, parent, visibleOption.getX() + 3, visibleOption.getY() + 3);
+            context.getInput().scroll(-1);
+            context.waitFor(client -> button(conditionLayer(parent), "Output context count").visible, 100);
+            AbstractButton outputOption = context.computeOnClient(client -> button(conditionLayer(parent), "Output context count"));
+            nativeClick(context, parent, outputOption.getX() + 3, outputOption.getY() + 3, InputConstants.MOUSE_BUTTON_LEFT);
+            context.runOnClient(client -> {
+                Screen screen = conditionLayer(parent);
+                require(!button(screen, "Output context count").visible, "selecting a kind closes the popup");
                 EditBox count = screen.children().stream().filter(EditBox.class::isInstance)
                     .map(EditBox.class::cast).filter(value -> value.visible).findFirst().orElseThrow();
+                require(count.getY() == button(screen, "Output count ▾").getY()
+                    && count.getY() == button(screen, "= ▾").getY(), "kind, comparison and count share one row");
                 count.setValue("-1");
                 require(!button(screen, "Save").active, "negative count disables save immediately");
                 count.setValue("2");
-                click(screen, button(screen, "≥"));
+                screen.setFocused(button(screen, "= ▾"));
+            });
+            nativeHover(context, parent, 0, 0);
+            context.getInput().pressKey(InputConstants.KEY_RETURN);
+            context.runOnClient(client -> require(button(conditionLayer(parent), "≠").visible,
+                "Enter opens the focused comparison dropdown"));
+            context.getInput().pressKey(InputConstants.KEY_ESCAPE);
+            context.runOnClient(client -> require(ScreenLayers.get(parent) != null && !button(conditionLayer(parent), "≠").visible,
+                "Escape dismisses the dropdown without closing the condition layer"));
+            context.getInput().pressKey(InputConstants.KEY_DOWN);
+            context.getInput().pressKey(InputConstants.KEY_UP);
+            context.getInput().pressKey(InputConstants.KEY_RETURN);
+            context.runOnClient(client -> {
+                Screen screen = conditionLayer(parent);
+                require(button(screen, "≥ ▾").visible, "arrow navigation reaches and selects a scrolled comparison");
                 require(button(screen, "Save").active, "valid count and comparison can be saved");
             });
             context.waitTicks(1);
-            context.takeScreenshot("codon-breakpoint-condition-count-icons-320x240");
+            context.takeScreenshot("codon-breakpoint-condition-count-dropdown-320x240");
             AbstractButton resizedSave = context.computeOnClient(client -> button(conditionLayer(client.gui.screen()), "Save"));
             nativeClick(context, parent, resizedSave.getX() + 3, resizedSave.getY() + 2, InputConstants.MOUSE_BUTTON_LEFT);
             context.waitFor(client -> ScreenLayers.get(client.gui.screen()) == null
                 && CodonClientMod.state().breakpoints().get(first).condition().equals(
                     BreakpointCondition.count(BreakpointCondition.Kind.OUTPUT_COUNT, BreakpointCondition.Comparison.GE, 2)), 200);
+            verifyFeedbackBounds(context, first);
             context.runOnClient(client -> openFirstCondition(client.gui.screen()));
             context.waitFor(client -> ScreenLayers.get(client.gui.screen()) instanceof BreakpointConditionScreen, 100);
             context.runOnClient(client -> {
                 Screen screen = conditionLayer(client.gui.screen());
+                click(screen, button(screen, "Output count ▾"));
                 click(screen, button(screen, "Context changed"));
                 require(screen.children().stream().filter(EditBox.class::isInstance)
                     .map(EditBox.class::cast).noneMatch(value -> value.visible),
                     "event conditions hide the count field");
-                require(controls(screen).stream().noneMatch(value -> value.visible && value.getMessage().getString().equals("≥")),
+                require(controls(screen).stream().noneMatch(value -> value.visible && value.getMessage().getString().equals("≥ ▾")),
                     "event conditions hide the comparison controls");
             });
             context.waitTicks(1);
-            context.takeScreenshot("codon-breakpoint-condition-event-icons-320x240");
+            context.takeScreenshot("codon-breakpoint-condition-event-dropdown-320x240");
             context.runOnClient(client -> click(conditionLayer(client.gui.screen()),
                 button(conditionLayer(client.gui.screen()), "Delete")));
             context.waitFor(client -> client.gui.screen() instanceof BreakpointListScreen, 100);
@@ -257,6 +306,38 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             verifyDisabledMarkersAfterReopen(context, position, location, first);
             context.runOnClient(client -> client.setScreenAndShow(null));
         }
+    }
+
+    private static void verifyFeedbackBounds(ClientGameTestContext context, BreakpointTarget target) {
+        context.getInput().resizeWindow(1280, 720);
+        context.runOnClient(client -> {
+            client.options.guiScale().set(2);
+            client.resizeGui();
+            var state = CodonClientMod.state();
+            Screen parent = client.gui.screen();
+            ScreenLayers.open(parent, new BreakpointConditionScreen(parent, state, state.breakpoints().get(target),
+                new BreakpointConditionScreen.Anchor(300, 200, 20, 20)));
+        });
+        context.waitTicks(1);
+        // A controlled pending state tests feedback layout; saving above uses a real server acknowledgement.
+        var edit = context.computeOnClient(client -> CodonClientMod.state().breakpoints()
+            .begin(ClientBreakpointState.Action.SAVE, CodonClientMod.state().breakpoints().get(target)));
+        context.waitTicks(1);
+        context.runOnClient(client -> {
+            Screen layer = conditionLayer(client.gui.screen());
+            require(!button(layer, "Save").active, "pending feedback disables save");
+            for (var button : controls(layer)) if (button.visible)
+                require(button.getY() >= 0 && button.getBottom() <= layer.height - 6,
+                    "feedback expansion keeps the bottom-anchored controls inside the viewport");
+        });
+        context.takeScreenshot("codon-breakpoint-condition-pending-anchored");
+        context.runOnClient(client -> {
+            CodonClientMod.state().breakpoints().finish(edit.requestId(), ClientBreakpointState.Result.APPLIED);
+            ScreenLayers.close(ScreenLayers.get(client.gui.screen()));
+        });
+        context.getInput().resizeWindow(960, 720);
+        context.runOnClient(client -> { client.options.guiScale().set(3); client.resizeGui(); });
+        context.waitTicks(1);
     }
 
     private static void verifyDisabledMarkersAfterReopen(ClientGameTestContext context, BlockPos position,
@@ -473,12 +554,16 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
     }
 
     private static void nativeClick(ClientGameTestContext context, Screen parent, int x, int y, int button) {
+        nativeHover(context, parent, x, y);
+        context.getInput().pressMouse(button);
+    }
+
+    private static void nativeHover(ClientGameTestContext context, Screen parent, int x, int y) {
         double[] position = context.computeOnClient(client -> new double[] {
             (double) x * client.getWindow().getScreenWidth() / parent.width,
             (double) y * client.getWindow().getScreenHeight() / parent.height
         });
         context.getInput().setCursorPos(position[0], position[1]);
-        context.getInput().pressMouse(button);
     }
 
     private static AbstractButton button(Screen screen, String part) {

@@ -5,8 +5,10 @@ import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
@@ -23,6 +25,10 @@ import static works.nuty.codon.client.ui.DebuggerTheme.*;
 
 /** Modal condition widgets; hosted by ScreenLayers, never installed as the active screen. */
 public final class BreakpointConditionScreen extends Screen {
+    private enum Menu { NONE, KIND, COMPARISON }
+    private static final int MENU_ROW_HEIGHT = 18;
+    private static final long HOVER_DELAY = 180_000_000L;
+    private static final long LEAVE_DELAY = 220_000_000L;
     /** Position of the control that opened this editor, in GUI pixels. */
     public record Anchor(int x, int y, int width, int height) { }
 
@@ -35,12 +41,22 @@ public final class BreakpointConditionScreen extends Screen {
     private String thresholdText;
     private EditBox threshold;
     private DebuggerButton saveButton;
+    private DebuggerButton deleteButton;
+    private DebuggerButton kindButton;
+    private DebuggerButton comparisonButton;
     private final List<DebuggerButton> kinds = new ArrayList<>();
     private final List<DebuggerButton> comparisons = new ArrayList<>();
     private boolean saving;
     private boolean sendFailed;
     private boolean previewRequested;
     private int left, top, panelWidth, panelHeight;
+    private Menu menu = Menu.NONE;
+    private Menu hoverMenu = Menu.NONE;
+    private Menu suppressedMenu = Menu.NONE;
+    private long hoverStarted = -1, leaveStarted = -1;
+    private boolean keyboardMenu;
+    private int lastMouseX = -1, lastMouseY = -1;
+    private int menuLeft, menuTop, menuWidth, menuHeight, menuRows, menuScroll;
 
     public BreakpointConditionScreen(Screen parent, ClientDebuggerState state, BreakpointDefinition definition) {
         this(parent, state, definition, null);
@@ -62,8 +78,10 @@ public final class BreakpointConditionScreen extends Screen {
         clearWidgets();
         kinds.clear();
         comparisons.clear();
-        panelWidth = Math.max(1, Math.min(340, width - 12));
-        panelHeight = Math.max(1, Math.min(204, height - 12));
+        menu = hoverMenu = suppressedMenu = Menu.NONE;
+        hoverStarted = leaveStarted = -1;
+        panelWidth = Math.max(1, Math.min(300, width - 12));
+        panelHeight = contentHeight();
         left = (width - panelWidth) / 2;
         top = (height - panelHeight) / 2;
         if (anchor != null && width >= 520 && height >= 280) {
@@ -76,36 +94,50 @@ public final class BreakpointConditionScreen extends Screen {
         if (!previewRequested) {
             previewRequested = ClientNetworking.requestStagePreview(state, original.target().location());
         }
-        int kindWidth = Math.min(30, (panelWidth - 16) / BreakpointCondition.Kind.values().length);
-        for (var value : BreakpointCondition.Kind.values()) {
-            DebuggerButton button = WatchUi.button(left + 8 + value.ordinal() * kindWidth, top + 58,
-                kindWidth - 2, 24, Component.literal(kindLabel(value)), () -> { kind = value; refreshControls(); });
-            button.withIcon(kindIcon(value));
-            kinds.add(addRenderableWidget(button));
-        }
-        for (var value : BreakpointCondition.Comparison.values()) {
-            DebuggerButton button = WatchUi.button(left + 8 + value.ordinal() * 25, top + 104,
-                23, 22, Component.literal(symbol(value)), () -> { comparison = value; refreshControls(); });
-            button.withTextPadding(2);
-            comparisons.add(addRenderableWidget(button));
-        }
-        threshold = addRenderableWidget(new DebuggerEditBox(font, left + 166, top + 104,
-            Math.max(36, panelWidth - 174), 22, Component.translatable("codon.breakpoint.count")));
+        kindButton = addRenderableWidget(WatchUi.button(left + 8, top + 58, panelWidth - 16, 20,
+            Component.empty(), () -> openMenu(Menu.KIND, false))).withTextPadding(6);
+        comparisonButton = addRenderableWidget(WatchUi.button(left + panelWidth - 116, top + 58, 40, 20,
+            Component.empty(), () -> openMenu(Menu.COMPARISON, false))).withTextPadding(4);
+        threshold = addRenderableWidget(new DebuggerEditBox(font, left + panelWidth - 72, top + 58,
+            64, 20, Component.translatable("codon.breakpoint.count")));
         threshold.setMaxLength(9);
         threshold.setValue(thresholdText);
         threshold.setResponder(value -> { thresholdText = value; refreshControls(); });
         threshold.setTooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable("codon.breakpoint.count")));
-        int footer = top + panelHeight - 27;
-        saveButton = addRenderableWidget(WatchUi.button(left + panelWidth - 36, footer, 28, 20,
-            Component.translatable("codon.breakpoint.save"), this::save)).withIcon(DebuggerIcon.CONFIRM);
+        saveButton = addRenderableWidget(WatchUi.button(left + panelWidth - 60, top, 52, 20,
+            Component.translatable("codon.breakpoint.save"), this::save));
         saveButton.withStatusColor(TEAL, TEAL_SURFACE);
         addRenderableWidget(WatchUi.button(left + panelWidth - 28, top + 5, 20, 20,
             Component.translatable("codon.breakpoint.cancel"), this::onClose)).withIcon(DebuggerIcon.REMOVE);
-        addRenderableWidget(WatchUi.button(left + 8, footer, 28, 20,
+        deleteButton = addRenderableWidget(WatchUi.button(left + 8, top, 28, 20,
             Component.translatable("codon.breakpoint.delete"), this::delete))
             .withIcon(DebuggerIcon.DELETE).withStatusColor(RED, RED_SURFACE);
+        for (var value : BreakpointCondition.Kind.values()) {
+            kinds.add(menuOption(Component.literal(kindLabel(value)), () -> {
+                kind = value;
+                closeMenu();
+                setFocused(kindButton);
+                refreshControls();
+            }).withTextIcon(kindIcon(value)));
+        }
+        for (var value : BreakpointCondition.Comparison.values()) {
+            comparisons.add(menuOption(Component.literal(symbol(value)), () -> {
+                comparison = value;
+                closeMenu();
+                setFocused(comparisonButton);
+                refreshControls();
+            }));
+        }
         refreshControls();
-        setFocused(kinds.get(kind.ordinal()));
+        setFocused(kindButton);
+    }
+
+    private DebuggerButton menuOption(Component label, Runnable action) {
+        DebuggerButton button = new DebuggerButton();
+        button.configure(0, 0, 1, MENU_ROW_HEIGHT, label, false, false, true, false, action);
+        button.visible = false;
+        // Menu widgets participate in focus/narration, but render above the form separately.
+        return addWidget(button.withTextPadding(6).withOpaqueColors());
     }
 
     private static DebuggerIcon kindIcon(BreakpointCondition.Kind kind) {
@@ -145,13 +177,112 @@ public final class BreakpointConditionScreen extends Screen {
     private void refreshControls() {
         for (var value : BreakpointCondition.Kind.values()) kinds.get(value.ordinal()).setSelected(kind == value);
         for (var value : BreakpointCondition.Comparison.values()) {
-            DebuggerButton button = comparisons.get(value.ordinal());
-            button.visible = button.active = kind.isCount();
-            button.setSelected(comparison == value);
+            comparisons.get(value.ordinal()).setSelected(comparison == value);
         }
+        kindButton.setMessage(Component.translatable("codon.breakpoint.condition_select", kind.isCount()
+            ? tr("codon.breakpoint.short." + kind.name().toLowerCase(java.util.Locale.ROOT)) : kindLabel(kind)));
+        kindButton.setWidth(panelWidth - (kind.isCount() ? 128 : 16));
+        kindButton.withHorizontalViewport(0, kindButton.getWidth());
+        comparisonButton.setMessage(Component.translatable("codon.breakpoint.compare_select", symbol(comparison)));
+        comparisonButton.visible = comparisonButton.active = kind.isCount();
         threshold.visible = threshold.active = kind.isCount();
         if (saveButton != null) saveButton.active = validCount() && supportedCondition() && state.breakpoints().ready()
             && !state.breakpoints().pending(original.target());
+        if (deleteButton != null) {
+            panelHeight = contentHeight();
+            int nextTop = Math.max(6, Math.min(top, height - panelHeight - 6));
+            if (nextTop != top) {
+                // A bottom-anchored popup must still fit when server feedback adds a row.
+                for (var child : children()) if (child instanceof AbstractWidget widget)
+                    widget.setY(widget.getY() + nextTop - top);
+                top = nextTop;
+            }
+            saveButton.setY(top + panelHeight - 28);
+            deleteButton.setY(top + panelHeight - 28);
+        }
+        layoutMenu();
+    }
+
+    private DebuggerButton trigger(Menu value) { return value == Menu.KIND ? kindButton : comparisonButton; }
+    private List<DebuggerButton> options() { return menu == Menu.KIND ? kinds : comparisons; }
+    private int selectedOption() { return menu == Menu.KIND ? kind.ordinal() : comparison.ordinal(); }
+
+    private void openMenu(Menu value, boolean keyboard) {
+        if (menu != Menu.NONE) closeMenu();
+        menu = value;
+        keyboardMenu = keyboard;
+        hoverMenu = suppressedMenu = Menu.NONE;
+        hoverStarted = leaveStarted = -1;
+        menuScroll = 0;
+        layoutMenu();
+        revealOption(selectedOption());
+        if (keyboard) setFocused(options().get(selectedOption()));
+    }
+
+    private void closeMenu() {
+        if (menu == Menu.NONE) return;
+        if (options().contains(getFocused())) setFocused(trigger(menu));
+        suppressedMenu = menu;
+        menu = hoverMenu = Menu.NONE;
+        hoverStarted = leaveStarted = -1;
+        layoutMenu();
+    }
+
+    private void layoutMenu() {
+        for (var option : kinds) option.visible = option.active = false;
+        for (var option : comparisons) option.visible = option.active = false;
+        if (menu == Menu.NONE) return;
+        DebuggerButton source = trigger(menu);
+        int below = height - source.getBottom() - 8;
+        int above = source.getY() - 8;
+        boolean openBelow = below >= options().size() * MENU_ROW_HEIGHT + 2 || below >= above;
+        menuRows = Math.min(options().size(), Math.max(1, ((openBelow ? below : above) - 2) / MENU_ROW_HEIGHT));
+        menuHeight = menuRows * MENU_ROW_HEIGHT + 2;
+        menuWidth = Math.min(width - 12, Math.max(source.getWidth(), options().stream()
+            .mapToInt(option -> font.width(option.getMessage()) + 22).max().orElse(40)));
+        menuLeft = Math.clamp(source.getX(), 6, width - menuWidth - 6);
+        menuTop = openBelow ? source.getBottom() + 2 : source.getY() - menuHeight - 2;
+        menuScroll = Math.clamp(menuScroll, 0, options().size() - menuRows);
+        for (int i = menuScroll; i < menuScroll + menuRows; i++) {
+            DebuggerButton option = options().get(i);
+            option.setPosition(menuLeft + 1, menuTop + 1 + (i - menuScroll) * MENU_ROW_HEIGHT);
+            option.setWidth(menuWidth - 5);
+            // DebuggerButton keeps text-layout width separately from its hit box.
+            option.withHorizontalViewport(0, option.getWidth());
+            option.visible = option.active = true;
+        }
+    }
+
+    private void revealOption(int index) {
+        if (index < menuScroll) menuScroll = index;
+        else if (index >= menuScroll + menuRows) menuScroll = index - menuRows + 1;
+        layoutMenu();
+    }
+
+    private boolean overMenu(double x, double y) {
+        return menu != Menu.NONE && x >= menuLeft && x < menuLeft + menuWidth
+            && y >= menuTop && y < menuTop + menuHeight;
+    }
+
+    private void updateMenuHover(int mouseX, int mouseY) {
+        if (lastMouseX >= 0 && (mouseX != lastMouseX || mouseY != lastMouseY)) keyboardMenu = false;
+        lastMouseX = mouseX;
+        lastMouseY = mouseY;
+        long now = System.nanoTime();
+        // A popup can overlap the other trigger: its rows always own that hit area.
+        Menu hovered = overMenu(mouseX, mouseY) ? Menu.NONE : kindButton.isMouseOver(mouseX, mouseY) ? Menu.KIND
+            : comparisonButton.visible && comparisonButton.isMouseOver(mouseX, mouseY) ? Menu.COMPARISON : Menu.NONE;
+        if (hovered != suppressedMenu) suppressedMenu = Menu.NONE;
+        if (hovered != hoverMenu) { hoverMenu = hovered; hoverStarted = now; }
+        if (hovered != Menu.NONE && hovered != menu && hovered != suppressedMenu && now - hoverStarted >= HOVER_DELAY)
+            openMenu(hovered, false);
+        if (menu == Menu.NONE || keyboardMenu) return;
+        DebuggerButton source = trigger(menu);
+        boolean bridge = mouseX >= source.getX() && mouseX < source.getRight()
+            && mouseY >= Math.min(source.getY(), menuTop) && mouseY < Math.max(source.getBottom(), menuTop + menuHeight);
+        if (overMenu(mouseX, mouseY) || bridge) leaveStarted = -1;
+        else if (leaveStarted < 0) leaveStarted = now;
+        else if (now - leaveStarted >= LEAVE_DELAY) closeMenu();
     }
 
     private static String symbol(BreakpointCondition.Comparison comparison) {
@@ -186,8 +317,32 @@ public final class BreakpointConditionScreen extends Screen {
         Minecraft.getInstance().gui.setScreen(list);
     }
 
+    private String hint() {
+        if (!validCount()) return tr("codon.breakpoint.invalid_count");
+        if (kind != BreakpointCondition.Kind.ALWAYS && previewLoading()) return tr("codon.breakpoint.loading_stages");
+        if (!supportedCondition()) return tr("codon.breakpoint.unsupported_result");
+        return tr(kind == BreakpointCondition.Kind.ALWAYS ? "codon.breakpoint.hint.always"
+            : original.target().wholeCommand() ? "codon.breakpoint.hint.whole_result" : "codon.breakpoint.hint.stage_result");
+    }
+
+    private String feedback() {
+        var error = state.breakpoints().error(original.target());
+        return error != null ? tr("codon.breakpoint.error." + error.name().toLowerCase(java.util.Locale.ROOT))
+            : sendFailed ? tr("codon.breakpoint.request_unavailable")
+            : state.breakpoints().pending(original.target()) ? tr("codon.breakpoint.saving") : "";
+    }
+
+    private int textHeight(String text) {
+        return text.isEmpty() ? 0 : font.split(Component.literal(text), panelWidth - 16).size() * (font.lineHeight + 1);
+    }
+
+    private int contentHeight() {
+        return Math.min(height - 12, 120 + textHeight(hint()) + (feedback().isEmpty() ? 0 : textHeight(feedback()) + 4));
+    }
+
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         refreshControls();
+        updateMenuHover(mouseX, mouseY);
         if (saving && validCount() && !state.breakpoints().pending(original.target())
             && state.breakpoints().error(original.target()) == null) {
             BreakpointDefinition saved = state.breakpoints().get(original.target());
@@ -201,51 +356,97 @@ public final class BreakpointConditionScreen extends Screen {
             panelWidth - 16, MUTED);
         String fragment = commandFragment();
         WatchUi.line(graphics, font, fragment, left + 8, top + 42, panelWidth - 16, MUTED);
-        if (font.width(fragment) > panelWidth - 16
+        if (menu == Menu.NONE && font.width(fragment) > panelWidth - 16
             && mouseX >= left + 8 && mouseX < left + panelWidth - 8
             && mouseY >= top + 41 && mouseY < top + 52)
             graphics.setTooltipForNextFrame(font, Component.literal(fragment), mouseX, mouseY);
-        WatchUi.line(graphics, font, kindLabel(kind), left + 8, top + 88, panelWidth - 16, TEAL);
-        String hint;
-        int hintColor = MUTED;
-        if (kind.isCount() && !validCount()) {
-            hint = tr("codon.breakpoint.invalid_count");
-            hintColor = AMBER;
-        } else if ((kind.isCount() || kind.isEvent()) && previewLoading()) {
-            hint = tr("codon.breakpoint.loading_stages");
-        } else if (!supportedCondition()) {
-            hint = tr("codon.breakpoint.unsupported_result");
-            hintColor = AMBER;
-        } else hint = tr(kind == BreakpointCondition.Kind.ALWAYS
-            ? "codon.breakpoint.hint.always" : original.target().wholeCommand()
-                ? "codon.breakpoint.hint.whole_result" : "codon.breakpoint.hint.stage_result");
-        int hintY = top + 134;
-        for (var line : font.split(Component.literal(hint), panelWidth - 16)) {
-            if (hintY + font.lineHeight > top + panelHeight - 47) break;
-            graphics.text(font, line, left + 8, hintY, DebuggerTheme.color(hintColor), false);
-            hintY += font.lineHeight + 1;
+        int hintColor = !validCount() || !supportedCondition() && !previewLoading() ? AMBER : MUTED;
+        int hintY = drawLines(graphics, hint(), top + 86, hintColor);
+        if (!feedback().isEmpty()) drawLines(graphics, feedback(), hintY + 4,
+            state.breakpoints().error(original.target()) != null || sendFailed ? AMBER : MUTED);
+        super.extractRenderState(graphics, menu == Menu.NONE ? mouseX : -1, menu == Menu.NONE ? mouseY : -1, partialTick);
+        if (menu != Menu.NONE) {
+            graphics.nextStratum();
+            graphics.fill(menuLeft, menuTop, menuLeft + menuWidth, menuTop + menuHeight, SURFACE);
+            graphics.outline(menuLeft, menuTop, menuWidth, menuHeight, BORDER);
+            for (var option : options()) if (option.visible) option.extractRenderState(graphics, mouseX, mouseY, partialTick);
+            if (menuRows < options().size()) {
+                int trackHeight = menuHeight - 2;
+                int thumbHeight = Math.max(8, trackHeight * menuRows / options().size());
+                int thumbTop = menuTop + 1 + (trackHeight - thumbHeight) * menuScroll / (options().size() - menuRows);
+                graphics.fill(menuLeft + menuWidth - 3, thumbTop, menuLeft + menuWidth - 1, thumbTop + thumbHeight, TEAL);
+            }
         }
-        var error = state.breakpoints().error(original.target());
-        String feedback = error != null ? tr("codon.breakpoint.error." + error.name().toLowerCase(java.util.Locale.ROOT))
-            : sendFailed ? tr("codon.breakpoint.request_unavailable") :
-            state.breakpoints().pending(original.target()) ? tr("codon.breakpoint.saving") : "";
-        WatchUi.line(graphics, font, feedback, left + 8, top + panelHeight - 45, panelWidth - 16,
-            error == null && !sendFailed ? MUTED : AMBER);
-        super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+    }
+
+    private int drawLines(GuiGraphicsExtractor graphics, String text, int y, int color) {
+        for (var line : font.split(Component.literal(text), panelWidth - 16)) {
+            if (y + font.lineHeight > top + panelHeight - 32) break;
+            graphics.text(font, line, left + 8, y, DebuggerTheme.color(color), false);
+            y += font.lineHeight + 1;
+        }
+        return y;
     }
 
     @Override public boolean keyPressed(KeyEvent event) {
+        if (menu != Menu.NONE) {
+            if (event.key() == InputConstants.KEY_ESCAPE) { closeMenu(); return true; }
+            if (event.key() == InputConstants.KEY_UP || event.key() == InputConstants.KEY_DOWN) {
+                int index = options().indexOf(getFocused());
+                if (index < 0) index = selectedOption();
+                index = Math.floorMod(index + (event.key() == InputConstants.KEY_UP ? -1 : 1), options().size());
+                revealOption(index);
+                setFocused(options().get(index));
+                keyboardMenu = true;
+                return true;
+            }
+            if (event.key() == InputConstants.KEY_RETURN || event.key() == InputConstants.KEY_SPACE) {
+                int index = options().indexOf(getFocused());
+                options().get(index < 0 ? selectedOption() : index).onPress(event);
+                return true;
+            }
+            closeMenu();
+        } else if ((getFocused() == kindButton || getFocused() == comparisonButton)
+            && (event.key() == InputConstants.KEY_RETURN || event.key() == InputConstants.KEY_SPACE
+                || event.key() == InputConstants.KEY_DOWN || event.key() == InputConstants.KEY_UP)) {
+            openMenu(getFocused() == kindButton ? Menu.KIND : Menu.COMPARISON, true);
+            return true;
+        }
         if (event.key() == InputConstants.KEY_ESCAPE) { onClose(); return true; }
         return super.keyPressed(event);
     }
 
+    @Override public boolean charTyped(CharacterEvent event) {
+        closeMenu();
+        return super.charTyped(event);
+    }
+
     @Override public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        if (menu != Menu.NONE) {
+            if (overMenu(event.x(), event.y())) {
+                for (var option : options()) if (option.visible && option.mouseClicked(event, doubleClick)) return true;
+                return true;
+            }
+            // Opening is idempotent: a click arriving just after hover-open must not close it.
+            if (trigger(menu).isMouseOver(event.x(), event.y())) return true;
+            closeMenu();
+        }
         if (event.x() < left || event.x() >= left + panelWidth
             || event.y() < top || event.y() >= top + panelHeight) {
             onClose();
             return true;
         }
         return super.mouseClicked(event, doubleClick);
+    }
+
+    @Override public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
+        if (menu == Menu.NONE) return super.mouseScrolled(x, y, scrollX, scrollY);
+        if (overMenu(x, y) && scrollY != 0) {
+            menuScroll = Math.clamp(menuScroll + (scrollY > 0 ? -1 : 1), 0, options().size() - menuRows);
+            layoutMenu();
+            if (options().contains(getFocused()) && !((DebuggerButton) getFocused()).visible) setFocused(trigger(menu));
+        }
+        return true;
     }
 
     @Override public void onClose() { ScreenLayers.close(this); }

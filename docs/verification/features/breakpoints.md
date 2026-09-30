@@ -99,14 +99,28 @@ Always condition on unused markers. Pending edits and dirty
 commands must not allow stale actions (`DebuggerBreakpointUiGameTest`).
 
 
-The condition layer exposes all nine kinds as a single icon strip; count icons
-carry a tally badge to distinguish them from created/removed/changed events.
-The selected kind's name stays below the strip. Count conditions expose six
-comparison symbols and a numeric field directly; events hide both. Confirm,
-close and delete use distinct icons with localized tooltip/narration labels.
-Pointer hints retain the shared hover delay. The 320×240 count/event captures in
-`DebuggerBreakpointUiGameTest` check compact layout, invalid count rejection,
-real acknowledged count-condition saving and switching back to an event.
+The compact condition layer places the selected kind, comparison and numeric
+value on one row. Events and Always hide the comparison/value and expand the kind
+selector. Both selectors open on a short hover (180 ms), a click, or Enter/Space
+or an arrow key while focused. Hovering never changes the condition. Clicking an
+already-open selector keeps its menu open, including immediately after hover-open. The menu
+stays open while crossing the gap from its trigger and closes after the pointer
+leaves both for 220 ms. Clicking an option applies it to the draft and closes the
+menu; Save still waits for server acknowledgement. Escape closes an open menu
+first, then the layer. Tab closes the menu and continues through the form.
+
+The menu opens above or below its trigger according to available space, with a
+scrollbar when the viewport cannot hold every row. Mouse wheel and Up/Down reach
+all nine kinds and all six comparisons; menu input must not reach covered form
+controls. Full condition names and existing icons appear in the list, with short
+localized names in the compact count selector. Save has a visible text label.
+Panel height follows wrapped help and server feedback instead of reserving an
+empty comparison row or feedback area. The 320×240 hover-menu/count/event captures
+in `DebuggerBreakpointUiGameTest` check bounds, hover-only opening, leaving and
+crossing the menu gap, scrolling, keyboard selection/Escape, invalid count
+rejection, real acknowledged count-condition saving and switching back to an event.
+The anchored pending capture uses a controlled client pending state to check that
+feedback growth keeps the panel and its Save button inside the viewport.
 Saving after a resize uses native mouse dispatch, so the same scenario also
 checks that the layer's input and rendering callbacks remain attached to
 Fabric's newly created per-screen events.
