@@ -20,6 +20,7 @@
       "works.nuty.codon.client.DebuggerWatchGameTest",
       "works.nuty.codon.client.DebuggerRequestTransportGameTest",
       "works.nuty.codon.client.DebuggerWatchEditorGameTest",
+      "works.nuty.codon.client.DebuggerWatchFormLayoutGameTest",
       "works.nuty.codon.client.WatchEditorTransportGameTest",
       "works.nuty.codon.client.DebuggerPresentationGameTest",
       "works.nuty.codon.client.DebuggerScrollbarGameTest",

@@ -16,6 +16,7 @@ import org.jspecify.annotations.Nullable;
 import works.nuty.codon.client.input.InputManager;
 import works.nuty.codon.client.state.ClientDebuggerState;
 import works.nuty.codon.client.state.ClientWatchEditorState;
+import works.nuty.codon.client.ui.layout.WatchFormLayout;
 import works.nuty.codon.core.model.WatchEditorQuery;
 import works.nuty.codon.core.model.WatchResult;
 import works.nuty.codon.core.model.WatchSpec;
@@ -46,6 +47,7 @@ public final class WatchScreen extends ScaledCodonScreen {
     private DebuggerButton submit;
     private DebuggerButton retry;
     private int left, top, panelWidth, panelHeight;
+    private WatchFormLayout layout;
     private String feedback = "";
     private int feedbackColor = MUTED;
     private boolean attempted;
@@ -86,33 +88,31 @@ public final class WatchScreen extends ScaledCodonScreen {
         tabOrder.clear();
         browseControls.clear();
         inlineSuggestions.clear();
-        panelWidth = Math.max(1, Math.min(460, width - 16));
-        // Two server-backed short choices fit between fields without covering Save on normal GUI sizes.
-        panelHeight = Math.max(1, Math.min(296, height - 12));
-        left = (width - panelWidth) / 2;
-        top = (height - panelHeight) / 2;
-        int typeWidth = (panelWidth - 20) / 3;
+        layout = WatchFormLayout.create(width, height);
+        panelWidth = layout.panel().width();
+        panelHeight = layout.panel().height();
+        left = layout.panel().x();
+        top = layout.panel().y();
         List<AbstractWidget> types = new ArrayList<>();
         for (var type : WatchSpec.Kind.values()) {
-            DebuggerButton button = WatchUi.button(left + 8 + type.ordinal() * (typeWidth + 2), top + 28,
-                typeWidth, 20, text("kind." + type.name().toLowerCase(java.util.Locale.ROOT)), () -> chooseKind(type));
+            var bounds = layout.kind(type.ordinal());
+            DebuggerButton button = WatchUi.button(bounds.x(), bounds.y(), bounds.width(), bounds.height(),
+                text("kind." + type.name().toLowerCase(java.util.Locale.ROOT)), () -> chooseKind(type));
             button.configure(button.getX(), button.getY(), button.getWidth(), button.getHeight(), button.getMessage(),
                 true, type == kind, false, false, () -> chooseKind(type));
             addRenderableWidget(button);
             types.add(button);
         }
         var draft = drafts.getOrDefault(kind, ClientWatchEditorState.Draft.EMPTY);
-        int firstY = top + 65;
-        int secondY = top + (panelHeight >= 280 ? 132 : 112);
         if (kind == WatchSpec.Kind.SCORE) {
-            field("target", firstY, text("editor.objective"), "points", draft.target(), WatchEditorQuery.Mode.OBJECTIVES);
-            field("entity", secondY, text("editor.score_holder"), text("editor.score_holder_hint").getString(), draft.entity(), WatchEditorQuery.Mode.ENTITIES);
+            field("target", 0, text("editor.objective"), "points", draft.target(), WatchEditorQuery.Mode.OBJECTIVES);
+            field("entity", 1, text("editor.score_holder"), text("editor.score_holder_hint").getString(), draft.entity(), WatchEditorQuery.Mode.ENTITIES);
         } else if (kind == WatchSpec.Kind.ENTITY_NBT) {
-            field("path", firstY, text("path"), "Health, Pos[0]", draft.path(), WatchEditorQuery.Mode.NBT);
-            field("entity", secondY, text("editor.entity"), text("editor.context").getString(), draft.entity(), WatchEditorQuery.Mode.ENTITIES);
+            field("path", 0, text("path"), "Health, Pos[0]", draft.path(), WatchEditorQuery.Mode.NBT);
+            field("entity", 1, text("editor.entity"), text("editor.context").getString(), draft.entity(), WatchEditorQuery.Mode.ENTITIES);
         } else {
-            field("target", firstY, text("editor.storage"), "demo:state", draft.target(), WatchEditorQuery.Mode.STORAGES);
-            field("path", secondY, text("path"), "counter", draft.path(), WatchEditorQuery.Mode.NBT);
+            field("target", 0, text("editor.storage"), "demo:state", draft.target(), WatchEditorQuery.Mode.STORAGES);
+            field("path", 1, text("path"), "counter", draft.path(), WatchEditorQuery.Mode.NBT);
         }
         for (int index = 0; index < 2; index++) {
             DebuggerButton choice = addRenderableWidget(WatchUi.button(0, 0, 1, 1, Component.empty(), () -> { }));
@@ -120,15 +120,18 @@ public final class WatchScreen extends ScaledCodonScreen {
             inlineSuggestions.add(choice);
             tabOrder.add(choice);
         }
-        submit = addRenderableWidget(WatchUi.button(left + panelWidth - 80, top + panelHeight - 35, 72, 20,
+        var submitBounds = layout.submit();
+        submit = addRenderableWidget(WatchUi.button(submitBounds.x(), submitBounds.y(), submitBounds.width(), submitBounds.height(),
             text(editId > 0 ? "editor.save" : "add"), () -> submit(false)));
         tabOrder.add(submit);
         tabOrder.addAll(browseControls);
-        retry = addRenderableWidget(WatchUi.button(left + panelWidth - 58, top + 157, 50, 18,
+        var retryBounds = layout.retry();
+        retry = addRenderableWidget(WatchUi.button(retryBounds.x(), retryBounds.y(), retryBounds.width(), retryBounds.height(),
             text("retry"), () -> state.watchEditor().retry()));
         retry.visible = retry.active = false;
         tabOrder.add(retry);
-        DebuggerButton close = addRenderableWidget(WatchUi.button(left + panelWidth - 54, top + 4, 46, 18,
+        var closeBounds = layout.close();
+        DebuggerButton close = addRenderableWidget(WatchUi.button(closeBounds.x(), closeBounds.y(), closeBounds.width(), closeBounds.height(),
             text("close"), this::onClose));
         tabOrder.addAll(types);
         tabOrder.add(close);
@@ -138,8 +141,9 @@ public final class WatchScreen extends ScaledCodonScreen {
         refreshValidation();
     }
 
-    private void field(String id, int y, Component label, String hint, String value, WatchEditorQuery.Mode mode) {
-        EditBox field = new DebuggerEditBox(font, left + 8, y, Math.max(1, panelWidth - 76), 20, label);
+    private void field(String id, int index, Component label, String hint, String value, WatchEditorQuery.Mode mode) {
+        var bounds = layout.field(index);
+        EditBox field = new DebuggerEditBox(font, bounds.x(), bounds.y(), bounds.width(), bounds.height(), label);
         field.setMaxLength(id.equals("entity") && kind == WatchSpec.Kind.SCORE
             ? WatchSpec.MAX_INPUT_LENGTH * 2 + 2 : WatchSpec.MAX_INPUT_LENGTH);
         field.setHint(Component.literal(hint));
@@ -153,7 +157,8 @@ public final class WatchScreen extends ScaledCodonScreen {
         fields.put(id, addRenderableWidget(field));
         fieldModes.put(id, mode);
         tabOrder.add(field);
-        DebuggerButton browse = addRenderableWidget(WatchUi.button(left + panelWidth - 62, y, 54, 20,
+        var browseBounds = layout.browse(index);
+        DebuggerButton browse = addRenderableWidget(WatchUi.button(browseBounds.x(), browseBounds.y(), browseBounds.width(), browseBounds.height(),
             text(id.equals("entity") ? "editor.choose" : "editor.browse"), () -> browse(mode, id)));
         browse.setTooltip(Tooltip.create(text("editor.browse_hint")));
         browseControls.add(browse);
@@ -330,18 +335,19 @@ public final class WatchScreen extends ScaledCodonScreen {
         var errors = errors();
         submit.active = errors.isEmpty();
         fields.forEach((id, field) -> {
-            WatchUi.line(graphics, font, field.getMessage().getString(), field.getX(), field.getY() - 11, panelWidth - 16, MUTED);
+            int index = field == primary() ? 0 : 1;
+            WatchUi.line(graphics, font, field.getMessage().getString(), field.getX(), layout.labelY(index), layout.contentWidth(), MUTED);
             Component error = errors.get(id);
             if (error != null && (attempted || !field.getValue().isBlank())) {
-                WatchUi.line(graphics, font, error.getString(), field.getX(), field.getY() + 23, panelWidth - 16, RED);
+                WatchUi.line(graphics, font, error.getString(), field.getX(), layout.errorY(index), layout.contentWidth(), RED);
                 if (mouseX >= field.getX() && mouseX < left + panelWidth - 8 && mouseY >= field.getY() + 22 && mouseY < field.getY() + 34)
                     graphics.setTooltipForNextFrame(font, error, mouseX, mouseY);
             }
         });
-        if (!renderInlineSuggestions(graphics)) renderPreview(graphics, errors.isEmpty());
-        if (!feedback.isEmpty()) WatchUi.line(graphics, font, feedback, left + 8, top + panelHeight - 49, panelWidth - 16, feedbackColor);
+        if (!renderInlineSuggestions(graphics, errors)) renderPreview(graphics, errors.isEmpty());
+        if (!feedback.isEmpty()) WatchUi.line(graphics, font, feedback, left + 8, layout.feedbackY(), panelWidth - 16, feedbackColor);
         WatchUi.line(graphics, font, text(editId > 0 ? "editor.edit_keys" : "editor.keys").getString(),
-            left + 8, top + panelHeight - 11, panelWidth - 16, MUTED);
+            left + 8, layout.keysY(), panelWidth - 16, MUTED);
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
     }
 
@@ -349,9 +355,10 @@ public final class WatchScreen extends ScaledCodonScreen {
      * The simple server lists (objectives, entities, and storage IDs) are useful while typing.
      * NBT stays in its hierarchical Picker because selecting a child needs its path stack.
      */
-    private boolean renderInlineSuggestions(GuiGraphicsExtractor graphics) {
+    private boolean renderInlineSuggestions(GuiGraphicsExtractor graphics, Map<String, Component> errors) {
         for (DebuggerButton choice : inlineSuggestions) choice.visible = choice.active = false;
-        if (panelHeight < 280 || !(getFocused() instanceof EditBox focused)) return false;
+        retry.visible = retry.active = false;
+        if (!layout.inlineSuggestions() || !(getFocused() instanceof EditBox focused)) return false;
         String field = fields.entrySet().stream().filter(entry -> entry.getValue() == focused).map(Map.Entry::getKey).findFirst().orElse(null);
         if (field == null) return false;
         WatchEditorQuery.Mode mode = fieldModes.get(field);
@@ -362,7 +369,10 @@ public final class WatchScreen extends ScaledCodonScreen {
         var query = new WatchEditorQuery(mode, kind, target, "", executor(), search, 0);
         state.watchEditor().request(WatchUi.pause(state), state.selectedPauseSourceIndex(), query);
         var page = state.watchEditor().page();
-        int y = focused.getY() + focused.getHeight() + 2;
+        // Keep the same request behavior, but give a visible validation error its own slot.
+        if (errors.containsKey(field) && (attempted || !focused.getValue().isBlank())) return true;
+        int fieldIndex = focused == primary() ? 0 : 1;
+        int y = layout.suggestion(fieldIndex, 0).y();
         if (page == null) {
             WatchUi.line(graphics, font, text("editor.loading").getString(), focused.getX(), y + 3, focused.getWidth(), MUTED);
             return true;
@@ -382,7 +392,8 @@ public final class WatchScreen extends ScaledCodonScreen {
             DebuggerButton choice = inlineSuggestions.get(index);
             Component label = Component.literal(option.label().isBlank() ? option.value() : option.label());
             Runnable select = () -> chooseInline(field, option.value());
-            choice.configure(focused.getX(), y + index * 17, focused.getWidth(), 16, label, true, false, false, false, select);
+            var bounds = layout.suggestion(fieldIndex, index);
+            choice.configure(bounds.x(), bounds.y(), bounds.width(), bounds.height(), label, true, false, false, false, select);
             choice.setTooltip(Tooltip.create(option.detail().isBlank() ? label : Component.literal(option.detail())));
             choice.visible = choice.active = true;
         }
@@ -409,7 +420,7 @@ public final class WatchScreen extends ScaledCodonScreen {
     }
 
     private void renderPreview(GuiGraphicsExtractor graphics, boolean valid) {
-        int y = top + panelHeight - 84;
+        int y = layout.previewY();
         if (kind != WatchSpec.Kind.STORAGE_NBT) {
             var current = WatchUi.currentEntity(state);
             String holder = valid ? scoreHolder() : null;
@@ -442,8 +453,8 @@ public final class WatchScreen extends ScaledCodonScreen {
             retry.visible = retry.active = state.watchEditor().timedOut()
                 || page != null && (page.status() == WatchResult.Status.ERROR || page.status() == WatchResult.Status.UNAVAILABLE);
         }
-        WatchUi.line(graphics, font, text("editor.preview", value).getString(), left + 8, y + 16,
-            panelWidth - (retry.visible ? 76 : 16), TEXT);
+        WatchUi.line(graphics, font, text("editor.preview", value).getString(), left + 8, layout.previewValueY(),
+            retry.visible ? layout.field(1).width() : layout.contentWidth(), TEXT);
     }
 
     @Override public boolean keyPressed(KeyEvent event) {
