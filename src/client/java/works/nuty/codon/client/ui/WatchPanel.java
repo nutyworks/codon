@@ -209,6 +209,8 @@ public final class WatchPanel {
             Runnable reveal = () -> offset = Math.min(maximum, rowLayout.reveal(logicalRow, offset, viewportHeight));
             var entry = row.entry();
             navigation.add("watch-row-" + entry.id(), DebuggerNavigation.Group.WATCH, index, 0, reveal);
+            if (stackedValues)
+                navigation.add("watch-value-" + entry.id(), DebuggerNavigation.Group.WATCH, index, 0, reveal);
             if (entry.automatic()) {
                 navigation.add("watch-copy-" + entry.id(), DebuggerNavigation.Group.WATCH, index, 3, reveal);
                 navigation.add("watch-keep-" + entry.id(), DebuggerNavigation.Group.WATCH, index, 4, reveal);
@@ -265,13 +267,17 @@ public final class WatchPanel {
             if (!stackedValues && row.showScope())
                 WatchUi.line(graphics, font, scope(entry), bounds.x() + 7 + kindInset,
                     textY + lineSpacing, rowWidth - 4 - kindInset, MUTED);
-            DebuggerButton inspect = button("watch-row-" + entry.id(), new Bounds(bounds.x() + 4, y, rowWidth + 3, rowHeight - 1),
-                text("inspect", WatchFormatting.specification(entry.spec()).getString()), true, entry.id() == selectedId,
-                () -> { selectedId = entry.id(); client.gui.setScreen(new WatchDetailsScreen(input, state, overlay, entry.id())); }, navigation, offset + index, 0)
-                .asHitSurface();
-            inspect.setTooltip(Tooltip.create(text("section." + entry.spec().kind().name().toLowerCase(java.util.Locale.ROOT))
+            Component inspectionLabel = text("inspect", WatchFormatting.specification(entry.spec()).getString());
+            Tooltip inspectionTooltip = Tooltip.create(text("section." + entry.spec().kind().name().toLowerCase(java.util.Locale.ROOT))
                 .copy().append(" · ").append(text("inspect", WatchFormatting.specification(entry.spec()).getString()))
-                .append("\n").append(scope(entry))));
+                .append("\n").append(scope(entry)));
+            var inspectionBounds = WatchPanelLayout.inspectionBounds(bounds, y, rowHeight);
+            for (int line = 0; line < inspectionBounds.size(); line++) {
+                button((line == 0 ? "watch-row-" : "watch-value-") + entry.id(), inspectionBounds.get(line),
+                    inspectionLabel, true, entry.id() == selectedId,
+                    () -> { selectedId = entry.id(); client.gui.setScreen(new WatchDetailsScreen(input, state, overlay, entry.id())); },
+                    navigation, offset + index, 0).asHitSurface().setTooltip(inspectionTooltip);
+            }
             int actionX = bounds.x() + bounds.width() - 76;
             int actionY = stackedValues ? y + 1 : y + (rowHeight - ACTION_SIZE) / 2;
             if (entry.automatic()) {

@@ -8,6 +8,7 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import works.nuty.codon.client.input.InputManager;
@@ -112,7 +113,8 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
         click(context, "codon.watch.edit");
         context.runOnClient(client -> require(screen(client) instanceof WatchScreen, "Edit hitbox opens the editor"));
         click(context, "codon.watch.close");
-        clickLabel(context, context.computeOnClient(client -> Component.translatable("codon.watch.inspect", WatchFormatting.specification(NBT).getString()).getString()));
+        if (!openDetailsFromValueRightEdge(context, fixture, name))
+            clickLabel(context, context.computeOnClient(client -> Component.translatable("codon.watch.inspect", WatchFormatting.specification(NBT).getString()).getString()));
         capture(context, name + "-details");
         context.runOnClient(DebuggerCompactWatchGameTest::checkDetailsGeometry);
         click(context, "codon.watch.details.copy_value");
@@ -229,8 +231,46 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
         }
     }
 
+    private static boolean openDetailsFromValueRightEdge(ClientGameTestContext context, Fixture fixture, String name) {
+        if (!context.computeOnClient(client -> WatchPanelLayout.stackedValues(fixture.overlay().watchPanel().bounds().width()))) return false;
+        var value = context.computeOnClient(client -> {
+            String label = Component.translatable("codon.watch.inspect", WatchFormatting.specification(NBT).getString()).getString();
+            return buttons(screen(client)).stream().filter(widget -> widget.getMessage().getString().equals(label))
+                .max(java.util.Comparator.comparingInt(DebuggerButton::getY)).orElseThrow();
+        });
+        double[] point = context.computeOnClient(client -> {
+            var panel = fixture.overlay().watchPanel().bounds();
+            double x = panel.x() + 7 + WatchPanelLayout.valueWidth(panel.width()) - 1;
+            double y = value.getY() + value.getHeight() / 2.0;
+            require(value.isMouseOver(x, y), "The last visible value pixel belongs to the inspection surface");
+            Tooltip hint = tooltip(value);
+            require(hint != null, "The value surface retains the name/scope tooltip");
+            for (var other : buttons(screen(client))) if (other != value)
+                require(!other.isMouseOver(x, y), "Right-edge inspection cannot activate another control");
+            var scale = ((ScaledCodonScreen) screen(client)).uiScale();
+            var window = client.getWindow();
+            return new double[]{scale.toGame(x) * window.getScreenWidth() / window.getGuiScaledWidth(),
+                scale.toGame(y) * window.getScreenHeight() / window.getGuiScaledHeight()};
+        });
+        context.getInput().setCursorPos(point[0], point[1]);
+        context.waitTicks(12);
+        context.runOnClient(client -> require(value.isHovered(), "Native pointer hover reaches the value's right edge"));
+        context.takeScreenshot(name + "-value-right-tooltip");
+        context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_LEFT);
+        context.waitTicks(3);
+        context.runOnClient(client -> require(screen(client) instanceof WatchDetailsScreen, "Native right-edge value click opens Details"));
+        return true;
+    }
+
     private static boolean overlaps(AbstractWidget a, AbstractWidget b) {
         return a.getX() < b.getRight() && b.getX() < a.getRight() && a.getY() < b.getBottom() && b.getY() < a.getBottom();
+    }
+    private static Tooltip tooltip(DebuggerButton button) {
+        try {
+            var field = DebuggerButton.class.getDeclaredField("tooltip");
+            field.setAccessible(true);
+            return (Tooltip) field.get(button);
+        } catch (ReflectiveOperationException exception) { throw new AssertionError(exception); }
     }
     private static List<DebuggerButton> buttons(Screen screen) { return screen.children().stream().filter(DebuggerButton.class::isInstance).map(DebuggerButton.class::cast).filter(button -> button.visible).toList(); }
     private static String text(String key) { return Component.translatable(key).getString(); }

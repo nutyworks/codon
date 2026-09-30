@@ -10,6 +10,15 @@ public final class WatchPanelLayout {
     public static boolean stackedValues(int panelWidth) { return panelWidth < 260; }
     public static int valueWidth(int panelWidth) { return Math.max(0, panelWidth - 18); }
 
+    /** Compact value inspection starts below the management buttons' bottom edge. */
+    public static List<Bounds> inspectionBounds(Bounds panel, int rowY, int rowHeight) {
+        int nameWidth = Math.max(1, panel.width() - 86) + 3;
+        if (!stackedValues(panel.width()))
+            return List.of(new Bounds(panel.x() + 4, rowY, nameWidth, rowHeight - 1));
+        return List.of(new Bounds(panel.x() + 4, rowY, nameWidth, 17),
+            new Bounds(panel.x() + 7, rowY + 17, valueWidth(panel.width()), rowHeight - 18));
+    }
+
     /** Rows reserve extra height only when their scope line is visible. */
     public static final class Rows {
         private final int[] boundaries;

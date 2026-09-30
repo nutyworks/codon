@@ -49,6 +49,9 @@ data modify storage codon:verify counter set value 0
    names and long values, check numeric/error states, scroll past the visible rows,
    and use Add, pin/unpin, Copy, Edit, Delete and Undo. Compare a regular viewport
    in English/Korean, following game scale and using a custom Codon scale.
+   Hover the far right of the compact value line: its tooltip must appear. Click
+   the same point to open Details, then check the name line's management buttons
+   still use their own targets.
    In Details at 320x240, the footer wraps to two rows clear of the scrollable text.
    Check Copy value/path, Retry, Edit and Close hitboxes. More/Less retains focus on
    the same toggle; Tab then reaches Edit when expanded and Retry when collapsed.
@@ -92,7 +95,8 @@ scrolling and custom-scale selection. `WatchFormLayoutTest` and
 `WatchPickerLayoutTest` retain the focused geometry and viewport boundary checks.
 `DebuggerCompactWatchGameTest` uses six representative English/Korean cases at
 427x240, 320x240 and regular viewports, with following/custom scales. It checks
-native management and footer clicks, More/Less focus, row overflow and pending
+native management and footer clicks, compact value right-edge click/tooltip hover,
+More/Less focus, row overflow and pending
 execution-control disabling, and captures `*codon-compact-watch-*.png` for visual
 inspection. Its injected observations establish UI behavior, not live server reads.
 
