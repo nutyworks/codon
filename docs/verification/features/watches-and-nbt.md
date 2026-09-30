@@ -44,6 +44,17 @@ data modify storage codon:verify counter set value 0
    go Up. Check page navigation, Retry, scroll and keyboard selection in English
    and Korean at normal, narrow and custom Codon scales. Search retains its
    position as result sizes change; native selection updates only its draft field.
+9. At 427x240, open View → Watches. Compact rows put name/actions above a value
+   line; scope moves into the row tooltip and full-text inspector. Inspect shortened
+   names and long values, check numeric/error states, scroll past the visible rows,
+   and use Add, pin/unpin, Copy, Edit, Delete and Undo. Compare a regular viewport
+   in English/Korean, following game scale and using a custom Codon scale.
+   Hover the far right of the compact value line: its tooltip must appear. Click
+   the same point to open Details, then check the name line's management buttons
+   still use their own targets.
+   In Details at 320x240, the footer wraps to two rows clear of the scrollable text.
+   Check Copy value/path, Retry, Edit and Close hitboxes. More/Less retains focus on
+   the same toggle; Tab then reaches Edit when expanded and Retry when collapsed.
 
 Queries while paused must remain read-only and must not cause an extra execution
 step. Keep previous/current comparison tied to observed pauses. A brief retained
@@ -56,6 +67,7 @@ display during a pending reply must not enable actions on stale data.
 - [WatchPanel](../../../src/client/java/works/nuty/codon/client/ui/WatchPanel.java), [WatchScreen](../../../src/client/java/works/nuty/codon/client/ui/WatchScreen.java), [NbtTreePanel](../../../src/client/java/works/nuty/codon/client/ui/NbtTreePanel.java): user interaction.
 - [WatchFormLayout](../../../src/client/java/works/nuty/codon/client/ui/layout/WatchFormLayout.java): shared form columns and vertical slots.
 - [WatchPickerScreen](../../../src/client/java/works/nuty/codon/client/ui/WatchPickerScreen.java), [WatchPickerLayout](../../../src/client/java/works/nuty/codon/client/ui/layout/WatchPickerLayout.java): Browse dialog drawing, controls and hit bounds.
+- [WatchDetailsScreen](../../../src/client/java/works/nuty/codon/client/ui/WatchDetailsScreen.java), [WatchDetailsLayout](../../../src/client/java/works/nuty/codon/client/ui/layout/WatchDetailsLayout.java): full-value viewport and responsive footer.
 
 ## Choose verification
 
@@ -68,6 +80,7 @@ display during a pending reply must not enable actions on stale data.
 | Editor and server request/reply | `DebuggerWatchEditorGameTest`, `WatchEditorTransportGameTest` |
 | Watch form alignment, languages and native input | `clientTest`: `WatchFormLayoutTest`; `DebuggerWatchFormLayoutGameTest` |
 | Browse dialog alignment, short Objectives, paging and selection | `clientTest`: `WatchPickerLayoutTest`; `DebuggerWatchPickerLayoutGameTest`, `WatchEditorTransportGameTest` |
+| Compact Watch values, Details footer, native actions and focus | `clientTest`: `WatchPanelLayoutTest`, `WatchDetailsLayoutTest`, `DebuggerHeaderLayoutTest`; `DebuggerCompactWatchGameTest` |
 | Empty Watches hint, visible `+` and editor route | `DebuggerNbtTreeGameTest` (`codon-nbt-tree-empty-watch-plus` capture) |
 | NBT reads, tree controls and stale buttons | `NbtTreeReaderGameTest`, `DebuggerNbtTreeGameTest`, `DebuggerNbtPendingButtonsGameTest` |
 | Pinning, grouping, persistence | `DebuggerWatchPinGameTest`, `DebuggerWatchGroupingGameTest`, `DebuggerWatchPersistenceGameTest` |
@@ -80,6 +93,12 @@ Retry, and Add/Save. The picker cases exercise each kind/field route once,
 including two short Objectives, paging/Retry, NBT expand/Up, narrow Korean
 scrolling and custom-scale selection. `WatchFormLayoutTest` and
 `WatchPickerLayoutTest` retain the focused geometry and viewport boundary checks.
+`DebuggerCompactWatchGameTest` uses six representative English/Korean cases at
+427x240, 320x240 and regular viewports, with following/custom scales. It checks
+native management and footer clicks, compact value right-edge click/tooltip hover,
+More/Less focus, row overflow and pending
+execution-control disabling, and captures `*codon-compact-watch-*.png` for visual
+inspection. Its injected observations establish UI behavior, not live server reads.
 
 Example: `./gradlew runClientGameTest -PclientGameTest=DebuggerNbtTreeGameTest`.
 Choose the row for the changed behavior, not the whole table. Inspect the matching

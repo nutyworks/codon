@@ -16,6 +16,7 @@ import works.nuty.codon.client.state.DebuggerPreferences.InspectorTab;
 import works.nuty.codon.client.ui.layout.DebuggerLayout;
 import works.nuty.codon.client.ui.layout.GizmoLabelLayout;
 import works.nuty.codon.client.ui.layout.WatchPanelLayout;
+import works.nuty.codon.client.ui.layout.DebuggerHeaderLayout;
 import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Anchor;
 import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds;
 import works.nuty.codon.core.model.ExecutionFlowContext;
@@ -243,12 +244,12 @@ public final class DebuggerOverlay {
         controls.add(opacitySlider);
         navigation.bind("background-opacity", DebuggerNavigation.Group.TOOLBAR, opacitySlider);
         graphics.fill(header.x(), header.y(), header.x() + 2, header.y() + headerPanel.height(), TEAL);
-        text(graphics, prefix, header.x() + 7, header.y() + 5, Math.max(0, header.width() - rightControlsWidth), TEXT, true);
-        int statusWidth = Math.max(0, header.width() - rightControlsWidth - prefixWidth);
-        text(graphics, status, header.x() + 7 + prefixWidth, header.y() + 5, statusWidth,
+        var headerText = DebuggerHeaderLayout.create(header, prefixWidth, client.font.width(status), menuKeyWidth, menuKeyGap);
+        text(graphics, prefix, header.x() + 7, header.y() + 5, headerText.prefixWidth(), TEXT, true);
+        text(graphics, status, headerText.statusX(), header.y() + 5, headerText.statusWidth(),
             state.isPaused() ? AMBER : MUTED, true);
 
-        graphics.text(client.font, menuKey, header.x() + 7 + prefixWidth + client.font.width(trimmed(status, statusWidth)) + menuKeyGap,
+        graphics.text(client.font, menuKey, headerText.menuKeyX(),
             header.y() + 5, MUTED, false);
 
         int gap = DebuggerLayout.ICON_BUTTON_GAP;

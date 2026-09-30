@@ -13,6 +13,8 @@ import net.minecraft.util.FormattedCharSequence;
 import works.nuty.codon.client.input.InputManager;
 import works.nuty.codon.client.state.ClientDebuggerState;
 import works.nuty.codon.client.state.ClientWatchState;
+import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds;
+import works.nuty.codon.client.ui.layout.WatchDetailsLayout;
 import works.nuty.codon.core.model.WatchResult;
 import works.nuty.codon.core.model.WatchSpec;
 
@@ -34,6 +36,7 @@ public final class WatchDetailsScreen extends ScaledCodonScreen {
     private DebuggerButton more;
     private DebuggerButton retry;
     private int left, top, panelWidth, panelHeight, offset;
+    private WatchDetailsLayout layout;
     /** Rows open a compact summary first; full wrapping is available for long NBT values. */
     private boolean expanded;
 
@@ -46,28 +49,33 @@ public final class WatchDetailsScreen extends ScaledCodonScreen {
     }
 
     @Override protected void init() {
-        panelWidth = Math.max(1, Math.min(expanded ? 440 : 340, width - 12));
-        panelHeight = Math.max(1, Math.min(expanded ? 300 : 206, height - 12));
-        left = (width - panelWidth) / 2;
-        top = (height - panelHeight) / 2;
+        layout = WatchDetailsLayout.create(width, height, expanded);
+        panelWidth = layout.panel().width();
+        panelHeight = layout.panel().height();
+        left = layout.panel().x();
+        top = layout.panel().y();
         tabOrder.clear();
-        copyValue = addRenderableWidget(WatchUi.button(left + 8, top + panelHeight - 28, 78, 20,
-            WatchUi.text("details.copy_value"), this::copyValue));
-        copyPath = addRenderableWidget(WatchUi.button(left + 90, top + panelHeight - 28, 56, 20,
-            WatchUi.text("details.copy_path"), this::copyPath));
-        more = addRenderableWidget(WatchUi.button(left + 150, top + panelHeight - 28, 50, 20,
-            WatchUi.text(expanded ? "details.less" : "details.more"), this::toggleExpanded));
-        edit = addRenderableWidget(WatchUi.button(left + 204, top + panelHeight - 28, 50, 20,
-            WatchUi.text("edit"), this::edit));
+        copyValue = footerButton(layout.copyValue(), "details.copy_value", this::copyValue);
+        copyPath = footerButton(layout.copyPath(), "details.copy_path", this::copyPath);
+        // Native mouse dispatch focuses the initiating widget after its action returns.
+        // Reuse this target so rebuilding on More/Less cannot focus a detached button.
+        if (more == null) more = new DebuggerButton();
+        Bounds moreBounds = layout.more();
+        more.configure(moreBounds.x(), moreBounds.y(), moreBounds.width(), moreBounds.height(),
+            WatchUi.text(expanded ? "details.less" : "details.more"), true, false, false, false, this::toggleExpanded);
+        addRenderableWidget(more);
+        edit = footerButton(layout.edit(), "edit", this::edit);
         edit.visible = edit.active = expanded;
-        retry = addRenderableWidget(WatchUi.button(left + panelWidth - 136, top + panelHeight - 28, 62, 20,
-            WatchUi.text("details.retry"), () -> state.watches().retry(entryId)));
-        var close = addRenderableWidget(WatchUi.button(left + panelWidth - 70, top + panelHeight - 28, 62, 20,
-            WatchUi.text("close"), this::onClose));
+        retry = footerButton(layout.retry(), "details.retry", () -> state.watches().retry(entryId));
+        var close = footerButton(layout.close(), "close", this::onClose);
         tabOrder.addAll(List.of(copyValue, copyPath, more, edit, retry, close));
         for (int i = 0; i < tabOrder.size(); i++) tabOrder.get(i).setTabOrderGroup(i);
         setFocused(copyValue);
         rebuildLines();
+    }
+
+    private DebuggerButton footerButton(Bounds bounds, String label, Runnable action) {
+        return addRenderableWidget(WatchUi.button(bounds.x(), bounds.y(), bounds.width(), bounds.height(), WatchUi.text(label), action));
     }
 
     private ClientWatchState.Entry entry() {
@@ -94,19 +102,21 @@ public final class WatchDetailsScreen extends ScaledCodonScreen {
     private void toggleExpanded() {
         expanded = !expanded;
         rebuildWidgets();
+        setFocused(more);
     }
 
     private void rebuildLines() {
         lines.clear();
         ClientWatchState.Entry entry = entry();
         if (entry == null) {
-            copyValue.active = copyPath.active = retry.active = false;
+            copyValue.active = copyPath.active = retry.active = edit.active = false;
             add(WatchUi.text("details.unavailable"), RED);
             offset = 0;
             return;
         }
         copyValue.active = copyPath.active = true;
         retry.active = !entry.automatic();
+        edit.active = expanded;
         add(WatchUi.text("details.expression"), TEAL);
         add(Component.literal(expression(entry.spec())), TEXT);
         blank();
@@ -156,7 +166,7 @@ public final class WatchDetailsScreen extends ScaledCodonScreen {
     private void add(Component text, int color) {
         for (FormattedCharSequence line : font.split(text, Math.max(1, panelWidth - 32))) lines.add(new Line(line, color));
     }
-    private int visibleLines() { return Math.max(1, (panelHeight - 62) / (font.lineHeight + 3)); }
+    private int visibleLines() { return Math.max(1, (layout.textBottom() - top - 31 + 3) / (font.lineHeight + 3)); }
     private int maxOffset() { return Math.max(0, lines.size() - visibleLines()); }
 
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
@@ -166,14 +176,14 @@ public final class WatchDetailsScreen extends ScaledCodonScreen {
         graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.color(BORDER));
         graphics.fill(left, top, left + 2, top + 24, DebuggerTheme.color(TEAL));
         WatchUi.line(graphics, font, title.getString(), left + 8, top + 9, panelWidth - 16, TEXT);
-        graphics.enableScissor(left + 8, top + 29, left + panelWidth - 8, top + panelHeight - 34);
+        graphics.enableScissor(left + 8, top + 29, left + panelWidth - 8, layout.textBottom());
         for (int row = 0; row < visibleLines() && offset + row < lines.size(); row++) {
             Line line = lines.get(offset + row);
             graphics.text(font, line.text(), left + 10, top + 31 + row * (font.lineHeight + 3), DebuggerTheme.color(line.color()), false);
         }
         graphics.disableScissor();
         if (maxOffset() > 0) {
-            int track = Math.max(1, panelHeight - 70);
+            int track = Math.max(1, layout.textBottom() - top - 30);
             int thumb = Math.max(4, track * visibleLines() / lines.size());
             int y = top + 30 + (track - thumb) * offset / maxOffset();
             graphics.fill(left + panelWidth - 5, y, left + panelWidth - 3, y + thumb, DebuggerTheme.color(TEAL));
