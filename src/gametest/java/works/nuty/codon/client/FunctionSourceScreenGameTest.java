@@ -13,9 +13,6 @@ import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.input.MouseButtonInfo;
 import net.minecraft.client.input.KeyEvent;
-import net.minecraft.network.chat.FontDescription;
-import net.minecraft.network.chat.Style;
-import net.minecraft.resources.Identifier;
 import works.nuty.codon.core.model.PauseSnapshot;
 import works.nuty.codon.core.model.PauseReason;
 import works.nuty.codon.core.model.CommandSnippet;
@@ -33,7 +30,7 @@ import works.nuty.codon.core.model.BreakpointCondition;
 import works.nuty.codon.core.model.BreakpointDefinition;
 import works.nuty.codon.core.model.BreakpointTarget;
 
-/** Renders the smallest supported source browser with a wrapped stage command and captures it. */
+/** Renders original source rows with inline stage markers and the default Minecraft font. */
 @SuppressWarnings("UnstableApiUsage")
 public final class FunctionSourceScreenGameTest implements FabricClientGameTest {
     private static final FunctionId FUNCTION = new FunctionId("codon_test", "long_stage");
@@ -90,17 +87,31 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             });
             context.waitTicks(1);
             context.takeScreenshot("codon-function-source-320x240-stage-first");
-            context.getInput().setCursorPos(330, 444);
+            int firstMarker = context.computeOnClient(client -> 66 + client.font.width(COMMAND.substring(0, 8)) + 6);
+            context.getInput().setCursorPos(firstMarker * 3, 133 * 3);
             context.waitTicks(2);
             context.takeScreenshot("codon-function-source-disabled-hover");
             context.getInput().setCursorPos(0, 0);
-            context.runOnClient(client -> screen.mouseScrolled(100, 160, 0, -1));
-            context.waitTicks(2);
-            context.takeScreenshot("codon-function-source-320x240-stage-scrolled");
             context.runOnClient(client -> {
-                MouseButtonEvent click = new MouseButtonEvent(90, 149,
+                var debugger = require(CodonClientMod.state(), "debugger state exists");
+                var location = new SourceLocation.Function(new FunctionLocation(FUNCTION, 1));
+                BreakpointTarget target = BreakpointTarget.stage(location, 0, COMMAND);
+                MouseButtonEvent marker = new MouseButtonEvent(firstMarker, 133,
                     new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
-                require(screen.mouseClicked(click, false), "selects scrolled stage text without toggling its marker");
+                screen.mouseClicked(marker, false);
+                screen.mouseReleased(marker);
+                require(debugger.breakpoints().pending(target), "inline marker uses the authoritative saved stage target");
+                require(debugger.breakpoints().get(target).condition().equals(BreakpointCondition.event(BreakpointCondition.Kind.CREATED)),
+                    "toggling a disabled inline marker retains its saved condition");
+                screen.mouseScrolled(100, 130, -10, 0);
+            });
+            context.waitTicks(2);
+            context.takeScreenshot("codon-function-source-320x240-inline-scrolled");
+            context.runOnClient(client -> {
+                int secondText = 66 + client.font.width(COMMAND.substring(0, 66)) + 24 - 300 + 4;
+                MouseButtonEvent click = new MouseButtonEvent(secondText, 133,
+                    new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
+                require(screen.mouseClicked(click, false), "selects horizontally scrolled inline stage text without toggling its marker");
                 screen.mouseReleased(click);
             });
             context.waitTicks(1);
@@ -168,7 +179,9 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             context.takeScreenshot("codon-function-source-filtered-drawer");
             context.runOnClient(client -> verifyFilteredSelection(client.gui.screen(), sourceState));
             verifySearchScrollReset(context);
-            verifyStageDetailBelowSecondLine(context);
+            verifyInlineStagesBetweenSourceRows(context);
+            verifyFinalRowAtSmallLogicalHeight(context);
+            verifyNestedFunctionLinks(context);
             verifyCodeReader(context);
             context.runOnClient(client -> client.setScreenAndShow(null));
         }
@@ -218,9 +231,10 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             "query change stays at the first filtered result after resizing; selected=" + sources.selected()));
     }
 
-    private static void verifyStageDetailBelowSecondLine(ClientGameTestContext context) {
+    private static void verifyInlineStagesBetweenSourceRows(ClientGameTestContext context) {
         context.getInput().resizeWindow(960, 720);
         String command = "execute as @e[tag=small_preview] run say next_stage_command";
+        String original = "  " + command + "  ";
         ClientFunctionSourceState sources = context.computeOnClient(client -> {
             client.options.guiScale().set(3);
             client.resizeGui();
@@ -228,8 +242,8 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             state.select(FUNCTION);
             long request = state.drainRequests().getFirst().requestId();
             state.accept(new ClientFunctionSourceState.SourcePage(request, ClientFunctionSourceState.Status.READY,
-                FUNCTION, "gametest", "stage-scroll", false, 0, true,
-                List.of("# two stages on line 2", command, "say end")));
+                FUNCTION, "gametest", "inline-stages", false, 0, true,
+                List.of("# stages stay inside line 2", original, "say end")));
             state.rememberBrowseView(0, 0, 2, -1, 0);
             client.setScreenAndShow(new FunctionSourceScreen(new Screen(Component.empty()) { }, state));
             return state;
@@ -246,14 +260,156 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
         });
         context.waitTicks(2);
         context.runOnClient(client -> {
-            client.gui.screen().mouseScrolled(100, 166, 0, -1);
-            require(sources.browseView().selectedLine() == 2 && sources.browseView().lineOffset() == 0,
-                "scrolling the detail retains the original selected line and file viewport");
-            require(sources.browseView().stageScrollOffset() == 1,
-                "detail below line 2 scrolls using its one visible row rather than the whole pane");
+            Screen screen = client.gui.screen();
+            screen.mouseScrolled(100, 148, -5, 0);
+        });
+        context.waitTicks(1);
+        context.runOnClient(client -> {
+            Screen screen = client.gui.screen();
+            int marker = 66 + client.font.width(original.substring(0, 2 + command.indexOf("run")))
+                + 12 - sources.browseView().horizontalOffset() + 6;
+            MouseButtonEvent click = new MouseButtonEvent(marker + 12, 151,
+                new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
+            screen.mouseClicked(click, false);
+            screen.mouseReleased(click);
+            require(sources.browseView().selectedLine() == 2 && sources.browseView().selectedStageIndex() == 1,
+                "default font and original indentation locate the second inline stage after horizontal scroll");
+            require(sources.document().lines().get(1).equals(original), "inline markers preserve original spaces and text");
         });
         context.waitTicks(2);
-        context.takeScreenshot("codon-function-source-stage-detail-below-second-line");
+        context.takeScreenshot("codon-function-source-inline-second-line");
+        context.runOnClient(client -> {
+            Screen screen = client.gui.screen();
+            MouseButtonEvent click = new MouseButtonEvent(200, 169,
+                new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
+            screen.mouseClicked(click, false);
+            screen.mouseReleased(click);
+            require(sources.browseView().selectedLine() == 3,
+                "the following original source line remains immediately below the inline stage row");
+        });
+    }
+
+    private static void verifyFinalRowAtSmallLogicalHeight(ClientGameTestContext context) {
+        ClientFunctionSourceState sources = context.computeOnClient(client -> {
+            var state = new ClientFunctionSourceState();
+            state.select(FUNCTION);
+            long request = state.drainRequests().getFirst().requestId();
+            List<String> lines = new java.util.ArrayList<>(java.util.Collections.nCopies(7, "# previous line"));
+            lines.add(COMMAND);
+            state.accept(new ClientFunctionSourceState.SourcePage(request, ClientFunctionSourceState.Status.READY,
+                FUNCTION, "gametest", "eof-inline", false, 0, true, lines));
+            state.rememberBrowseView(0, 7, -1, -1, 0);
+            Screen screen = new FunctionSourceScreen(new Screen(Component.empty()) { }, state);
+            client.setScreenAndShow(screen);
+            // Test the supported logical geometry independently of Minecraft's minimum native GUI height.
+            screen.resize(320, 180);
+            return state;
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            Screen screen = client.gui.screen();
+            MouseButtonEvent click = new MouseButtonEvent(200, 133,
+                new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
+            screen.mouseClicked(click, false);
+            screen.mouseReleased(click);
+            require(sources.browseView().selectedLine() == 8 && sources.browseView().horizontalOffset() == 0,
+                "320x180 source click selects EOF rather than starting an overlapping scrollbar drag");
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            var debugger = require(CodonClientMod.state(), "debugger state exists");
+            var location = new SourceLocation.Function(new FunctionLocation(FUNCTION, 8));
+            long request = debugger.stagePreviews().begin(location);
+            debugger.stagePreviews().accept(request, location, ClientStagePreviewState.Status.READY, COMMAND,
+                List.of(new ClientStagePreviewState.StageSpan(0, 0, 65, false),
+                    new ClientStagePreviewState.StageSpan(1, 66, COMMAND.length(), true)));
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            Screen screen = client.gui.screen();
+            int marker = 66 + client.font.width(COMMAND.substring(0, 8)) + 6;
+            MouseButtonEvent click = new MouseButtonEvent(marker, 133,
+                new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
+            screen.mouseClicked(click, false);
+            screen.mouseReleased(click);
+            var target = BreakpointTarget.stage(new SourceLocation.Function(new FunctionLocation(FUNCTION, 8)), 0, COMMAND);
+            require(sources.browseView().selectedStageIndex() == 0 && CodonClientMod.state().breakpoints().pending(target),
+                "the only visible row at EOF exposes an inline stage breakpoint");
+        });
+        context.waitTicks(1);
+        context.takeScreenshot("codon-function-source-320x180-eof-inline");
+        context.runOnClient(client -> {
+            Screen screen = client.gui.screen();
+            MouseButtonEvent click = new MouseButtonEvent(250, 163,
+                new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
+            screen.mouseClicked(click, false);
+            screen.mouseReleased(click);
+            require(sources.browseView().horizontalOffset() > 0 && sources.browseView().selectedLine() == 8,
+                "the separate scrollbar remains usable without changing EOF selection");
+        });
+    }
+
+    private static void verifyNestedFunctionLinks(ClientGameTestContext context) {
+        context.getInput().resizeWindow(1280, 720);
+        List<String> lines = List.of("return run function codon_test:other_function",
+            "schedule function codon_test:other_function 1t", "say function codon_test:other_function",
+            "# return run function codon_test:other_function");
+        ClientFunctionSourceState sources = context.computeOnClient(client -> {
+            client.options.guiScale().set(2);
+            client.resizeGui();
+            var state = loadedSource();
+            state.refreshSource();
+            long request = state.drainRequests().getFirst().requestId();
+            state.accept(new ClientFunctionSourceState.SourcePage(request, ClientFunctionSourceState.Status.READY,
+                FUNCTION, "gametest", "nested-links", false, 0, true, lines));
+            state.rememberBrowseView(0, 0, 1, -1, 0);
+            client.setScreenAndShow(new FunctionSourceScreen(new Screen(Component.empty()) { }, state));
+            return state;
+        });
+        context.waitTicks(2);
+        context.takeScreenshot("codon-function-source-nested-function-links");
+        for (int row = 0; row < 2; row++) {
+            int line = row;
+            context.runOnClient(client -> {
+                Screen screen = client.gui.screen();
+                EditBox find = sourceSearchBox(screen);
+                String prefix = line == 0 ? "return run function " : "schedule function ";
+                MouseButtonEvent click = new MouseButtonEvent(find.getX() + 43 + client.font.width(prefix) + 5,
+                    find.getBottom() + 12 + line * 18, new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
+                screen.mouseClicked(click, false);
+                screen.mouseReleased(click);
+                require(new FunctionId("codon_test", "other_function").equals(sources.selected()),
+                    "nested function reference follows the loaded target on row " + (line + 1));
+            });
+            context.waitTicks(1);
+            context.runOnClient(client -> {
+                Screen screen = client.gui.screen();
+                AbstractButton back = screen.children().stream().filter(AbstractButton.class::isInstance).map(AbstractButton.class::cast)
+                    .filter(button -> button.visible && button.getMessage().getString().equals("Back")).findFirst().orElseThrow();
+                MouseButtonEvent click = new MouseButtonEvent(back.getX() + 2, back.getY() + 2,
+                    new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
+                screen.mouseClicked(click, false);
+                screen.mouseReleased(click);
+                long request = sources.drainRequests().stream().filter(ClientFunctionSourceState.Request.ReadFunction.class::isInstance)
+                    .map(ClientFunctionSourceState.Request.ReadFunction.class::cast).filter(read -> read.function().equals(FUNCTION))
+                    .reduce((first, last) -> last).orElseThrow().requestId();
+                sources.accept(new ClientFunctionSourceState.SourcePage(request, ClientFunctionSourceState.Status.READY,
+                    FUNCTION, "gametest", "nested-links", false, 0, true, lines));
+            });
+            context.waitTicks(1);
+        }
+        context.runOnClient(client -> {
+            Screen screen = client.gui.screen();
+            EditBox find = sourceSearchBox(screen);
+            for (int row = 2; row < 4; row++) {
+                String prefix = row == 2 ? "say function " : "# return run function ";
+                MouseButtonEvent click = new MouseButtonEvent(find.getX() + 43 + client.font.width(prefix) + 5,
+                    find.getBottom() + 12 + row * 18, new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
+                screen.mouseClicked(click, false);
+                screen.mouseReleased(click);
+                require(FUNCTION.equals(sources.selected()), "function text in say/comment does not become a false link");
+            }
+        });
     }
 
     private static void verifyCodeReader(ClientGameTestContext context) {
@@ -268,12 +424,8 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
                 CommandSnippet.plain("say source_reader"), 0, List.of(), List.of(), PauseReason.BREAKPOINT));
             Screen screen = new FunctionSourceScreen(new Screen(Component.empty()) { }, state);
             client.setScreenAndShow(screen);
-            Style code = Style.EMPTY.withFont(new FontDescription.Resource(Identifier.fromNamespaceAndPath("codon", "code")));
-            int advance = client.font.width(Component.literal("W").setStyle(code));
-            require(advance == 5, "code resource font has a five-pixel ASCII advance, actual " + advance);
-            for (char ch = 32; ch < 127; ch++) require(client.font.width(Component.literal(String.valueOf(ch)).setStyle(code)) == advance,
-                "ASCII glyph has fixed advance: " + ch);
-            require(client.font.width(Component.literal("한글😀").setStyle(code)) > 0, "Unicode text retains glyph geometry");
+            require(client.font.width("W") > client.font.width("i"), "viewer uses the proportional default Minecraft font");
+            require(client.font.width("한글😀") > 0, "Unicode text retains default font glyph geometry");
             return state;
         });
         context.waitTicks(2);
@@ -288,7 +440,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
         context.runOnClient(client -> {
             Screen screen = client.gui.screen();
             EditBox find = sourceSearchBox(screen);
-            MouseButtonEvent click = new MouseButtonEvent(find.getX() + 48 - 5 + 45 - 30 + 5,
+            MouseButtonEvent click = new MouseButtonEvent(find.getX() + 48 - 5 + client.font.width("function ") - 30 + 5,
                 find.getBottom() + 5 + 4 * 18 + 7, new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
             require(screen.mouseClicked(click, false), "follows the visible underlined function reference");
             screen.mouseReleased(click);

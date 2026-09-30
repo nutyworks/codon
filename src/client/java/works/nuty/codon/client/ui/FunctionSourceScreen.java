@@ -27,6 +27,7 @@ import works.nuty.codon.client.state.ClientDebuggerState;
 import works.nuty.codon.client.state.ClientStagePreviewState;
 import works.nuty.codon.client.ui.layout.CommandFlowLayout;
 import works.nuty.codon.client.ui.layout.SourceSyntax;
+import works.nuty.codon.client.ui.layout.SourceLineLayout;
 import works.nuty.codon.core.model.BreakpointDefinition;
 import works.nuty.codon.core.model.BreakpointTarget;
 import works.nuty.codon.core.model.FunctionId;
@@ -49,7 +50,7 @@ public final class FunctionSourceScreen extends Screen {
     private boolean drawerOpen;
     private boolean docked;
     private boolean forwardingParentDrag;
-    private int listOffset, lineOffset, stageScrollOffset, horizontalOffset;
+    private int listOffset, lineOffset, horizontalOffset;
     private boolean draggingHorizontal;
     private FunctionSourceDocument cachedDocument;
     private final List<SourceCodeLine> codeLines = new ArrayList<>();
@@ -77,7 +78,11 @@ public final class FunctionSourceScreen extends Screen {
     private record LineHit(int y, int height, int line) {
         boolean contains(double py) { return py >= y && py < y + height; }
     }
-    private record InlinePart(int stageIndex, int row, int x, boolean first, String text, int textWidth) { }
+    private record InlineStage(int index, int start, int end, BreakpointTarget target) { }
+    private SourceCodeLine inlineCode;
+    private ClientStagePreviewState.Preview inlinePreview;
+    private List<InlineStage> inlineStages = List.of();
+    private SourceLineLayout inlineLayout;
     private record FunctionHit(int x, int y, int width, int height, FunctionId function) {
         boolean contains(double px, double py) { return px >= x && px < x + width && py >= y && py < y + height; }
     }
@@ -159,7 +164,6 @@ public final class FunctionSourceScreen extends Screen {
         lineOffset = view.lineOffset();
         selectedLine = view.selectedLine();
         selectedStageIndex = view.selectedStageIndex();
-        stageScrollOffset = view.stageScrollOffset();
         horizontalOffset = view.horizontalOffset();
         sources.open();
         if (sources.selected() != null && selectedLine > 0) {
@@ -201,7 +205,7 @@ public final class FunctionSourceScreen extends Screen {
     private boolean expanded(String key, String needle) { return !needle.isEmpty() || !collapsed.contains(key); }
     private int visibleRows() { return Math.max(1, (panelHeight - 76) / ROW_HEIGHT); }
     private int sourceLineTop() { return top + (compactSourceControls ? 118 : 100); }
-    private int sourceRows() { return Math.max(1, (top + panelHeight - 46 - sourceLineTop()) / ROW_HEIGHT); }
+    private int sourceRows() { return Math.max(1, (top + panelHeight - 22 - sourceLineTop()) / ROW_HEIGHT); }
 
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         stageHits.clear();
@@ -213,6 +217,7 @@ public final class FunctionSourceScreen extends Screen {
         backButton.visible = backButton.active = !drawerOpen && sources.canGoBack();
         search.visible = search.active = !drawerMode || drawerOpen;
         updateCodeCache();
+        updateInlineLayout();
         sourceSearch.visible = sourceSearch.active = !drawerOpen && sources.document() != null;
         previousMatch.visible = nextMatch.visible = sourceSearch.visible;
         previousMatch.active = nextMatch.active = !matches.isEmpty();
@@ -332,41 +337,35 @@ public final class FunctionSourceScreen extends Screen {
             graphics.text(font, SourceCodeLine.plain(number), codeLeft - 7 - font.width(SourceCodeLine.plain(number)),
                 y + 5, DebuggerTheme.color(stopped ? AMBER : MUTED), false);
             graphics.enableScissor(codeLeft, y, sourceLeft + sourceWidth - 4, y + ROW_HEIGHT);
-            renderSourceText(graphics, codeLines.get(index), index + 1, selected, codeLeft, y + 5, codeWidth);
+            SourceCodeLine code = codeLines.get(index);
+            SourceLineLayout lineLayout = inspected && inlineLayout != null ? inlineLayout
+                : new SourceLineLayout(code.source().length(), List.of(), code::x);
+            renderSourceText(graphics, code, lineLayout, index + 1, selected, codeLeft, y + 5, codeWidth);
+            if (inspected) renderInlineMarkers(graphics, lineLayout, codeLeft, y, codeWidth, mouseX, mouseY);
             graphics.disableScissor();
             int count = stageCounts.getOrDefault(index + 1, 0);
             if (count > 0 && !stopped) {
                 // Compact count is separate from the horizontally scrolling source.
                 String badge = count > 99 ? "+" : Integer.toString(count);
                 graphics.outline(sourceLeft + 15, y + 3, 14, 12, DebuggerTheme.color(BORDER));
-                graphics.text(font, SourceCodeLine.plain(badge), sourceLeft + 22 - codeWidth(badge) / 2,
+                graphics.text(font, SourceCodeLine.plain(badge), sourceLeft + 22 - font.width(badge) / 2,
                     y + 5, DebuggerTheme.color(MUTED), false);
             }
             if (count > 0 && mouseX >= sourceLeft + 15 && mouseX < sourceLeft + 30 && mouseY >= y && mouseY < y + ROW_HEIGHT)
                 graphics.setTooltipForNextFrame(font, Component.translatable("codon.source.stage_breakpoints", count), mouseX, mouseY);
-            int rowHeight = ROW_HEIGHT;
-            ClientStagePreviewState.Preview preview = debugger == null ? null : debugger.stagePreviews().get(location);
-            if (inspected && stageEligible(document, index + 1) && previewMatchesLine(document, index + 1, preview)
-                && y + ROW_HEIGHT < lineBottom) {
-                int stageRows = Math.max(1, (lineBottom - y - ROW_HEIGHT) / ROW_HEIGHT);
-                stageScrollOffset = Math.clamp(stageScrollOffset, 0, Math.max(0, inlineStageRows(preview, codeWidth) - stageRows));
-                rowHeight += renderInlineStages(graphics, codeLeft, codeWidth, y + ROW_HEIGHT, lineBottom, location,
-                    preview, debugger, stageScrollOffset, mouseX, mouseY);
-            }
             boolean hovered = mouseX >= sourceLeft + 3 && mouseX < sourceLeft + sourceWidth - 3
-                && mouseY >= y && mouseY < Math.min(y + rowHeight, lineBottom);
+                && mouseY >= y && mouseY < y + ROW_HEIGHT;
             if (definition != null && definition.enabled() || hovered && wholeEligible(document, index + 1)) {
                 BreakpointUi.icon(definition).drawSmall(graphics, sourceLeft + 5, y + 5, DebuggerTheme.color(color));
             }
-            lineHits.add(new LineHit(y, Math.min(rowHeight, lineBottom - y), index + 1));
-            y += rowHeight;
+            lineHits.add(new LineHit(y, ROW_HEIGHT, index + 1));
+            y += ROW_HEIGHT;
         }
         graphics.disableScissor();
         renderHorizontalScrollbar(graphics, sourceLeft, sourceWidth);
         if (mouseX >= codeLeft && mouseX < sourceLeft + sourceWidth - 4
-            && mouseY >= top + panelHeight - 44 && mouseY < top + panelHeight - 34)
+            && mouseY >= horizontalTrackY() - 2 && mouseY < horizontalTrackY() + 8)
             graphics.setTooltipForNextFrame(font, Component.translatable("codon.source.navigation_hint"), mouseX, mouseY);
-        renderSelectedStageDetail(graphics, sourceLeft, sourceWidth, null);
     }
 
     private static Map<Integer, Integer> stageBreakpointCounts(FunctionId function, ClientDebuggerState debugger) {
@@ -382,94 +381,66 @@ public final class FunctionSourceScreen extends Screen {
         return counts;
     }
 
-    /** Draws stages in command order, using the next row only when the next stage cannot fit. */
-    private int renderInlineStages(GuiGraphicsExtractor graphics, int x, int width, int y, int bottom,
-                                   SourceLocation.Function location, ClientStagePreviewState.Preview preview,
-                                   ClientDebuggerState state, int scrollOffset, int mouseX, int mouseY) {
-        List<InlinePart> parts = layoutInlineStages(preview, width);
-        int visibleRows = Math.max(1, (bottom - y) / ROW_HEIGHT);
-        Set<Integer> hoveredStages = new HashSet<>();
-        for (InlinePart part : parts) {
-            if (part.stageIndex() < 0 || part.row() < scrollOffset || part.row() >= scrollOffset + visibleRows) continue;
-            int partX = x + part.x();
-            int partY = y + (part.row() - scrollOffset) * ROW_HEIGHT;
-            int partWidth = part.textWidth() + 7 + (part.first() ? 19 : 0);
-            if (mouseX >= partX && mouseX < partX + partWidth && mouseY >= partY && mouseY < partY + ROW_HEIGHT) {
-                hoveredStages.add(part.stageIndex());
-            }
-        }
-        for (InlinePart part : parts) {
-            if (part.row() < scrollOffset || part.row() >= scrollOffset + visibleRows) continue;
-            int partY = y + (part.row() - scrollOffset) * ROW_HEIGHT;
-            int partX = x + part.x();
-            if (part.stageIndex() == -2) {
-                graphics.text(font, SourceCodeLine.plain(part.text()), partX, partY + 4, DebuggerTheme.color(TEXT), false);
-                continue;
-            }
-            BreakpointTarget target = BreakpointTarget.stage(location, part.stageIndex(), preview.savedCommand());
-            BreakpointDefinition definition = state.breakpoints().get(target);
-            boolean selected = part.stageIndex() == selectedStageIndex;
-            int surface = selected ? TEAL_SURFACE : RAISED;
-            int textX = partX + (part.first() ? 19 : 0);
-            if (part.first()) {
-                graphics.fill(partX, partY, partX + 18, partY + 17, DebuggerTheme.color(definition != null && definition.enabled()
-                    ? RED_SURFACE : surface));
-                if (definition != null && definition.enabled() || hoveredStages.contains(part.stageIndex())) {
-                    BreakpointUi.icon(definition).drawSmall(graphics, partX + 4, partY + 4,
-                        DebuggerTheme.color(definition != null && definition.enabled() ? RED : MUTED));
-                }
-                stageHits.add(new StageHit(partX, partY, 18, 17, target, true));
-            }
-            graphics.fill(textX, partY, textX + part.textWidth() + 7, partY + 17, DebuggerTheme.color(surface));
-            graphics.text(font, SourceCodeLine.plain(part.text()), textX + 4, partY + 4, DebuggerTheme.color(TEXT), false);
-            stageHits.add(new StageHit(textX, partY, part.textWidth() + 7, 17, target, false));
-        }
-        return Math.max(ROW_HEIGHT, Math.min(visibleRows, inlineStageRows(parts) - scrollOffset) * ROW_HEIGHT);
-    }
-
-    private int inlineStageRows(ClientStagePreviewState.Preview preview, int width) {
-        return inlineStageRows(layoutInlineStages(preview, width));
-    }
-
-    private static int inlineStageRows(List<InlinePart> parts) {
-        return parts.isEmpty() ? 1 : parts.getLast().row() + 1;
-    }
-
-    private List<InlinePart> layoutInlineStages(ClientStagePreviewState.Preview preview, int width) {
-        List<InlinePart> parts = new ArrayList<>();
-        int row = 0;
-        int x = 0;
+    /** Use the same authoritative boundaries and icon spacing as the command-block editor. */
+    private void updateInlineLayout() {
+        SourceCodeLine code = selectedLine >= 1 && selectedLine <= codeLines.size() ? codeLines.get(selectedLine - 1) : null;
+        ClientDebuggerState state = CodonClientMod.state();
+        SourceLocation.Function location = sources.selected() == null || code == null ? null
+            : new SourceLocation.Function(new FunctionLocation(sources.selected(), selectedLine));
+        ClientStagePreviewState.Preview preview = state == null || location == null ? null : state.stagePreviews().get(location);
+        if (inlineCode == code && inlinePreview == preview) return;
+        inlineCode = code;
+        inlinePreview = preview;
+        inlineStages = List.of();
+        inlineLayout = code == null ? null : new SourceLineLayout(code.source().length(), List.of(), code::x);
+        FunctionSourceDocument document = sources.document();
+        if (code == null || document == null || !stageEligible(document, selectedLine)
+            || !previewMatchesLine(document, selectedLine, preview)) return;
+        int leading = code.source().indexOf(preview.savedCommand());
         int prefixEnd = CommandFlowLayout.executePrefixEnd(preview.savedCommand());
-        if (prefixEnd > 0 && !preview.spans().isEmpty()) {
-            String prefix = preview.savedCommand().substring(0, prefixEnd);
-            parts.add(new InlinePart(-2, row, x, false, prefix, codeWidth(prefix)));
-            x = codeWidth(prefix);
+        int previousEnd = 0;
+        List<InlineStage> stages = new ArrayList<>();
+        for (var span : preview.spans()) {
+            if (span.start() < previousEnd || span.end() > preview.savedCommand().length() || span.start() >= span.end()) return;
+            int start = Math.max(prefixEnd, span.start());
+            while (start < span.end() && Character.isWhitespace(preview.savedCommand().charAt(start))) start++;
+            previousEnd = span.end();
+            if (start >= span.end()) continue;
+            stages.add(new InlineStage(span.index(), leading + start, leading + span.end(),
+                BreakpointTarget.stage(location, span.index(), preview.savedCommand())));
         }
-        boolean firstSpan = true;
-        for (ClientStagePreviewState.StageSpan span : preview.spans()) {
-            int start = firstSpan ? Math.max(span.start(), prefixEnd) : span.start();
-            String fragment = preview.savedCommand().substring(start, span.end()).trim();
-            if (fragment.isEmpty()) continue;
-            if (x > 0 && !firstSpan && codeWidth(fragment) + 26 > width - x) { row++; x = 0; }
-            int from = 0;
-            boolean first = true;
-            while (from < fragment.length()) {
-                int lead = first ? 19 : 0;
-                int available = width - x - lead - 7;
-                if (available <= 0 && x > 0) { row++; x = 0; continue; }
-                available = Math.max(1, available);
-                String text = font.substrByWidth(SourceCodeLine.plain(fragment.substring(from)), available).getString();
-                if (text.isEmpty()) text = fragment.substring(from, from + 1);
-                int textWidth = Math.min(available, codeWidth(text));
-                parts.add(new InlinePart(span.index(), row, x, first, text, textWidth));
-                from += text.length();
-                x += lead + textWidth + 11;
-                first = false;
-                if (from < fragment.length()) { row++; x = 0; }
-            }
-            firstSpan = false;
+        inlineStages = List.copyOf(stages);
+        inlineLayout = new SourceLineLayout(code.source().length(), stages.stream().map(InlineStage::start).toList(), code::x);
+    }
+
+    private void renderInlineMarkers(GuiGraphicsExtractor graphics, SourceLineLayout layout, int x, int y, int width,
+                                     int mouseX, int mouseY) {
+        ClientDebuggerState state = CodonClientMod.state();
+        if (state == null) return;
+        for (int index = 0; index < inlineStages.size(); index++) {
+            InlineStage stage = inlineStages.get(index);
+            int markerX = x + layout.markerX(index) - horizontalOffset;
+            int start = x + layout.x(stage.start()) - horizontalOffset;
+            int end = x + layout.before(stage.end()) - horizontalOffset;
+            boolean hovered = mouseY >= y && mouseY < y + ROW_HEIGHT && mouseX >= Math.max(x, markerX)
+                && mouseX < Math.min(x + width, end);
+            BreakpointDefinition definition = state.breakpoints().get(stage.target());
+            boolean enabled = definition != null && definition.enabled();
+            if (selectedStageIndex == stage.index() && end > x && start < x + width)
+                graphics.outline(Math.max(x, start), y + 2, Math.min(x + width, end) - Math.max(x, start), 13, DebuggerTheme.color(TEAL));
+            if (enabled || hovered || selectedStageIndex == stage.index())
+                BreakpointUi.icon(definition).drawSmall(graphics, markerX + 2, y + 5, DebuggerTheme.color(enabled ? RED : MUTED));
+            addStageHit(markerX, y, markerX + SourceLineLayout.MARKER_WIDTH, x, width, stage.target(), true);
+            addStageHit(start, y, end, x, width, stage.target(), false);
+            if (hovered && mouseX < markerX + SourceLineLayout.MARKER_WIDTH)
+                graphics.setTooltipForNextFrame(font, Component.translatable("codon.breakpoint.stage_target", stage.index() + 1)
+                    .append(" · " + (definition == null ? tr("codon.source.no_breakpoint") : BreakpointUi.condition(definition.condition()))), mouseX, mouseY);
         }
-        return parts;
+    }
+
+    private void addStageHit(int start, int y, int end, int viewportX, int width, BreakpointTarget target, boolean control) {
+        int from = Math.max(start, viewportX), to = Math.min(end, viewportX + width);
+        if (to > from) stageHits.add(new StageHit(from, y, to - from, ROW_HEIGHT, target, control));
     }
 
     private static boolean previewMatchesLine(FunctionSourceDocument document, int line,
@@ -479,25 +450,13 @@ public final class FunctionSourceScreen extends Screen {
             && preview.savedCommand().equals(document.lines().get(line - 1).trim());
     }
 
-    private int selectedInlineStageRows() {
-        if (selectedLine < 1 || sources.selected() == null) return 0;
-        ClientDebuggerState state = CodonClientMod.state();
-        if (state == null) return 0;
-        SourceLocation.Function location = new SourceLocation.Function(new FunctionLocation(sources.selected(), selectedLine));
-        ClientStagePreviewState.Preview preview = state.stagePreviews().get(location);
-        FunctionSourceDocument document = sources.document();
-        return document == null || !previewMatchesLine(document, selectedLine, preview) ? 0
-            : inlineStageRows(preview, panelWidth - treeWidth - 20 - gutterWidth());
-    }
-
-    private int codeWidth(String text) { return font.width(SourceCodeLine.plain(text)); }
-
     private int gutterWidth() {
-        int digits = sources.document() == null ? 1 : Integer.toString(sources.document().lines().size()).length();
-        return Math.max(48, 31 + digits * 5);
+        return Math.max(48, 31 + font.width(Integer.toString(sources.document() == null ? 1 : sources.document().lines().size())));
     }
 
-    private int maxHorizontalOffset() { return Math.max(0, widestLine - (panelWidth - treeWidth - 20 - gutterWidth())); }
+    private int displayedWidth() { return Math.max(widestLine, inlineLayout == null ? 0 : inlineLayout.width()); }
+    private int maxHorizontalOffset() { return Math.max(0, displayedWidth() - (panelWidth - treeWidth - 20 - gutterWidth())); }
+    private int horizontalTrackY() { return top + panelHeight - 16; }
 
     private void updateCodeCache() {
         FunctionSourceDocument document = sources.document();
@@ -505,7 +464,7 @@ public final class FunctionSourceScreen extends Screen {
         cachedDocument = document;
         codeLines.clear();
         widestLine = 0;
-        Map<Integer, Integer> glyphWidths = new HashMap<>();
+        Map<Integer, Float> glyphWidths = new HashMap<>();
         if (document != null) for (String line : document.lines()) {
             SourceCodeLine code = new SourceCodeLine(line, font, glyphWidths);
             codeLines.add(code);
@@ -531,8 +490,10 @@ public final class FunctionSourceScreen extends Screen {
         selectLine(match.line());
         lineOffset = match.line() - 1;
         if (match.line() <= codeLines.size()) {
-            int start = codeLines.get(match.line() - 1).x(match.start());
-            int end = codeLines.get(match.line() - 1).x(match.end());
+            updateInlineLayout();
+            SourceCodeLine code = codeLines.get(match.line() - 1);
+            int start = inlineLayout == null ? code.x(match.start()) : inlineLayout.x(match.start());
+            int end = inlineLayout == null ? code.x(match.end()) : inlineLayout.before(match.end());
             int visible = panelWidth - treeWidth - 20 - gutterWidth();
             if (start < horizontalOffset || end > horizontalOffset + visible)
                 horizontalOffset = Math.clamp(start - 10, 0, maxHorizontalOffset());
@@ -540,19 +501,23 @@ public final class FunctionSourceScreen extends Screen {
         rememberView();
     }
 
-    private void renderSourceText(GuiGraphicsExtractor graphics, SourceCodeLine code, int line, FunctionId current,
+    private void renderSourceText(GuiGraphicsExtractor graphics, SourceCodeLine code, SourceLineLayout layout, int line, FunctionId current,
                                   int x, int y, int width) {
         SourceSyntax.Match currentMatch = matchIndex < 0 ? null : matches.get(matchIndex);
-        for (SourceSyntax.Match match : matchesByLine.getOrDefault(line, List.of())) {
-            int start = x + code.x(match.start()) - horizontalOffset;
-            int end = x + code.x(match.end()) - horizontalOffset;
-            if (end < x || start > x + width) continue;
-            graphics.fill(Math.max(x, start), y - 2, Math.min(x + width, end), y + 10, DebuggerTheme.color(AMBER_SURFACE));
-            if (match.equals(currentMatch)) graphics.outline(Math.max(x, start), y - 2,
-                Math.max(1, Math.min(x + width, end) - Math.max(x, start)), 12, DebuggerTheme.color(AMBER));
+        for (SourceLineLayout.Segment segment : layout.segments()) {
+            for (SourceSyntax.Match match : matchesByLine.getOrDefault(line, List.of())) {
+                int from = Math.max(match.start(), segment.start()), to = Math.min(match.end(), segment.end());
+                if (from >= to) continue;
+                int start = x + layout.x(from) - horizontalOffset;
+                int end = x + layout.before(to) - horizontalOffset;
+                if (end <= x || start >= x + width) continue;
+                graphics.fill(Math.max(x, start), y - 2, Math.min(x + width, end), y + 10, DebuggerTheme.color(AMBER_SURFACE));
+                if (match.equals(currentMatch)) graphics.outline(Math.max(x, start), y - 2,
+                    Math.max(1, Math.min(x + width, end) - Math.max(x, start)), 12, DebuggerTheme.color(AMBER));
+            }
+            SourceCodeLine.Slice slice = code.slice(horizontalOffset - segment.inset(), width, segment.start(), segment.end());
+            graphics.text(font, slice.text(), x + slice.x(), y, DebuggerTheme.color(TEXT), false);
         }
-        SourceCodeLine.Slice slice = code.slice(horizontalOffset, width);
-        graphics.text(font, slice.text(), x + slice.x(), y, DebuggerTheme.color(TEXT), false);
         List<SourceSyntax.Span> spans = code.spans();
         for (int i = 0; i + 1 < spans.size(); i++) {
             SourceSyntax.Span span = spans.get(i);
@@ -564,8 +529,8 @@ public final class FunctionSourceScreen extends Screen {
             String token = code.source().substring(reference.start(), reference.end());
             FunctionId called = calledFunction(token, current.namespace());
             if (called == null) continue;
-            int start = x + code.x(reference.start()) - horizontalOffset;
-            int end = x + code.x(reference.end()) - horizontalOffset;
+            int start = x + layout.x(reference.start()) - horizontalOffset;
+            int end = x + layout.before(reference.end()) - horizontalOffset;
             int visibleStart = Math.max(x, start), visibleEnd = Math.min(x + width, end);
             if (visibleEnd > visibleStart) {
                 graphics.fill(visibleStart, y + 9, visibleEnd, y + 10, DebuggerTheme.color(TEAL));
@@ -584,9 +549,9 @@ public final class FunctionSourceScreen extends Screen {
     private void renderHorizontalScrollbar(GuiGraphicsExtractor graphics, int sourceLeft, int sourceWidth) {
         int x = sourceLeft + gutterWidth();
         int width = sourceWidth - gutterWidth() - 4;
-        int y = top + panelHeight - 42;
+        int y = horizontalTrackY();
         graphics.fill(x, y, x + width, y + 6, DebuggerTheme.color(RAISED));
-        int thumb = Math.max(18, width * width / Math.max(width, widestLine));
+        int thumb = Math.max(18, width * width / Math.max(width, displayedWidth()));
         int offset = maxHorizontalOffset() == 0 ? 0 : horizontalOffset * (width - thumb) / maxHorizontalOffset();
         graphics.fill(x + offset, y, x + offset + thumb, y + 6, DebuggerTheme.color(maxHorizontalOffset() == 0 ? BORDER : TEAL));
     }
@@ -594,7 +559,7 @@ public final class FunctionSourceScreen extends Screen {
     private void scrollHorizontally(double x) {
         int leftEdge = left + treeWidth + 8 + gutterWidth();
         int width = panelWidth - treeWidth - 20 - gutterWidth();
-        int thumb = Math.max(18, width * width / Math.max(width, widestLine));
+        int thumb = Math.max(18, width * width / Math.max(width, displayedWidth()));
         horizontalOffset = width <= thumb ? 0 : Math.clamp((int) ((x - leftEdge - thumb / 2.0) * maxHorizontalOffset() / (width - thumb)), 0, maxHorizontalOffset());
         rememberView();
     }
@@ -687,34 +652,8 @@ public final class FunctionSourceScreen extends Screen {
             existing == null ? BreakpointDefinition.plain(target) : existing, anchor));
     }
 
-    private void renderSelectedStageDetail(GuiGraphicsExtractor graphics, int sourceLeft, int sourceWidth,
-                                           ClientStagePreviewState.@org.jspecify.annotations.Nullable Preview preview) {
-        int y = top + panelHeight - 30;
-        BreakpointTarget stage = selectedStageTarget();
-        BreakpointTarget line = selectedLineTarget();
-        if (stage != null) {
-            ClientDebuggerState state = CodonClientMod.state();
-            BreakpointDefinition definition = state == null ? null : state.breakpoints().get(stage);
-            String detail = tr("codon.breakpoint.stage_target", selectedStageIndex + 1) + " · "
-                + (definition == null ? tr("codon.source.no_breakpoint") : BreakpointUi.condition(definition.condition()));
-            WatchUi.line(graphics, font, detail, sourceLeft + 5, y + 4, sourceWidth - 10, TEXT);
-        } else if (line != null) {
-            ClientDebuggerState state = CodonClientMod.state();
-            BreakpointDefinition definition = state == null ? null : state.breakpoints().get(line);
-            WatchUi.line(graphics, font, tr("codon.source.line") + " · "
-                    + (definition == null ? tr("codon.source.no_breakpoint") : BreakpointUi.condition(definition.condition())),
-                sourceLeft + 5, y + 4, sourceWidth - 10, TEXT);
-        } else {
-            WatchUi.line(graphics, font, tr("codon.source.select_command_or_stage"), sourceLeft + 5,
-                y + 4, sourceWidth - 10, MUTED);
-        }
-        if (preview != null && preview.spans().isEmpty())
-            WatchUi.line(graphics, font, tr("codon.source.no_stage_here"),
-                sourceLeft + 5, y + 16, sourceWidth - 10, MUTED);
-    }
-
     private void rememberView() {
-        sources.rememberBrowseView(listOffset, lineOffset, selectedLine, selectedStageIndex, stageScrollOffset, horizontalOffset);
+        sources.rememberBrowseView(listOffset, lineOffset, selectedLine, selectedStageIndex, 0, horizontalOffset);
     }
 
     private void setDrawerOpen(boolean open) {
@@ -735,7 +674,6 @@ public final class FunctionSourceScreen extends Screen {
         lineOffset = view.lineOffset();
         selectedLine = view.selectedLine();
         selectedStageIndex = view.selectedStageIndex();
-        stageScrollOffset = view.stageScrollOffset();
         horizontalOffset = view.horizontalOffset();
     }
 
@@ -745,7 +683,7 @@ public final class FunctionSourceScreen extends Screen {
             return forwardingParentDrag;
         }
         if (!drawerOpen && event.button() == InputConstants.MOUSE_BUTTON_LEFT
-            && event.y() >= top + panelHeight - 44 && event.y() < top + panelHeight - 34
+            && event.y() >= horizontalTrackY() - 2 && event.y() < horizontalTrackY() + 8
             && event.x() >= left + treeWidth + 8 + gutterWidth() && event.x() < left + panelWidth - 12) {
             draggingHorizontal = true;
             scrollHorizontally(event.x());
@@ -767,7 +705,7 @@ public final class FunctionSourceScreen extends Screen {
             selectedLine = ((SourceLocation.Function) hit.target().location()).location().line();
             rememberView();
             setFocused(null);
-            if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && hit.control()) {
+            if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && hit.control() && !debugger.breakpoints().pending(hit.target())) {
                 ClientNetworking.sendBreakpointEdit(debugger, ClientBreakpointState.Action.TOGGLE,
                     definition == null ? BreakpointDefinition.plain(hit.target()) : definition);
             } else if (event.button() == InputConstants.MOUSE_BUTTON_RIGHT) {
@@ -788,7 +726,6 @@ public final class FunctionSourceScreen extends Screen {
                     if (event.x() < sourceLeft + 17 && debugger != null && wholeEligible(document, line)) {
                         selectedLine = line;
                         selectedStageIndex = -1;
-                        stageScrollOffset = 0;
                         BreakpointTarget target = BreakpointTarget.whole(location);
                         BreakpointDefinition definition = debugger.breakpoints().get(target);
                         ClientNetworking.sendBreakpointEdit(debugger, ClientBreakpointState.Action.TOGGLE,
@@ -834,13 +771,7 @@ public final class FunctionSourceScreen extends Screen {
             if (scrollX != 0 || shift) {
                 horizontalOffset = Math.clamp(horizontalOffset - (int) ((shift ? scrollY : scrollX) * 30), 0, maxHorizontalOffset());
             } else {
-                int stageRows = selectedInlineStageRows();
-                // A selected line near the pane bottom has fewer detail rows than the whole pane.
-                LineHit selectedHit = lineHits.stream().filter(hit -> hit.line() == selectedLine).findFirst().orElse(null);
-                int stageVisible = selectedHit == null ? 0 : Math.max(1, (selectedHit.height() - ROW_HEIGHT) / ROW_HEIGHT);
-                if (selectedHit != null && y >= selectedHit.y() + ROW_HEIGHT && y < selectedHit.y() + selectedHit.height()
-                    && stageRows > stageVisible) stageScrollOffset = Math.clamp(stageScrollOffset + delta, 0, stageRows - stageVisible);
-                else lineOffset = Math.clamp(lineOffset + delta, 0, Math.max(0, sources.document().lines().size() - sourceRows()));
+                lineOffset = Math.clamp(lineOffset + delta, 0, Math.max(0, sources.document().lines().size() - sourceRows()));
             }
         }
         rememberView();
@@ -854,7 +785,6 @@ public final class FunctionSourceScreen extends Screen {
         boolean changed = nextLine != selectedLine;
         selectedLine = nextLine;
         selectedStageIndex = -1;
-        stageScrollOffset = 0;
         lineOffset = Math.clamp(lineOffset, Math.max(0, selectedLine - sourceRows()), selectedLine - 1);
         ClientDebuggerState debugger = CodonClientMod.state();
         // Find may move between matches on the same line while typing. Retain its acknowledged

@@ -5,6 +5,17 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SourceSyntaxTest {
+    @Test void nestedReturnAndScheduleFunctionPositionsExcludeSayTextAndStrings() {
+        for (String source : List.of("return run function demo:inner", "schedule function demo:inner 1t",
+            "execute as @s run return run function demo:inner")) {
+            var function = SourceSyntax.spans(source).stream()
+                .filter(span -> source.substring(span.start(), span.end()).equals("function")).findFirst().orElseThrow();
+            assertEquals(SourceSyntax.Kind.COMMAND, function.kind());
+        }
+        assertEquals(SourceSyntax.Kind.ARGUMENT, SourceSyntax.spans("say function demo:inner").get(1).kind());
+        assertEquals(SourceSyntax.Kind.STRING, SourceSyntax.spans("say \"return run function demo:inner\"").getLast().kind());
+        assertEquals(SourceSyntax.Kind.COMMENT, SourceSyntax.spans("# schedule function demo:inner").getFirst().kind());
+    }
     @Test void commentsStringsSelectorsAndMacrosRetainOriginalOffsets() {
         assertEquals(List.of(new SourceSyntax.Span(2, 30, SourceSyntax.Kind.COMMENT)),
             SourceSyntax.spans("  # function demo:hidden 주석 끝!"));

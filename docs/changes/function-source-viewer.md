@@ -2,28 +2,29 @@
 
 ## Changes
 
-The viewer keeps original mcfunction lines visible in a Minecraft resource font
-with fixed ASCII advances and Unicode glyphs. Display-only highlighting separates
-commands, arguments and comments. Line numbers and breakpoint controls stay fixed
-while long source lines scroll horizontally; existing stage controls wrap below
-the selected line. Stage scrolling uses the detail rows actually visible below
-that line, including near the bottom of a small pane.
+The viewer uses the default Minecraft font, including its Unicode glyphs and
+resource-pack metrics. Display-only syntax highlighting, fixed line numbers and
+a breakpoint gutter improve readability while long source lines scroll horizontally.
 
-Literal source search, keyboard navigation, full path tooltips and retained
-function-reference Back navigation improve browsing. A live pause uses an arrow
-and amber row, while selection uses an outline. Searching within the same line
-retains its acknowledged stage preview. Glyph geometry and syntax spans are cached,
-and only visible source slices are rendered. Function editing/saving and server
-execution semantics are unchanged.
+Selected source rows place stage breakpoint controls between the server-confirmed
+command segments, following the command-block editor. Original characters and
+spacing are retained; markers add small display slots. Stage controls share the
+original row, with no duplicate command or separate stage panel. Enabled markers
+remain visible; hovering a stage reveals its disabled marker and saved condition.
+
+Literal Find, keyboard navigation, full paths, function links and Back navigation
+are retained. Search highlights, links and marker hitboxes use the same measured
+glyph advances and marker slots. Live pause arrows and selection outlines remain
+distinct. Editing, saving and server execution semantics are unchanged.
 
 ## Verification
 
-- `./gradlew build`: 392 JVM tests passed.
-- `./gradlew runClientGameTest -PclientGameTest=FunctionSourceScreenGameTest`:
-  source font advances, Unicode comments, original line/stage selection, disabled
-  marker hover, source search, horizontal navigation, resize and function-reference
-  Back navigation passed. Inspect the generated `codon-function-source-*` captures.
-- The GameTest injects source, parse spans and a pause to verify client presentation;
+- `./gradlew build`: 395 JVM tests passed.
+- `./gradlew runClientGameTest -PclientGameTest=FunctionSourceScreenGameTest`
+  checks the default font, Unicode, inline stage selection/toggling, retained
+  conditions, original row positions, Find, horizontal scroll, resize and Back.
+  Inspect the generated `codon-function-source-*` captures.
+- The GameTest injects source, stage spans and a pause to check client presentation;
   it does not establish native datapack discovery, permissions or function execution.
 
 See the [function source verification guide](../verification/features/function-source.md)

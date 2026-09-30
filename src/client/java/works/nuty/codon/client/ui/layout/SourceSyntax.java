@@ -18,6 +18,8 @@ public final class SourceSyntax {
         List<Span> spans = new ArrayList<>();
         boolean command = true;
         boolean execute = false;
+        boolean returnCommand = false;
+        boolean schedule = false;
         for (int at = 0; at < source.length();) {
             char first = source.charAt(at);
             if (Character.isWhitespace(first)) { at++; continue; }
@@ -49,10 +51,19 @@ public final class SourceSyntax {
             if (command) {
                 kind = Kind.COMMAND;
                 execute = token.equals("execute");
+                returnCommand = token.equals("return");
+                schedule = token.equals("schedule");
                 command = false;
             } else if (execute && EXECUTE_KEYWORDS.contains(token)) {
                 kind = Kind.KEYWORD;
                 if (token.equals("run")) { command = true; execute = false; }
+            } else if (returnCommand && token.equals("run")) {
+                kind = Kind.KEYWORD;
+                command = true;
+                returnCommand = false;
+            } else if (schedule && token.equals("function")) {
+                kind = Kind.COMMAND;
+                schedule = false;
             } else if (first == '"' || first == '\'') kind = Kind.STRING;
             else if (token.startsWith("$(")) kind = Kind.MACRO;
             else if (first == '@' || first == '~' || first == '^' || token.matches("[-+]?\\d+(?:\\.\\d+)?[bBsSlLfFdD]?")) kind = Kind.VALUE;
