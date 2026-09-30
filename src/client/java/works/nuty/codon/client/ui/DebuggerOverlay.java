@@ -570,11 +570,13 @@ public final class DebuggerOverlay {
                 component(source.dimension().equals(dimension()) ? "codon.ui.offscreen" : "codon.ui.other_dimension"));
             iconX -= 18;
         }
-        if (state.selectedSourceDropped() || state.selectedSourceCreated()) {
+        if (state.selectedSourceDropped() || state.selectedSourceCreated() || state.selectedSourceChanged()) {
             boolean dropped = state.selectedSourceDropped();
+            boolean created = state.selectedSourceCreated();
             sourceStatusIcon(graphics, iconX, y - 3,
-                dropped ? DebuggerIcon.SOURCE_EXCLUDED : DebuggerIcon.SOURCE_CREATED,
-                dropped ? RED : GREEN, component(dropped ? "codon.ui.flow_excluded" : "codon.ui.flow_created"));
+                dropped ? DebuggerIcon.SOURCE_EXCLUDED : created ? DebuggerIcon.SOURCE_CREATED : DebuggerIcon.SOURCE_CHANGED,
+                dropped ? RED : created ? GREEN : PURPLE,
+                component(dropped ? "codon.ui.flow_removed" : created ? "codon.ui.flow_created" : "codon.ui.flow_changed"));
             iconX -= 18;
         }
         text(graphics, sourceLabel(source, state.selectedSourceIndex(), state.selectedSourceDropped()),
@@ -635,16 +637,19 @@ public final class DebuggerOverlay {
     }
 
     private int sourceColor(int index, int fallback) {
-        return state.isDisplayedSourceDropped(index) ? RED : state.isDisplayedSourceCreated(index) ? GREEN : fallback;
+        return state.isDisplayedSourceDropped(index) ? RED : state.isDisplayedSourceCreated(index) ? GREEN
+            : state.isDisplayedSourceChanged(index) ? PURPLE : fallback;
     }
 
     private int worldSourceColor(int index, int fallback) {
-        return state.isWorldSourceDropped(index) ? RED : state.isWorldSourceCreated(index) ? GREEN : fallback;
+        return state.isWorldSourceDropped(index) ? RED : state.isWorldSourceCreated(index) ? GREEN
+            : state.isWorldSourceChanged(index) ? PURPLE : fallback;
     }
 
     private DebuggerButton colorWorldSourceButton(DebuggerButton button, int index) {
         if (state.isWorldSourceDropped(index)) return button.withStatusColor(RED, RED_SURFACE);
         if (state.isWorldSourceCreated(index)) return button.withStatusColor(GREEN, GREEN_SURFACE);
+        if (state.isWorldSourceChanged(index)) return button.withStatusColor(PURPLE, PURPLE_SURFACE);
         return button;
     }
 
@@ -655,6 +660,7 @@ public final class DebuggerOverlay {
     private DebuggerButton colorSourceButton(DebuggerButton button, int index) {
         if (state.isDisplayedSourceDropped(index)) return button.withStatusColor(RED, RED_SURFACE);
         if (state.isDisplayedSourceCreated(index)) return button.withStatusColor(GREEN, GREEN_SURFACE);
+        if (state.isDisplayedSourceChanged(index)) return button.withStatusColor(PURPLE, PURPLE_SURFACE);
         return button;
     }
 

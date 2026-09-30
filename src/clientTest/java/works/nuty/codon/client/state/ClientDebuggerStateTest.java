@@ -335,7 +335,7 @@ class ClientDebuggerStateTest {
     }
 
     @Test
-    void createdSourcesRequireARecordedParentAndSemanticSourceChange() {
+    void createdAndChangedSourcesHaveDistinctRecordedMeanings() {
         UUID entity = UUID.randomUUID();
         PauseSource parentSource = source(entity, "before", "overworld", 4, 64, 0, 10, 20);
         PauseSource renamed = source(entity, "after", "overworld", 4, 64, 0, 10, 20);
@@ -363,20 +363,15 @@ class ClientDebuggerStateTest {
         state.applyPause(snapshotWithFlows(List.of(new ExecutionFlowTrace(92,
             new SourceLocation.Block(new BlockLocation(0, 64, 0, "overworld")), List.of(stage), false))));
 
-        assertFalse(state.selectedSourceCreated(), "a fresh occurrence alone is not a source change");
-        assertFalse(state.isDisplayedSourceCreated(0));
-        assertFalse(state.isDisplayedSourceCreated(1), "repeated identical branches remain unchanged");
-        assertTrue(state.isDisplayedSourceCreated(2), "same entity with a moved anchor is changed");
-        assertTrue(state.isDisplayedSourceCreated(3), "pitch or yaw changes are semantic changes");
-        assertTrue(state.isDisplayedSourceCreated(4), "dimension changes are semantic changes");
-        assertTrue(state.isDisplayedSourceCreated(5), "a different executor is changed");
-        assertFalse(state.isDisplayedSourceCreated(6), "entity display-name changes are ignored");
-        assertFalse(state.isDisplayedSourceCreated(7), "an input occurrence cannot be created");
+        for (int index = 0; index < 8; index++)
+            assertTrue(state.isDisplayedSourceCreated(index), "every output of the one-to-many branch is created");
+        assertFalse(state.selectedSourceChanged(), "branch outputs are created rather than one-to-one changes");
 
         state.selectSource(2);
         assertTrue(state.selectedSourceCreated());
+        assertFalse(state.selectedSourceChanged());
         state.selectSource(6);
-        assertFalse(state.selectedSourceCreated());
+        assertTrue(state.selectedSourceCreated());
     }
 
     @Test
@@ -433,11 +428,11 @@ class ClientDebuggerStateTest {
             new SourceLocation.Block(new BlockLocation(0, 64, 0, "overworld")), List.of(stage), false))));
 
         assertFalse(state.isDisplayedSourceCreated(0));
-        assertTrue(state.isDisplayedSourceCreated(1));
+        assertFalse(state.isDisplayedSourceCreated(1));
     }
 
     @Test
-    void changingStagesUpdatesCreatedStatusForSelectedAndDisplayedSources() {
+    void changingStagesUpdatesChangedStatusForSelectedAndDisplayedSources() {
         PauseSource source = source("transition", 6);
         ExecutionFlowContext input = new ExecutionFlowContext(30, source);
         ExecutionFlowContext created = new ExecutionFlowContext(31, source("moved-transition", 7));
@@ -456,8 +451,10 @@ class ClientDebuggerStateTest {
         assertFalse(state.isDisplayedSourceCreated(0));
 
         state.selectExecutionFlowStage(0);
-        assertTrue(state.selectedSourceCreated());
-        assertTrue(state.isDisplayedSourceCreated(0));
+        assertFalse(state.selectedSourceCreated());
+        assertFalse(state.isDisplayedSourceCreated(0));
+        assertTrue(state.selectedSourceChanged());
+        assertTrue(state.isDisplayedSourceChanged(0));
     }
 
     @Test
@@ -520,6 +517,7 @@ class ClientDebuggerStateTest {
         assertSame(as, state.worldSourceStage());
         assertEquals(List.of(firstSource, secondSource), state.worldSources());
         assertTrue(state.isWorldSourceCreated(0));
+        assertFalse(state.isWorldSourceChanged(0));
         assertTrue(state.isWorldSourceCreated(1));
         assertFalse(state.isWorldSourceDropped(0));
     }
@@ -542,11 +540,13 @@ class ClientDebuggerStateTest {
 
         assertSame(complete, state.worldSourceStage());
         assertEquals(List.of(createdSource), state.worldSources());
-        assertTrue(state.isWorldSourceCreated(0));
+        assertFalse(state.isWorldSourceCreated(0));
+        assertTrue(state.isWorldSourceChanged(0));
 
         state.selectExecutionFlowStage(0);
         assertSame(complete, state.worldSourceStage(), "a complete selected stage uses itself");
-        assertTrue(state.isWorldSourceCreated(0));
+        assertFalse(state.isWorldSourceCreated(0));
+        assertTrue(state.isWorldSourceChanged(0));
     }
 
     @Test

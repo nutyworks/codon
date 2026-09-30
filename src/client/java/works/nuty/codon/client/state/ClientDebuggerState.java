@@ -321,6 +321,17 @@ public final class ClientDebuggerState {
             && stage.isCreatedContext(contexts.get(index).id());
     }
 
+    public boolean selectedSourceChanged() {
+        return isDisplayedSourceChanged(selectedSourceIndex);
+    }
+
+    public boolean isDisplayedSourceChanged(int index) {
+        ExecutionFlowStage stage = sourceStage();
+        List<ExecutionFlowContext> contexts = displayedFlowContexts();
+        return stage != null && index >= 0 && index < contexts.size()
+            && stage.isChangedContext(contexts.get(index).id());
+    }
+
     /**
      * Pauses precede execution. For an unexecuted next stage, show the transition which produced
      * its inputs, including sources just excluded by that transition. Both source views use
@@ -377,6 +388,13 @@ public final class ClientDebuggerState {
         if (stage == null) return false;
         List<ExecutionFlowContext> contexts = stage.displayContexts();
         return index >= 0 && index < contexts.size() && stage.isCreatedContext(contexts.get(index).id());
+    }
+
+    public boolean isWorldSourceChanged(int index) {
+        ExecutionFlowStage stage = worldSourceStage();
+        if (stage == null) return false;
+        List<ExecutionFlowContext> contexts = stage.displayContexts();
+        return index >= 0 && index < contexts.size() && stage.isChangedContext(contexts.get(index).id());
     }
 
     public boolean isWorldSourceDropped(int index) {

@@ -34,6 +34,7 @@ public final class DebugLevelRenderer implements LevelRenderEvents.EndMain {
     private static final int SELECTED_TEAL = ARGB.color(1.0f, 0x75DFD6);
     private static final int DROPPED_RED = ARGB.color(0.95f, 0xFC8C8C);
     private static final int CREATED_GREEN = ARGB.color(0.95f, 0x83E89D);
+    private static final int CHANGED_PURPLE = ARGB.color(0.95f, 0xC7A0FF);
     private static final int FLOW_TEAL = ARGB.color(0.7f, 0x75DFD6);
 
     private static final float BREAKPOINT_WIDTH = 1.0f;
@@ -110,12 +111,13 @@ public final class DebugLevelRenderer implements LevelRenderEvents.EndMain {
 
             boolean dropped = state.isWorldSourceDropped(index);
             boolean created = state.isWorldSourceCreated(index);
+            boolean changed = state.isWorldSourceChanged(index);
             SourceKey key = new SourceKey(anchor.x, anchor.y, anchor.z, source.pitch(), source.yaw(),
-                source.entity() != null, dropped, created);
+                source.entity() != null, dropped, created, changed);
             SourceMarker marker = markers.get(key);
             if (marker == null || index == selectedIndex) {
                 markers.put(key, new SourceMarker(anchor, facing.normalize(), source.entity() != null,
-                    index == selectedIndex, dropped, created));
+                    index == selectedIndex, dropped, created, changed));
             }
         }
 
@@ -123,6 +125,7 @@ public final class DebugLevelRenderer implements LevelRenderEvents.EndMain {
         for (SourceMarker marker : markers.values()) {
             boolean selected = marker.selected();
             int color = marker.dropped() ? DROPPED_RED : marker.created() ? CREATED_GREEN
+                : marker.changed() ? CHANGED_PURPLE
                 : selected ? SELECTED_TEAL : grouped ? MUTED_TEAL : SOURCE_TEAL;
             float width = selected ? SELECTED_WIDTH : SOURCE_WIDTH;
             renderSourceMarker(marker, color, width, selected);
@@ -148,6 +151,7 @@ public final class DebugLevelRenderer implements LevelRenderEvents.EndMain {
             if (!isFinite(from) || !isFinite(to) || from.distanceToSqr(to) < 1.0e-6) continue;
             boolean selectedEdge = edge.outputContextId() == selectedId;
             Gizmos.arrow(from, to, stage.isCreatedContext(edge.outputContextId()) ? CREATED_GREEN
+                    : stage.isChangedContext(edge.outputContextId()) ? CHANGED_PURPLE
                     : selectedEdge ? SELECTED_TEAL : FLOW_TEAL,
                 selectedEdge ? SELECTED_WIDTH : SOURCE_WIDTH).setAlwaysOnTop();
         }
@@ -200,10 +204,10 @@ public final class DebugLevelRenderer implements LevelRenderEvents.EndMain {
     }
 
     private record SourceKey(double x, double y, double z, float pitch, float yaw,
-                             boolean entityPresent, boolean dropped, boolean created) {
+                             boolean entityPresent, boolean dropped, boolean created, boolean changed) {
     }
 
     private record SourceMarker(Vec3 anchor, Vec3 facing, boolean entityPresent,
-                                boolean selected, boolean dropped, boolean created) {
+                                boolean selected, boolean dropped, boolean created, boolean changed) {
     }
 }

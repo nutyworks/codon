@@ -151,6 +151,7 @@ public enum DebuggerIcon {
     }),
     INPUT_COUNT, OUTPUT_COUNT, CREATED_COUNT, REMOVED_COUNT, CHANGED_COUNT,
     SOURCE_CREATED,
+    SOURCE_CHANGED,
     SOURCE_EXCLUDED,
     OUTSIDE_VIEWPORT,
     COPY_UUID,
@@ -290,6 +291,9 @@ public enum DebuggerIcon {
             case SOURCE_CREATED, SOURCE_EXCLUDED -> {
                 graphics.fill(x + 2, y + 5, x + 10, y + 7, color);
                 if (this == SOURCE_CREATED) graphics.fill(x + 5, y + 2, x + 7, y + 10, color);
+            }
+            case SOURCE_CHANGED -> {
+                for (int i = 0; i < 7; i++) graphics.fill(x + 2 + i, y + 8 - i, x + 4 + i, y + 10 - i, color);
             }
             case OUTSIDE_VIEWPORT -> {
                 outline(graphics, x + 1, y + 3, 7, 8, color);
