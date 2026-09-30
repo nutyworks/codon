@@ -282,7 +282,12 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
             && mouseY >= Math.min(source.getY(), menuTop) && mouseY < Math.max(source.getBottom(), menuTop + menuHeight);
         if (overMenu(mouseX, mouseY) || bridge) leaveStarted = -1;
         else if (leaveStarted < 0) leaveStarted = now;
-        else if (now - leaveStarted >= LEAVE_DELAY) closeMenu();
+        else if (now - leaveStarted >= LEAVE_DELAY) {
+            closeMenu();
+            // The pointer already left both hit areas. A prompt re-entry must open
+            // again even if no intervening frame observes the outside position.
+            suppressedMenu = Menu.NONE;
+        }
     }
 
     private static String symbol(BreakpointCondition.Comparison comparison) {

@@ -176,6 +176,14 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             nativeClick(context, parent, 0, 0, InputConstants.MOUSE_BUTTON_LEFT);
             context.runOnClient(client -> require(client.gui.screen() == parent && ScreenLayers.get(parent) == null,
                 "outside click dismisses only the layer"));
+            // The parent refreshes its marker layout during render after the layer closes.
+            context.waitFor(client -> {
+                var editor = commandBox(parent);
+                var point = editor.markerPosition(new WrappedCommandEditBox.Marker(first, 8, COMMAND.length(),
+                    CodonClientMod.state().breakpoints().get(first)));
+                var hit = editor.markerAt(point.x(), point.y());
+                return point.visible() && hit != null && hit.target().equals(first);
+            }, 100);
             int[] reopenedMarker = context.computeOnClient(client -> {
                 var editor = commandBox(parent);
                 var point = editor.markerPosition(new WrappedCommandEditBox.Marker(first, 8, COMMAND.length(),
@@ -192,7 +200,10 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
                 client.options.guiScale().set(3);
                 client.resizeGui();
             });
-            context.waitTicks(3);
+            // Resize can leave the native cursor over the newly positioned trigger.
+            // Establish a non-hover baseline and wait beyond the 180 ms hover-open delay.
+            nativeHover(context, parent, 0, 0);
+            context.waitTicks(6);
             context.takeScreenshot("codon-breakpoint-condition-320x240");
             context.runOnClient(client -> {
                 Screen screen = conditionLayer(client.gui.screen());
