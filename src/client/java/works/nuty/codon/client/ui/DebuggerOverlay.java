@@ -87,6 +87,8 @@ public final class DebuggerOverlay {
         this.commandPanel = new CommandPanel(state, () -> { sourceOffset = 0; expandedGroup = List.of(); });
     }
 
+    public works.nuty.codon.client.state.DebuggerPreferences preferences() { return state.preferences(); }
+
     void commitBackgroundOpacity() { opacitySlider.commitPreview(); }
 
     ScrollbarInput scrollbars() { return scrollbars; }
@@ -317,7 +319,7 @@ public final class DebuggerOverlay {
 
     private void renderViewMenu(GuiGraphicsExtractor graphics) {
         int menuWidth = Math.min(154, graphics.guiWidth() - 12);
-        int menuHeight = 4 * 19 + 4;
+        int menuHeight = 5 * 19 + 4;
         int x = Math.clamp(viewTriggerBounds.x(), 6, graphics.guiWidth() - menuWidth - 6);
         int below = viewTriggerBounds.y() + viewTriggerBounds.height() + 2;
         int y = below + menuHeight <= graphics.guiHeight() - 6 ? below
@@ -342,6 +344,8 @@ public final class DebuggerOverlay {
         boolean command = state.preferences().commandVisible();
         viewMenuItem(3, component("codon.ui.command"), command,
             () -> state.preferences().setCommandVisible(!command));
+        viewMenuItem(4, component("codon.ui.scale.title"), false,
+            () -> { if (client.gui.screen() != null) client.gui.setScreen(new UiScaleScreen(client.gui.screen(), state.preferences())); });
     }
 
     private void viewMenuItem(int row, Component label, boolean selected, Runnable action) {

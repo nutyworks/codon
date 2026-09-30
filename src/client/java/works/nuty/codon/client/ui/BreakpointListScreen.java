@@ -22,7 +22,7 @@ import java.util.List;
 import static works.nuty.codon.client.ui.DebuggerTheme.*;
 
 /** Compact authoritative breakpoint list, reachable before the first pause. */
-public final class BreakpointListScreen extends Screen {
+public final class BreakpointListScreen extends ScaledCodonScreen {
     private final Screen parent;
     private final ClientDebuggerState state;
     private List<BreakpointDefinition> displayed = List.of();
@@ -33,7 +33,7 @@ public final class BreakpointListScreen extends Screen {
     private @Nullable DebuggerButton undoButton;
 
     public BreakpointListScreen(Screen parent, ClientDebuggerState state) {
-        super(Component.translatable("codon.breakpoint.list_title"));
+        super(Component.translatable("codon.breakpoint.list_title"), state.preferences());
         this.parent = parent;
         this.state = state;
     }

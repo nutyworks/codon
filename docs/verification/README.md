@@ -14,6 +14,7 @@ existing tests; they are not a record of passing runs.
 | Add Watches, browse NBT, pin fields and inspect changed values | [Watches and NBT](features/watches-and-nbt.md) |
 | Navigate while paused and retain/restore the camera | [Freecam](features/freecam.md) |
 | Search loaded functions and inspect line/stage source | [Function source](features/function-source.md) |
+| Resize Codon independently of game GUI scale | [UI scale](features/ui-scale.md) |
 
 ## Prepare and launch
 

@@ -19,7 +19,7 @@ import works.nuty.codon.core.model.WatchSpec;
 import static works.nuty.codon.client.ui.DebuggerTheme.*;
 
 /** Read-only full-text inspector for one stable Watch id. Management stays in the Watches HUD. */
-public final class WatchDetailsScreen extends Screen {
+public final class WatchDetailsScreen extends ScaledCodonScreen {
     private record Line(FormattedCharSequence text, int color) { }
 
     private final InputManager input;
@@ -38,7 +38,7 @@ public final class WatchDetailsScreen extends Screen {
     private boolean expanded;
 
     public WatchDetailsScreen(InputManager input, ClientDebuggerState state, DebuggerOverlay overlay, long entryId) {
-        super(WatchUi.text("details.title"));
+        super(WatchUi.text("details.title"), state.preferences());
         this.input = input;
         this.state = state;
         this.overlay = overlay;
