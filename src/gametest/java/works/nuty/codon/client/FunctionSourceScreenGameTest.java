@@ -702,6 +702,8 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             sources.accept(new ClientFunctionSourceState.SourcePage(request, ClientFunctionSourceState.Status.READY, FUNCTION,
                 "gametest", "source-preview", false, 0, true, List.of(COMMAND, "", "# Source comment · 한글",
                 "say source_reader", "function codon_test:other_function")));
+            // Back keeps its button focus; keyboard source navigation requires code focus.
+            screen.setFocused(null);
             screen.keyPressed(new KeyEvent(InputConstants.KEY_HOME, 0, 0));
             screen.keyPressed(new KeyEvent(InputConstants.KEY_DOWN, 0, 0));
             screen.keyPressed(new KeyEvent(InputConstants.KEY_DOWN, 0, 0));
