@@ -117,6 +117,8 @@ public final class SourceSyntax {
                 case "score" -> tokens[4].equals("matches") ? 5
                     : Set.of("<", "<=", "=", ">=", ">").contains(tokens[4]) ? 6 : -1;
                 case "data" -> switch (tokens[2]) { case "entity", "storage" -> 4; case "block" -> 6; default -> -1; };
+                case "items" -> switch (tokens[2]) { case "entity" -> 5; case "block" -> 7; default -> -1; };
+                case "slots" -> switch (tokens[2]) { case "entity" -> 4; case "block" -> 6; default -> -1; };
                 default -> -1;
             };
             case "store" -> Set.of("result", "success").contains(tokens[1]) ? switch (tokens[2]) {

@@ -5,6 +5,47 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SourceSyntaxTest {
+    @Test void standardItemsAndSlotsConditionsKeepTheirRealNestedFunction() {
+        for (String condition : List.of("if", "unless"))
+            for (String target : List.of("entity run", "block ~ ~1 ~-2"))
+                for (String kind : List.of("items", "slots")) {
+                    String source = "execute " + condition + " " + kind + " " + target
+                        + " container.*" + (kind.equals("items") ? " minecraft:stick" : "") + " run function pack:helper";
+                    var spans = SourceSyntax.spans(source);
+                    var function = spans.stream().filter(span -> source.substring(span.start(), span.end()).equals("function"))
+                        .findFirst().orElseThrow();
+                    assertEquals(SourceSyntax.Kind.COMMAND, function.kind(), source);
+                    if (target.startsWith("entity")) {
+                        var argument = spans.stream().filter(span -> source.substring(span.start(), span.end()).equals("run"))
+                            .findFirst().orElseThrow();
+                        assertEquals(SourceSyntax.Kind.ARGUMENT, argument.kind(), source);
+                    }
+                }
+        String source = "execute if items entity @s weapon.mainhand minecraft:stick[minecraft:custom_data~{label:'run function pack:other'}] run function pack:helper";
+        var spans = SourceSyntax.spans(source);
+        assertEquals(1, spans.stream().filter(span -> span.kind() == SourceSyntax.Kind.COMMAND
+            && source.substring(span.start(), span.end()).equals("function")).count());
+        assertEquals("function", source.substring(spans.get(spans.size() - 2).start(), spans.get(spans.size() - 2).end()));
+        assertEquals(SourceSyntax.Kind.COMMAND, spans.get(spans.size() - 2).kind());
+        String chained = "execute if items entity run weapon.mainhand minecraft:stick unless slots block 0 64 -2 container.0 run function pack:helper";
+        var chain = SourceSyntax.spans(chained);
+        assertEquals(SourceSyntax.Kind.COMMAND, chain.get(chain.size() - 2).kind(), chained);
+    }
+
+    @Test void itemSlotAndPredicateRunArgumentsAndUnsupportedFormsDoNotInventLinks() {
+        for (String source : List.of("execute if items entity run run run run function pack:helper",
+            "execute unless slots entity run run run function pack:helper")) {
+            var spans = SourceSyntax.spans(source);
+            assertEquals(SourceSyntax.Kind.COMMAND, spans.get(spans.size() - 2).kind(), source);
+            assertTrue(spans.stream().filter(span -> source.substring(span.start(), span.end()).equals("run"))
+                .limit(source.contains(" items ") ? 3 : 2).allMatch(span -> span.kind() == SourceSyntax.Kind.ARGUMENT), source);
+        }
+        for (String source : List.of("execute if items storage run slot item run function pack:helper",
+            "execute if slots unknown run run function pack:helper", "execute if items entity run weapon.mainhand run function pack:helper",
+            "execute unless slots entity run run function pack:helper"))
+            assertTrue(SourceSyntax.spans(source).stream().noneMatch(span -> span.kind() == SourceSyntax.Kind.COMMAND
+                && source.substring(span.start(), span.end()).equals("function")), source);
+    }
     @Test void executeArgumentsNamedRunDoNotBecomeCommandDelimiters() {
         for (String source : List.of(
             "execute if score run objective matches 1 run function demo:next",

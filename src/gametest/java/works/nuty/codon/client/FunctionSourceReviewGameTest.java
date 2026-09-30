@@ -39,6 +39,21 @@ public final class FunctionSourceReviewGameTest implements FabricClientGameTest 
                 CodonClientMod.state().breakpoints().reset();
             });
             world.getConnection().waitForChunksRender();
+            var itemConditions = itemConditions();
+            world.getServer().runOnServer(server -> {
+                for (String command : itemConditions) {
+                    var parsed = server.getCommands().getDispatcher().parse(command, server.createCommandSourceStack());
+                    require(!parsed.getReader().canRead() && parsed.getExceptions().isEmpty(),
+                        "actual 26.3 grammar accepts: " + command + "; remaining=" + parsed.getReader().getRemaining()
+                            + "; errors=" + parsed.getExceptions());
+                    var nodes = parsed.getContext().getLastChild().getNodes();
+                    var target = nodes.getLast().getRange();
+                    require(command.substring(target.getStart(), target.getEnd()).equals("pack:helper"),
+                        "actual parser reaches the nested function target");
+                    System.out.println("26.3 items/slots grammar PASS: " + command);
+                }
+            });
+            verifyItemConditionLinks(context, itemConditions);
             verifyLinkBounds(context);
             verifyDefaultNamespace(context);
             verifyUnselectedReload(context);
@@ -48,6 +63,46 @@ public final class FunctionSourceReviewGameTest implements FabricClientGameTest 
             context.runOnClient(client -> client.setScreenAndShow(null));
         }
         if (!failures.isEmpty()) throw new AssertionError(String.join("; ", failures));
+    }
+
+    private static List<String> itemConditions() {
+        List<String> commands = new ArrayList<>();
+        for (String condition : List.of("if", "unless"))
+            for (String target : List.of("entity run", "block ~ ~1 ~-2"))
+                for (String kind : List.of("items", "slots"))
+                    commands.add("execute " + condition + " " + kind + " " + target + " container.*"
+                        + (kind.equals("items") ? " minecraft:stick" : "") + " run function pack:helper");
+        commands.add("execute if items entity @s weapon.mainhand minecraft:stick run function pack:helper");
+        commands.add("execute unless items entity @s weapon.* * run function pack:helper");
+        commands.add("execute unless items block 0 64 -2 container.0 minecraft:stick run function pack:helper");
+        commands.add("execute if slots block 0 64 -2 container.0 run function pack:helper");
+        commands.add("execute if items entity run weapon.mainhand minecraft:stick unless slots block ~ ~ ~ container.* run function pack:helper");
+        commands.add("execute if items entity @s weapon.mainhand minecraft:stick[minecraft:custom_data~{label:'run function pack:other'}] run function pack:helper");
+        return commands;
+    }
+
+    private void verifyItemConditionLinks(ClientGameTestContext context, List<String> commands) {
+        int index = 0;
+        for (String command : commands) {
+            var sources = install(context, List.of(command));
+            context.waitTicks(2);
+            context.runOnClient(client -> set(client.gui.screen(), "horizontalOffset", invoke(client.gui.screen(), "maxHorizontalOffset")));
+            context.waitTicks(2);
+            if (index == 0 || index == 3 || index == commands.size() - 1)
+                context.takeScreenshot("codon-source-items-slots-" + index);
+            context.runOnClient(client -> {
+                Screen screen = client.gui.screen();
+                List<?> hits = list(screen, "functionHits");
+                check(hits.size() == 1 && PACK_HELPER.equals(call(hits.getFirst(), "function", new Class<?>[0])),
+                    "standard condition has exactly its real function link: " + command);
+                if (!hits.isEmpty()) {
+                    Object bounds = call(hits.getFirst(), "bounds", new Class<?>[0]);
+                    click(screen, invoke(bounds, "x") + 1, invoke(bounds, "y") + 1);
+                    check(PACK_HELPER.equals(sources.selected()), "standard condition click opens pack:helper: " + command);
+                }
+            });
+            index++;
+        }
     }
 
     private void verifyExecuteArgumentLinks(ClientGameTestContext context) {
