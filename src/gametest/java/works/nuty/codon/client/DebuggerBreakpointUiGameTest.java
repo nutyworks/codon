@@ -192,7 +192,10 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
                 client.options.guiScale().set(3);
                 client.resizeGui();
             });
-            context.waitTicks(3);
+            // Resize can leave the native cursor over the newly positioned trigger.
+            // Establish a non-hover baseline and wait beyond the 180 ms hover-open delay.
+            nativeHover(context, parent, 0, 0);
+            context.waitTicks(6);
             context.takeScreenshot("codon-breakpoint-condition-320x240");
             context.runOnClient(client -> {
                 Screen screen = conditionLayer(client.gui.screen());

@@ -119,6 +119,9 @@ empty comparison row or feedback area. The 320×240 hover-menu/count/event captu
 in `DebuggerBreakpointUiGameTest` check bounds, hover-only opening, leaving and
 crossing the menu gap, scrolling, keyboard selection/Escape, invalid count
 rejection, real acknowledged count-condition saving and switching back to an event.
+The closed-menu baseline moves the native cursor outside the resized layer and
+waits beyond the hover-open delay before asserting that choices are hidden; the
+following hover check then deliberately enters the selector.
 The anchored pending capture uses a controlled client pending state to check that
 feedback growth keeps the panel and its Save button inside the viewport.
 Saving after a resize uses native mouse dispatch, so the same scenario also
