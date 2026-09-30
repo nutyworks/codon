@@ -11,6 +11,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import works.nuty.codon.CodonMod;
+import works.nuty.codon.adapter.McExecutionController;
 import works.nuty.codon.core.service.DebuggerEngine;
 
 @Mixin(Commands.class)
@@ -26,7 +27,9 @@ public abstract class CommandsMixin {
         DebuggerEngine engine = CodonMod.engine();
         if (engine == null || parseResults.getContext().getNodes().isEmpty()) return;
         String root = parseResults.getContext().getNodes().getFirst().getNode().getName();
-        if (root.equals("codon") || (engine.isPaused() && root.equals("stop"))) {
+        // A step/resume clears paused inside a mailbox drain, before the parked outer vanilla
+        // ExecutionContext unwinds. Stop must not join that context's possibly exhausted quota.
+        if (root.equals("codon") || (root.equals("stop") && (engine.isPaused() || McExecutionController.isParked()))) {
             CommandSourceStack source = parseResults.getContext().getSource();
             try {
                 this.getDispatcher().execute(parseResults);

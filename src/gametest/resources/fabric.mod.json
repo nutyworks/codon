@@ -21,6 +21,7 @@
       "works.nuty.codon.client.DebuggerWatchChainGameTest",
       "works.nuty.codon.client.DebuggerWatchGameTest",
       "works.nuty.codon.client.DebuggerRequestTransportGameTest",
+      "works.nuty.codon.client.DebuggerStopRoutingGameTest",
       "works.nuty.codon.client.DebuggerWatchEditorGameTest",
       "works.nuty.codon.client.DebuggerWatchFormLayoutGameTest",
       "works.nuty.codon.client.DebuggerWatchPickerLayoutGameTest",

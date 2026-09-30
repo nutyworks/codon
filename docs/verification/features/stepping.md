@@ -50,6 +50,7 @@ captures a selected row alongside a keyboard-focused, truncated action label.
 | Depth, chain boundaries and completion | `coreTest`: `StepControllerTest`, `CommandBlockSteppingTest`, `DebuggerEngineTest` |
 | Pending state, current/history separation | `clientTest`: `ClientDebuggerStateTest`, `ClientHistoricalCallStackTest`, `DebuggerStatusTest` |
 | Native command-chain execution/stage recording | `DebuggerExecutionFlowGameTest` |
+| Stop after step/resume in a parked native command context | `DebuggerStopRoutingGameTest` |
 | Native conditional function chronology | `DebuggerConditionalFunctionFlowGameTest` |
 | Client camera across server-sent step/pause packets | `DebuggerFreecamStepGameTest` |
 | Keyboard focus/navigation | `DebuggerKeyboardNavigationGameTest` |
@@ -58,3 +59,12 @@ Example: `./gradlew coreTest --tests '*CommandBlockSteppingTest'`.
 For runtime execution changes, select the relevant native GameTest as well. A
 camera test that sends synthetic packets does not establish command-step semantics.
 Record the before/after command and call depth, not merely that the screen opened.
+
+`DebuggerStopRoutingGameTest` uses a real outer vanilla Commands execution with
+command limit 1 and stops at the terminal after `execute positioned ~ ~ ~ run`.
+One mailbox runnable steps/resumes and then submits `stop` before the parked context
+unwinds. A harmless counter replaces stop in the disposable server dispatcher,
+retaining the vanilla owner requirement. Expect one authorized stop, zero rejected
+stop executions, and zero quota-bound say/stopSomething executions. Command mappings
+and the gamerule are restored afterward. This verifies the native Commands/Mixin
+route, without stopping a real dedicated server or testing console/RCON transport.
