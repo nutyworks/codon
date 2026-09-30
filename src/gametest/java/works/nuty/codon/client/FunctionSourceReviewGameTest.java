@@ -9,6 +9,7 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.input.MouseButtonInfo;
+import net.minecraft.client.input.KeyEvent;
 import net.minecraft.network.chat.Component;
 import works.nuty.codon.client.state.ClientFunctionSourceState;
 import works.nuty.codon.client.state.ClientStagePreviewState;
@@ -24,6 +25,7 @@ public final class FunctionSourceReviewGameTest implements FabricClientGameTest 
     private static final FunctionId MAIN = new FunctionId("pack", "main");
     private static final FunctionId PACK_HELPER = new FunctionId("pack", "helper");
     private static final FunctionId DEFAULT_HELPER = new FunctionId("minecraft", "helper");
+    private static final FunctionId MATCHES = new FunctionId("minecraft", "matches");
     private final List<String> failures = new ArrayList<>();
 
     @Override public void runTest(ClientGameTestContext context) {
@@ -40,9 +42,118 @@ public final class FunctionSourceReviewGameTest implements FabricClientGameTest 
             verifyLinkBounds(context);
             verifyDefaultNamespace(context);
             verifyUnselectedReload(context);
+            verifyExecuteArgumentLinks(context);
+            verifyFindRebuild(context);
+            verifyButtonFocus(context);
             context.runOnClient(client -> client.setScreenAndShow(null));
         }
         if (!failures.isEmpty()) throw new AssertionError(String.join("; ", failures));
+    }
+
+    private void verifyExecuteArgumentLinks(ClientGameTestContext context) {
+        var sources = install(context, List.of("execute if score run objective matches 1 run function pack:helper"));
+        context.waitTicks(2);
+        context.runOnClient(client -> set(client.gui.screen(), "horizontalOffset", invoke(client.gui.screen(), "maxHorizontalOffset")));
+        context.waitTicks(2);
+        context.takeScreenshot("codon-source-followup-execute-run-argument");
+        context.runOnClient(client -> {
+            Screen screen = client.gui.screen();
+            List<?> hits = list(screen, "functionHits");
+            check(hits.size() == 1, "a score holder named run retains the actual nested function link");
+            if (!hits.isEmpty()) {
+                Object bounds = call(hits.getFirst(), "bounds", new Class<?>[0]);
+                click(screen, invoke(bounds, "x") + 1, invoke(bounds, "y") + 1);
+                check(PACK_HELPER.equals(sources.selected()), "the actual nested link opens pack:helper");
+            }
+        });
+        install(context, List.of("execute if score run function matches 1 run say ignored"));
+        context.waitTicks(2);
+        context.runOnClient(client -> check(list(client.gui.screen(), "functionHits").isEmpty(),
+            "score objective named function must not link to the loaded minecraft:matches"));
+    }
+
+    private void verifyFindRebuild(ClientGameTestContext context) {
+        var sources = install(context, List.of("say start", "say needle", "say needle"));
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            Screen screen = client.gui.screen();
+            ((EditBox) field(screen, "sourceSearch")).setValue("needle");
+            check(invokeField(screen, "matchIndex") == 0 && sources.browseView().selectedLine() == 2,
+                "typing selects the first result exactly once");
+            call(screen, "nextMatch", new Class<?>[]{int.class}, 1);
+            call(screen, "rebuildMatches", new Class<?>[0]);
+            check(invokeField(screen, "matchIndex") == 1 && sources.browseView().selectedLine() == 3,
+                "an unchanged rebuild retains the current result and selection");
+            sources.select(PACK_HELPER);
+            call(screen, "restoreBrowseView", new Class<?>[0]);
+            call(screen, "updateCodeCache", new Class<?>[0]);
+            check(invokeField(screen, "matchIndex") == -1 && list(screen, "matches").isEmpty(), "loading clears old matches");
+            acceptSource(sources, PACK_HELPER, List.of("# " + "x".repeat(150) + " needle", "say needle"));
+            call(screen, "updateCodeCache", new Class<?>[0]);
+            check(invokeField(screen, "matchIndex") == 0 && sources.browseView().selectedLine() == 1
+                && sources.browseView().horizontalOffset() > 0,
+                "function switch with retained Find selects and reveals the first new result without Next");
+        });
+        context.waitTicks(2);
+        context.takeScreenshot("codon-source-followup-find-switch");
+        context.runOnClient(client -> {
+            Screen screen = client.gui.screen();
+            sources.refreshSource();
+            call(screen, "updateCodeCache", new Class<?>[0]);
+            acceptSource(sources, PACK_HELPER, List.of("# changed", "say needle", "say needle"));
+            call(screen, "updateCodeCache", new Class<?>[0]);
+            check(invokeField(screen, "matchIndex") == 0 && sources.browseView().selectedLine() == 2
+                && sources.browseView().horizontalOffset() == 0,
+                "Reload with retained Find selects and reveals the first replacement result without Next");
+            check(((EditBox) field(screen, "sourceSearch")).getValue().equals("needle"), "Find query survives source changes");
+        });
+        context.waitTicks(2);
+        context.takeScreenshot("codon-source-followup-find-reload");
+    }
+
+    private void verifyButtonFocus(ClientGameTestContext context) {
+        var sources = install(context, java.util.stream.IntStream.range(0, 30)
+            .mapToObj(i -> "say row_" + i + " " + "x".repeat(150)).toList());
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            Screen screen = client.gui.screen();
+            for (int key : new int[]{InputConstants.KEY_UP, InputConstants.KEY_DOWN, InputConstants.KEY_PAGEUP,
+                InputConstants.KEY_PAGEDOWN, InputConstants.KEY_HOME, InputConstants.KEY_END,
+                InputConstants.KEY_LEFT, InputConstants.KEY_RIGHT}) {
+                call(screen, "selectLine", new Class<?>[]{int.class}, 2);
+                set(screen, "horizontalOffset", 60);
+                call(screen, "rememberView", new Class<?>[0]);
+                screen.setFocused((net.minecraft.client.gui.components.events.GuiEventListener) field(screen, "refresh"));
+                var before = sources.browseView();
+                screen.keyPressed(new KeyEvent(key, 0, 0));
+                check(sources.browseView().equals(before), "toolbar focus blocks Source navigation key " + key);
+            }
+            screen.setFocused(null);
+            screen.keyPressed(new KeyEvent(InputConstants.KEY_DOWN, 0, 0));
+            screen.keyPressed(new KeyEvent(InputConstants.KEY_RIGHT, 0, 0));
+            check(sources.browseView().selectedLine() == 3 && sources.browseView().horizontalOffset() == 90,
+                "code focus preserves line and horizontal keyboard navigation");
+        });
+        context.waitTicks(2);
+        context.takeScreenshot("codon-source-followup-code-focus");
+    }
+
+    private static void acceptSource(ClientFunctionSourceState sources, FunctionId function, List<String> lines) {
+        long request = sources.drainRequests().stream().filter(ClientFunctionSourceState.Request.ReadFunction.class::isInstance)
+            .map(ClientFunctionSourceState.Request.ReadFunction.class::cast).reduce((a, b) -> b).orElseThrow().requestId();
+        sources.accept(new ClientFunctionSourceState.SourcePage(request, ClientFunctionSourceState.Status.READY,
+            function, "gametest", "followup", false, 0, true, lines));
+        require(sources.document() != null && sources.document().lines().equals(lines), "followup source accepted");
+    }
+
+    private static Object field(Object target, String name) {
+        try { var field = target.getClass().getDeclaredField(name); field.setAccessible(true); return field.get(target); }
+        catch (ReflectiveOperationException error) { throw new AssertionError(error); }
+    }
+    private static int invokeField(Object target, String name) { return (int) field(target, name); }
+    private static void set(Object target, String name, Object value) {
+        try { var field = target.getClass().getDeclaredField(name); field.setAccessible(true); field.set(target, value); }
+        catch (ReflectiveOperationException error) { throw new AssertionError(error); }
     }
 
     private void verifyLinkBounds(ClientGameTestContext context) {
@@ -184,7 +295,7 @@ public final class FunctionSourceReviewGameTest implements FabricClientGameTest 
             sources.open();
             long list = sources.drainRequests().getFirst().requestId();
             sources.accept(new ClientFunctionSourceState.ListPage(list, ClientFunctionSourceState.Status.READY, 0, true,
-                List.of(MAIN, PACK_HELPER, DEFAULT_HELPER)));
+                List.of(MAIN, PACK_HELPER, DEFAULT_HELPER, MATCHES)));
             sources.rememberBrowseView(0, 0, 2, -1, 0);
             var preferences = new DebuggerPreferences();
             DebuggerTheme.usePreferences(preferences);

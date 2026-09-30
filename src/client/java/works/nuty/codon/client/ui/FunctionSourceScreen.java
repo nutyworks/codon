@@ -165,7 +165,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         sourceSearch.setTooltip(Tooltip.create(Component.translatable("codon.source.find_hint")));
         sourceSearch.setMaxLength(128);
         sourceSearch.setValue(sourceSearchValue);
-        sourceSearch.setResponder(ignored -> { matchIndex = -1; rebuildMatches(); if (!matches.isEmpty()) nextMatch(1); });
+        sourceSearch.setResponder(ignored -> { matchIndex = -1; rebuildMatches(); });
         previousMatch = addRenderableWidget(WatchUi.button(sourceLeft + sourceWidth - 41, findY, 18, 20,
             Component.literal("<"), () -> nextMatch(-1)));
         nextMatch = addRenderableWidget(WatchUi.button(sourceLeft + sourceWidth - 21, findY, 18, 20,
@@ -612,12 +612,20 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         matchesByLine.clear();
         for (SourceSyntax.Match match : matches) matchesByLine.computeIfAbsent(match.line(), ignored -> new ArrayList<>()).add(match);
         matchIndex = previous == null ? -1 : matches.indexOf(previous);
+        if (matchIndex < 0 && !matches.isEmpty()) {
+            matchIndex = 0;
+            revealMatch();
+        }
     }
 
     private void nextMatch(int direction) {
         if (matches.isEmpty()) return;
         matchIndex = matchIndex < 0 ? (direction > 0 ? 0 : matches.size() - 1)
             : Math.floorMod(matchIndex + direction, matches.size());
+        revealMatch();
+    }
+
+    private void revealMatch() {
         SourceSyntax.Match match = matches.get(matchIndex);
         selectLine(match.line());
         lineOffset = match.line() - 1;
@@ -963,8 +971,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             }
             return true;
         }
-        boolean typing = search.visible && search.isFocused() || sourceSearch.visible && sourceSearch.isFocused();
-        if (!typing && !drawerOpen && sources.document() != null) {
+        if (getFocused() == null && !drawerOpen && sources.document() != null) {
             int delta = switch (event.key()) {
                 case InputConstants.KEY_UP -> -1;
                 case InputConstants.KEY_DOWN -> 1;

@@ -60,16 +60,26 @@ be checked. The viewer lists functions actually loaded by the current server.
    to the count; hover the count or Find field for the limit explanation. Narrow
    the query to reach later occurrences. A query with no matches shows `0/0` and disables result
    buttons. Query and viewport survive resizing and the compact drawer rebuild.
+   When the query survives a function switch or Reload, the first new result is
+   selected and revealed without pressing Next if the previous result cannot be
+   restored. An unchanged rebuild retains the selected result and viewport.
 7. Click a code line, or press Esc from Find, to focus code navigation. Up/Down,
    PageUp/PageDown and Home/End select original lines. Tab/Shift+Tab traverses visible
    controls; with no focused widget, Tab starts at the first active visible control
-   and Shift+Tab starts at the last. Follow underlined loaded function references and use Back; the caller's
+   and Shift+Tab starts at the last.
+   Navigation keys do not change Source selection or scrolling while a toolbar
+   button or text field has focus. Follow underlined loaded function references and
+   use Back; the caller's
    line/stage and horizontal viewport must return. References in `return run function`
    and `schedule function` are linked; matching words in `say` text or comments are not.
    Unqualified `function helper` follows Minecraft 26.3's `minecraft:helper` default,
    even when the caller is `pack:main` and `pack:helper` is also loaded. Link hit boxes
    share the source row's half-open bounds and are clipped to the source viewport;
    the first pixel of the next row belongs to that next row. Source text remains read-only.
+   Execute arguments literally named `run` (including score holders/objectives)
+   do not begin a nested command. The lexical viewer skips known clause arguments;
+   an unknown or incomplete clause suppresses subsequent nested links instead of
+   guessing a delimiter. Server stage parsing and command execution are unchanged.
 
 Owner permission is required for server source requests. This is a source browser
 and breakpoint editor, not an in-game datapack file editor.
@@ -162,3 +172,7 @@ persistent amber review warning beside the new candidate. It asserts no repeated
 LOADING request, no selection change during hover, retention of the other preview,
 and no obsolete stage hit target. `test --tests '*SourceReviewRuntimeTest'` also
 calls the actual 26.3 `Identifier.parse` without opening a game window.
+The same GameTest's `followup-*` captures and assertions cover score arguments
+named `run`, loaded function names that occur as score arguments, Find retained
+through loading/function switch/Reload, and all eight navigation keys while a
+toolbar button has focus. Code focus keeps its original keyboard navigation.
