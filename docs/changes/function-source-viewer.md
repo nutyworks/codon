@@ -19,10 +19,11 @@ distinct. Editing, saving and server execution semantics are unchanged.
 
 ## Verification
 
-- `./gradlew build`: 395 JVM tests passed.
+- `./gradlew build`: 407 JVM tests passed.
 - `./gradlew runClientGameTest -PclientGameTest=FunctionSourceScreenGameTest`
   checks the default font, Unicode, inline stage selection/toggling, retained
-  conditions, original row positions, Find, horizontal scroll, resize and Back.
+  conditions, original row positions, EOF controls, nested function links, Find,
+  horizontal scroll, resize, native input at independent 1.5× UI scale and Back.
   Inspect the generated `codon-function-source-*` captures.
 - The GameTest injects source, stage spans and a pause to check client presentation;
   it does not establish native datapack discovery, permissions or function execution.

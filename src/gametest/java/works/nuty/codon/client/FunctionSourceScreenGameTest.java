@@ -23,6 +23,8 @@ import works.nuty.codon.client.input.InputManager;
 import works.nuty.codon.client.ui.CodonScreen;
 import works.nuty.codon.client.ui.DebuggerOverlay;
 import works.nuty.codon.client.ui.FunctionSourceScreen;
+import works.nuty.codon.client.ui.ScaledCodonScreen;
+import works.nuty.codon.client.state.DebuggerPreferences;
 import works.nuty.codon.core.model.FunctionId;
 import works.nuty.codon.core.model.FunctionLocation;
 import works.nuty.codon.core.model.SourceLocation;
@@ -180,7 +182,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             context.runOnClient(client -> verifyFilteredSelection(client.gui.screen(), sourceState));
             verifySearchScrollReset(context);
             verifyInlineStagesBetweenSourceRows(context);
-            verifyFinalRowAtSmallLogicalHeight(context);
+            verifyFinalRowAtMinimumHeight(context);
             verifyNestedFunctionLinks(context);
             verifyCodeReader(context);
             context.runOnClient(client -> client.setScreenAndShow(null));
@@ -245,7 +247,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
                 FUNCTION, "gametest", "inline-stages", false, 0, true,
                 List.of("# stages stay inside line 2", original, "say end")));
             state.rememberBrowseView(0, 0, 2, -1, 0);
-            client.setScreenAndShow(new FunctionSourceScreen(new Screen(Component.empty()) { }, state));
+            client.setScreenAndShow(new FunctionSourceScreen(new ScaledCodonScreen(Component.empty(), new DebuggerPreferences()) { }, state));
             return state;
         });
         context.waitTicks(2);
@@ -279,6 +281,43 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
         context.waitTicks(2);
         context.takeScreenshot("codon-function-source-inline-second-line");
         context.runOnClient(client -> {
+            var screen = (ScaledCodonScreen) client.gui.screen();
+            screen.uiPreferences().setCustomUiScale(6);
+            screen.uiPreferences().setUiScaleMode(DebuggerPreferences.UiScaleMode.CUSTOM);
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            // Rebuilding the screen requests a fresh parse; reply for this synthetic, uninstalled function.
+            var debugger = require(CodonClientMod.state(), "debugger state exists");
+            var location = new SourceLocation.Function(new FunctionLocation(FUNCTION, 2));
+            long request = debugger.stagePreviews().begin(location);
+            int run = command.indexOf("run");
+            debugger.stagePreviews().accept(request, location, ClientStagePreviewState.Status.READY, command,
+                List.of(new ClientStagePreviewState.StageSpan(0, 0, run - 1, false),
+                    new ClientStagePreviewState.StageSpan(1, run, command.length(), true)));
+        });
+        context.waitTicks(1);
+        double[] nativePoint = context.computeOnClient(client -> {
+            var screen = (ScaledCodonScreen) client.gui.screen();
+            require(screen.width == 640 && screen.height == 480, "viewer inherits its parent's independent 1.5x scale");
+            screen.mouseScrolled(100, 140, 1000, 0);
+            EditBox find = sourceSearchBox(screen);
+            double x = find.getX() + 43 + client.font.width(original.substring(0, 10)) + 12 + 4;
+            double y = find.getBottom() + 12 + 18;
+            var window = client.getWindow();
+            return new double[]{screen.uiScale().toGame(x) * window.getScreenWidth() / window.getGuiScaledWidth(),
+                screen.uiScale().toGame(y) * window.getScreenHeight() / window.getGuiScaledHeight()};
+        });
+        context.getInput().setCursorPos(nativePoint[0], nativePoint[1]);
+        context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_LEFT);
+        context.waitTicks(2);
+        context.takeScreenshot("codon-function-source-custom-scale-inline");
+        context.runOnClient(client -> require(sources.browseView().selectedLine() == 2
+            && sources.browseView().selectedStageIndex() == 0, "native input hits the inline stage in independent Codon scale: " + sources.browseView()));
+        context.runOnClient(client -> ((ScaledCodonScreen) client.gui.screen()).uiPreferences().resetUiScale());
+        context.getInput().setCursorPos(0, 0);
+        context.waitTicks(2);
+        context.runOnClient(client -> {
             Screen screen = client.gui.screen();
             MouseButtonEvent click = new MouseButtonEvent(200, 169,
                 new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
@@ -289,7 +328,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
         });
     }
 
-    private static void verifyFinalRowAtSmallLogicalHeight(ClientGameTestContext context) {
+    private static void verifyFinalRowAtMinimumHeight(ClientGameTestContext context) {
         ClientFunctionSourceState sources = context.computeOnClient(client -> {
             var state = new ClientFunctionSourceState();
             state.select(FUNCTION);
@@ -301,19 +340,17 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             state.rememberBrowseView(0, 7, -1, -1, 0);
             Screen screen = new FunctionSourceScreen(new Screen(Component.empty()) { }, state);
             client.setScreenAndShow(screen);
-            // Test the supported logical geometry independently of Minecraft's minimum native GUI height.
-            screen.resize(320, 180);
             return state;
         });
         context.waitTicks(2);
         context.runOnClient(client -> {
             Screen screen = client.gui.screen();
-            MouseButtonEvent click = new MouseButtonEvent(200, 133,
+            MouseButtonEvent click = new MouseButtonEvent(200, 187,
                 new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
             screen.mouseClicked(click, false);
             screen.mouseReleased(click);
             require(sources.browseView().selectedLine() == 8 && sources.browseView().horizontalOffset() == 0,
-                "320x180 source click selects EOF rather than starting an overlapping scrollbar drag");
+                "minimum-height source click selects EOF rather than starting an overlapping scrollbar drag");
         });
         context.waitTicks(2);
         context.runOnClient(client -> {
@@ -328,19 +365,19 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
         context.runOnClient(client -> {
             Screen screen = client.gui.screen();
             int marker = 66 + client.font.width(COMMAND.substring(0, 8)) + 6;
-            MouseButtonEvent click = new MouseButtonEvent(marker, 133,
+            MouseButtonEvent click = new MouseButtonEvent(marker, 187,
                 new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
             screen.mouseClicked(click, false);
             screen.mouseReleased(click);
             var target = BreakpointTarget.stage(new SourceLocation.Function(new FunctionLocation(FUNCTION, 8)), 0, COMMAND);
             require(sources.browseView().selectedStageIndex() == 0 && CodonClientMod.state().breakpoints().pending(target),
-                "the only visible row at EOF exposes an inline stage breakpoint");
+                "the final visible row at EOF exposes an inline stage breakpoint");
         });
         context.waitTicks(1);
-        context.takeScreenshot("codon-function-source-320x180-eof-inline");
+        context.takeScreenshot("codon-function-source-320x240-eof-inline");
         context.runOnClient(client -> {
             Screen screen = client.gui.screen();
-            MouseButtonEvent click = new MouseButtonEvent(250, 163,
+            MouseButtonEvent click = new MouseButtonEvent(250, 223,
                 new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
             screen.mouseClicked(click, false);
             screen.mouseReleased(click);

@@ -77,8 +77,10 @@ state, literal search next/previous,
 compact query/viewport retention and source immutability. Inspect the `code-*`
 captures for distinct pause/selection rows, a long-line tail, highlighted search,
 Unicode comments and the empty result/resumed-record presentation.
-The `320x180-eof-inline` capture checks the minimum logical viewport: the last
-source line exposes its stage controls while the scrollbar stays below the row.
+The `320x240-eof-inline` capture checks the native minimum viewport: the final
+visible source row exposes its stage controls while the scrollbar stays below it.
+The same pane geometry is unit-checked at 320×180 logical size. The
+`custom-scale-inline` capture checks native stage input with independent 1.5× Codon scale.
 The `nested-function-links` capture checks nested return and schedule references.
 The `inline-second-line` capture verifies stage targeting after horizontal scroll
 on an indented original line. The following source line stays directly below it

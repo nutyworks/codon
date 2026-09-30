@@ -38,6 +38,11 @@ public final class ClientFunctionSourceState {
 
     /** Minecraft-free source browser geometry for direct GUI-scale regression tests. */
     public record ScreenLayout(int panelWidth, int panelHeight, int treeWidth, boolean drawerMode) {
+        public static int sourceInset(boolean compact) { return compact ? 118 : 100; }
+        public static int scrollbarInset(int panelHeight) { return panelHeight - 16; }
+        public static int sourceRows(int panelHeight, boolean compact) {
+            return Math.max(1, (scrollbarInset(panelHeight) - 6 - sourceInset(compact)) / 18);
+        }
         public static ScreenLayout forScreen(int width, int height) {
             int panelWidth = Math.max(1, Math.min(760, width - 12));
             int panelHeight = Math.max(1, Math.min(440, height - 12));

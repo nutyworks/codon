@@ -204,8 +204,8 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
 
     private boolean expanded(String key, String needle) { return !needle.isEmpty() || !collapsed.contains(key); }
     private int visibleRows() { return Math.max(1, (panelHeight - 76) / ROW_HEIGHT); }
-    private int sourceLineTop() { return top + (compactSourceControls ? 118 : 100); }
-    private int sourceRows() { return Math.max(1, (top + panelHeight - 22 - sourceLineTop()) / ROW_HEIGHT); }
+    private int sourceLineTop() { return top + ClientFunctionSourceState.ScreenLayout.sourceInset(compactSourceControls); }
+    private int sourceRows() { return ClientFunctionSourceState.ScreenLayout.sourceRows(panelHeight, compactSourceControls); }
 
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         stageHits.clear();
@@ -456,7 +456,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
 
     private int displayedWidth() { return Math.max(widestLine, inlineLayout == null ? 0 : inlineLayout.width()); }
     private int maxHorizontalOffset() { return Math.max(0, displayedWidth() - (panelWidth - treeWidth - 20 - gutterWidth())); }
-    private int horizontalTrackY() { return top + panelHeight - 16; }
+    private int horizontalTrackY() { return top + ClientFunctionSourceState.ScreenLayout.scrollbarInset(panelHeight); }
 
     private void updateCodeCache() {
         FunctionSourceDocument document = sources.document();
