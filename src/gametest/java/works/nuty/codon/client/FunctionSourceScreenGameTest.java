@@ -24,6 +24,8 @@ import works.nuty.codon.client.ui.CodonScreen;
 import works.nuty.codon.client.ui.DebuggerOverlay;
 import works.nuty.codon.client.ui.FunctionSourceScreen;
 import works.nuty.codon.client.ui.ScaledCodonScreen;
+import works.nuty.codon.client.ui.DebuggerTheme;
+import works.nuty.codon.client.ui.layout.SourceLineLayout;
 import works.nuty.codon.client.state.DebuggerPreferences;
 import works.nuty.codon.core.model.FunctionId;
 import works.nuty.codon.core.model.FunctionLocation;
@@ -89,7 +91,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             });
             context.waitTicks(1);
             context.takeScreenshot("codon-function-source-320x240-stage-first");
-            int firstMarker = context.computeOnClient(client -> 66 + client.font.width(COMMAND.substring(0, 8)) + 6);
+            int firstMarker = context.computeOnClient(client -> 66 + client.font.width(COMMAND.substring(0, 8)) + SourceLineLayout.MARKER_WIDTH / 2);
             context.getInput().setCursorPos(firstMarker * 3, 133 * 3);
             context.waitTicks(2);
             context.takeScreenshot("codon-function-source-disabled-hover");
@@ -110,7 +112,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             context.waitTicks(2);
             context.takeScreenshot("codon-function-source-320x240-inline-scrolled");
             context.runOnClient(client -> {
-                int secondText = 66 + client.font.width(COMMAND.substring(0, 66)) + 24 - 300 + 4;
+                int secondText = 66 + client.font.width(COMMAND.substring(0, 66)) + 2 * SourceLineLayout.MARKER_WIDTH - 300 + 4;
                 MouseButtonEvent click = new MouseButtonEvent(secondText, 133,
                     new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
                 require(screen.mouseClicked(click, false), "selects horizontally scrolled inline stage text without toggling its marker");
@@ -185,6 +187,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             verifyFinalRowAtMinimumHeight(context);
             verifyNestedFunctionLinks(context);
             verifyCodeReader(context);
+            verifyHoverOnlyStages(context);
             context.runOnClient(client -> client.setScreenAndShow(null));
         }
     }
@@ -269,8 +272,8 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
         context.runOnClient(client -> {
             Screen screen = client.gui.screen();
             int marker = 66 + client.font.width(original.substring(0, 2 + command.indexOf("run")))
-                + 12 - sources.browseView().horizontalOffset() + 6;
-            MouseButtonEvent click = new MouseButtonEvent(marker + 12, 151,
+                + SourceLineLayout.MARKER_WIDTH - sources.browseView().horizontalOffset();
+            MouseButtonEvent click = new MouseButtonEvent(marker + SourceLineLayout.MARKER_WIDTH + 4, 151,
                 new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
             screen.mouseClicked(click, false);
             screen.mouseReleased(click);
@@ -302,7 +305,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             require(screen.width == 640 && screen.height == 480, "viewer inherits its parent's independent 1.5x scale");
             screen.mouseScrolled(100, 140, 1000, 0);
             EditBox find = sourceSearchBox(screen);
-            double x = find.getX() + 43 + client.font.width(original.substring(0, 10)) + 12 + 4;
+            double x = find.getX() + 43 + client.font.width(original.substring(0, 10)) + SourceLineLayout.MARKER_WIDTH + 4;
             double y = find.getBottom() + 12 + 18;
             var window = client.getWindow();
             return new double[]{screen.uiScale().toGame(x) * window.getScreenWidth() / window.getGuiScaledWidth(),
@@ -364,7 +367,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
         context.waitTicks(2);
         context.runOnClient(client -> {
             Screen screen = client.gui.screen();
-            int marker = 66 + client.font.width(COMMAND.substring(0, 8)) + 6;
+            int marker = 66 + client.font.width(COMMAND.substring(0, 8)) + SourceLineLayout.MARKER_WIDTH / 2;
             MouseButtonEvent click = new MouseButtonEvent(marker, 187,
                 new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
             screen.mouseClicked(click, false);
@@ -447,6 +450,118 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
                 require(FUNCTION.equals(sources.selected()), "function text in say/comment does not become a false link");
             }
         });
+    }
+
+    private static void verifyHoverOnlyStages(ClientGameTestContext context) {
+        context.getInput().resizeWindow(1280, 720);
+        String command = "execute as @s at @s run say hover";
+        var location = new SourceLocation.Function(new FunctionLocation(FUNCTION, 1));
+        List<BreakpointDefinition> installed = List.of(
+            BreakpointDefinition.plain(BreakpointTarget.stage(location, 0, command))
+                .withCondition(BreakpointCondition.event(BreakpointCondition.Kind.CREATED)),
+            BreakpointDefinition.plain(BreakpointTarget.stage(location, 1, command)).withEnabled(false));
+        context.runOnClient(client -> {
+            client.options.guiScale().set(2);
+            client.resizeGui();
+            var debugger = require(CodonClientMod.state(), "debugger exists for hover checks");
+            debugger.applyResume();
+            debugger.breakpoints().reset();
+            debugger.breakpoints().acceptPage(1, 0, true, installed);
+            var sources = new ClientFunctionSourceState();
+            sources.select(FUNCTION);
+            long request = sources.drainRequests().getFirst().requestId();
+            sources.accept(new ClientFunctionSourceState.SourcePage(request, ClientFunctionSourceState.Status.READY,
+                FUNCTION, "gametest", "hover-only", false, 0, true, List.of(command, "say below")));
+            sources.rememberBrowseView(0, 0, 1, 0, 0);
+            var preferences = new DebuggerPreferences();
+            DebuggerTheme.usePreferences(preferences);
+            client.setScreenAndShow(new FunctionSourceScreen(new ScaledCodonScreen(Component.empty(), preferences) { }, sources));
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            var previews = CodonClientMod.state().stagePreviews();
+            long request = previews.begin(location);
+            require(previews.accept(request, location, ClientStagePreviewState.Status.READY, command,
+                List.of(new ClientStagePreviewState.StageSpan(0, 0, 13, false),
+                    new ClientStagePreviewState.StageSpan(1, 14, 19, false),
+                    new ClientStagePreviewState.StageSpan(2, 20, command.length(), true))), "hover fixture spans accepted");
+        });
+        context.waitTicks(2);
+        int[] geometry = context.computeOnClient(client -> {
+            Screen screen = client.gui.screen();
+            EditBox find = sourceSearchBox(screen);
+            int codeX = find.getX() + 43;
+            return new int[]{screen.width, screen.height, codeX + client.font.width(command.substring(0, 8)),
+                codeX + client.font.width(command.substring(0, 14)) + SourceLineLayout.MARKER_WIDTH,
+                codeX + client.font.width(command.substring(0, 20)) + 2 * SourceLineLayout.MARKER_WIDTH,
+                find.getBottom() + 5};
+        });
+        for (boolean paused : new boolean[]{false, true}) {
+            String row = paused ? "paused" : "browsed";
+            context.runOnClient(client -> {
+                var debugger = CodonClientMod.state();
+                if (paused) debugger.applyPause(new PauseSnapshot(location, CommandSnippet.plain(command),
+                    0, List.of(), List.of(), PauseReason.BREAKPOINT));
+            });
+            context.getInput().setCursorPos(0, 0);
+            context.waitTicks(2);
+            assertStageMarkerPixels(context, geometry, -1, "codon-function-source-hover-" + row + "-hidden");
+            for (int stage = 0; stage < 3; stage++) {
+                final int targetStage = stage;
+                int center = geometry[2 + stage] + SourceLineLayout.MARKER_WIDTH / 2;
+                double[] pointer = context.computeOnClient(client -> {
+                    var screen = (ScaledCodonScreen) client.gui.screen();
+                    var window = client.getWindow();
+                    return new double[]{screen.uiScale().toGame(center) * window.getScreenWidth() / window.getGuiScaledWidth(),
+                        screen.uiScale().toGame(geometry[5] + 9) * window.getScreenHeight() / window.getGuiScaledHeight()};
+                });
+                context.getInput().setCursorPos(pointer[0], pointer[1]);
+                context.waitTicks(2);
+                assertStageMarkerPixels(context, geometry, stage, "codon-function-source-hover-" + row + "-stage-" + stage);
+                context.runOnClient(client -> {
+                    var breakpoints = CodonClientMod.state().breakpoints();
+                    require(java.util.Set.copyOf(breakpoints.definitions()).equals(java.util.Set.copyOf(installed)),
+                        "hover preserves enabled state and saved conditions");
+                    var target = BreakpointTarget.stage(location, targetStage, command);
+                    require(!breakpoints.pending(target), "hover does not send a breakpoint request");
+                    if (paused) {
+                        Screen screen = client.gui.screen();
+                        MouseButtonEvent click = new MouseButtonEvent(center, geometry[5] + 9,
+                            new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
+                        require(screen.mouseClicked(click, false), "hovered stage control is clickable");
+                        screen.mouseReleased(click);
+                        require(breakpoints.pending(target), "hovered control targets its original stage, including a missing breakpoint");
+                        require(java.util.Set.copyOf(breakpoints.definitions()).equals(java.util.Set.copyOf(installed)),
+                            "click retains acknowledged definitions until the server responds");
+                    }
+                });
+                context.getInput().setCursorPos(0, 0);
+                context.waitTicks(2);
+                assertStageMarkerPixels(context, geometry, -1, "codon-function-source-hover-" + row + "-leave-" + stage);
+            }
+        }
+        context.runOnClient(client -> CodonClientMod.state().applyResume());
+    }
+
+    private static void assertStageMarkerPixels(ClientGameTestContext context, int[] geometry, int hovered, String name) {
+        try {
+            var image = javax.imageio.ImageIO.read(context.takeScreenshot(name).toFile());
+            double scaleX = (double) image.getWidth() / geometry[0];
+            double scaleY = (double) image.getHeight() / geometry[1];
+            for (int stage = 0; stage < 3; stage++) {
+                int color = (stage == 0 ? DebuggerTheme.RED : DebuggerTheme.MUTED) & 0xFFFFFF;
+                boolean visible = false;
+                for (int x = (int) Math.ceil((geometry[2 + stage] + 5) * scaleX);
+                     x < (int) Math.floor((geometry[2 + stage] + 14) * scaleX); x++) {
+                    for (int y = (int) Math.ceil((geometry[5] + 5) * scaleY);
+                         y < (int) Math.floor((geometry[5] + 14) * scaleY); y++)
+                        visible |= (image.getRGB(x, y) & 0xFFFFFF) == color;
+                }
+                require(visible == (stage == hovered), name + ": only the hovered stage icon is rendered, stage=" + stage);
+            }
+        } catch (java.io.IOException error) {
+            throw new AssertionError("Cannot inspect stage marker capture", error);
+        }
     }
 
     private static void verifyCodeReader(ClientGameTestContext context) {

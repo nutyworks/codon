@@ -22,7 +22,10 @@ be checked. The viewer lists functions actually loaded by the current server.
    conditions. Breakpoints refer to original file line numbers and saved stage
    offsets, not wrapped display rows. Stage markers are inserted at the server-confirmed boundaries inside the
    original row, following the command-block editor. Visual marker slots do not
-   change source characters, whitespace or server offsets. No separate stage row
+   change source characters, whitespace or server offsets. Each marker uses a
+   20-pixel slot, with the icon centered and the whole slot clickable. Stage icons
+   appear only while hovering their stage, regardless of enabled, selected or
+   paused state. No separate stage row
    or panel is shown. The vertical wheel moves original lines; the horizontal
    wheel exposes long lines and their markers. Stage counts stay in the gutter.
 3. Close the viewer and execute `/function <namespace:path>`. Check the breakpoint
@@ -50,9 +53,10 @@ be checked. The viewer lists functions actually loaded by the current server.
 Owner permission is required for server source requests. This is a source browser
 and breakpoint editor, not an in-game datapack file editor.
 
-Disabled line/stage markers are hidden until hovered, and are excluded from stage
-breakpoint counts. Hover the original target to enable it again with its saved
-condition; enabled markers remain visible without hovering.
+Disabled line markers are hidden until hovered; enabled line markers remain
+visible. All stage markers are hidden until their stage is hovered, including
+enabled and selected stages. Disabled definitions are excluded from stage counts.
+Hover the original target to enable it again with its saved condition.
 
 ## Code entry points
 
@@ -82,6 +86,10 @@ visible source row exposes its stage controls while the scrollbar stays below it
 The same pane geometry is unit-checked at 320×180 logical size. The
 `custom-scale-inline` capture checks native stage input with independent 1.5× Codon scale.
 The `nested-function-links` capture checks nested return and schedule references.
+The `hover-browsed-*` and `hover-paused-*` captures use pixel assertions for
+enabled, disabled and missing stage markers before hover, during hover and after
+pointer leave. Hover preserves acknowledged state; clicking each hovered slot
+requests its original stage target, including a missing breakpoint.
 The `inline-second-line` capture verifies stage targeting after horizontal scroll
 on an indented original line. The following source line stays directly below it
 and can be selected without an expanded stage row intercepting the click.

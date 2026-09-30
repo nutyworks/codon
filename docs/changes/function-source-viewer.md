@@ -9,8 +9,10 @@ a breakpoint gutter improve readability while long source lines scroll horizonta
 Selected source rows place stage breakpoint controls between the server-confirmed
 command segments, following the command-block editor. Original characters and
 spacing are retained; markers add small display slots. Stage controls share the
-original row, with no duplicate command or separate stage panel. Enabled markers
-remain visible; hovering a stage reveals its disabled marker and saved condition.
+original row, with no duplicate command or separate stage panel. Stage markers
+appear only while hovering that stage, regardless of enabled, selected or paused
+state. Each marker has a 20-pixel slot for more spacing and a wider click target.
+Hovering preserves installed definitions and reveals their saved conditions.
 
 Literal Find, keyboard navigation, full paths, function links and Back navigation
 are retained. Search highlights, links and marker hitboxes use the same measured
@@ -24,6 +26,8 @@ distinct. Editing, saving and server execution semantics are unchanged.
   checks the default font, Unicode, inline stage selection/toggling, retained
   conditions, original row positions, EOF controls, nested function links, Find,
   horizontal scroll, resize, native input at independent 1.5× UI scale and Back.
+  Pixel assertions check hover and pointer leave for enabled, disabled and missing
+  stage breakpoints on browsed and paused rows, including selected stages.
   Inspect the generated `codon-function-source-*` captures.
 - The GameTest injects source, stage spans and a pause to check client presentation;
   it does not establish native datapack discovery, permissions or function execution.

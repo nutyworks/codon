@@ -428,8 +428,11 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             boolean enabled = definition != null && definition.enabled();
             if (selectedStageIndex == stage.index() && end > x && start < x + width)
                 graphics.outline(Math.max(x, start), y + 2, Math.min(x + width, end) - Math.max(x, start), 13, DebuggerTheme.color(TEAL));
-            if (enabled || hovered || selectedStageIndex == stage.index())
-                BreakpointUi.icon(definition).drawSmall(graphics, markerX + 2, y + 5, DebuggerTheme.color(enabled ? RED : MUTED));
+            if (hovered) {
+                DebuggerIcon icon = BreakpointUi.icon(definition);
+                icon.drawSmall(graphics, markerX + (SourceLineLayout.MARKER_WIDTH - icon.smallSize()) / 2,
+                    y + 5, DebuggerTheme.color(enabled ? RED : MUTED));
+            }
             addStageHit(markerX, y, markerX + SourceLineLayout.MARKER_WIDTH, x, width, stage.target(), true);
             addStageHit(start, y, end, x, width, stage.target(), false);
             if (hovered && mouseX < markerX + SourceLineLayout.MARKER_WIDTH)

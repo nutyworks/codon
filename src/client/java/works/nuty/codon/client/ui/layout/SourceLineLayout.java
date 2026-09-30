@@ -6,7 +6,7 @@ import java.util.function.IntUnaryOperator;
 
 /** Original source offsets plus small breakpoint slots; source characters are never replaced. */
 public final class SourceLineLayout {
-    public static final int MARKER_WIDTH = 12;
+    public static final int MARKER_WIDTH = 20;
     public record Segment(int start, int end, int inset) { }
     private final int length;
     private final List<Integer> boundaries;
