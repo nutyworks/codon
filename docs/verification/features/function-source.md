@@ -42,11 +42,15 @@ be checked. The viewer lists functions actually loaded by the current server.
 6. Use **Find in source** (`Ctrl/Cmd+F`) for literal case-insensitive search. Enter/F3
    advances, Shift+Enter/Shift+F3 goes back, and the buttons expose the same actions.
    Results include comments, retain original line numbers, and reveal matches past
-   the horizontal viewport. A query with no matches shows `0/0` and disables result
+   the horizontal viewport. Find retains and highlights the first 1,000 occurrences
+   in source order and cycles within those results. An extra occurrence adds `+`
+   to the count; hover the count or Find field for the limit explanation. Narrow
+   the query to reach later occurrences. A query with no matches shows `0/0` and disables result
    buttons. Query and viewport survive resizing and the compact drawer rebuild.
 7. Click a code line, or press Esc from Find, to focus code navigation. Up/Down,
    PageUp/PageDown and Home/End select original lines. Tab/Shift+Tab traverses visible
-   controls. Follow underlined loaded function references and use Back; the caller's
+   controls; with no focused widget, Tab starts at the first active visible control
+   and Shift+Tab starts at the last. Follow underlined loaded function references and use Back; the caller's
    line/stage and horizontal viewport must return. References in `return run function`
    and `schedule function` are linked; matching words in `say` text or comments are not. Source text remains read-only.
 
@@ -81,6 +85,12 @@ state, literal search next/previous,
 compact query/viewport retention and source immutability. Inspect the `code-*`
 captures for distinct pause/selection rows, a long-line tail, highlighted search,
 Unicode comments and the empty result/resumed-record presentation.
+The same check covers initial Tab/Shift+Tab and bidirectional wrap with results
+and without them. `code-find-capped` shows the count and limit tooltip for a
+700,000-character comment fixture; `code-find-narrowed` reaches its last line
+after narrowing the query. Unit checks cover the global cap, exact-limit versus
+extra-occurrence detection, original offsets and early termination without
+reading later lines.
 The `320x240-eof-inline` capture checks the native minimum viewport: the final
 visible source row exposes its stage controls while the scrollbar stays below it.
 The same pane geometry is unit-checked at 320×180 logical size. The

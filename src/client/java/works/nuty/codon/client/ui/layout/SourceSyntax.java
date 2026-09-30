@@ -9,6 +9,11 @@ public final class SourceSyntax {
     public enum Kind { COMMAND, KEYWORD, ARGUMENT, STRING, COMMENT, VALUE, RESOURCE, MACRO }
     public record Span(int start, int end, Kind kind) { }
     public record Match(int line, int start, int end) { }
+    /** Bound both the client-thread search allocations and the per-line highlight index. */
+    public static final int MAX_MATCHES = 1_000;
+    public record SearchResults(List<Match> matches, boolean hasMore) {
+        public SearchResults { matches = List.copyOf(matches); }
+    }
     private static final Set<String> EXECUTE_KEYWORDS = Set.of("align", "anchored", "as", "at", "facing",
         "if", "unless", "in", "on", "positioned", "rotated", "store", "summon", "run");
 
@@ -75,19 +80,21 @@ public final class SourceSyntax {
     }
 
     /** Exact source indices for a literal, case-insensitive search; no regex or source mutation. */
-    public static List<Match> find(List<String> lines, String query) {
-        if (query.isEmpty()) return List.of();
+    public static SearchResults find(List<String> lines, String query) {
+        if (query.isEmpty()) return new SearchResults(List.of(), false);
         List<Match> matches = new ArrayList<>();
         for (int line = 0; line < lines.size(); line++) {
             String source = lines.get(line);
             // regionMatches retains original UTF-16 indices even when case folding changes length.
             for (int at = 0; at <= source.length() - query.length(); at++) {
                 if (source.regionMatches(true, at, query, 0, query.length())) {
+                    // Probe one extra occurrence without materializing it, then stop scanning.
+                    if (matches.size() == MAX_MATCHES) return new SearchResults(matches, true);
                     matches.add(new Match(line + 1, at, at + query.length()));
                     at += query.length() - 1;
                 }
             }
         }
-        return List.copyOf(matches);
+        return new SearchResults(matches, false);
     }
 }

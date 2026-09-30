@@ -10,6 +10,7 @@ import net.minecraft.client.KeyMapping;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.AbstractButton;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.input.MouseButtonInfo;
 import net.minecraft.client.input.KeyEvent;
@@ -26,6 +27,7 @@ import works.nuty.codon.client.ui.FunctionSourceScreen;
 import works.nuty.codon.client.ui.ScaledCodonScreen;
 import works.nuty.codon.client.ui.DebuggerTheme;
 import works.nuty.codon.client.ui.layout.SourceLineLayout;
+import works.nuty.codon.client.ui.layout.SourceSyntax;
 import works.nuty.codon.client.state.DebuggerPreferences;
 import works.nuty.codon.core.model.FunctionId;
 import works.nuty.codon.core.model.FunctionLocation;
@@ -187,6 +189,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             verifyFinalRowAtMinimumHeight(context);
             verifyNestedFunctionLinks(context);
             verifyCodeReader(context);
+            verifyBoundedFind(context);
             verifyHoverOnlyStages(context);
             context.runOnClient(client -> client.setScreenAndShow(null));
         }
@@ -669,12 +672,108 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
         context.waitTicks(2);
         context.takeScreenshot("codon-function-source-code-find-compact");
         context.runOnClient(client -> {
+            client.setLastInputType(InputType.KEYBOARD_TAB);
+            Screen screen = client.gui.screen();
+            screen.setFocused(sourceSearchBox(screen));
+            require(screen.keyPressed(new KeyEvent(InputConstants.KEY_ESCAPE, 0, 0)) && screen.getFocused() == null,
+                "Esc from Find returns focus to code navigation");
+            verifyTabTraversal(screen);
+            require(screen.getFocused() instanceof AbstractButton button && button.getMessage().getString().equals(">"),
+                "initial Shift+Tab from code reaches Next Match as the final active control");
+        });
+        context.waitTicks(2);
+        context.takeScreenshot("codon-function-source-code-reverse-tab");
+        context.runOnClient(client -> {
             var debugger = require(CodonClientMod.state(), "debugger state exists");
             debugger.applyResume();
             sourceSearchBox(client.gui.screen()).setValue("not_present");
         });
         context.waitTicks(2);
         context.takeScreenshot("codon-function-source-code-find-empty-resumed");
+        context.runOnClient(client -> {
+            Screen screen = client.gui.screen();
+            screen.setFocused(null);
+            verifyTabTraversal(screen);
+            require(screen.getFocused() == sourceSearchBox(screen),
+                "reverse traversal skips inactive match buttons and hidden controls when there are no results");
+        });
+    }
+
+    private static void verifyTabTraversal(Screen screen) {
+        List<AbstractWidget> eligible = screen.children().stream().filter(AbstractWidget.class::isInstance)
+            .map(AbstractWidget.class::cast).filter(widget -> widget.visible && widget.active).toList();
+        screen.keyPressed(new KeyEvent(InputConstants.KEY_TAB, 0, 1));
+        require(screen.getFocused() == eligible.getLast(), "initial reverse Tab starts at the final active control");
+        for (AbstractWidget widget : eligible) {
+            screen.keyPressed(new KeyEvent(InputConstants.KEY_TAB, 0, 0));
+            require(screen.getFocused() == widget, "forward Tab wraps and visits each active control in order");
+        }
+        screen.setFocused(null);
+        screen.keyPressed(new KeyEvent(InputConstants.KEY_TAB, 0, 0));
+        require(screen.getFocused() == eligible.getFirst(), "initial forward Tab starts at the first active control");
+        for (AbstractWidget widget : eligible.reversed()) {
+            screen.keyPressed(new KeyEvent(InputConstants.KEY_TAB, 0, 1));
+            require(screen.getFocused() == widget, "reverse Tab wraps and visits each active control in order");
+        }
+        screen.setFocused(null);
+        screen.keyPressed(new KeyEvent(InputConstants.KEY_TAB, 0, 1));
+    }
+
+    private static void verifyBoundedFind(ClientGameTestContext context) {
+        context.getInput().resizeWindow(960, 720);
+        ClientFunctionSourceState sources = context.computeOnClient(client -> {
+            client.options.guiScale().set(3);
+            client.resizeGui();
+            var state = loadedSource();
+            state.refreshSource();
+            long request = state.drainRequests().stream().filter(ClientFunctionSourceState.Request.ReadFunction.class::isInstance)
+                .map(ClientFunctionSourceState.Request.ReadFunction.class::cast).findFirst().orElseThrow().requestId();
+            List<String> lines = new java.util.ArrayList<>(java.util.Collections.nCopies(50, "# " + "a".repeat(13_998)));
+            lines.set(49, "# " + "a".repeat(13_988) + "lastneedle");
+            state.accept(new ClientFunctionSourceState.SourcePage(request, ClientFunctionSourceState.Status.READY,
+                FUNCTION, "gametest", "dense-search", false, 0, true, lines));
+            require(state.document() != null && state.document().lines().equals(lines),
+                "700,000-character source fixture is accepted");
+            client.setScreenAndShow(new FunctionSourceScreen(new Screen(Component.empty()) { }, state));
+            return state;
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            Screen screen = client.gui.screen();
+            EditBox find = sourceSearchBox(screen);
+            find.setValue("a");
+            screen.setFocused(find);
+            screen.keyPressed(new KeyEvent(InputConstants.KEY_F3, 0, 1));
+            require(sources.browseView().selectedLine() == 1 && sources.browseView().horizontalOffset() > 0,
+                "previous from the first result wraps to the last retained occurrence on the same line");
+            require(client.font.width(SourceSyntax.MAX_MATCHES + "/" + SourceSyntax.MAX_MATCHES + "+") <= 66,
+                "the full capped-result count fits its reserved area at the minimum native GUI size");
+        });
+        context.waitTicks(2);
+        // Hover the count to capture both the explicit '+' and the translated limit explanation.
+        double[] pointer = context.computeOnClient(client -> {
+            var screen = (ScaledCodonScreen) client.gui.screen();
+            EditBox find = sourceSearchBox(screen);
+            var window = client.getWindow();
+            return new double[]{screen.uiScale().toGame(find.getRight() + 6) * window.getScreenWidth() / window.getGuiScaledWidth(),
+                screen.uiScale().toGame(find.getY() + 6) * window.getScreenHeight() / window.getGuiScaledHeight()};
+        });
+        context.getInput().setCursorPos(pointer[0], pointer[1]);
+        context.waitTicks(2);
+        context.takeScreenshot("codon-function-source-code-find-capped");
+        context.runOnClient(client -> {
+            Screen screen = client.gui.screen();
+            screen.keyPressed(new KeyEvent(InputConstants.KEY_F3, 0, 0));
+            require(sources.browseView().selectedLine() == 1 && sources.browseView().horizontalOffset() == 0,
+                "next from the last retained result wraps to the first occurrence");
+            sourceSearchBox(screen).setValue("lastneedle");
+            require(sources.browseView().selectedLine() == 50 && sources.browseView().horizontalOffset() > 0,
+                "a narrower query can reach a result after the capped common-query prefix");
+            require(sources.document().lines().getLast().endsWith("lastneedle"), "dense search preserves original source text");
+        });
+        context.getInput().setCursorPos(0, 0);
+        context.waitTicks(2);
+        context.takeScreenshot("codon-function-source-code-find-narrowed");
     }
 
     private static EditBox sourceSearchBox(Screen screen) {

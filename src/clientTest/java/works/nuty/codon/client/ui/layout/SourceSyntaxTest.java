@@ -40,9 +40,40 @@ class SourceSyntaxTest {
     @Test void literalSearchIncludesCommentsUnicodeAndMultipleMatchesWithoutChangingSource() {
         List<String> lines = List.of("say Hello hello", "# HELLO 한글", "say [literal].*", "say İHELLO");
         assertEquals(List.of(new SourceSyntax.Match(1, 4, 9), new SourceSyntax.Match(1, 10, 15),
-            new SourceSyntax.Match(2, 2, 7), new SourceSyntax.Match(4, 5, 10)), SourceSyntax.find(lines, "hello"));
-        assertEquals(List.of(new SourceSyntax.Match(3, 4, 15)), SourceSyntax.find(lines, "[literal].*"));
-        assertEquals(List.of(new SourceSyntax.Match(2, 8, 10)), SourceSyntax.find(lines, "한글"));
-        assertTrue(SourceSyntax.find(lines, "").isEmpty());
+            new SourceSyntax.Match(2, 2, 7), new SourceSyntax.Match(4, 5, 10)), SourceSyntax.find(lines, "hello").matches());
+        assertEquals(List.of(new SourceSyntax.Match(3, 4, 15)), SourceSyntax.find(lines, "[literal].*").matches());
+        assertEquals(List.of(new SourceSyntax.Match(2, 8, 10)), SourceSyntax.find(lines, "한글").matches());
+        assertEquals(new SourceSyntax.SearchResults(List.of(), false), SourceSyntax.find(lines, ""));
+    }
+
+    @Test void denseSourceStopsAfterTheLimitAndOneProbeWithoutReadingTheRest() {
+        String line = "# " + "a".repeat(13_998);
+        // 50 lines fit the repository's 700,000-character response limit.
+        List<String> lines = new java.util.AbstractList<>() {
+            @Override public int size() { return 50; }
+            @Override public String get(int index) {
+                assertEquals(0, index, "a capped search must stop before reading later lines");
+                return line;
+            }
+        };
+        var results = SourceSyntax.find(lines, "A");
+        assertTrue(results.hasMore());
+        assertEquals(SourceSyntax.MAX_MATCHES, results.matches().size());
+        assertEquals(new SourceSyntax.Match(1, 2, 3), results.matches().getFirst());
+        assertEquals(new SourceSyntax.Match(1, SourceSyntax.MAX_MATCHES + 1, SourceSyntax.MAX_MATCHES + 2),
+            results.matches().getLast());
+    }
+
+    @Test void limitIsGlobalAndOnlyMarksAnActualExtraNonOverlappingOccurrence() {
+        String exact = "aa".repeat(SourceSyntax.MAX_MATCHES);
+        var atLimit = SourceSyntax.find(List.of(exact, "# no match"), "aa");
+        assertEquals(SourceSyntax.MAX_MATCHES, atLimit.matches().size());
+        assertFalse(atLimit.hasMore());
+        assertEquals(new SourceSyntax.Match(1, exact.length() - 2, exact.length()), atLimit.matches().getLast());
+        var overLimit = SourceSyntax.find(List.of("aa", exact), "aa");
+        assertTrue(overLimit.hasMore());
+        assertEquals(SourceSyntax.MAX_MATCHES, overLimit.matches().size());
+        assertEquals(new SourceSyntax.Match(2, exact.length() - 4, exact.length() - 2), overLimit.matches().getLast());
+        assertEquals(new SourceSyntax.SearchResults(List.of(), false), SourceSyntax.find(List.of(exact), "missing"));
     }
 }

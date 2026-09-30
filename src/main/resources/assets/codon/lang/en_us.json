@@ -161,6 +161,7 @@
   "codon.source.record_in_stack": "Execution record available in call stack",
   "codon.source.find": "Find in source",
   "codon.source.find_hint": "Ctrl/Cmd+F · Enter / Shift+Enter: next / previous · Esc: code navigation",
+  "codon.source.find_limit": "Showing the first %s matches. Narrow the search to reach later results.",
   "codon.source.navigation_hint": "Code: ↑↓ / PgUp PgDn / Home End · Horizontal: ←→ / Shift+wheel / drag",
   "codon.source.previous_match": "Previous match (Shift+Enter / Shift+F3)",
   "codon.source.next_match": "Next match (Enter / F3)",

@@ -55,6 +55,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
     private FunctionSourceDocument cachedDocument;
     private final List<SourceCodeLine> codeLines = new ArrayList<>();
     private List<SourceSyntax.Match> matches = List.of();
+    private boolean matchesLimited;
     private final Map<Integer, List<SourceSyntax.Match>> matchesByLine = new HashMap<>();
     private int matchIndex = -1;
     private int widestLine;
@@ -146,7 +147,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         search.visible = search.active = !drawerMode || drawerOpen;
         int findY = top + (compactSourceControls ? 92 : 75);
         sourceSearch = addRenderableWidget(new DebuggerEditBox(font, sourceLeft + 5, findY,
-            Math.max(1, sourceWidth - 85), 20, Component.translatable("codon.source.find")));
+            Math.max(1, sourceWidth - 117), 20, Component.translatable("codon.source.find")));
         sourceSearch.setHint(Component.translatable("codon.source.find"));
         sourceSearch.setTooltip(Tooltip.create(Component.translatable("codon.source.find_hint")));
         sourceSearch.setMaxLength(128);
@@ -298,8 +299,13 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             sourceWidth - 12, MUTED);
         WatchUi.line(graphics, font, executionStatus(selected), sourceLeft + 6,
             compactSourceControls ? top + 77 : top + 60, sourceWidth - 12, MUTED);
-        WatchUi.line(graphics, font, matches.isEmpty() ? "0/0" : (matchIndex + 1) + "/" + matches.size(),
-            sourceLeft + sourceWidth - 78, top + (compactSourceControls ? 98 : 81), 34, MUTED);
+        int countX = sourceLeft + sourceWidth - 110;
+        int countY = top + (compactSourceControls ? 98 : 81);
+        WatchUi.line(graphics, font, matches.isEmpty() ? "0/0"
+            : (matchIndex + 1) + "/" + matches.size() + (matchesLimited ? "+" : ""), countX, countY, 66, MUTED);
+        if (matchesLimited && mouseX >= countX && mouseX < countX + 66 && mouseY >= countY && mouseY < countY + 10)
+            graphics.setTooltipForNextFrame(font, font.split(Component.translatable("codon.source.find_limit", SourceSyntax.MAX_MATCHES),
+                Math.min(200, width - 24)), mouseX, mouseY);
         int gutter = gutterWidth();
         int codeLeft = sourceLeft + gutter;
         int codeWidth = sourceWidth - gutter - 4;
@@ -478,8 +484,15 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
 
     private void rebuildMatches() {
         SourceSyntax.Match previous = matchIndex < 0 || matchIndex >= matches.size() ? null : matches.get(matchIndex);
-        matches = sources.document() == null || sourceSearch == null ? List.of()
+        SourceSyntax.SearchResults results = sources.document() == null || sourceSearch == null
+            ? new SourceSyntax.SearchResults(List.of(), false)
             : SourceSyntax.find(sources.document().lines(), sourceSearch.getValue());
+        matches = results.matches();
+        matchesLimited = results.hasMore();
+        if (sourceSearch != null) sourceSearch.setTooltip(Tooltip.create(matchesLimited
+            ? Component.translatable("codon.source.find_hint").append("\n")
+                .append(Component.translatable("codon.source.find_limit", SourceSyntax.MAX_MATCHES))
+            : Component.translatable("codon.source.find_hint")));
         matchesByLine.clear();
         for (SourceSyntax.Match match : matches) matchesByLine.computeIfAbsent(match.line(), ignored -> new ArrayList<>()).add(match);
         matchIndex = previous == null ? -1 : matches.indexOf(previous);
@@ -816,7 +829,9 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                 .map(AbstractWidget.class::cast).filter(widget -> widget.visible && widget.active).toList();
             if (!eligible.isEmpty()) {
                 int index = eligible.indexOf(getFocused());
-                setFocused(eligible.get(Math.floorMod(index + (event.hasShiftDown() ? -1 : 1), eligible.size())));
+                int next = index < 0 ? (event.hasShiftDown() ? eligible.size() - 1 : 0)
+                    : Math.floorMod(index + (event.hasShiftDown() ? -1 : 1), eligible.size());
+                setFocused(eligible.get(next));
             }
             return true;
         }
