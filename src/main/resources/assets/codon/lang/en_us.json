@@ -168,6 +168,7 @@
   "codon.source.record_line": "Recorded line %s · execution resumed",
   "codon.source.no_breakpoint": "no breakpoint",
   "codon.source.line": "Line",
+  "codon.source.resize_tree": "Drag to resize the function list",
   "codon.source.stage_breakpoints": "%s stage breakpoints",
   "codon.source.select_command_or_stage": "Select a command or stage",
   "codon.source.no_stage_here": "No stage breakpoint can be placed here",

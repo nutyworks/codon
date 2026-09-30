@@ -14,7 +14,8 @@ be checked. The viewer lists functions actually loaded by the current server.
    The code pane uses the default Minecraft font and measures its actual glyph
    advances; Unicode comments retain their glyphs. Commands, `execute` keywords, strings, values,
    resource IDs and comments receive display-only lexical highlighting.
-   Source lines stay intact and do not wrap or gain ellipses. Drag the horizontal
+   Source lines stay intact and do not wrap or gain ellipses. Drag the vertical
+   scrollbar or use the vertical wheel to reach original lines. Drag the horizontal
    scrollbar, use a horizontal wheel/Shift+wheel, or focus the code and use Left/Right;
    the line numbers and breakpoint gutter stay fixed.
 2. Select an executable line. Toggle the line marker; select a parsed stage and
@@ -22,12 +23,13 @@ be checked. The viewer lists functions actually loaded by the current server.
    conditions. Breakpoints refer to original file line numbers and saved stage
    offsets, not wrapped display rows. Stage markers are inserted at the server-confirmed boundaries inside the
    original row, following the command-block editor. Visual marker slots do not
-   change source characters, whitespace or server offsets. Each marker uses a
-   20-pixel slot, with the icon centered and the whole slot clickable. Stage icons
-   appear only while hovering their stage, regardless of enabled, selected or
-   paused state. No separate stage row
-   or panel is shown. The vertical wheel moves original lines; the horizontal
-   wheel exposes long lines and their markers. Stage counts stay in the gutter.
+   change source characters, whitespace or server offsets. Each visible stage marker
+   uses a 20-pixel slot, with the icon centered and the whole slot clickable.
+   Enabled line/stage markers remain visible; disabled or missing candidates appear
+   only over their original line/stage. Selection and pause do not reveal an inactive
+   marker. Leaving a stage removes its temporary slot and restores original glyph
+   advances; enabled markers keep their necessary slot. No separate stage row or
+   panel is shown. Hover the gutter marker for the enabled stage count.
 3. Close the viewer and execute `/function <namespace:path>`. Check the breakpoint
    stops at the selected location. Reopen Source at the pause and distinguish the
    actual stopped line from a manually inspected line/record. A live pause has an
@@ -38,7 +40,13 @@ be checked. The viewer lists functions actually loaded by the current server.
    functions and stale stage targets must be represented explicitly.
 5. At a narrow GUI, open the Functions drawer, select the long line and scroll horizontally to its
    later stage markers. At a wider GUI, verify the docked viewer and parent controls. Text,
-   markers and condition controls must remain reachable after resizing.
+   markers and condition controls must remain reachable after resizing. Drag the
+   divider to resize the function list (150 logical pixels minimum; reserve at least
+   300 panel pixels for Source). Its requested width survives closing/reopening,
+   compact drawer transitions and UI scale/window changes. A smaller wide viewport
+   temporarily clamps it. Scrollbars preserve thumb grab position and clamp at both
+   ends; dragging one axis preserves the other. The drawer, Source panel and modal
+   must block hover and hit testing on controls they cover.
 6. Use **Find in source** (`Ctrl/Cmd+F`) for literal case-insensitive search. Enter/F3
    advances, Shift+Enter/Shift+F3 goes back, and the buttons expose the same actions.
    Results include comments, retain original line numbers, and reveal matches past
@@ -57,10 +65,15 @@ be checked. The viewer lists functions actually loaded by the current server.
 Owner permission is required for server source requests. This is a source browser
 and breakpoint editor, not an in-game datapack file editor.
 
-Disabled line markers are hidden until hovered; enabled line markers remain
-visible. All stage markers are hidden until their stage is hovered, including
-enabled and selected stages. Disabled definitions are excluded from stage counts.
-Hover the original target to enable it again with its saved condition.
+Disabled line/stage markers are hidden until their actual line/stage is hovered;
+enabled markers remain visible whether selected or hovered. Disabled definitions
+are excluded from stage counts. Hover the original target to enable it again with
+its saved condition. Native horizontal delta is positive toward the right; a
+negative vertical delta with Shift moves right. Native X takes precedence when
+both axes arrive with Shift, avoiding double inversion. Minecraft 26.3 uses SDL;
+[SDL wheel semantics](https://wiki.libsdl.org/SDL3/SDL_MouseWheelEvent) and the local
+MouseHandler/SDL event-handler path were checked without changing macOS natural
+scroll settings. Synthetic callback input does not verify a physical trackpad.
 
 ## Code entry points
 
@@ -74,9 +87,9 @@ Hover the original target to enable it again with its saved condition.
 | Concern | Existing tests |
 | --- | --- |
 | Line/source model | `coreTest`: `FunctionSourceDocumentTest` |
-| Requests, selection and layout | `clientTest`: `ClientFunctionSourceStateTest`, `FunctionSourceScreenLayoutTest`, `SourceSyntaxTest`, `SourceLineLayoutTest`, `CommandFlowLayoutTest` |
+| Requests, selection and layout | `clientTest`: `ClientFunctionSourceStateTest`, `FunctionSourceScreenLayoutTest`, `SourceSyntaxTest`, `SourceLineLayoutTest`, `SourceInteractionTest`, `ScrollbarInputTest`, `CommandFlowLayoutTest` |
 | Network payloads | `test`: `FunctionSourcePayloadTest`, `BreakpointStagePreviewPayloadTest` |
-| Real rendering, selection, resize and inline stage markers | `FunctionSourceScreenGameTest` |
+| Real rendering, selection, resize and inline stage markers | `FunctionSourceScreenGameTest`, `FunctionSourceInteractionGameTest` |
 
 Example: `./gradlew runClientGameTest -PclientGameTest=FunctionSourceScreenGameTest`.
 The same GameTest checks the proportional default font, Unicode geometry, inline
@@ -98,7 +111,11 @@ The same pane geometry is unit-checked at 320×180 logical size. The
 The `nested-function-links` capture checks nested return and schedule references.
 The `hover-browsed-*` and `hover-paused-*` captures use pixel assertions for
 enabled, disabled and missing stage markers before hover, during hover and after
-pointer leave. Hover preserves acknowledged state; clicking each hovered slot
+pointer leave. Enabled markers stay visible; the selected disabled stage still
+requires hover. Clicking the enabled stage also covers selected enabled and
+unselected disabled states. The `matrix-enabled-*-selected-*` captures additionally
+assert the complete enabled × hover × selection matrix for both line/stage icons,
+and verify that pointer leave restores every original advance except enabled slots. Hover preserves acknowledged state; clicking each hovered slot
 requests its original stage target, including a missing breakpoint.
 The `inline-second-line` capture verifies stage targeting after horizontal scroll
 on an indented original line. The following source line stays directly below it
@@ -106,8 +123,8 @@ and can be selected without an expanded stage row intercepting the click.
 
 Inspect `*codon-function-source-*.png`, including 320×240, 480×270 and 640×360 GUI
 layouts. The disabled-hover capture shows a disabled line and conditional stage
-revealed by hover; the other captures keep them hidden and count only the enabled
-stage. This GameTest injects a source document, breakpoint definitions and stage spans: its function is
+revealed by hover; inactive controls stay hidden elsewhere while enabled markers
+remain visible. This GameTest injects a source document, breakpoint definitions and stage spans: its function is
 not installed in the server's datapack. It proves presentation/interaction, not
 server source discovery, permission enforcement or native function breakpoints.
 Use the manual loaded-function path for those acceptance criteria.
@@ -120,3 +137,11 @@ After each rebuild, click the remaining result and the row where the excluded
 function used to appear: only the matching function may be selected. With a long
 list, scroll down, enter a new query, then resize; the first filtered result must
 still be at the top instead of restoring the old scroll position.
+
+`FunctionSourceInteractionGameTest` exercises Minecraft's native horizontal callback,
+fractional X accumulation, Shift+vertical/native-X precedence, native vertical wheel
+and both scrollbar drags. Its `qa-*` captures show vertical EOF, both bars, sidebar
+maximum/minimum, custom scale, the compact drawer, a real HUD control before/after
+Source covers it, a modal blocking Source and Korean minimum layout. It uses the
+same injected-source limitation as the other UI fixture. Physical trackpad input
+and the manual loaded-function path remain separate acceptance checks.

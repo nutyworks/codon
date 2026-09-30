@@ -90,6 +90,7 @@ public final class ClientFunctionSourceState {
     private Status sourceStatus = Status.IDLE;
     private final List<Request> outgoing = new ArrayList<>();
     private BrowseView browseView = new BrowseView(0, 0, -1, -1, 0);
+    private int treeWidth;
     private final Map<FunctionId, BrowseView> functionViews = new HashMap<>();
     private final Deque<FunctionId> backStack = new ArrayDeque<>();
 
@@ -146,6 +147,8 @@ public final class ClientFunctionSourceState {
     public @Nullable FunctionSourceDocument document() { return document; }
     public Status sourceStatus() { return sourceStatus; }
     public BrowseView browseView() { return browseView; }
+    public int treeWidth() { return treeWidth; }
+    public void rememberTreeWidth(int width) { treeWidth = Math.max(0, width); }
 
     /** Saves scroll and exact line/stage selection without changing the live source request. */
     public void rememberBrowseView(int treeOffset, int lineOffset, int selectedLine, int selectedStageIndex,
@@ -238,6 +241,7 @@ public final class ClientFunctionSourceState {
         functions = List.of();
         listStatus = Status.IDLE;
         browseView = new BrowseView(0, 0, -1, -1, 0);
+        treeWidth = 0;
         functionViews.clear();
         backStack.clear();
         clearSelection();

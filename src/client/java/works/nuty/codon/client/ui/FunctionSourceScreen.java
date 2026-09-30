@@ -1,6 +1,7 @@
 package works.nuty.codon.client.ui;
 
 import com.mojang.blaze3d.platform.InputConstants;
+import com.mojang.blaze3d.platform.cursor.CursorTypes;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -28,6 +29,7 @@ import works.nuty.codon.client.state.ClientStagePreviewState;
 import works.nuty.codon.client.ui.layout.CommandFlowLayout;
 import works.nuty.codon.client.ui.layout.SourceSyntax;
 import works.nuty.codon.client.ui.layout.SourceLineLayout;
+import works.nuty.codon.client.ui.layout.SourceInteraction;
 import works.nuty.codon.core.model.BreakpointDefinition;
 import works.nuty.codon.core.model.BreakpointTarget;
 import works.nuty.codon.core.model.FunctionId;
@@ -51,7 +53,10 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
     private boolean docked;
     private boolean forwardingParentDrag;
     private int listOffset, lineOffset, horizontalOffset;
-    private boolean draggingHorizontal;
+    private final ScrollbarInput scrollbars = new ScrollbarInput();
+    private boolean resizingTree;
+    private double treeGrab, horizontalRemainder;
+    private int hoveredLine = -1, hoveredStage = -1, expandedWidth;
     private FunctionSourceDocument cachedDocument;
     private final List<SourceCodeLine> codeLines = new ArrayList<>();
     private List<SourceSyntax.Match> matches = List.of();
@@ -80,9 +85,8 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         boolean contains(double py) { return py >= y && py < y + height; }
     }
     private record InlineStage(int index, int start, int end, BreakpointTarget target) { }
-    private SourceCodeLine inlineCode;
-    private ClientStagePreviewState.Preview inlinePreview;
-    private List<InlineStage> inlineStages = List.of();
+    private record InlineRow(ClientStagePreviewState.Preview preview, List<InlineStage> stages) { }
+    private final Map<Integer, InlineRow> inlineRows = new HashMap<>();
     private SourceLineLayout inlineLayout;
     private record FunctionHit(int x, int y, int width, int height, FunctionId function) {
         boolean contains(double px, double py) { return px >= x && px < x + width && py >= y && py < y + height; }
@@ -98,6 +102,10 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         String searchValue = search == null ? "" : search.getValue();
         String sourceSearchValue = sourceSearch == null ? "" : sourceSearch.getValue();
         cachedDocument = null;
+        clearSourceHits();
+        scrollbars.release();
+        resizingTree = forwardingParentDrag = false;
+        horizontalRemainder = 0;
         clearWidgets();
         ClientFunctionSourceState.ScreenLayout layout = ClientFunctionSourceState.ScreenLayout.forScreen(width, height);
         panelWidth = layout.panelWidth();
@@ -107,11 +115,13 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         left = (width - panelWidth) / 2;
         top = docked ? height - panelHeight - 6 : (height - panelHeight) / 2;
         drawerMode = layout.drawerMode();
+        if (!drawerMode) drawerOpen = false;
         if (drawerMode && sources.selected() == null) drawerOpen = true;
-        treeWidth = drawerMode ? (drawerOpen ? panelWidth : 0) : layout.treeWidth();
+        treeWidth = drawerMode ? (drawerOpen ? panelWidth : 0)
+            : SourceInteraction.treeWidth(panelWidth, sources.treeWidth() == 0 ? layout.treeWidth() : sources.treeWidth());
         int sourceLeft = left + treeWidth + 8;
         int sourceWidth = panelWidth - treeWidth - 16;
-        compactSourceControls = !drawerMode && sourceWidth < 330 || drawerMode;
+        compactSourceControls = sourceWidth < 450 || drawerMode;
         search = addRenderableWidget(new DebuggerEditBox(font, left + 8, top + 29, Math.max(1, treeWidth - 16), 20,
             Component.translatable("codon.source.search")));
         search.setHint(Component.translatable("codon.source.search"));
@@ -169,10 +179,59 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         sources.open();
         if (sources.selected() != null && selectedLine > 0) {
             ClientDebuggerState debugger = CodonClientMod.state();
-            if (debugger != null) ClientNetworking.requestStagePreview(debugger, new SourceLocation.Function(
-                new FunctionLocation(sources.selected(), selectedLine)));
+            if (debugger != null) {
+                var location = new SourceLocation.Function(new FunctionLocation(sources.selected(), selectedLine));
+                var preview = debugger.stagePreviews().get(location);
+                if (preview == null || preview.status() == ClientStagePreviewState.Status.READY
+                    && sources.document() != null && !previewMatchesLine(sources.document(), selectedLine, preview))
+                    ClientNetworking.requestStagePreview(debugger, location);
+            }
         }
         rebuildEntries();
+    }
+
+    private void clearSourceHits() {
+        stageHits.clear(); lineHits.clear(); functionHits.clear();
+        hoveredLine = hoveredStage = -1;
+    }
+
+    private boolean containsPanel(double x, double y) {
+        return x >= left && x < left + panelWidth && y >= top && y < top + panelHeight;
+    }
+
+    private int sourceLeft() { return left + treeWidth + 8; }
+    private int sourceWidth() { return panelWidth - treeWidth - 16; }
+    private int codeRight() { return sourceLeft() + sourceWidth() - 12; }
+    private int codeWidth() { return Math.max(1, sourceWidth() - gutterWidth() - 12); }
+    private int lineMarkerX() { return sourceLeft() + gutterWidth() - 12; }
+    private int maximumLineOffset() { return sources.document() == null ? 0 : Math.max(0, codeLines.size() - sourceRows()); }
+
+    private boolean splitterContains(double x, double y) {
+        return !drawerMode && x >= left + treeWidth - 3 && x < left + treeWidth + 4
+            && y >= top + 25 && y < top + panelHeight - 8;
+    }
+
+    private void resizeTree(double x) {
+        treeWidth = SourceInteraction.treeWidth(panelWidth, (int) Math.round(x - left - treeGrab));
+        sources.rememberTreeWidth(treeWidth);
+        int sourceLeft = sourceLeft(), sourceWidth = sourceWidth();
+        compactSourceControls = sourceWidth < 450;
+        search.setWidth(treeWidth - 16);
+        refresh.setX(sourceLeft); reread.setX(sourceLeft + 60);
+        lineCondition.setX(compactSourceControls ? sourceLeft : sourceLeft + 116);
+        lineCondition.setY(top + (compactSourceControls ? 29 : 5));
+        lineCondition.setWidth(compactSourceControls ? (sourceWidth - 4) / 2 : 92);
+        stageCondition.setX(compactSourceControls ? sourceLeft + (sourceWidth - 4) / 2 + 4 : sourceLeft + 210);
+        stageCondition.setY(lineCondition.getY());
+        stageCondition.setWidth(compactSourceControls ? (sourceWidth - 4) / 2 : 98);
+        int findY = top + (compactSourceControls ? 92 : 75);
+        sourceSearch.setX(sourceLeft + 5); sourceSearch.setY(findY); sourceSearch.setWidth(Math.max(1, sourceWidth - 117));
+        previousMatch.setX(sourceLeft + sourceWidth - 41); previousMatch.setY(findY);
+        nextMatch.setX(sourceLeft + sourceWidth - 21); nextMatch.setY(findY);
+        horizontalOffset = Math.clamp(horizontalOffset, 0, maxHorizontalOffset());
+        lineOffset = Math.clamp(lineOffset, 0, maximumLineOffset());
+        clearSourceHits();
+        rememberView();
     }
 
     private void rebuildEntries() {
@@ -212,6 +271,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         stageHits.clear();
         lineHits.clear();
         functionHits.clear();
+        scrollbars.beginFrame();
         rebuildEntries();
         reread.visible = reread.active = !drawerOpen && sources.selected() != null && sources.sourceStatus() != ClientFunctionSourceState.Status.LOADING;
         drawerButton.visible = drawerButton.active = drawerMode;
@@ -223,7 +283,10 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         previousMatch.visible = nextMatch.visible = sourceSearch.visible;
         previousMatch.active = nextMatch.active = !matches.isEmpty();
         updateConditionControls();
-        if (docked) parent.extractRenderState(graphics, mouseX, mouseY, partialTick);
+        if (docked) {
+            boolean covered = containsPanel(mouseX, mouseY) || ScreenLayers.get(this) != null;
+            parent.extractRenderState(graphics, covered ? -1 : mouseX, covered ? -1 : mouseY, partialTick);
+        }
         else graphics.fill(0, 0, width, height, DebuggerTheme.color(0x70000000));
         graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.color(PANEL));
         graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.color(BORDER));
@@ -231,11 +294,20 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         WatchUi.line(graphics, font, tr(drawerOpen ? "codon.source.functions" : "codon.source.title"),
             left + 8, top + 9, Math.max(1, treeWidth - 20), TEXT);
         if (!drawerMode || drawerOpen) {
-            if (!drawerMode) graphics.fill(left + treeWidth, top + 25, left + treeWidth + 1, top + panelHeight - 8, DebuggerTheme.color(BORDER));
+            if (!drawerMode) {
+                boolean hovered = splitterContains(mouseX, mouseY);
+                graphics.fill(left + treeWidth - 1, top + 25, left + treeWidth + 2, top + panelHeight - 8,
+                    DebuggerTheme.color(hovered || resizingTree ? TEAL : BORDER));
+                if (hovered) {
+                    graphics.requestCursor(CursorTypes.RESIZE_EW);
+                    graphics.setTooltipForNextFrame(font, Component.translatable("codon.source.resize_tree"), mouseX, mouseY);
+                }
+            }
             renderTree(graphics, mouseX, mouseY);
             if (!drawerOpen) renderSource(graphics, mouseX, mouseY);
         } else renderSource(graphics, mouseX, mouseY);
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+        scrollbars.endFrame();
     }
 
     private void renderTree(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
@@ -307,71 +379,79 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             graphics.setTooltipForNextFrame(font, font.split(Component.translatable("codon.source.find_limit", SourceSyntax.MAX_MATCHES),
                 Math.min(200, width - 24)), mouseX, mouseY);
         int gutter = gutterWidth();
-        int codeLeft = sourceLeft + gutter;
-        int codeWidth = sourceWidth - gutter - 4;
+        int codeLeft = sourceLeft + gutter, codeWidth = codeWidth();
         horizontalOffset = Math.clamp(horizontalOffset, 0, maxHorizontalOffset());
-        int lineTop = sourceLineTop();
-        int rows = sourceRows();
+        int lineTop = sourceLineTop(), rows = sourceRows();
         if (selectedLine > document.lines().size()) {
-            selectedLine = -1;
-            selectedStageIndex = -1;
+            selectedLine = selectedStageIndex = -1;
             rememberView();
         }
-        lineOffset = Math.clamp(lineOffset, 0, Math.max(0, document.lines().size() - rows));
+        lineOffset = Math.clamp(lineOffset, 0, maximumLineOffset());
         int lineBottom = lineTop + rows * ROW_HEIGHT;
         ClientDebuggerState debugger = CodonClientMod.state();
         Map<Integer, Integer> stageCounts = stageBreakpointCounts(selected, debugger);
-        graphics.fill(sourceLeft + 3, lineTop, sourceLeft + sourceWidth - 3, lineBottom, DebuggerTheme.color(SURFACE));
-        graphics.fill(sourceLeft + gutter - 3, lineTop, sourceLeft + gutter - 2, lineBottom, DebuggerTheme.color(BORDER));
-        graphics.enableScissor(sourceLeft + 3, lineTop, sourceLeft + sourceWidth - 3, lineBottom);
-        for (int index = lineOffset, y = lineTop; index < document.lines().size() && y < lineBottom; index++) {
-            String number = Integer.toString(index + 1);
-            SourceLocation.Function location = new SourceLocation.Function(new FunctionLocation(selected, index + 1));
+        int nextHoveredLine = -1, nextHoveredStage = -1;
+        expandedWidth = widestLine;
+        graphics.fill(sourceLeft + 3, lineTop, codeRight(), lineBottom, DebuggerTheme.color(SURFACE));
+        graphics.enableScissor(sourceLeft + 3, lineTop, codeRight(), lineBottom);
+        for (int index = lineOffset, y = lineTop; index < document.lines().size() && y < lineBottom; index++, y += ROW_HEIGHT) {
+            int line = index + 1;
+            String number = Integer.toString(line);
+            SourceLocation.Function location = new SourceLocation.Function(new FunctionLocation(selected, line));
             BreakpointDefinition definition = breakpoint(location);
-            int color = definition == null ? MUTED : definition.enabled() ? RED : MUTED;
-            boolean stopped = isActualStop(selected, index + 1);
-            boolean inspected = selectedLine == index + 1;
+            boolean hovered = mouseX >= sourceLeft + 3 && mouseX < codeRight() && mouseY >= y && mouseY < y + ROW_HEIGHT;
+            boolean stopped = isActualStop(selected, line), inspected = selectedLine == line;
             if (stopped) {
-                graphics.fill(codeLeft, y, sourceLeft + sourceWidth - 4, y + ROW_HEIGHT - 1, DebuggerTheme.color(AMBER_SURFACE));
-                // Arrow + border retain the stop/selection distinction without relying on hue.
-                graphics.text(font, ">", sourceLeft + 17, y + 5, DebuggerTheme.color(AMBER), false);
+                graphics.fill(codeLeft, y, codeRight(), y + ROW_HEIGHT - 1, DebuggerTheme.color(AMBER_SURFACE));
+                graphics.text(font, ">", sourceLeft + 3, y + 5, DebuggerTheme.color(AMBER), false);
             }
             if (inspected) {
-                if (!stopped) graphics.fill(codeLeft, y, sourceLeft + sourceWidth - 4, y + ROW_HEIGHT - 1, DebuggerTheme.color(TEAL_SURFACE));
+                if (!stopped) graphics.fill(codeLeft, y, codeRight(), y + ROW_HEIGHT - 1, DebuggerTheme.color(TEAL_SURFACE));
                 graphics.outline(codeLeft, y, codeWidth, ROW_HEIGHT - 1, DebuggerTheme.color(TEAL));
             }
-            graphics.text(font, SourceCodeLine.plain(number), codeLeft - 7 - font.width(SourceCodeLine.plain(number)),
+            graphics.text(font, SourceCodeLine.plain(number), lineMarkerX() - 4 - font.width(SourceCodeLine.plain(number)),
                 y + 5, DebuggerTheme.color(stopped ? AMBER : MUTED), false);
-            graphics.enableScissor(codeLeft, y, sourceLeft + sourceWidth - 4, y + ROW_HEIGHT);
             SourceCodeLine code = codeLines.get(index);
-            SourceLineLayout lineLayout = inspected && inlineLayout != null ? inlineLayout
-                : new SourceLineLayout(code.source().length(), List.of(), code::x);
-            renderSourceText(graphics, code, lineLayout, index + 1, selected, codeLeft, y + 5, codeWidth);
-            if (inspected) renderInlineMarkers(graphics, lineLayout, codeLeft, y, codeWidth, mouseX, mouseY);
+            List<InlineStage> stages = stagesForLine(line, hovered || stageCounts.containsKey(line));
+            SourceLineLayout layout = visibleLayout(code, stages, hovered && hoveredLine == line ? hoveredStage : -1);
+            int rowHoveredStage = -1;
+            if (hovered && mouseX >= codeLeft) {
+                for (InlineStage stage : stages) {
+                    int start = codeLeft + layout.before(stage.start()) - horizontalOffset;
+                    int end = codeLeft + layout.before(stage.end()) - horizontalOffset;
+                    if (mouseX >= Math.max(codeLeft, start) && mouseX < Math.min(codeRight(), end)) {
+                        rowHoveredStage = stage.index();
+                        break;
+                    }
+                }
+            }
+            if (hovered) { nextHoveredLine = line; nextHoveredStage = rowHoveredStage; }
+            layout = visibleLayout(code, stages, rowHoveredStage);
+            expandedWidth = Math.max(expandedWidth, layout.width());
+            if (inspected) inlineLayout = layout;
+            graphics.enableScissor(codeLeft, y, codeRight(), y + ROW_HEIGHT);
+            renderSourceText(graphics, code, layout, line, selected, codeLeft, y + 5, codeWidth);
+            renderInlineMarkers(graphics, stages, layout, line, rowHoveredStage, codeLeft, y, codeWidth, mouseX, mouseY);
             graphics.disableScissor();
-            int count = stageCounts.getOrDefault(index + 1, 0);
-            if (count > 0 && !stopped) {
-                // Compact count is separate from the horizontally scrolling source.
-                String badge = count > 99 ? "+" : Integer.toString(count);
-                graphics.outline(sourceLeft + 15, y + 3, 14, 12, DebuggerTheme.color(BORDER));
-                graphics.text(font, SourceCodeLine.plain(badge), sourceLeft + 22 - font.width(badge) / 2,
-                    y + 5, DebuggerTheme.color(MUTED), false);
+            boolean enabled = definition != null && definition.enabled();
+            if (enabled || hovered && wholeEligible(document, line)) {
+                BreakpointUi.icon(definition).drawSmall(graphics, lineMarkerX(), y + 5,
+                    DebuggerTheme.color(enabled ? RED : MUTED));
+            } else if (stageCounts.containsKey(line) && stages.isEmpty()) {
+                // Acknowledged stages stay visible in the gutter while their server preview loads.
+                DebuggerIcon.BREAKPOINT.drawSmall(graphics, lineMarkerX(), y + 5, DebuggerTheme.color(RED));
             }
-            if (count > 0 && mouseX >= sourceLeft + 15 && mouseX < sourceLeft + 30 && mouseY >= y && mouseY < y + ROW_HEIGHT)
-                graphics.setTooltipForNextFrame(font, Component.translatable("codon.source.stage_breakpoints", count), mouseX, mouseY);
-            boolean hovered = mouseX >= sourceLeft + 3 && mouseX < sourceLeft + sourceWidth - 3
-                && mouseY >= y && mouseY < y + ROW_HEIGHT;
-            if (definition != null && definition.enabled() || hovered && wholeEligible(document, index + 1)) {
-                BreakpointUi.icon(definition).drawSmall(graphics, sourceLeft + 5, y + 5, DebuggerTheme.color(color));
-            }
-            lineHits.add(new LineHit(y, ROW_HEIGHT, index + 1));
-            y += ROW_HEIGHT;
+            if (hovered && mouseX >= lineMarkerX() - 2 && mouseX < lineMarkerX() + 10 && stageCounts.containsKey(line))
+                graphics.setTooltipForNextFrame(font, Component.translatable("codon.source.stage_breakpoints", stageCounts.get(line)), mouseX, mouseY);
+            lineHits.add(new LineHit(y, ROW_HEIGHT, line));
         }
+        hoveredLine = nextHoveredLine; hoveredStage = nextHoveredStage;
         graphics.disableScissor();
         renderHorizontalScrollbar(graphics, sourceLeft, sourceWidth);
-        if (mouseX >= codeLeft && mouseX < sourceLeft + sourceWidth - 4
-            && mouseY >= horizontalTrackY() - 2 && mouseY < horizontalTrackY() + 8)
-            graphics.setTooltipForNextFrame(font, Component.translatable("codon.source.navigation_hint"), mouseX, mouseY);
+        renderVerticalScrollbar(graphics, "source", sourceLeft + sourceWidth - 7, lineTop, rows * ROW_HEIGHT,
+            lineOffset, maximumLineOffset(), rows, value -> { lineOffset = value; clearSourceHits(); rememberView(); });
+        if (mouseX >= codeLeft && mouseX < codeRight() && mouseY >= horizontalTrackY() - 2 && mouseY < horizontalTrackY() + 8)
+            graphics.setTooltipForNextFrame(font, font.split(Component.translatable("codon.source.navigation_hint"), Math.min(240, width - 24)), mouseX, mouseY);
     }
 
     private static Map<Integer, Integer> stageBreakpointCounts(FunctionId function, ClientDebuggerState debugger) {
@@ -387,61 +467,77 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         return counts;
     }
 
-    /** Use the same authoritative boundaries and icon spacing as the command-block editor. */
     private void updateInlineLayout() {
         SourceCodeLine code = selectedLine >= 1 && selectedLine <= codeLines.size() ? codeLines.get(selectedLine - 1) : null;
-        ClientDebuggerState state = CodonClientMod.state();
-        SourceLocation.Function location = sources.selected() == null || code == null ? null
-            : new SourceLocation.Function(new FunctionLocation(sources.selected(), selectedLine));
-        ClientStagePreviewState.Preview preview = state == null || location == null ? null : state.stagePreviews().get(location);
-        if (inlineCode == code && inlinePreview == preview) return;
-        inlineCode = code;
-        inlinePreview = preview;
-        inlineStages = List.of();
-        inlineLayout = code == null ? null : new SourceLineLayout(code.source().length(), List.of(), code::x);
-        FunctionSourceDocument document = sources.document();
-        if (code == null || document == null || !stageEligible(document, selectedLine)
-            || !previewMatchesLine(document, selectedLine, preview)) return;
-        int leading = code.source().indexOf(preview.savedCommand());
-        int prefixEnd = CommandFlowLayout.executePrefixEnd(preview.savedCommand());
-        int previousEnd = 0;
-        List<InlineStage> stages = new ArrayList<>();
-        for (var span : preview.spans()) {
-            if (span.start() < previousEnd || span.end() > preview.savedCommand().length() || span.start() >= span.end()) return;
-            int start = Math.max(prefixEnd, span.start());
-            while (start < span.end() && Character.isWhitespace(preview.savedCommand().charAt(start))) start++;
-            previousEnd = span.end();
-            if (start >= span.end()) continue;
-            stages.add(new InlineStage(span.index(), leading + start, leading + span.end(),
-                BreakpointTarget.stage(location, span.index(), preview.savedCommand())));
-        }
-        inlineStages = List.copyOf(stages);
-        inlineLayout = new SourceLineLayout(code.source().length(), stages.stream().map(InlineStage::start).toList(), code::x);
+        inlineLayout = code == null ? null : visibleLayout(code, stagesForLine(selectedLine, false),
+            hoveredLine == selectedLine ? hoveredStage : -1);
     }
 
-    private void renderInlineMarkers(GuiGraphicsExtractor graphics, SourceLineLayout layout, int x, int y, int width,
-                                     int mouseX, int mouseY) {
+    /** Only server-confirmed offsets may create an inline control, including on unselected rows. */
+    private List<InlineStage> stagesForLine(int line, boolean requestIfMissing) {
+        FunctionSourceDocument document = sources.document();
+        ClientDebuggerState state = CodonClientMod.state();
+        if (state == null || document == null || sources.selected() == null || !stageEligible(document, line)) return List.of();
+        SourceCodeLine code = codeLines.get(line - 1);
+        var location = new SourceLocation.Function(new FunctionLocation(sources.selected(), line));
+        var preview = state.stagePreviews().get(location);
+        if (preview == null && requestIfMissing) {
+            ClientNetworking.requestStagePreview(state, location);
+            preview = state.stagePreviews().get(location);
+        }
+        InlineRow cached = inlineRows.get(line);
+        if (cached != null && cached.preview() == preview) return cached.stages();
+        List<InlineStage> stages = new ArrayList<>();
+        if (previewMatchesLine(document, line, preview)) {
+            int leading = code.source().indexOf(preview.savedCommand());
+            int prefixEnd = CommandFlowLayout.executePrefixEnd(preview.savedCommand()), previousEnd = 0;
+            for (var span : preview.spans()) {
+                if (span.start() < previousEnd || span.end() > preview.savedCommand().length() || span.start() >= span.end()) {
+                    stages.clear(); break;
+                }
+                int start = Math.max(prefixEnd, span.start());
+                while (start < span.end() && Character.isWhitespace(preview.savedCommand().charAt(start))) start++;
+                previousEnd = span.end();
+                if (start < span.end()) stages.add(new InlineStage(span.index(), leading + start, leading + span.end(),
+                    BreakpointTarget.stage(location, span.index(), preview.savedCommand())));
+            }
+        }
+        List<InlineStage> result = List.copyOf(stages);
+        inlineRows.put(line, new InlineRow(preview, result));
+        return result;
+    }
+
+    private boolean stageEnabled(InlineStage stage) {
+        var definition = CodonClientMod.state().breakpoints().get(stage.target());
+        return definition != null && definition.enabled();
+    }
+
+    private SourceLineLayout visibleLayout(SourceCodeLine code, List<InlineStage> stages, int hover) {
+        return new SourceLineLayout(code.source().length(), stages.stream()
+            .filter(stage -> SourceInteraction.markerVisible(stageEnabled(stage), stage.index() == hover))
+            .map(InlineStage::start).toList(), code::x);
+    }
+
+    private void renderInlineMarkers(GuiGraphicsExtractor graphics, List<InlineStage> stages, SourceLineLayout layout,
+                                     int line, int hover, int x, int y, int width, int mouseX, int mouseY) {
         ClientDebuggerState state = CodonClientMod.state();
         if (state == null) return;
-        for (int index = 0; index < inlineStages.size(); index++) {
-            InlineStage stage = inlineStages.get(index);
-            int markerX = x + layout.markerX(index) - horizontalOffset;
+        for (InlineStage stage : stages) {
+            int markerX = x + layout.before(stage.start()) - horizontalOffset;
             int start = x + layout.x(stage.start()) - horizontalOffset;
             int end = x + layout.before(stage.end()) - horizontalOffset;
-            boolean hovered = mouseY >= y && mouseY < y + ROW_HEIGHT && mouseX >= Math.max(x, markerX)
-                && mouseX < Math.min(x + width, end);
             BreakpointDefinition definition = state.breakpoints().get(stage.target());
-            boolean enabled = definition != null && definition.enabled();
-            if (selectedStageIndex == stage.index() && end > x && start < x + width)
+            boolean enabled = definition != null && definition.enabled(), hovered = hover == stage.index();
+            if (selectedLine == line && selectedStageIndex == stage.index() && end > x && start < x + width)
                 graphics.outline(Math.max(x, start), y + 2, Math.min(x + width, end) - Math.max(x, start), 13, DebuggerTheme.color(TEAL));
-            if (hovered) {
+            if (SourceInteraction.markerVisible(enabled, hovered)) {
                 DebuggerIcon icon = BreakpointUi.icon(definition);
                 icon.drawSmall(graphics, markerX + (SourceLineLayout.MARKER_WIDTH - icon.smallSize()) / 2,
                     y + 5, DebuggerTheme.color(enabled ? RED : MUTED));
+                addStageHit(markerX, y, start, x, width, stage.target(), true);
             }
-            addStageHit(markerX, y, markerX + SourceLineLayout.MARKER_WIDTH, x, width, stage.target(), true);
             addStageHit(start, y, end, x, width, stage.target(), false);
-            if (hovered && mouseX < markerX + SourceLineLayout.MARKER_WIDTH)
+            if (hovered && mouseX < start)
                 graphics.setTooltipForNextFrame(font, Component.translatable("codon.breakpoint.stage_target", stage.index() + 1)
                     .append(" · " + (definition == null ? tr("codon.source.no_breakpoint") : BreakpointUi.condition(definition.condition()))), mouseX, mouseY);
         }
@@ -460,11 +556,11 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
     }
 
     private int gutterWidth() {
-        return Math.max(48, 31 + font.width(Integer.toString(sources.document() == null ? 1 : sources.document().lines().size())));
+        return 32 + font.width(Integer.toString(sources.document() == null ? 1 : sources.document().lines().size()));
     }
 
-    private int displayedWidth() { return Math.max(widestLine, inlineLayout == null ? 0 : inlineLayout.width()); }
-    private int maxHorizontalOffset() { return Math.max(0, displayedWidth() - (panelWidth - treeWidth - 20 - gutterWidth())); }
+    private int displayedWidth() { return Math.max(Math.max(widestLine, expandedWidth), inlineLayout == null ? 0 : inlineLayout.width()); }
+    private int maxHorizontalOffset() { return Math.max(0, displayedWidth() - codeWidth()); }
     private int horizontalTrackY() { return top + ClientFunctionSourceState.ScreenLayout.scrollbarInset(panelHeight); }
 
     private void updateCodeCache() {
@@ -472,7 +568,8 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         if (cachedDocument == document) return;
         cachedDocument = document;
         codeLines.clear();
-        widestLine = 0;
+        inlineRows.clear();
+        expandedWidth = widestLine = 0;
         Map<Integer, Float> glyphWidths = new HashMap<>();
         if (document != null) for (String line : document.lines()) {
             SourceCodeLine code = new SourceCodeLine(line, font, glyphWidths);
@@ -510,7 +607,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             SourceCodeLine code = codeLines.get(match.line() - 1);
             int start = inlineLayout == null ? code.x(match.start()) : inlineLayout.x(match.start());
             int end = inlineLayout == null ? code.x(match.end()) : inlineLayout.before(match.end());
-            int visible = panelWidth - treeWidth - 20 - gutterWidth();
+            int visible = codeWidth();
             if (start < horizontalOffset || end > horizontalOffset + visible)
                 horizontalOffset = Math.clamp(start - 10, 0, maxHorizontalOffset());
         }
@@ -563,21 +660,23 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
     }
 
     private void renderHorizontalScrollbar(GuiGraphicsExtractor graphics, int sourceLeft, int sourceWidth) {
-        int x = sourceLeft + gutterWidth();
-        int width = sourceWidth - gutterWidth() - 4;
-        int y = horizontalTrackY();
+        int x = sourceLeft + gutterWidth(), width = codeWidth(), y = horizontalTrackY();
+        int maximum = maxHorizontalOffset();
+        int thumb = Math.min(width, Math.max(18, width * width / Math.max(width, displayedWidth())));
+        int offset = maximum == 0 ? 0 : horizontalOffset * (width - thumb) / maximum;
         graphics.fill(x, y, x + width, y + 6, DebuggerTheme.color(RAISED));
-        int thumb = Math.max(18, width * width / Math.max(width, displayedWidth()));
-        int offset = maxHorizontalOffset() == 0 ? 0 : horizontalOffset * (width - thumb) / maxHorizontalOffset();
-        graphics.fill(x + offset, y, x + offset + thumb, y + 6, DebuggerTheme.color(maxHorizontalOffset() == 0 ? BORDER : TEAL));
+        graphics.fill(x + offset, y, x + offset + thumb, y + 6, DebuggerTheme.color(maximum == 0 ? BORDER : TEAL));
+        scrollbars.add("horizontal", true, x, y, width, 6, thumb, horizontalOffset, maximum,
+            value -> { horizontalOffset = value; horizontalRemainder = 0; clearSourceHits(); rememberView(); });
     }
 
-    private void scrollHorizontally(double x) {
-        int leftEdge = left + treeWidth + 8 + gutterWidth();
-        int width = panelWidth - treeWidth - 20 - gutterWidth();
-        int thumb = Math.max(18, width * width / Math.max(width, displayedWidth()));
-        horizontalOffset = width <= thumb ? 0 : Math.clamp((int) ((x - leftEdge - thumb / 2.0) * maxHorizontalOffset() / (width - thumb)), 0, maxHorizontalOffset());
-        rememberView();
+    private void renderVerticalScrollbar(GuiGraphicsExtractor graphics, String id, int x, int y, int height,
+                                         int offset, int maximum, int rows, java.util.function.IntConsumer setter) {
+        int thumb = Math.min(height, Math.max(12, height * rows / Math.max(rows, rows + maximum)));
+        int at = maximum == 0 ? 0 : offset * (height - thumb) / maximum;
+        graphics.fill(x, y, x + 4, y + height, DebuggerTheme.color(RAISED));
+        graphics.fill(x, y + at, x + 4, y + at + thumb, DebuggerTheme.color(maximum == 0 ? BORDER : TEAL));
+        scrollbars.add(id, false, x, y, height, 4, thumb, offset, maximum, setter);
     }
 
     private BreakpointDefinition breakpoint(SourceLocation.Function location) {
@@ -694,17 +793,21 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
     }
 
     @Override public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-        if (docked && event.y() < top) {
+        if (ScreenLayers.get(this) != null) return true;
+        if (!containsPanel(event.x(), event.y())) {
+            if (!docked) return false;
             forwardingParentDrag = parent.mouseClicked(event, doubleClick);
             return forwardingParentDrag;
         }
-        if (!drawerOpen && event.button() == InputConstants.MOUSE_BUTTON_LEFT
-            && event.y() >= horizontalTrackY() - 2 && event.y() < horizontalTrackY() + 8
-            && event.x() >= left + treeWidth + 8 + gutterWidth() && event.x() < left + panelWidth - 12) {
-            draggingHorizontal = true;
-            scrollHorizontally(event.x());
-            setFocused(null);
-            return true;
+        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
+            if (splitterContains(event.x(), event.y())) {
+                resizingTree = true;
+                treeGrab = event.x() - left - treeWidth;
+                scrollbars.release();
+                setFocused(null);
+                return true;
+            }
+            if (scrollbars.click(event.x(), event.y())) { setFocused(null); return true; }
         }
         ClientDebuggerState debugger = CodonClientMod.state();
         for (FunctionHit hit : functionHits) {
@@ -733,13 +836,14 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             FunctionSourceDocument document = sources.document();
             int sourceLeft = left + treeWidth + 8;
             int lineTop = sourceLineTop();
-            if (!drawerOpen && document != null && event.x() >= sourceLeft + 3 && event.x() < left + panelWidth - 8
+            if (!drawerOpen && document != null && event.x() >= sourceLeft + 3 && event.x() < codeRight()
                 && event.y() >= lineTop && event.y() < lineTop + sourceRows() * ROW_HEIGHT) {
                 int line = lineHits.stream().filter(hit -> hit.contains(event.y())).map(LineHit::line)
                     .findFirst().orElse(-1);
                 if (line >= 1 && line <= document.lines().size() && sources.selected() != null) {
                     SourceLocation.Function location = new SourceLocation.Function(new FunctionLocation(sources.selected(), line));
-                    if (event.x() < sourceLeft + 17 && debugger != null && wholeEligible(document, line)) {
+                    if (event.x() >= lineMarkerX() - 2 && event.x() < lineMarkerX() + 10
+                        && debugger != null && wholeEligible(document, line)) {
                         selectedLine = line;
                         selectedStageIndex = -1;
                         BreakpointTarget target = BreakpointTarget.whole(location);
@@ -779,16 +883,24 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
     }
 
     @Override public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
-        if (docked && y < top) return parent.mouseScrolled(x, y, scrollX, scrollY);
+        if (ScreenLayers.get(this) != null) return true;
+        if (!containsPanel(x, y)) return docked && parent.mouseScrolled(x, y, scrollX, scrollY);
         int delta = -(int) Math.signum(scrollY) * 3;
-        if (x < left + treeWidth) listOffset = Math.clamp(listOffset + delta, 0, Math.max(0, entries.size() - visibleRows()));
-        else if (!drawerOpen && sources.document() != null) {
+        if (x < left + treeWidth && y >= top + 54 && y < top + 54 + visibleRows() * ROW_HEIGHT)
+            listOffset = Math.clamp(listOffset + delta, 0, Math.max(0, entries.size() - visibleRows()));
+        else if (!drawerOpen && sources.document() != null && x >= sourceLeft() + 3
+            && y >= sourceLineTop() && y < horizontalTrackY() + 6) {
             boolean shift = Minecraft.getInstance().hasShiftDown();
             if (scrollX != 0 || shift) {
-                horizontalOffset = Math.clamp(horizontalOffset - (int) ((shift ? scrollY : scrollX) * 30), 0, maxHorizontalOffset());
+                horizontalRemainder += SourceInteraction.horizontalMovement(scrollX, scrollY, shift);
+                int movement = (int) horizontalRemainder;
+                horizontalRemainder -= movement;
+                horizontalOffset = Math.clamp(horizontalOffset + movement, 0, maxHorizontalOffset());
+                if (horizontalOffset == 0 || horizontalOffset == maxHorizontalOffset()) horizontalRemainder = 0;
             } else {
-                lineOffset = Math.clamp(lineOffset + delta, 0, Math.max(0, sources.document().lines().size() - sourceRows()));
+                lineOffset = Math.clamp(lineOffset + delta, 0, maximumLineOffset());
             }
+            clearSourceHits();
         }
         rememberView();
         return true;
@@ -811,6 +923,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
     }
 
     @Override public boolean keyPressed(KeyEvent event) {
+        if (ScreenLayers.get(this) != null) return true;
         if (event.key() == InputConstants.KEY_F && event.hasControlDownWithQuirk() && sourceSearch.visible) {
             setFocused(sourceSearch);
             sourceSearch.setHighlightPos(0);
@@ -857,12 +970,16 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
     }
 
     @Override public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
-        if (draggingHorizontal) { scrollHorizontally(event.x()); return true; }
+        if (ScreenLayers.get(this) != null) { resizingTree = forwardingParentDrag = false; scrollbars.release(); return true; }
+        if (resizingTree) { resizeTree(event.x()); return true; }
+        if (scrollbars.drag(event.x(), event.y())) return true;
         return forwardingParentDrag ? parent.mouseDragged(event, dx, dy) : super.mouseDragged(event, dx, dy);
     }
 
     @Override public boolean mouseReleased(MouseButtonEvent event) {
-        if (draggingHorizontal) { draggingHorizontal = false; return true; }
+        if (ScreenLayers.get(this) != null) { resizingTree = forwardingParentDrag = false; scrollbars.release(); return true; }
+        if (resizingTree) { resizingTree = false; return true; }
+        if (scrollbars.release()) return true;
         if (!forwardingParentDrag) return super.mouseReleased(event);
         forwardingParentDrag = false;
         return parent.mouseReleased(event);

@@ -14,6 +14,16 @@ class ClientFunctionSourceStateTest {
     private static final FunctionId FIRST = new FunctionId("demo", "tick");
     private static final FunctionId SECOND = new FunctionId("demo", "sub/hit");
 
+    @Test void sidebarWidthIsSessionStateIndependentOfFunctionHistory() {
+        var state = new ClientFunctionSourceState();
+        state.rememberTreeWidth(410);
+        state.select(FIRST);
+        state.select(SECOND);
+        assertEquals(410, state.treeWidth());
+        state.reset();
+        assertEquals(0, state.treeWidth());
+    }
+
     @Test
     void assemblesContiguousListAndSourcePages() {
         ClientFunctionSourceState state = new ClientFunctionSourceState();

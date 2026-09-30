@@ -168,6 +168,7 @@
   "codon.source.record_line": "기록된 줄 %s · 실행 재개됨",
   "codon.source.no_breakpoint": "중단점 없음",
   "codon.source.line": "줄",
+  "codon.source.resize_tree": "드래그하여 함수 목록 너비 조절",
   "codon.source.stage_breakpoints": "단계 중단점 %s개",
   "codon.source.select_command_or_stage": "명령 또는 단계를 선택하세요",
   "codon.source.no_stage_here": "이 위치에는 단계 중단점을 설정할 수 없습니다",

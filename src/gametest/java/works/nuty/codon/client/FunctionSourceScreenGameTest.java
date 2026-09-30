@@ -93,11 +93,10 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             });
             context.waitTicks(1);
             context.takeScreenshot("codon-function-source-320x240-stage-first");
-            int firstMarker = context.computeOnClient(client -> 66 + client.font.width(COMMAND.substring(0, 8)) + SourceLineLayout.MARKER_WIDTH / 2);
+            int firstMarker = context.computeOnClient(client -> 56 + client.font.width(COMMAND.substring(0, 8)) + SourceLineLayout.MARKER_WIDTH / 2);
             context.getInput().setCursorPos(firstMarker * 3, 133 * 3);
             context.waitTicks(2);
             context.takeScreenshot("codon-function-source-disabled-hover");
-            context.getInput().setCursorPos(0, 0);
             context.runOnClient(client -> {
                 var debugger = require(CodonClientMod.state(), "debugger state exists");
                 var location = new SourceLocation.Function(new FunctionLocation(FUNCTION, 1));
@@ -109,12 +108,13 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
                 require(debugger.breakpoints().pending(target), "inline marker uses the authoritative saved stage target");
                 require(debugger.breakpoints().get(target).condition().equals(BreakpointCondition.event(BreakpointCondition.Kind.CREATED)),
                     "toggling a disabled inline marker retains its saved condition");
-                screen.mouseScrolled(100, 130, -10, 0);
+                screen.mouseScrolled(100, 130, 10, 0);
             });
+            context.getInput().setCursorPos(0, 0);
             context.waitTicks(2);
             context.takeScreenshot("codon-function-source-320x240-inline-scrolled");
             context.runOnClient(client -> {
-                int secondText = 66 + client.font.width(COMMAND.substring(0, 66)) + 2 * SourceLineLayout.MARKER_WIDTH - 300 + 4;
+                int secondText = 56 + client.font.width(COMMAND.substring(0, 66)) + SourceLineLayout.MARKER_WIDTH - 300 + 4;
                 MouseButtonEvent click = new MouseButtonEvent(secondText, 133,
                     new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
                 require(screen.mouseClicked(click, false), "selects horizontally scrolled inline stage text without toggling its marker");
@@ -190,7 +190,8 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             verifyNestedFunctionLinks(context);
             verifyCodeReader(context);
             verifyBoundedFind(context);
-            verifyHoverOnlyStages(context);
+            verifyStageVisibility(context);
+            verifySelectionVisibilityMatrix(context);
             context.runOnClient(client -> client.setScreenAndShow(null));
         }
     }
@@ -269,13 +270,13 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
         context.waitTicks(2);
         context.runOnClient(client -> {
             Screen screen = client.gui.screen();
-            screen.mouseScrolled(100, 148, -5, 0);
+            screen.mouseScrolled(100, 148, 5, 0);
         });
         context.waitTicks(1);
         context.runOnClient(client -> {
             Screen screen = client.gui.screen();
-            int marker = 66 + client.font.width(original.substring(0, 2 + command.indexOf("run")))
-                + SourceLineLayout.MARKER_WIDTH - sources.browseView().horizontalOffset();
+            int marker = 56 + client.font.width(original.substring(0, 2 + command.indexOf("run")))
+                - sources.browseView().horizontalOffset();
             MouseButtonEvent click = new MouseButtonEvent(marker + SourceLineLayout.MARKER_WIDTH + 4, 151,
                 new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
             screen.mouseClicked(click, false);
@@ -306,9 +307,9 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
         double[] nativePoint = context.computeOnClient(client -> {
             var screen = (ScaledCodonScreen) client.gui.screen();
             require(screen.width == 640 && screen.height == 480, "viewer inherits its parent's independent 1.5x scale");
-            screen.mouseScrolled(100, 140, 1000, 0);
+            screen.mouseScrolled(100, 140, -1000, 0);
             EditBox find = sourceSearchBox(screen);
-            double x = find.getX() + 43 + client.font.width(original.substring(0, 10)) + SourceLineLayout.MARKER_WIDTH + 4;
+            double x = find.getX() + 33 + client.font.width(original.substring(0, 10)) + 4;
             double y = find.getBottom() + 12 + 18;
             var window = client.getWindow();
             return new double[]{screen.uiScale().toGame(x) * window.getScreenWidth() / window.getGuiScaledWidth(),
@@ -368,9 +369,12 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
                     new ClientStagePreviewState.StageSpan(1, 66, COMMAND.length(), true)));
         });
         context.waitTicks(2);
+        int eofMarker = context.computeOnClient(client -> 56 + client.font.width(COMMAND.substring(0, 8)) + SourceLineLayout.MARKER_WIDTH / 2);
+        context.getInput().setCursorPos(eofMarker * 3, 187 * 3);
+        context.waitTicks(2);
         context.runOnClient(client -> {
             Screen screen = client.gui.screen();
-            int marker = 66 + client.font.width(COMMAND.substring(0, 8)) + SourceLineLayout.MARKER_WIDTH / 2;
+            int marker = eofMarker;
             MouseButtonEvent click = new MouseButtonEvent(marker, 187,
                 new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
             screen.mouseClicked(click, false);
@@ -381,6 +385,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
         });
         context.waitTicks(1);
         context.takeScreenshot("codon-function-source-320x240-eof-inline");
+        context.getInput().setCursorPos(0, 0);
         context.runOnClient(client -> {
             Screen screen = client.gui.screen();
             MouseButtonEvent click = new MouseButtonEvent(250, 223,
@@ -417,7 +422,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
                 Screen screen = client.gui.screen();
                 EditBox find = sourceSearchBox(screen);
                 String prefix = line == 0 ? "return run function " : "schedule function ";
-                MouseButtonEvent click = new MouseButtonEvent(find.getX() + 43 + client.font.width(prefix) + 5,
+                MouseButtonEvent click = new MouseButtonEvent(find.getX() + 33 + client.font.width(prefix) + 5,
                     find.getBottom() + 12 + line * 18, new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
                 screen.mouseClicked(click, false);
                 screen.mouseReleased(click);
@@ -446,7 +451,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             EditBox find = sourceSearchBox(screen);
             for (int row = 2; row < 4; row++) {
                 String prefix = row == 2 ? "say function " : "# return run function ";
-                MouseButtonEvent click = new MouseButtonEvent(find.getX() + 43 + client.font.width(prefix) + 5,
+                MouseButtonEvent click = new MouseButtonEvent(find.getX() + 33 + client.font.width(prefix) + 5,
                     find.getBottom() + 12 + row * 18, new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
                 screen.mouseClicked(click, false);
                 screen.mouseReleased(click);
@@ -455,7 +460,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
         });
     }
 
-    private static void verifyHoverOnlyStages(ClientGameTestContext context) {
+    private static void verifyStageVisibility(ClientGameTestContext context) {
         context.getInput().resizeWindow(1280, 720);
         String command = "execute as @s at @s run say hover";
         var location = new SourceLocation.Function(new FunctionLocation(FUNCTION, 1));
@@ -475,7 +480,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             long request = sources.drainRequests().getFirst().requestId();
             sources.accept(new ClientFunctionSourceState.SourcePage(request, ClientFunctionSourceState.Status.READY,
                 FUNCTION, "gametest", "hover-only", false, 0, true, List.of(command, "say below")));
-            sources.rememberBrowseView(0, 0, 1, 0, 0);
+            sources.rememberBrowseView(0, 0, 1, 1, 0);
             var preferences = new DebuggerPreferences();
             DebuggerTheme.usePreferences(preferences);
             client.setScreenAndShow(new FunctionSourceScreen(new ScaledCodonScreen(Component.empty(), preferences) { }, sources));
@@ -493,10 +498,10 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
         int[] geometry = context.computeOnClient(client -> {
             Screen screen = client.gui.screen();
             EditBox find = sourceSearchBox(screen);
-            int codeX = find.getX() + 43;
+            int codeX = find.getX() + 33;
             return new int[]{screen.width, screen.height, codeX + client.font.width(command.substring(0, 8)),
                 codeX + client.font.width(command.substring(0, 14)) + SourceLineLayout.MARKER_WIDTH,
-                codeX + client.font.width(command.substring(0, 20)) + 2 * SourceLineLayout.MARKER_WIDTH,
+                codeX + client.font.width(command.substring(0, 20)) + SourceLineLayout.MARKER_WIDTH,
                 find.getBottom() + 5};
         });
         for (boolean paused : new boolean[]{false, true}) {
@@ -554,17 +559,96 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             for (int stage = 0; stage < 3; stage++) {
                 int color = (stage == 0 ? DebuggerTheme.RED : DebuggerTheme.MUTED) & 0xFFFFFF;
                 boolean visible = false;
-                for (int x = (int) Math.ceil((geometry[2 + stage] + 5) * scaleX);
-                     x < (int) Math.floor((geometry[2 + stage] + 14) * scaleX); x++) {
+                for (int x = (int) Math.ceil((geometry[2 + stage] + (stage == 2 && hovered == 1 ? 20 : 0) + 5) * scaleX);
+                     x < (int) Math.floor((geometry[2 + stage] + (stage == 2 && hovered == 1 ? 20 : 0) + 14) * scaleX); x++) {
                     for (int y = (int) Math.ceil((geometry[5] + 5) * scaleY);
                          y < (int) Math.floor((geometry[5] + 14) * scaleY); y++)
                         visible |= (image.getRGB(x, y) & 0xFFFFFF) == color;
                 }
-                require(visible == (stage == hovered), name + ": only the hovered stage icon is rendered, stage=" + stage);
+                require(visible == (stage == 0 || stage == hovered), name + ": enabled stages remain visible; inactive stages require hover, stage=" + stage);
             }
         } catch (java.io.IOException error) {
             throw new AssertionError("Cannot inspect stage marker capture", error);
         }
+    }
+
+    /** Latest requirement: enabled × hover × selection, with actual rendered pixels. */
+    private static void verifySelectionVisibilityMatrix(ClientGameTestContext context) {
+        String command = "execute as @s run say matrix";
+        var location = new SourceLocation.Function(new FunctionLocation(FUNCTION, 1));
+        for (boolean enabled : new boolean[]{false, true}) {
+            for (boolean selected : new boolean[]{false, true}) {
+                context.getInput().setCursorPos(0, 0);
+                ClientFunctionSourceState sources = context.computeOnClient(client -> {
+                    var debugger = CodonClientMod.state();
+                    debugger.breakpoints().reset();
+                    debugger.breakpoints().acceptPage(1, 0, true, List.of(
+                        BreakpointDefinition.plain(BreakpointTarget.stage(location, 0, command)).withEnabled(enabled),
+                        BreakpointDefinition.plain(BreakpointTarget.whole(location)).withEnabled(enabled)));
+                    var state = new ClientFunctionSourceState();
+                    state.select(FUNCTION);
+                    long request = state.drainRequests().getFirst().requestId();
+                    state.accept(new ClientFunctionSourceState.SourcePage(request, ClientFunctionSourceState.Status.READY,
+                        FUNCTION, "gametest", "visibility-matrix", false, 0, true, List.of(command, "say below")));
+                    state.rememberBrowseView(0, 0, selected ? 1 : 2, selected ? 0 : -1, 0);
+                    client.setScreenAndShow(new FunctionSourceScreen(new ScaledCodonScreen(Component.empty(), new DebuggerPreferences()) { }, state));
+                    return state;
+                });
+                context.waitTicks(2);
+                context.runOnClient(client -> {
+                    var previews = CodonClientMod.state().stagePreviews();
+                    long request = previews.begin(location);
+                    previews.accept(request, location, ClientStagePreviewState.Status.READY, command,
+                        List.of(new ClientStagePreviewState.StageSpan(0, 0, command.length(), true)));
+                });
+                context.waitTicks(2);
+                int[] geometry = context.computeOnClient(client -> {
+                    var screen = client.gui.screen();
+                    var find = sourceSearchBox(screen);
+                    int codeX = find.getX() + 33;
+                    return new int[]{screen.width, screen.height, codeX + client.font.width(command.substring(0, 8)),
+                        find.getBottom() + 5, codeX - 12};
+                });
+                String name = "codon-function-source-matrix-enabled-" + enabled + "-selected-" + selected;
+                assertMatrixPixels(context, geometry, enabled, enabled, name + "-nohover");
+                double[] pointer = context.computeOnClient(client -> {
+                    var screen = (ScaledCodonScreen) client.gui.screen();
+                    var window = client.getWindow();
+                    return new double[]{screen.uiScale().toGame(geometry[2] + 10) * window.getScreenWidth() / window.getGuiScaledWidth(),
+                        screen.uiScale().toGame(geometry[3] + 9) * window.getScreenHeight() / window.getGuiScaledHeight()};
+                });
+                context.getInput().setCursorPos(pointer[0], pointer[1]);
+                context.waitTicks(2);
+                assertMatrixPixels(context, geometry, enabled, true, name + "-hover");
+                context.getInput().setCursorPos(0, 0);
+                context.waitTicks(2);
+                assertMatrixPixels(context, geometry, enabled, enabled, name + "-leave");
+                context.runOnClient(client -> {
+                    try {
+                        var field = FunctionSourceScreen.class.getDeclaredField("expandedWidth");
+                        field.setAccessible(true);
+                        require(field.getInt(client.gui.screen()) == client.font.width(command) + (enabled ? 20 : 0),
+                            "pointer leave restores exact source glyph advances with only enabled slots");
+                    } catch (ReflectiveOperationException error) { throw new AssertionError(error); }
+                    require(sources.document().lines().getFirst().equals(command), "hover/selection matrix preserves source bytes");
+                });
+            }
+        }
+    }
+
+    private static void assertMatrixPixels(ClientGameTestContext context, int[] geometry, boolean enabled, boolean visible, String name) {
+        try {
+            var image = javax.imageio.ImageIO.read(context.takeScreenshot(name).toFile());
+            double sx = (double) image.getWidth() / geometry[0], sy = (double) image.getHeight() / geometry[1];
+            int color = (enabled ? DebuggerTheme.RED : DebuggerTheme.MUTED) & 0xFFFFFF;
+            for (int markerX : new int[]{geometry[2] + 5, geometry[4]}) {
+                boolean found = false;
+                for (int x = (int) Math.ceil(markerX * sx); x < (int) Math.floor((markerX + 9) * sx); x++)
+                    for (int y = (int) Math.ceil((geometry[3] + 5) * sy); y < (int) Math.floor((geometry[3] + 14) * sy); y++)
+                        found |= (image.getRGB(x, y) & 0xFFFFFF) == color;
+                require(found == visible, name + ": enabled/hover/selection rules hold for line and stage icons");
+            }
+        } catch (java.io.IOException error) { throw new AssertionError(error); }
     }
 
     private static void verifyCodeReader(ClientGameTestContext context) {
@@ -595,7 +679,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
         context.runOnClient(client -> {
             Screen screen = client.gui.screen();
             EditBox find = sourceSearchBox(screen);
-            MouseButtonEvent click = new MouseButtonEvent(find.getX() + 48 - 5 + client.font.width("function ") - 30 + 5,
+            MouseButtonEvent click = new MouseButtonEvent(find.getX() + 33 + client.font.width("function ") - 30 + 5,
                 find.getBottom() + 5 + 4 * 18 + 7, new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
             require(screen.mouseClicked(click, false), "follows the visible underlined function reference");
             screen.mouseReleased(click);
@@ -629,7 +713,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             require(screen.keyPressed(new KeyEvent(InputConstants.KEY_DOWN, 0, 0)), "arrow key navigates source lines");
             require(sources.browseView().selectedLine() == 4, "keyboard selection uses original file line numbers");
             screen.keyPressed(new KeyEvent(InputConstants.KEY_HOME, 0, 0));
-            screen.mouseScrolled(screen.width - 120, 180, -10, 0);
+            screen.mouseScrolled(screen.width - 120, 180, 10, 0);
             require(sources.browseView().horizontalOffset() > 0, "horizontal wheel exposes the long source tail");
             require(sources.browseView().selectedLine() == 1, "horizontal movement preserves the selected original line");
         });
