@@ -5,7 +5,10 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.Identifier;
 import net.minecraft.network.chat.Component;
@@ -13,6 +16,8 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import works.nuty.codon.client.state.ClientDebuggerState;
 import works.nuty.codon.client.network.ClientNetworking;
+import works.nuty.codon.client.ui.CodonScreen;
+import works.nuty.codon.client.ui.ScreenLayers;
 
 /**
  * Client keybinds for the debugger. Control actions (resume/step) are issued as {@code /codon}
@@ -24,6 +29,9 @@ public final class InputManager implements ClientTickEvents.EndTick {
 
     private final ClientDebuggerState state;
     private final OpenScreen openScreen;
+    private final UiHideGesture uiHide = new UiHideGesture();
+    private ClientLevel hideLevel;
+    private InputConstants.Key hideBinding;
 
     public KeyMapping menuKey;
     public KeyMapping keepFreecamKey;
@@ -47,11 +55,8 @@ public final class InputManager implements ClientTickEvents.EndTick {
 
     @Override
     public void onEndTick(Minecraft client) {
-        // This is a held action; discard the click queue instead of toggling any preference.
-        if (hideUiKey != null) {
-            while (hideUiKey.consumeClick()) { }
-            if (!client.isWindowActive()) hideUiKey.setDown(false);
-        }
+        synchronizeUiVisibility(client);
+        if (hideUiKey != null) while (hideUiKey.consumeClick()) { }
         if (client.player == null) {
             return;
         }
@@ -82,10 +87,7 @@ public final class InputManager implements ClientTickEvents.EndTick {
         }
 
         while (menuKey.consumeClick()) {
-            boolean hidden = isUiHidden();
             openScreen.open(this);
-            // Opening a screen releases every vanilla mapping, including a still-held peek key.
-            if (hideUiKey != null) hideUiKey.setDown(hidden);
         }
     }
 
@@ -95,21 +97,62 @@ public final class InputManager implements ClientTickEvents.EndTick {
 
     /** Shared by screen, HUD, and world markers; never changes the debugger's pause state. */
     public boolean isUiHidden() {
-        if (hideUiKey == null) return false;
-        Minecraft client = Minecraft.getInstance();
-        if (!client.isWindowActive()) {
+        synchronizeUiVisibility(Minecraft.getInstance());
+        return uiHide.isHidden();
+    }
+
+    public void resetUiVisibility() {
+        uiHide.reset();
+        if (hideUiKey != null) {
             hideUiKey.setDown(false);
-            return false;
+            while (hideUiKey.consumeClick()) { }
         }
-        // Closing a screen while H is held can leave the mapping down after the physical
-        // release. In world mode the actual keyboard state is authoritative.
-        if (client.gui.screen() == null) {
-            var bound = KeyMappingHelper.getBoundKeyOf(hideUiKey);
-            if (hideUiKey.isUnbound()) hideUiKey.setDown(false);
-            else if (bound.getType() == InputConstants.Type.KEYBOARD)
-                hideUiKey.setDown(InputConstants.isKeyDown(bound.getValue()));
+    }
+
+    private boolean acceptsHideInput(Minecraft client) {
+        var screen = client.gui.screen();
+        return client.player != null && client.level != null && client.isWindowActive()
+            && client.gui.overlay() == null
+            && (screen == null || screen instanceof CodonScreen
+                && ScreenLayers.get(screen) == null && !(screen.getFocused() instanceof EditBox));
+    }
+
+    private void synchronizeUiVisibility(Minecraft client) {
+        var binding = hideUiKey == null ? null : KeyMappingHelper.getBoundKeyOf(hideUiKey);
+        if (hideLevel != client.level || !java.util.Objects.equals(hideBinding, binding)) {
+            resetUiVisibility();
+            // Any pending release belongs to the previous world/binding.
+            uiHide.release(System.nanoTime());
+            hideLevel = client.level;
+            hideBinding = binding;
         }
-        return hideUiKey.isDown();
+        if (!acceptsHideInput(client) || hideUiKey == null || hideUiKey.isUnbound()) resetUiVisibility();
+        // SDL may not deliver a release after focus loss. Re-arm only once the physical key is up.
+        if (uiHide.awaitingRelease() && binding != null && binding.getType() == InputConstants.Type.KEYBOARD
+            && !InputConstants.isKeyDown(binding.getValue())) uiHide.release(System.nanoTime());
+    }
+
+    public boolean handleHideKey(KeyEvent event, int action) {
+        synchronizeUiVisibility(Minecraft.getInstance());
+        if (hideUiKey == null || !hideUiKey.matches(event)) return false;
+        return handleHideAction(action);
+    }
+
+    public boolean handleHideMouse(MouseButtonEvent event, int action) {
+        synchronizeUiVisibility(Minecraft.getInstance());
+        if (hideUiKey == null || !hideUiKey.matchesMouse(event)) return false;
+        // Mouse buttons do not repeat PRESS. A new press follows a physical release,
+        // even when that release happened outside the window and its callback was lost.
+        if (action == InputConstants.PRESS && uiHide.awaitingRelease()
+            && acceptsHideInput(Minecraft.getInstance())) uiHide.release(System.nanoTime());
+        return handleHideAction(action);
+    }
+
+    private boolean handleHideAction(int action) {
+        if (action == InputConstants.RELEASE) uiHide.release(System.nanoTime());
+        else if (action == InputConstants.PRESS && acceptsHideInput(Minecraft.getInstance())) uiHide.press(System.nanoTime());
+        // Repeats cannot restart the timer or toggle. Only a physical release classifies a press.
+        return acceptsHideInput(Minecraft.getInstance());
     }
 
     public void control(Control action) {

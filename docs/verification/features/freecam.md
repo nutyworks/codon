@@ -46,7 +46,7 @@ isolation or an absence of motion over time.
 | Viewpoint across step/pause packets | `DebuggerFreecamStepGameTest` |
 | Retained camera and running-player state | `DebuggerFreecamResumeGameTest` |
 | World changes reaching paused client | `DebuggerWorldSyncGameTest` |
-| Paused clocks, chat, sound, temporary UI hiding | `DebuggerClientPauseGameTest`, `DebuggerChatPauseGameTest`, `DebuggerSoundPauseGameTest`, `DebuggerPeekUiGameTest` |
+| Paused clocks, chat, sound, UI visibility | `DebuggerClientPauseGameTest`, `DebuggerChatPauseGameTest`, `DebuggerSoundPauseGameTest`, `DebuggerPeekUiGameTest` |
 
 Example: `./gradlew runClientGameTest -PclientGameTest=DebuggerFreecamResumeGameTest`.
 Several camera tests inject snapshots or server-sent pause/step packets. They
@@ -54,3 +54,5 @@ exercise real client hooks but do not establish native breakpoint execution; pai
 with the relevant [stepping](stepping.md) scenario when that path changes.
 The sound test needs a working OpenAL output device (CI supplies a virtual sink).
 Manual video/interaction remains necessary for reported jitter or visual clipping.
+
+For short/long hide gestures and lifecycle reset, use the [UI visibility guide](ui-visibility.md).

@@ -3,6 +3,9 @@ package works.nuty.codon.client;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
+import com.mojang.blaze3d.platform.InputConstants;
+import net.minecraft.client.input.KeyEvent;
+import works.nuty.codon.client.input.UiHideGesture;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
@@ -18,6 +21,7 @@ import works.nuty.codon.client.camera.DebuggerFreecam;
 import works.nuty.codon.client.state.ClientDebuggerState;
 import works.nuty.codon.core.model.BlockLocation;
 import works.nuty.codon.core.model.SourceLocation;
+import works.nuty.codon.core.model.PauseSnapshot;
 
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -55,6 +59,7 @@ public final class DebuggerFreecamResumeGameTest implements FabricClientGameTest
                 world.getServer().runCommand("setblock 3 80 0 minecraft:redstone_block");
                 waitForPause(context, FIRST);
                 CameraGuard guard = context.computeOnClient(client -> cameraGuard(client, fixture));
+                if (!keepFreecam) checkHideDuringNativePause(context, fixture);
 
                 resumeToContinuation(context, SECOND);
                 context.waitTicks(3);
@@ -144,6 +149,34 @@ public final class DebuggerFreecamResumeGameTest implements FabricClientGameTest
             }
         }
     }
+
+    private static void checkHideDuringNativePause(ClientGameTestContext context, Fixture fixture) {
+        var input = CodonClientMod.input();
+        PauseSnapshotGuard pause = context.computeOnClient(client -> new PauseSnapshotGuard(
+            fixture.state().snapshot(), CodonMod.engine().currentSnapshot()));
+        context.getInput().holdKey(options -> input.hideUiKey);
+        long start = System.nanoTime();
+        context.waitFor(client -> System.nanoTime() - start >= UiHideGesture.HOLD_NANOS, 200);
+        context.runOnClient(client -> require(input.isUiHidden(), "native breakpoint UI hides during a long press"));
+        context.getInput().releaseKey(options -> input.hideUiKey);
+        context.runOnClient(client -> {
+            require(!input.isUiHidden(), "long release restores native breakpoint UI");
+            KeyEvent h = new KeyEvent(InputConstants.KEY_H, 0, 0);
+            client.keyboardHandler.keyPress(client.getWindow().handle(), InputConstants.PRESS, h);
+            client.keyboardHandler.keyPress(client.getWindow().handle(), InputConstants.RELEASE, h);
+            require(input.isUiHidden(), "native breakpoint UI toggles on a tap");
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            require(fixture.state().isPaused() && fixture.state().snapshot() == pause.client(),
+                "hiding preserves the acknowledged client pause");
+            require(CodonMod.engine().isPaused() && CodonMod.engine().currentSnapshot() == pause.server(),
+                "hiding cannot resume or step the real server breakpoint");
+            input.resetUiVisibility();
+        });
+    }
+
+    private record PauseSnapshotGuard(PauseSnapshot client, PauseSnapshot server) { }
 
     private static void configure(TestSingleplayerContext world) {
         world.getServer().runOnServer(server -> {
