@@ -105,7 +105,9 @@ selector. Both selectors open on a short hover (180 ms), a click, or Enter/Space
 or an arrow key while focused. Hovering never changes the condition. Clicking an
 already-open selector keeps its menu open, including immediately after hover-open. The menu
 stays open while crossing the gap from its trigger and closes after the pointer
-leaves both for 220 ms. Clicking an option applies it to the draft and closes the
+leaves both for 220 ms. Re-entering the selector after that automatic close must
+open it again, including before another render observes the outside pointer.
+Clicking an option applies it to the draft and closes the
 menu; Save still waits for server acknowledgement. Escape closes an open menu
 first, then the layer. Tab closes the menu and continues through the form.
 
