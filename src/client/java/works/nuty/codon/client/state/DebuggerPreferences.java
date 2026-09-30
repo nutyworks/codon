@@ -18,6 +18,13 @@ public final class DebuggerPreferences {
     private boolean keepFreecam;
     private boolean watchesVisible = true;
     private boolean commandVisible = true;
+    public enum UiScaleMode { FOLLOW_GAME, CUSTOM }
+    public static final int MIN_UI_SCALE = 4;
+    public static final int MAX_UI_SCALE = 16;
+    public static final int DEFAULT_UI_SCALE = 8;
+    private UiScaleMode uiScaleMode = UiScaleMode.FOLLOW_GAME;
+    // Quarter steps: 4 means 1.00x, 16 means 4.00x.
+    private int customUiScale = DEFAULT_UI_SCALE;
     private int backgroundOpacity = 100;
     private Runnable changeListener = () -> { };
 
@@ -103,6 +110,33 @@ public final class DebuggerPreferences {
     public void setNbtExpanded(boolean expanded) {
         if (nbtExpanded != expanded) {
             nbtExpanded = expanded;
+            changed();
+        }
+    }
+
+    public UiScaleMode uiScaleMode() { return uiScaleMode; }
+    public int customUiScale() { return customUiScale; }
+
+    public void setUiScaleMode(UiScaleMode mode) {
+        mode = Objects.requireNonNull(mode);
+        if (uiScaleMode != mode) {
+            uiScaleMode = mode;
+            changed();
+        }
+    }
+
+    public void setCustomUiScale(int scale) {
+        scale = Math.clamp(scale, MIN_UI_SCALE, MAX_UI_SCALE);
+        if (customUiScale != scale) {
+            customUiScale = scale;
+            changed();
+        }
+    }
+
+    public void resetUiScale() {
+        if (uiScaleMode != UiScaleMode.FOLLOW_GAME || customUiScale != DEFAULT_UI_SCALE) {
+            uiScaleMode = UiScaleMode.FOLLOW_GAME;
+            customUiScale = DEFAULT_UI_SCALE;
             changed();
         }
     }

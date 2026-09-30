@@ -55,6 +55,20 @@ public final class ClientSettingsStore {
         if (!json.has("version") || !isVersion(json.get("version"))) {
             throw new IOException("Unsupported Codon client settings version");
         }
+        if (json.has("uiScaleMode")) {
+            preferences.setUiScaleMode(enumValue(json.get("uiScaleMode"), DebuggerPreferences.UiScaleMode.class, "uiScaleMode"));
+        }
+        if (json.has("customUiScale")) {
+            JsonElement value = json.get("customUiScale");
+            try {
+                if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber()) throw new NumberFormatException();
+                int scale = new BigDecimal(value.getAsString()).intValueExact();
+                if (scale < DebuggerPreferences.MIN_UI_SCALE || scale > DebuggerPreferences.MAX_UI_SCALE) throw new NumberFormatException();
+                preferences.setCustomUiScale(scale);
+            } catch (ArithmeticException | NumberFormatException exception) {
+                throw new IOException("Invalid customUiScale in Codon client settings", exception);
+            }
+        }
         if (json.has("backgroundOpacity")) {
             JsonElement value = json.get("backgroundOpacity");
             try {
@@ -139,6 +153,8 @@ public final class ClientSettingsStore {
     private static JsonObject encode(DebuggerPreferences preferences) {
         JsonObject json = new JsonObject();
         json.addProperty("version", VERSION);
+        json.addProperty("uiScaleMode", preferences.uiScaleMode().name());
+        json.addProperty("customUiScale", preferences.customUiScale());
         json.addProperty("backgroundOpacity", preferences.backgroundOpacity());
         json.addProperty("gizmoMode", preferences.gizmoMode().name());
         if (preferences.inspectorVisible() == null) {

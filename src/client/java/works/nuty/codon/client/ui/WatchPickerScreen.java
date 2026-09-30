@@ -24,7 +24,7 @@ import java.util.function.Consumer;
 import static works.nuty.codon.client.ui.DebuggerTheme.*;
 
 /** Read-only paged chooser used by the Watch expression form. */
-public final class WatchPickerScreen extends Screen {
+public final class WatchPickerScreen extends ScaledCodonScreen {
     private static final int ROW_HEIGHT = 26;
     private final Screen parent;
     private final ClientDebuggerState state;
@@ -50,7 +50,7 @@ public final class WatchPickerScreen extends Screen {
 
     public WatchPickerScreen(Screen parent, ClientDebuggerState state, WatchEditorQuery initial,
                              Consumer<WatchEditorPage.Option> selected) {
-        super(WatchUi.text("picker.title"));
+        super(WatchUi.text("picker.title"), state.preferences());
         this.parent = Objects.requireNonNull(parent);
         this.state = Objects.requireNonNull(state);
         this.initial = Objects.requireNonNull(initial);

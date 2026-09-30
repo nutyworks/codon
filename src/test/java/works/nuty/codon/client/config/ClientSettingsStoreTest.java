@@ -22,6 +22,45 @@ class ClientSettingsStoreTest {
     Path temporaryDirectory;
 
     @Test
+    void uiScaleDefaultsRoundTripAndResetWithoutChangingOtherPreferences() throws IOException {
+        Path file = temporaryDirectory.resolve("scale.json");
+        Files.writeString(file, "{\"version\":1}");
+        var preferences = ClientSettingsStore.open(file, exception -> { throw new AssertionError(exception); });
+        assertEquals(DebuggerPreferences.UiScaleMode.FOLLOW_GAME, preferences.uiScaleMode());
+        assertEquals(8, preferences.customUiScale());
+        preferences.setBackgroundOpacity(37);
+        preferences.setUiScaleMode(DebuggerPreferences.UiScaleMode.CUSTOM);
+        for (int scale : new int[]{4, 9, 16}) {
+            preferences.setCustomUiScale(scale);
+            var reloaded = ClientSettingsStore.open(file, exception -> { throw new AssertionError(exception); });
+            assertEquals(DebuggerPreferences.UiScaleMode.CUSTOM, reloaded.uiScaleMode());
+            assertEquals(scale, reloaded.customUiScale());
+        }
+        preferences.setUiScaleMode(DebuggerPreferences.UiScaleMode.FOLLOW_GAME);
+        assertEquals(16, ClientSettingsStore.open(file, exception -> { throw new AssertionError(exception); }).customUiScale());
+        preferences.resetUiScale();
+        var reset = ClientSettingsStore.open(file, exception -> { throw new AssertionError(exception); });
+        assertEquals(DebuggerPreferences.UiScaleMode.FOLLOW_GAME, reset.uiScaleMode());
+        assertEquals(8, reset.customUiScale());
+        assertEquals(37, reset.backgroundOpacity());
+    }
+
+    @Test
+    void invalidScaleSettingsArePreservedWithoutWrites() throws IOException {
+        Path file = temporaryDirectory.resolve("invalid-scale.json");
+        for (String property : List.of("\"customUiScale\":3", "\"customUiScale\":17", "\"customUiScale\":8.5",
+            "\"customUiScale\":\"8\"", "\"customUiScale\":null", "\"uiScaleMode\":\"OTHER\"", "\"uiScaleMode\":true")) {
+            String original = "{\"version\":1," + property + "}";
+            Files.writeString(file, original);
+            List<Exception> errors = new ArrayList<>();
+            var preferences = ClientSettingsStore.open(file, errors::add);
+            assertEquals(1, errors.size());
+            preferences.setUiScaleMode(DebuggerPreferences.UiScaleMode.CUSTOM);
+            assertEquals(original, Files.readString(file));
+        }
+    }
+
+    @Test
     void opacityEndpointsRoundTripAndOldSettingsKeepOriginalAppearance() throws IOException {
         Path file = temporaryDirectory.resolve("opacity.json");
         Files.writeString(file, "{\"version\":1}");

@@ -17,7 +17,7 @@ import java.util.List;
 import static works.nuty.codon.client.ui.DebuggerTheme.*;
 
 /** Central home for debugger guidance, with wrapping and scrolling at every GUI scale. */
-public final class DebuggerHelpScreen extends Screen {
+public final class DebuggerHelpScreen extends ScaledCodonScreen {
     private final @Nullable Screen parent;
     private final InputManager input;
     private record Line(FormattedCharSequence text, int color, @Nullable DebuggerIcon icon) { }
@@ -36,7 +36,7 @@ public final class DebuggerHelpScreen extends Screen {
     private int focusedTopic;
 
     public DebuggerHelpScreen(@Nullable Screen parent, InputManager input) {
-        super(Component.translatable("codon.ui.information"));
+        super(Component.translatable("codon.ui.information"), preferencesFor(parent));
         this.parent = parent;
         this.input = input;
     }

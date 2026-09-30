@@ -470,5 +470,13 @@
   "codon.watch.binding.fixed": "Fixed",
   "codon.watch.binding.context": "Follows context",
   "codon.ui.gizmo_mode": "Gizmo: %s",
-  "command.codon.error.execution": "Error: %s"
+  "command.codon.error.execution": "Error: %s",
+  "codon.ui.scale.title": "Codon UI scale",
+  "codon.ui.scale.follow": "Follow game GUI scale",
+  "codon.ui.scale.custom": "Custom scale",
+  "codon.ui.scale.requested": "Requested: %s",
+  "codon.ui.scale.units": "Uses the same scale units as game GUI scale. Only Codon changes. Adjust in 0.25× steps.",
+  "codon.ui.scale.applied": "Applied: %s",
+  "codon.ui.scale.limited": "Applied: %s to fit this window. Your requested scale is saved and returns in a larger window.",
+  "codon.ui.scale.reset": "Restore defaults"
 }

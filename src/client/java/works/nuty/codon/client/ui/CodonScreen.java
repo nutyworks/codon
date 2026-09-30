@@ -13,13 +13,13 @@ import works.nuty.codon.client.input.InputManager;
 import java.util.List;
 
 /** Cursor mode for the shared debugger HUD. The underlying world remains visible. */
-public final class CodonScreen extends Screen {
+public final class CodonScreen extends ScaledCodonScreen {
     private final InputManager input;
     private final DebuggerOverlay overlay;
     private List<DebuggerButton> registered = List.of();
 
     public CodonScreen(InputManager input, DebuggerOverlay overlay) {
-        super(Component.translatable("codon.ui.title"));
+        super(Component.translatable("codon.ui.title"), overlay.preferences());
         this.input = input;
         this.overlay = overlay;
     }

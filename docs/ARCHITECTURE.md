@@ -408,6 +408,14 @@ Client and server must both use the updated mod for pause visualization and watc
 
 Client preferences are shared across worlds and servers in the Minecraft instance's
 `config/codon.json`: gizmo mode, inspector visibility, and inspector tab. Changes save immediately.
+Codon UI scale defaults to following the game's actual GUI scale. A retained custom
+request (1.00×–4.00×, quarter steps) scales only Codon's HUD, screens and modal layers;
+it does not mutate Minecraft options. `UiScale` limits the applied value for small
+windows without discarding the request. `ScaledCodonScreen` owns logical dimensions,
+and the shared screen extraction boundary scales the full pass including deferred
+tooltips. Native pointer coordinates and drag deltas are mapped before Fabric screen
+events; keyboard navigation uses those same logical widget bounds. Inline controls
+inside vanilla editors continue to use their host's coordinates.
 The legacy whole-NBT expansion setting is accepted for compatibility but no longer hides NBT.
 An unset (`null`) inspector visibility retains the responsive automatic default. Key bindings
 continue to use Minecraft's own options file. Pause snapshots, context/frame selection, scroll

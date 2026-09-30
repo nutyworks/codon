@@ -24,7 +24,7 @@ import works.nuty.codon.core.model.BreakpointTarget;
 import static works.nuty.codon.client.ui.DebuggerTheme.*;
 
 /** Modal condition widgets; hosted by ScreenLayers, never installed as the active screen. */
-public final class BreakpointConditionScreen extends Screen {
+public final class BreakpointConditionScreen extends ScaledCodonScreen {
     private enum Menu { NONE, KIND, COMPARISON }
     private static final int MENU_ROW_HEIGHT = 18;
     private static final long HOVER_DELAY = 180_000_000L;
@@ -64,11 +64,11 @@ public final class BreakpointConditionScreen extends Screen {
 
     public BreakpointConditionScreen(Screen parent, ClientDebuggerState state, BreakpointDefinition definition,
                                      Anchor anchor) {
-        super(Component.translatable("codon.breakpoint.condition_title"));
+        super(Component.translatable("codon.breakpoint.condition_title"), state.preferences());
         this.parent = parent;
         this.state = state;
         this.original = definition;
-        this.anchor = anchor;
+        this.anchor = localAnchor(parent, anchor);
         this.kind = definition.condition().kind();
         this.comparison = definition.condition().comparison();
         this.thresholdText = Integer.toString(definition.condition().threshold());
