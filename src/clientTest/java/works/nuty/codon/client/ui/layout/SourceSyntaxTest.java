@@ -5,6 +5,36 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SourceSyntaxTest {
+    @Test void executeArgumentsNamedRunDoNotBecomeCommandDelimiters() {
+        for (String source : List.of(
+            "execute if score run objective matches 1 run function demo:next",
+            "execute as run at @s run function demo:next",
+            "execute if score run run = run run run function demo:next",
+            "execute store result score run run run function demo:next",
+            "execute if stopwatch run 1 run function demo:next",
+            "execute if data storage run path run function demo:next",
+            "execute store success storage run path int 1 run function demo:next",
+            "execute facing entity run eyes run function demo:next")) {
+            var spans = SourceSyntax.spans(source);
+            var function = spans.stream().filter(span -> source.substring(span.start(), span.end()).equals("function"))
+                .findFirst().orElseThrow();
+            assertEquals(SourceSyntax.Kind.COMMAND, function.kind(), source);
+            var firstRun = spans.stream().filter(span -> source.substring(span.start(), span.end()).equals("run"))
+                .findFirst().orElseThrow();
+            assertEquals(SourceSyntax.Kind.ARGUMENT, firstRun.kind(), source);
+        }
+        String argument = "execute if score run function matches 1 run say minecraft:matches";
+        var function = SourceSyntax.spans(argument).stream()
+            .filter(span -> argument.substring(span.start(), span.end()).equals("function")).findFirst().orElseThrow();
+        assertEquals(SourceSyntax.Kind.ARGUMENT, function.kind(), "a score objective named function is not a link");
+    }
+
+    @Test void unknownOrIncompleteExecuteClausesNeverGuessACommandBoundary() {
+        for (String source : List.of("execute if unknown run function demo:next",
+            "execute if score run objective matches", "execute positioned run function demo:next"))
+            assertTrue(SourceSyntax.spans(source).stream().noneMatch(span -> span.kind() == SourceSyntax.Kind.COMMAND
+                && source.substring(span.start(), span.end()).equals("function")), source);
+    }
     @Test void nestedReturnAndScheduleFunctionPositionsExcludeSayTextAndStrings() {
         for (String source : List.of("return run function demo:inner", "schedule function demo:inner 1t",
             "execute as @s run return run function demo:inner")) {
