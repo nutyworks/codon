@@ -18,6 +18,15 @@ public final class DebuggerPreferences {
     private boolean keepFreecam;
     private boolean watchesVisible = true;
     private boolean commandVisible = true;
+    public enum UiScaleMode { FOLLOW_GAME, CUSTOM }
+    public static final int MIN_UI_SCALE = 4;
+    public static final int STANDARD_MAX_UI_SCALE = 16;
+    public static final int MAX_UI_SCALE = Integer.MAX_VALUE - 3;
+    public static final int DEFAULT_UI_SCALE = 8;
+    private UiScaleMode uiScaleMode = UiScaleMode.FOLLOW_GAME;
+    // Quarter steps: 4 means 1.00x. An absent saved request starts from the actual game scale.
+    private int customUiScale = DEFAULT_UI_SCALE;
+    private boolean customUiScaleInitialized;
     private int backgroundOpacity = 100;
     private Runnable changeListener = () -> { };
 
@@ -103,6 +112,50 @@ public final class DebuggerPreferences {
     public void setNbtExpanded(boolean expanded) {
         if (nbtExpanded != expanded) {
             nbtExpanded = expanded;
+            changed();
+        }
+    }
+
+    public UiScaleMode uiScaleMode() { return uiScaleMode; }
+    public int customUiScale() { return customUiScale; }
+    public boolean customUiScaleInitialized() { return customUiScaleInitialized; }
+
+    public static int gameUiScaleRequest(double appliedGameScale) {
+        return (int) Math.max(MIN_UI_SCALE, Math.min(MAX_UI_SCALE, Math.round(appliedGameScale * 4)));
+    }
+
+    /** Initialize once from Window's applied scale, including Auto; keep later user requests. */
+    public void selectCustomUiScale(double appliedGameScale) {
+        if (uiScaleMode != UiScaleMode.CUSTOM || !customUiScaleInitialized) {
+            if (!customUiScaleInitialized) customUiScale = gameUiScaleRequest(appliedGameScale);
+            customUiScaleInitialized = true;
+            uiScaleMode = UiScaleMode.CUSTOM;
+            changed();
+        }
+    }
+
+    public void setUiScaleMode(UiScaleMode mode) {
+        mode = Objects.requireNonNull(mode);
+        if (uiScaleMode != mode) {
+            uiScaleMode = mode;
+            changed();
+        }
+    }
+
+    public void setCustomUiScale(int scale) {
+        scale = Math.clamp(scale, MIN_UI_SCALE, MAX_UI_SCALE);
+        if (customUiScale != scale || !customUiScaleInitialized) {
+            customUiScale = scale;
+            customUiScaleInitialized = true;
+            changed();
+        }
+    }
+
+    public void resetUiScale() {
+        if (uiScaleMode != UiScaleMode.FOLLOW_GAME || customUiScaleInitialized) {
+            uiScaleMode = UiScaleMode.FOLLOW_GAME;
+            customUiScale = DEFAULT_UI_SCALE;
+            customUiScaleInitialized = false;
             changed();
         }
     }

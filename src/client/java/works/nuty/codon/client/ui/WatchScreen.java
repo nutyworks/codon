@@ -31,7 +31,7 @@ import static works.nuty.codon.client.ui.DebuggerTheme.*;
 import static works.nuty.codon.client.ui.WatchUi.text;
 
 /** A focused expression form. Watch rows and their management live exclusively in Watches. */
-public final class WatchScreen extends Screen {
+public final class WatchScreen extends ScaledCodonScreen {
     private final InputManager input;
     private final ClientDebuggerState state;
     private final DebuggerOverlay overlay;
@@ -55,7 +55,7 @@ public final class WatchScreen extends Screen {
     }
 
     private WatchScreen(InputManager input, ClientDebuggerState state, DebuggerOverlay overlay, long editId) {
-        super(text(editId > 0 ? "editor.edit_title" : "editor.title"));
+        super(text(editId > 0 ? "editor.edit_title" : "editor.title"), state.preferences());
         this.input = input;
         this.state = state;
         this.overlay = overlay;

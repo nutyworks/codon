@@ -15,6 +15,7 @@ existing tests; they are not a record of passing runs.
 | Navigate while paused and retain/restore the camera | [Freecam](features/freecam.md) |
 | Toggle or temporarily hide debugger panels and markers | [UI visibility](features/ui-visibility.md) |
 | Search loaded functions and inspect line/stage source | [Function source](features/function-source.md) |
+| Resize Codon independently of game GUI scale | [UI scale](features/ui-scale.md) |
 
 ## Prepare and launch
 
