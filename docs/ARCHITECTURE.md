@@ -272,10 +272,15 @@ The Watches heading always includes a **+** button to open the definition editor
 list is empty. The add form contains only expression inputs: direct Score / Entity NBT / Storage tabs,
 separate drafts, inline syntax validation, and optional entity UUID selection. Blank entity follows the
 selected context; a specified UUID stays fixed. Objective, loaded-entity, storage and NBT pickers use
-owner-only read requests, paged at 32 options. NBT search filters the current page. Draft previews use
-pause/request/context correlation and never save definitions. Timeout retries are explicit. Input fields
+owner-only read requests, paged at 32 options. NBT search filters the current page.
+The chooser aligns search, rows and right-side actions, centers single-line options, and fits
+short result pages without moving the title or search. Shared row bounds keep expansion controls,
+scrollbars, rendered gaps and native selection aligned at the applied Codon UI scale.
+Draft previews use pause/request/context correlation and never save definitions. Timeout retries are explicit. Input fields
 handle typing before global shortcuts; Tab changes fields, Enter adds and returns to Watches,
 Ctrl+Enter adds another with focus restored. Watches owns editing, binding and removal controls.
+All three forms share label, field and action columns. Inline choices leave room before the
+next label; visible validation replaces choices in that slot, and Retry aligns with the preview value.
 It uses upper-right whitespace down to the command panel, offers Context / Path / No group display modes, and
 reveals newly added or duplicate entries. Context groups by displayed executor UUID (including outgoing
 observations), falling back to the explicit binding or selected context, and by storage ID for storage rows.

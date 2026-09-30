@@ -30,6 +30,20 @@ data modify storage codon:verify counter set value 0
    watch editor at the viewport/GUI scale relevant to the reported issue.
 6. For persistence changes, save, leave and reopen the same world. Verify saved
    watch definitions and any affected client view preferences separately.
+7. In the Watch add/edit form, check Score, Entity NBT and Storage NBT in English
+   and Korean at normal and 320x240 GUI viewports. Labels sit above their fields;
+   field actions share row height and the right column. Recommendations leave a
+   gap before the next label, validation remains readable, and Retry sits beside
+   the preview value. Use native clicks and Tab to check Browse, Retry, Add/Save
+   and focus after returning from the picker. Also check an independent Codon UI
+   scale when that option is available.
+8. Open both Browse/Choose buttons. In Objectives, check a blank search with two
+   short options: the search and list share their edges, labels are vertically
+   centered, and the footer follows the rows without a large empty panel. In
+   storage/entity NBT, inspect long details beside expansion arrows, expand and
+   go Up. Check page navigation, Retry, scroll and keyboard selection in English
+   and Korean at normal, narrow and custom Codon scales. Search retains its
+   position as result sizes change; native selection updates only its draft field.
 
 Queries while paused must remain read-only and must not cause an extra execution
 step. Keep previous/current comparison tied to observed pauses. A brief retained
@@ -40,6 +54,8 @@ display during a pending reply must not enable actions on stale data.
 - [WatchReader](../../../src/main/java/works/nuty/codon/adapter/WatchReader.java), [NbtTreeReader](../../../src/main/java/works/nuty/codon/adapter/NbtTreeReader.java): server-side reads.
 - [ClientWatchState](../../../src/client/java/works/nuty/codon/client/state/ClientWatchState.java), [ClientNbtState](../../../src/client/java/works/nuty/codon/client/state/ClientNbtState.java): requests, values and selected target.
 - [WatchPanel](../../../src/client/java/works/nuty/codon/client/ui/WatchPanel.java), [WatchScreen](../../../src/client/java/works/nuty/codon/client/ui/WatchScreen.java), [NbtTreePanel](../../../src/client/java/works/nuty/codon/client/ui/NbtTreePanel.java): user interaction.
+- [WatchFormLayout](../../../src/client/java/works/nuty/codon/client/ui/layout/WatchFormLayout.java): shared form columns and vertical slots.
+- [WatchPickerScreen](../../../src/client/java/works/nuty/codon/client/ui/WatchPickerScreen.java), [WatchPickerLayout](../../../src/client/java/works/nuty/codon/client/ui/layout/WatchPickerLayout.java): Browse dialog drawing, controls and hit bounds.
 
 ## Choose verification
 
@@ -50,10 +66,20 @@ display during a pending reply must not enable actions on stale data.
 | Files and transfer | `test`: `WorldWatchPersistenceTest`, `WatchDefinitionTransferTest` |
 | Watch readers and rendered values | `DebuggerWatchGameTest` |
 | Editor and server request/reply | `DebuggerWatchEditorGameTest`, `WatchEditorTransportGameTest` |
+| Watch form alignment, languages and native input | `clientTest`: `WatchFormLayoutTest`; `DebuggerWatchFormLayoutGameTest` |
+| Browse dialog alignment, short Objectives, paging and selection | `clientTest`: `WatchPickerLayoutTest`; `DebuggerWatchPickerLayoutGameTest`, `WatchEditorTransportGameTest` |
 | Empty Watches hint, visible `+` and editor route | `DebuggerNbtTreeGameTest` (`codon-nbt-tree-empty-watch-plus` capture) |
 | NBT reads, tree controls and stale buttons | `NbtTreeReaderGameTest`, `DebuggerNbtTreeGameTest`, `DebuggerNbtPendingButtonsGameTest` |
 | Pinning, grouping, persistence | `DebuggerWatchPinGameTest`, `DebuggerWatchGroupingGameTest`, `DebuggerWatchPersistenceGameTest` |
 | Pause-time changes and command chains | `PauseWatchChangesGameTest`, `DebuggerWatchChainGameTest`, `DebuggerAutomaticWatchGameTest` |
+
+The two layout GameTests use six representative cases each, not a language ×
+viewport × Watch-kind matrix. The form cases retain all three kinds in both
+languages, normal/compact layouts, custom-scale resize/clamping, validation,
+Retry, and Add/Save. The picker cases exercise each kind/field route once,
+including two short Objectives, paging/Retry, NBT expand/Up, narrow Korean
+scrolling and custom-scale selection. `WatchFormLayoutTest` and
+`WatchPickerLayoutTest` retain the focused geometry and viewport boundary checks.
 
 Example: `./gradlew runClientGameTest -PclientGameTest=DebuggerNbtTreeGameTest`.
 Choose the row for the changed behavior, not the whole table. Inspect the matching
