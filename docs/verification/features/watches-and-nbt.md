@@ -14,7 +14,9 @@ data modify storage codon:verify counter set value 0
 1. Put `execute as @a run scoreboard players add @s codon_verify 1` in an impulse
    command block, set a breakpoint, and trigger it. Step until the player executor
    is selected, then press `V` to interact with Watches and the context inspector.
-2. Use the Watches add control to open the editor. Add the executor's `codon_verify`
+2. With no saved watches, check that the visible `+` add control matches the empty
+   panel's `Use + to add` hint (English and Korean), then use it to open the editor.
+   Add the executor's `codon_verify`
    score and a storage watch for `codon:verify`, path `counter`. The score shows its
    current value and storage shows the valid value `0`.
 3. Step through the update and inspect at the next stop. The score changes by one;
@@ -48,6 +50,7 @@ display during a pending reply must not enable actions on stale data.
 | Files and transfer | `test`: `WorldWatchPersistenceTest`, `WatchDefinitionTransferTest` |
 | Watch readers and rendered values | `DebuggerWatchGameTest` |
 | Editor and server request/reply | `DebuggerWatchEditorGameTest`, `WatchEditorTransportGameTest` |
+| Empty Watches hint, visible `+` and editor route | `DebuggerNbtTreeGameTest` (`codon-nbt-tree-empty-watch-plus` capture) |
 | NBT reads, tree controls and stale buttons | `NbtTreeReaderGameTest`, `DebuggerNbtTreeGameTest`, `DebuggerNbtPendingButtonsGameTest` |
 | Pinning, grouping, persistence | `DebuggerWatchPinGameTest`, `DebuggerWatchGroupingGameTest`, `DebuggerWatchPersistenceGameTest` |
 | Pause-time changes and command chains | `PauseWatchChangesGameTest`, `DebuggerWatchChainGameTest`, `DebuggerAutomaticWatchGameTest` |
