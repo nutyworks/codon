@@ -8,6 +8,17 @@ import works.nuty.codon.client.state.ClientWatchState;
 public final class WatchRowRenderer {
     private WatchRowRenderer() { }
 
+    /** Compact HUD rows reserve the full lower line for the value, clear of management controls. */
+    public static void renderStacked(GuiGraphicsExtractor graphics, Font font, ClientWatchState.Entry entry,
+                                     boolean paused, String label, int x, int y, int labelWidth, int valueWidth,
+                                     int kindInset, int labelColor, int valueColor) {
+        String badge = WatchFormatting.changeBadge(entry).getString();
+        if (!badge.isEmpty()) label += " · " + badge;
+        WatchUi.line(graphics, font, label, x + kindInset, y, labelWidth - kindInset, labelColor);
+        graphics.text(font, fitValue(font, entry, paused, valueWidth), x, y + 16,
+            DebuggerTheme.color(valueColor), false);
+    }
+
     public static void render(GuiGraphicsExtractor graphics, Font font, ClientWatchState.Entry entry,
                               boolean paused, String label, int x, int y, int width, int labelColor, int valueColor) {
         if (width <= 0) return;

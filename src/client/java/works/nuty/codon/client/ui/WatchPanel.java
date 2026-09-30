@@ -121,7 +121,9 @@ public final class WatchPanel {
             boolean afterDivider = rows.get(index).key() == firstUngroupedId || rows.get(index).entry() == null;
             topMargins.add(afterDivider ? DIVIDER_TOP_MARGIN + DIVIDER_MARGIN : 0);
         }
-        var rowLayout = new WatchPanelLayout.Rows(rows.stream().map(row -> !row.showScope()).toList(), topMargins);
+        boolean stackedValues = WatchPanelLayout.stackedValues(available.width());
+        var rowLayout = new WatchPanelLayout.Rows(rows.stream().map(row -> !row.showScope()).toList(), topMargins,
+            rows.stream().map(row -> stackedValues && row.entry() != null).toList());
         int viewportHeight = Math.max(0, available.height() - bodyStart - BOTTOM_PADDING);
         maximum = rowLayout.maximumOffset(viewportHeight);
         List<Long> keys = rows.stream().map(Row::key).toList();
@@ -248,14 +250,19 @@ public final class WatchPanel {
             int lineSpacing = font.lineHeight + 3;
             int textHeight = font.lineHeight + (row.showScope() ? lineSpacing : 0);
             // Match button text centering, including the font's baseline adjustment.
-            int textY = y + (rowHeight - textHeight) / 2 + 1;
+            int textY = stackedValues ? y + 1 + (ACTION_SIZE - font.lineHeight) / 2 + 1
+                : y + (rowHeight - textHeight) / 2 + 1;
             int labelColor = row.muted() ? MUTED : TEXT;
             int kindInset = row.icon() == null ? 0 : KIND_ICON_INSET;
             if (row.icon() != null) row.icon().drawSmall(graphics, bounds.x() + 7, textY, DebuggerTheme.color(labelColor));
-            WatchRowRenderer.render(graphics, font, entry, state.isPaused(), rowLabel(entry, row.grouped()),
-                bounds.x() + 7 + kindInset, textY, rowWidth - 4 - kindInset,
-                labelColor, row.muted() ? MUTED : changed ? AMBER : TEXT);
-            if (row.showScope())
+            int valueColor = row.muted() ? MUTED : changed ? AMBER : TEXT;
+            if (stackedValues)
+                WatchRowRenderer.renderStacked(graphics, font, entry, state.isPaused(), rowLabel(entry, row.grouped()),
+                    bounds.x() + 7, textY, rowWidth - 4, WatchPanelLayout.valueWidth(bounds.width()),
+                    kindInset, labelColor, valueColor);
+            else WatchRowRenderer.render(graphics, font, entry, state.isPaused(), rowLabel(entry, row.grouped()),
+                bounds.x() + 7 + kindInset, textY, rowWidth - 4 - kindInset, labelColor, valueColor);
+            if (!stackedValues && row.showScope())
                 WatchUi.line(graphics, font, scope(entry), bounds.x() + 7 + kindInset,
                     textY + lineSpacing, rowWidth - 4 - kindInset, MUTED);
             DebuggerButton inspect = button("watch-row-" + entry.id(), new Bounds(bounds.x() + 4, y, rowWidth + 3, rowHeight - 1),
@@ -266,7 +273,7 @@ public final class WatchPanel {
                 .copy().append(" · ").append(text("inspect", WatchFormatting.specification(entry.spec()).getString()))
                 .append("\n").append(scope(entry))));
             int actionX = bounds.x() + bounds.width() - 76;
-            int actionY = y + (rowHeight - ACTION_SIZE) / 2;
+            int actionY = stackedValues ? y + 1 : y + (rowHeight - ACTION_SIZE) / 2;
             if (entry.automatic()) {
                 button("watch-copy-" + entry.id(), new Bounds(actionX + 34, actionY, ACTION_SIZE, ACTION_SIZE), text("details.copy_value"), true, false,
                     () -> copyValue(entry), navigation, offset + index, 3)

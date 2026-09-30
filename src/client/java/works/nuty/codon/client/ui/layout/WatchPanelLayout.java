@@ -7,6 +7,9 @@ import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds;
 public final class WatchPanelLayout {
     private WatchPanelLayout() { }
 
+    public static boolean stackedValues(int panelWidth) { return panelWidth < 260; }
+    public static int valueWidth(int panelWidth) { return Math.max(0, panelWidth - 18); }
+
     /** Rows reserve extra height only when their scope line is visible. */
     public static final class Rows {
         private final int[] boundaries;
@@ -16,9 +19,15 @@ public final class WatchPanelLayout {
         }
 
         public Rows(List<Boolean> singleLine, List<Integer> topMargins) {
+            this(singleLine, topMargins, java.util.Collections.nCopies(singleLine.size(), false));
+        }
+
+        /** Compact entries use a separate value line; passive group headings stay short. */
+        public Rows(List<Boolean> singleLine, List<Integer> topMargins, List<Boolean> stackedValues) {
             boundaries = new int[singleLine.size() + 1];
             for (int row = 0; row < singleLine.size(); row++)
-                boundaries[row + 1] = boundaries[row] + topMargins.get(row) + (singleLine.get(row) ? 18 : 28);
+                boundaries[row + 1] = boundaries[row] + topMargins.get(row)
+                    + (stackedValues.get(row) ? 32 : singleLine.get(row) ? 18 : 28);
         }
 
         public int height(int from, int to) { return boundaries[to] - boundaries[from]; }
