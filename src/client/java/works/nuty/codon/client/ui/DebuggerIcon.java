@@ -48,7 +48,20 @@ public enum DebuggerIcon {
         "...#.#...",
         "....#...."
     }),
-    WATCHES,
+    WATCHES(new String[]{
+        "............",
+        "............",
+        ".....##.....",
+        ".....##.....",
+        ".....##.....",
+        "..########..",
+        "..########..",
+        ".....##.....",
+        ".....##.....",
+        ".....##.....",
+        "............",
+        "............"
+    }),
     COMMAND(new String[]{
         "#......",
         ".#.....",
@@ -235,19 +248,7 @@ public enum DebuggerIcon {
             case GIZMO_LABELS -> labels(graphics, x, y, color);
             case DETAILS_OPEN -> details(graphics, x, y, color, true);
             case DETAILS_CLOSED -> details(graphics, x, y, color, false);
-            case WATCHES -> {
-                graphics.fill(x + 4, y + 2, x + 8, y + 3, color);
-                graphics.fill(x + 4, y + 9, x + 8, y + 10, color);
-                for (int step = 0; step < 3; step++) {
-                    int dx = 3 - step;
-                    int dy = 3 + step;
-                    graphics.fill(x + dx, y + dy, x + dx + 1, y + dy + 1, color);
-                    graphics.fill(x + 11 - dx, y + dy, x + 12 - dx, y + dy + 1, color);
-                    graphics.fill(x + dx, y + 11 - dy, x + dx + 1, y + 12 - dy, color);
-                    graphics.fill(x + 11 - dx, y + 11 - dy, x + 12 - dx, y + 12 - dy, color);
-                }
-                graphics.fill(x + 5, y + 4, x + 7, y + 8, color);
-            }
+            case WATCHES -> drawSmall(graphics, x, y - 1, color);
             case BREAKPOINT, BREAKPOINT_EMPTY, BREAKPOINT_CONDITIONAL, BREAKPOINT_CONDITIONAL_EMPTY ->
                 drawSmall(graphics, x + 1, y + 1, color);
             case COMMAND, SOURCE_FILE, BREAKPOINT_LIST, WATCH_NBT, WATCH_STORAGE, WATCH_SCORE, CONFIRM, DELETE ->
