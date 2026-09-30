@@ -105,7 +105,9 @@ selector. Both selectors open on a short hover (180 ms), a click, or Enter/Space
 or an arrow key while focused. Hovering never changes the condition. Clicking an
 already-open selector keeps its menu open, including immediately after hover-open. The menu
 stays open while crossing the gap from its trigger and closes after the pointer
-leaves both for 220 ms. Clicking an option applies it to the draft and closes the
+leaves both for 220 ms. Re-entering the selector after that automatic close must
+open it again, including before another render observes the outside pointer.
+Clicking an option applies it to the draft and closes the
 menu; Save still waits for server acknowledgement. Escape closes an open menu
 first, then the layer. Tab closes the menu and continues through the form.
 
@@ -119,6 +121,11 @@ empty comparison row or feedback area. The 320×240 hover-menu/count/event captu
 in `DebuggerBreakpointUiGameTest` check bounds, hover-only opening, leaving and
 crossing the menu gap, scrolling, keyboard selection/Escape, invalid count
 rejection, real acknowledged count-condition saving and switching back to an event.
+The closed-menu baseline moves the native cursor outside the resized layer and
+waits beyond the hover-open delay before asserting that choices are hidden; the
+following hover check then deliberately enters the selector. Reopening after an
+outside-click dismissal first waits for the parent editor's marker layout to be
+ready, keeping the visibility and hit-target assertion before the native click.
 The anchored pending capture uses a controlled client pending state to check that
 feedback growth keeps the panel and its Save button inside the viewport.
 Saving after a resize uses native mouse dispatch, so the same scenario also
