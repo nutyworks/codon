@@ -87,13 +87,14 @@ public final class DebuggerFontSamplingGameTest implements FabricClientGameTest 
         // Integrate the complete native 2x font into each destination pixel. This
         // reference is independent of the sampler implementation and includes all strokes.
         for (int top : new int[]{30, 55, 80, 105, 130, 155, 185, 205, 225}) {
-            int occupied = 0, missing = 0;
+            int occupied = 0, missing = 0, extra = 0;
             double error = 0;
-            for (int y = (int) Math.floor(top * scale); y < Math.ceil((top + 10) * scale); y++) {
-                for (int x = (int) (20 * scale); x < Math.ceil(300 * scale); x++) {
+            for (int y = (int) Math.floor(top * scale) - 1; y < Math.ceil((top + 10) * scale) + 1; y++) {
+                for (int x = (int) (20 * scale) - 1; x < Math.ceil(300 * scale); x++) {
                     double expected = area(reference, x * 2 / scale, y * 2 / scale, (x + 1) * 2 / scale, (y + 1) * 2 / scale);
-                    if (expected < 80) continue;
                     int actual = sample.getRGB(x, y) & 255;
+                    if (expected == 0 && actual > 20) extra++;
+                    if (expected < 80) continue;
                     occupied++;
                     if (actual < 20) missing++;
                     error += Math.abs(expected - actual);
@@ -102,9 +103,10 @@ public final class DebuggerFontSamplingGameTest implements FabricClientGameTest 
             require(occupied > 100, "Font reference must contain meaningful glyph evidence");
             double missingFraction = missing / (double) occupied;
             double meanError = error / occupied;
-            System.out.printf("Font coverage scale=%.2f row=%d missing=%.4f meanError=%.2f%n", scale, top, missingFraction, meanError);
+            System.out.printf("Font coverage scale=%.2f row=%d missing=%.4f meanError=%.2f extra=%d%n", scale, top, missingFraction, meanError, extra);
             require(missingFraction < 0.08 && meanError < 55,
                 "Glyph strokes/contrast lost at " + scale + " row " + top + ": missing=" + missingFraction + ", error=" + meanError);
+            require(extra == 0, "Extra ink outside native reference at " + scale + " row " + top + ": " + extra);
         }
     }
 

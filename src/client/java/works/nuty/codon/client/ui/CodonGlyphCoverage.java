@@ -2,8 +2,10 @@ package works.nuty.codon.client.ui;
 
 import com.mojang.blaze3d.vertex.VertexConsumer;
 
-/** Adds half a framebuffer pixel of sampling room around a glyph, preserving its UV mapping. */
+/** Adds sampling room while carrying the original glyph's texel bounds to its shader. */
 public final class CodonGlyphCoverage implements VertexConsumer {
+    // FontTexture's fixed atlas size in Minecraft 26.3. Bounds use inclusive 8-bit texel indices.
+    private static final int ATLAS_SIZE = 256;
     private final VertexConsumer target;
     private final float margin;
     private final Vertex[] quad = new Vertex[4];
@@ -25,7 +27,8 @@ public final class CodonGlyphCoverage implements VertexConsumer {
     @Override public VertexConsumer setColor(int r, int g, int b, int a) { return setColor(a << 24 | r << 16 | g << 8 | b); }
     @Override public VertexConsumer setUv(float u, float v) { current().u = u; current().v = v; return this; }
     @Override public VertexConsumer setUv1(int u, int v) { current().overlay = new int[]{u, v}; return this; }
-    @Override public VertexConsumer setUv2(int u, int v) { current().light = new int[]{u, v}; return this; }
+    // GUI text is unlit; the filtered pipeline's UV2 attribute carries bounds instead.
+    @Override public VertexConsumer setUv2(int u, int v) { return this; }
     @Override public VertexConsumer setUv3(float u, float v) { current().uv3 = new float[]{u, v}; return this; }
     @Override public VertexConsumer setNormal(float x, float y, float z) { current().normal = new float[]{x, y, z}; return this; }
     @Override public VertexConsumer setLineWidth(float width) { current().lineWidth = width; return this; }
@@ -42,6 +45,12 @@ public final class CodonGlyphCoverage implements VertexConsumer {
         boolean expand = count == 4 && width > 0 && height > 0;
         float padU = expand ? (float) (margin / width) : 0;
         float padV = expand ? (float) (margin / height) : 0;
+        float minU = origin.u, maxU = origin.u, minV = origin.v, maxV = origin.v;
+        for (int i = 1; i < count; i++) {
+            minU = Math.min(minU, quad[i].u); maxU = Math.max(maxU, quad[i].u);
+            minV = Math.min(minV, quad[i].v); maxV = Math.max(maxV, quad[i].v);
+        }
+        int boundsU = packBounds(minU, maxU), boundsV = packBounds(minV, maxV);
         for (int i = 0; i < count; i++) {
             var vertex = quad[i];
             float a = (i >= 2 ? 1 + padU : -padU);
@@ -50,9 +59,8 @@ public final class CodonGlyphCoverage implements VertexConsumer {
             float y = expand ? origin.y + a * uy + b * vy : vertex.y;
             float u = expand ? origin.u + a * (quad[3].u - origin.u) + b * (quad[1].u - origin.u) : vertex.u;
             float v = expand ? origin.v + a * (quad[3].v - origin.v) + b * (quad[1].v - origin.v) : vertex.v;
-            target.addVertex(x, y, vertex.z).setColor(vertex.color).setUv(u, v);
+            target.addVertex(x, y, vertex.z).setColor(vertex.color).setUv(u, v).setUv2(boundsU, boundsV);
             if (vertex.overlay != null) target.setUv1(vertex.overlay[0], vertex.overlay[1]);
-            if (vertex.light != null) target.setUv2(vertex.light[0], vertex.light[1]);
             if (vertex.uv3 != null) target.setUv3(vertex.uv3[0], vertex.uv3[1]);
             if (vertex.normal != null) target.setNormal(vertex.normal[0], vertex.normal[1], vertex.normal[2]);
             if (vertex.lineWidth != null) target.setLineWidth(vertex.lineWidth);
@@ -60,11 +68,17 @@ public final class CodonGlyphCoverage implements VertexConsumer {
         count = 0;
     }
 
+    private static int packBounds(float min, float max) {
+        int first = Math.clamp((int) Math.floor(min * ATLAS_SIZE), 0, ATLAS_SIZE - 1);
+        int last = Math.clamp((int) Math.ceil(max * ATLAS_SIZE) - 1, first, ATLAS_SIZE - 1);
+        return first | last << 8;
+    }
+
     private static final class Vertex {
         final float x, y, z;
         int color = 0xffffffff;
         float u, v;
-        int[] overlay, light;
+        int[] overlay;
         float[] uv3, normal;
         Float lineWidth;
         Vertex(float x, float y, float z) { this.x = x; this.y = y; this.z = z; }

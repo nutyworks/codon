@@ -1,7 +1,7 @@
 package works.nuty.codon.client.ui;
 
 import com.mojang.renderpearl.api.pipeline.RenderPipeline;
-import com.mojang.renderpearl.api.pipeline.ShaderType;
+import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.resources.Identifier;
 
@@ -15,7 +15,7 @@ public final class CodonTextPipelines {
     private static RenderPipeline create(RenderPipeline original, boolean grayscale) {
         var builder = RenderPipeline.builder()
             .withLocation(Identifier.fromNamespaceAndPath("codon", "pipeline/filtered_text" + (grayscale ? "_grayscale" : "")))
-            .withVertexShader(original.getShaders().get(ShaderType.VERTEX))
+            .withVertexShader(Identifier.fromNamespaceAndPath("codon", "core/filtered_text"))
             .withFragmentShader(Identifier.fromNamespaceAndPath("codon", "core/filtered_text"))
             .withShaderDefine("IS_GUI")
             .withDepthStencilState(java.util.Optional.ofNullable(original.getDepthStencilState()))
@@ -24,7 +24,9 @@ public final class CodonTextPipelines {
             .withPrimitiveTopology(original.getPrimitiveTopology())
             .withPushConstantSize(original.pushConstantSize());
         original.getBindGroupLayouts().forEach(builder::withBindGroupLayout);
-        for (int i = 0; i < original.getVertexFormatBindings().size(); i++) builder.withVertexBinding(i, original.getVertexFormatBinding(i));
+        // Four additional bytes per vertex carry glyph bounds in UV2; native GUI text is unlit.
+        builder.withVertexBinding(0, DefaultVertexFormat.POSITION_COLOR_TEX_LIGHTMAP);
+        for (int i = 1; i < original.getVertexFormatBindings().size(); i++) builder.withVertexBinding(i, original.getVertexFormatBinding(i));
         for (int i = 0; i < original.getColorTargetStates().size(); i++) builder.withColorTargetState(i, original.getColorTargetStates().get(i));
         if (grayscale) builder.withShaderDefine("IS_GRAYSCALE");
         return builder.build();

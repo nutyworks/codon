@@ -6,19 +6,24 @@
 uniform sampler2D Sampler0;
 layout(location = 2) in vec4 vertexColor;
 layout(location = 3) in vec2 texCoord0;
+layout(location = 4) flat in ivec4 glyphBounds;
 layout(location = 0) out vec4 fragColor;
 
 void main() {
     // Integrate the texels covered by a framebuffer pixel. Bilinear center
     // sampling can still miss an isolated stroke when dense fonts are minified.
     vec2 size = vec2(textureSize(Sampler0, 0));
-    vec2 footprint = max(fwidth(texCoord0) * size, vec2(1.0));
+    vec2 footprint = max(fwidth(texCoord0) * size, vec2(0.0001));
     vec2 low = texCoord0 * size - footprint * 0.5;
     vec2 high = low + footprint;
     vec4 accumulated = vec4(0.0);
     for (int y = int(floor(low.y)); y < int(ceil(high.y)); y++) {
         for (int x = int(floor(low.x)); x < int(ceil(high.x)); x++) {
-            vec4 sampleColor = texelFetch(Sampler0, clamp(ivec2(x, y), ivec2(0), ivec2(size) - 1), 0);
+            ivec2 texel = ivec2(x, y);
+            // Outside this glyph is transparent, including atlas gaps and adjacent glyphs.
+            // Retain the full footprint denominator so edge coverage is not brightened.
+            if (any(lessThan(texel, glyphBounds.xy)) || any(greaterThan(texel, glyphBounds.zw))) continue;
+            vec4 sampleColor = texelFetch(Sampler0, texel, 0);
 #ifdef IS_GRAYSCALE
             sampleColor = vec4(1.0, 1.0, 1.0, sampleColor.r);
 #endif

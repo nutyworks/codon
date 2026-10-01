@@ -48,7 +48,8 @@
       "works.nuty.codon.client.DebuggerWatchGroupingGameTest",
       "works.nuty.codon.client.DebuggerPeekUiGameTest",
       "works.nuty.codon.client.DebuggerUiScaleGameTest",
-      "works.nuty.codon.client.DebuggerFontSamplingGameTest"
+      "works.nuty.codon.client.DebuggerFontSamplingGameTest",
+      "works.nuty.codon.client.DebuggerFontAtlasIsolationGameTest"
     ]
   }
 }

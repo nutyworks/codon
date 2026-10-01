@@ -44,7 +44,11 @@ selection starts from the game scale again; choosing Follow retains a custom req
   coverage; geometry, wrapping, scissor bounds and native input retain the same scale.
   `CodonGlyphCoverage` provides half a framebuffer pixel of antialiasing room around
   glyph quads and extrapolates their original UV mapping; logical text metrics and
-  widget geometry stay unchanged.
+  widget geometry stay unchanged. Original glyph texel bounds travel as flat vertex
+  data; samples outside those bounds are transparent and retain the full footprint
+  denominator. This prevents neighboring atlas ink without brightening glyph edges.
+  Bounds use Minecraft 26.3's fixed 256×256 `FontTexture` atlas and inclusive texel
+  indices, packed in the filtered GUI pipeline's otherwise unlit UV2 attribute.
   Follow-game text and vanilla glyph draws retain their existing pipeline/sampler.
 - `UiScaleScreen`: user controls, range endpoints and applied-value explanation.
 
@@ -55,6 +59,7 @@ selection starts from the game scale again; choosing Follow retains a custom req
 ./gradlew test --tests '*ClientSettingsStoreTest'
 ./gradlew runClientGameTest -PclientGameTest=DebuggerUiScaleGameTest
 ./gradlew runClientGameTest -PclientGameTest=DebuggerFontSamplingGameTest
+./gradlew runClientGameTest -PclientGameTest=DebuggerFontAtlasIsolationGameTest
 ```
 
 The client scenario uses a synthetic pause to check first manual/Auto mode switching,
@@ -74,10 +79,21 @@ area-integrated 2.00 reference using the selected Minecraft font. Korean checks
 cases and the Unicode font option at 1.50; Korean also checks a 640×480 window at
 1.50. 0.75 is outside the supported
 control range. String, Component, ordered text, collector, shadow, button, EditBox
-and clipped paths have stroke/contrast assertions; deferred tooltips have screenshot
+and clipped paths have stroke/contrast and extra-ink assertions; deferred tooltips have screenshot
 evidence. Fixed vanilla control text must retain identical pixels. The regression
 fails on the unmodified renderer at 1.50. Inspect `*codon-font-*.png` and the reported
 missing-pixel fractions/contrast errors; final packaged-client manual QA remains required.
+
+`DebuggerFontAtlasIsolationGameTest` compares native screenshots of the same Korean
+glyph packed alone and beside another glyph by the real `FontTexture` allocator.
+Bitmap data comes from Minecraft's `unifont.zip`, with the default 2× oversampling
+and Hangul 15×16 crop. The 1.25 case at logical (20,3) checks the established
+one-texel-gap counterexample pixel directly; it also compares 1.00, 1.50, 1.75 and
+2.25. A grayscale case near the atlas bottom checks signed packed bounds. Every
+case requires visible target ink, zero neighbor-only pixels and matching target
+coverage within two framebuffer levels. The previous candidate fails natively with
+six extra pixels and counterexample brightness 30/255. The earlier source/packing
+calculation and these native screenshot results are distinct evidence.
 
 Existing `DebuggerPresentationGameTest`, `DebuggerKeyboardNavigationGameTest`,
 `DebuggerScrollbarGameTest` exercise follow-mode presentation and navigation.
