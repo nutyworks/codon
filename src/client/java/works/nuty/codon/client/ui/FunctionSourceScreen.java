@@ -988,7 +988,11 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                 rememberView(); return true;
             }
         }
-        return super.keyPressed(event) || docked && parent.keyPressed(event);
+        if (super.keyPressed(event)) return true;
+        // Printable input arrives later through charTyped. Keep its preceding key press
+        // away from parent shortcuts while a visible, editable text field owns focus.
+        if (getFocused() instanceof EditBox field && field.visible && field.canConsumeInput()) return true;
+        return docked && parent.keyPressed(event);
     }
 
     @Override public boolean keyReleased(KeyEvent event) {

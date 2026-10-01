@@ -68,8 +68,11 @@ be checked. The viewer lists functions actually loaded by the current server.
    controls; with no focused widget, Tab starts at the first active visible control
    and Shift+Tab starts at the last.
    Navigation keys do not change Source selection or scrolling while a toolbar
-   button or text field has focus. Follow underlined loaded function references and
-   use Back; the caller's
+   button or text field has focus. Find and function-list Search retain text input
+   when a typed key is bound to a debugger shortcut, including cursor-mode `V` and
+   Keep Freecam `G`. Escape, Tab and Find shortcuts retain their behavior; parent
+   debugger shortcuts remain available after text focus leaves the field.
+   Follow underlined loaded function references and use Back; the caller's
    line/stage and horizontal viewport must return. References in `return run function`
    and `schedule function` are linked; matching words in `say` text or comments are not.
    Unqualified `function helper` follows Minecraft 26.3's `minecraft:helper` default,
@@ -115,8 +118,16 @@ scroll settings. Synthetic callback input does not verify a physical trackpad.
 | Real rendering, selection, resize and inline stage markers | `FunctionSourceScreenGameTest`, `FunctionSourceInteractionGameTest`, `FunctionSourceReviewGameTest` |
 | Source toolbar icon, state styling, scale readability and native activation | `DebuggerSourceIconGameTest` |
 | F3/Shift+F3 press/repeat/release ownership and vanilla behavior outside Source | `FunctionSourceKeyboardGameTest` |
+| Focused Find/function-list Search key press before character input, bound/unbound/remapped cursor-mode keys, parent shortcuts and focus navigation | `FunctionSourceTextInputGameTest` |
 
 Example: `./gradlew runClientGameTest -PclientGameTest=FunctionSourceScreenGameTest`.
+
+`FunctionSourceTextInputGameTest` uses a real docked `CodonScreen` parent and sends
+press/repeat/release and character callbacks through Minecraft's `KeyboardHandler`.
+It checks that the press keeps Source open before `charTyped`, then verifies text,
+cursor movement, Find shortcuts, Tab traversal and parent shortcuts after focus
+leaves the field. Its source document is a client fixture; it does not establish
+physical keyboard/IME behavior or server-driven breakpoint execution.
 
 `DebuggerSourceIconGameTest` captures normal, hovered, keyboard-focused and disabled
 Source buttons at every quarter step from 1.00× to 4.50× (including the larger-window
