@@ -21,6 +21,7 @@ import works.nuty.codon.client.input.InputManager;
 import works.nuty.codon.client.network.ClientNetworking;
 import works.nuty.codon.client.state.ClientBreakpointState;
 import works.nuty.codon.client.state.ClientDebuggerState;
+import works.nuty.codon.client.state.ClientStagePreviewState;
 import works.nuty.codon.client.testmixin.CommandBlockInvoker;
 import works.nuty.codon.client.ui.*;
 import works.nuty.codon.core.model.*;
@@ -76,6 +77,8 @@ public final class DebuggerUnobservedFlowBreakpointGameTest implements FabricCli
                 });
                 BreakpointCondition count = BreakpointCondition.count(BreakpointCondition.Kind.INPUT_COUNT,
                     BreakpointCondition.Comparison.EQ, 1);
+                context.waitFor(client -> state().stagePreviews().get(location(2)) != null
+                    && state().stagePreviews().get(location(2)).status() == ClientStagePreviewState.Status.READY, 200);
                 BreakpointTarget modifier = context.computeOnClient(client -> target(location(2), "as @a"));
                 configure(context, "as @a", modifier, count);
                 disableWhole(context, location(2));
