@@ -146,6 +146,24 @@ public final class BreakpointConditionVisibilityGameTest implements FabricClient
         });
         context.waitTicks(2);
         assertInk(context, point, name + "-cancelled", false);
+        if (line == 6) {
+            // Presentation-only pending edit; no server mutation is inferred from this fixture.
+            long pending = context.computeOnClient(client -> CodonClientMod.state().breakpoints()
+                .begin(ClientBreakpointState.Action.SAVE, savedDefinition).requestId());
+            context.waitTicks(2);
+            context.takeScreenshot("codon-condition-" + name + "-pending-stage-action");
+            context.runOnClient(client -> {
+                var screen = client.gui.screen();
+                var action = (AbstractWidget) FunctionLineBreakpointGameTest.field(screen, "stageCondition");
+                require(action.visible && !action.active, "pending edit disables the visible Stage condition action");
+                BreakpointUi.openCondition(screen, CodonClientMod.state(), target, LINES.get(line - 1), 2, null);
+                require(ScreenLayers.get(screen) == null, "pending stage cannot open a second condition editor");
+                CodonClientMod.state().breakpoints().finish(pending, ClientBreakpointState.Result.APPLIED);
+            });
+            context.waitTicks(2);
+            context.runOnClient(client -> require(((AbstractWidget) FunctionLineBreakpointGameTest
+                .field(client.gui.screen(), "stageCondition")).active, "acknowledgement restores the Stage condition action"));
+        }
         if (!save) return;
         context.runOnClient(client -> {
             var screen = client.gui.screen();

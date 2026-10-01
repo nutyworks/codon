@@ -86,6 +86,17 @@ public final class BreakpointUi {
                 .anyMatch(definition -> state.breakpoints().pending(definition.target()));
     }
 
+    public static ClientBreakpointState.@Nullable Result error(ClientDebuggerState state, BreakpointTarget target,
+                                                               String command, int stageCount) {
+        var direct = state.breakpoints().error(target);
+        if (direct != null || !target.wholeCommand() || stageCount != 1) return direct;
+        for (var definition : lineDefinitions(state, target.location(), command, stageCount)) {
+            var error = state.breakpoints().error(definition.target());
+            if (error != null) return error;
+        }
+        return null;
+    }
+
     public static boolean waitingForPreview(ClientDebuggerState state, BreakpointTarget target,
                                            String command, int stageCount) {
         return target.wholeCommand() && (!state.breakpoints().ready()

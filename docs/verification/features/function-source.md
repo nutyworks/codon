@@ -233,5 +233,6 @@ unrelated inactive candidates remain hidden. Cancel removes that temporary marke
 without enabling or creating a definition. Save enables the original target after server
 acknowledgement, including disabled legacy stage-zero saves. `BreakpointConditionVisibilityGameTest`
 checks native pixels, line/stage/legacy/new targets, menus, Cancel and real server Save edits
-in English and Korean at a fractional custom scale. Its source page is a presentation fixture
+in English and Korean at a fractional custom scale. A controlled pending request also verifies
+that Stage condition disables until acknowledgement. Its source page is a presentation fixture
 matching the loaded `codon_test:condition_visibility` test function; it does not claim a native pause.

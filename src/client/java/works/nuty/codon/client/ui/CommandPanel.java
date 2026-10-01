@@ -388,7 +388,7 @@ public final class CommandPanel {
                         breakpoint.revealOnHover(x, y, cell.width(), 16);
                     breakpoint.withStatusColor(definition != null && definition.enabled() ? RED : MUTED,
                         definition != null && definition.enabled() ? RED_SURFACE : SURFACE);
-                    var error = state.breakpoints().error(target);
+                    var error = BreakpointUi.error(state, target, stage.command().text(), count);
                     breakpoint.setTooltip(Tooltip.create(Component.literal(
                         (definition == null ? tr("codon.breakpoint.add")
                             : definition.enabled() ? tr("codon.breakpoint.disable") : tr("codon.breakpoint.enable"))
@@ -566,6 +566,9 @@ public final class CommandPanel {
         BreakpointTarget target = selectedBreakpoint();
         if (target == null) return "";
         ExecutionFlowTrace flow = state.selectedExecutionFlow();
+        // Result conditions apply to modifiers. Retain saved single-stage legacy
+        // conditions for inspection, without attributing a line condition to a terminal clause.
+        if (stage.terminal() && stageCount(flow, stage.command().text()) != 1) return "";
         BreakpointDefinition definition = BreakpointUi.definition(state, target, stage.command().text(),
             stageCount(flow, stage.command().text()));
         if (definition == null || !definition.enabled()) {

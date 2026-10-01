@@ -804,7 +804,11 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             lineCondition.setTooltip(state != null && BreakpointUi.waitingForPreview(state, line, command, count)
                 ? net.minecraft.client.gui.components.Tooltip.create(Component.translatable("codon.breakpoint.preview_required")) : null);
         }
-        if (stage != null) stageCondition.setMessage(Component.translatable("codon.source.stage_condition"));
+        if (stage != null) {
+            stageCondition.setMessage(Component.translatable("codon.source.stage_condition"));
+            var state = CodonClientMod.state();
+            stageCondition.active &= state != null && !state.breakpoints().pending(stage);
+        }
     }
 
     private void editLineCondition() { editCondition(selectedLineTarget()); }
