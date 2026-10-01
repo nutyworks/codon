@@ -30,6 +30,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     private static final int MENU_ROW_HEIGHT = 18;
     private static final long HOVER_DELAY = 180_000_000L;
     private static final long LEAVE_DELAY = 220_000_000L;
+    private static final long TOGGLE_DELAY = 250_000_000L;
     /** Position of the control that opened this editor, in GUI pixels. */
     public record Anchor(int x, int y, int width, int height) { }
 
@@ -56,6 +57,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     private Menu hoverMenu = Menu.NONE;
     private Menu suppressedMenu = Menu.NONE;
     private long hoverStarted = -1, leaveStarted = -1;
+    private long menuOpenedAt;
     private boolean keyboardMenu;
     private int lastMouseX = -1, lastMouseY = -1;
     private int menuLeft, menuTop, menuWidth, menuHeight, menuRows, menuScroll;
@@ -233,6 +235,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     private void openMenu(Menu value, boolean keyboard) {
         if (menu != Menu.NONE) closeMenu();
         menu = value;
+        menuOpenedAt = System.nanoTime();
         keyboardMenu = keyboard;
         hoverMenu = suppressedMenu = Menu.NONE;
         hoverStarted = leaveStarted = -1;
@@ -455,8 +458,13 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
                 for (var option : options()) if (option.visible && option.mouseClicked(event, doubleClick)) return true;
                 return true;
             }
-            // Opening is idempotent: a click arriving just after hover-open must not close it.
-            if (trigger(menu).isMouseOver(event.x(), event.y())) return true;
+            if (trigger(menu).isMouseOver(event.x(), event.y())) {
+                // Consume the click even during the guard or after closing: neither
+                // options nor the form beneath may receive this toggle event.
+                if (event.button() == InputConstants.MOUSE_BUTTON_LEFT
+                    && System.nanoTime() - menuOpenedAt >= TOGGLE_DELAY) closeMenu();
+                return true;
+            }
             closeMenu();
         }
         if (event.x() < left || event.x() >= left + panelWidth
