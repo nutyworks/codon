@@ -5,13 +5,13 @@ Set command-block, function-line and command-stage breakpoints; step through
 execution; inspect recorded call paths, `execute` contexts, scoreboard values and
 NBT; and navigate the paused world with a detached camera.
 
-**1.0.0-rc.1 is a prerelease.** Use a disposable world or a backed-up copy first.
-Pausing stops server simulation for every player. Read the limitations below
-before using it on a shared server. See the [RC notes](CHANGELOG.md).
+**0.1.0-alpha.1 is an alpha prerelease.** Use a disposable world or a backed-up
+copy first. Pausing stops server simulation for every player. Read the limitations
+below before using it on a shared server. See the [alpha notes](CHANGELOG.md).
 
 ## Requirements and installation
 
-| Component | Requirement for this RC |
+| Component | Requirement for this alpha |
 | --- | --- |
 | Minecraft Java Edition | 26.3 |
 | Fabric Loader | 0.19.5 or newer |
@@ -21,11 +21,10 @@ before using it on a shared server. See the [RC notes](CHANGELOG.md).
 
 1. Install a [Fabric Loader](https://fabricmc.net/use/) profile for Minecraft 26.3
    and configure the launcher to use Java 25 or newer.
-2. Download the runtime `codon-1.0.0-rc.1.jar` from the
+2. Download the runtime `codon-0.1.0-alpha.1.jar` from the
    [GitHub prerelease](https://github.com/nutyworks/codon/releases), when available.
-   Put it and the matching Fabric API JAR in that profile's `mods/` folder. Remove
-   older Codon JARs to avoid loading duplicate versions. A `-sources.jar` is for
-   reading code and cannot be installed as the mod.
+   Put it and the matching Fabric API JAR in that profile's `mods/` folder. A
+   `-sources.jar` is for reading code and cannot be installed as the mod.
 3. Start the Fabric profile and open a disposable world with cheats enabled.
 
 For multiplayer, stop the server, back up its world, install Fabric Loader for
@@ -107,7 +106,7 @@ leaving your debugging session.
 
 ## Prerelease limitations
 
-- This RC can contain bugs and UI rough edges. Compatibility with other mods,
+- This alpha can contain bugs and UI rough edges. Compatibility with other mods,
   every operating system, dedicated-server deployment and long shared-server
   pauses is not established by a successful local build.
 - The Source viewer does not edit datapack files. Recorded history is bounded
@@ -129,11 +128,11 @@ Review logs and screenshots for private data before attaching them.
 ## Development
 
 With JDK 25, run `./gradlew build`. The installable runtime artifact is produced
-by `:jar` at `build/libs/codon-1.0.0-rc.1.jar`; this build has no `remapJar` task.
+by `:jar` at `build/libs/codon-0.1.0-alpha.1.jar`; this build has no `remapJar` task.
 The build compiles the mod and runs configured JVM tests; it does not launch
 Minecraft or establish in-game acceptance. See the
 [verification guide](docs/verification/README.md),
 [architecture](docs/ARCHITECTURE.md) and
-[manual RC preparation checklist](docs/releasing.md).
+[manual alpha preparation checklist](docs/releasing.md).
 
 Codon is licensed under [MIT](LICENSE).

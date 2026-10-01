@@ -1,9 +1,8 @@
 # Release notes
 
-## 1.0.0-rc.1 — prerelease candidate
+## 0.1.0-alpha.1 — alpha prerelease
 
-First release candidate for Codon 1.0, intended for testing before a stable
-release.
+First alpha prerelease for Codon, intended for early testing and feedback.
 
 ### Included capabilities
 
@@ -25,7 +24,7 @@ Minecraft Java Edition 26.3, Fabric Loader 0.19.5+, Fabric API for 26.3 (build
 dependency `0.160.5+26.3`) and Java 25+. Install the same Codon version on client
 and server. Debugger operations require owner command permission (vanilla level 4).
 
-Pausing affects the whole server. Use a disposable or backed-up world. This RC may
-contain UI, execution-observation and compatibility bugs; it does not claim a full
-platform or dedicated-server test matrix. See the [installation guide, controls
-and limitations](README.md) before use.
+Pausing affects the whole server. Use a disposable or backed-up world. This alpha
+may contain UI, execution-observation and compatibility bugs; it does not claim a
+full platform or dedicated-server test matrix. See the [installation guide,
+controls and limitations](README.md) before use.
