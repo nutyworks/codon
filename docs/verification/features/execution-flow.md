@@ -33,6 +33,20 @@ execute as @e[type=minecraft:armor_stand,tag=codon_verify] at @s if entity @s[ta
    recorded stage fragments retain their stage identity and breakpoint target.
    Only the first fragment reserves breakpoint/pause/warning icon and count-label
    space. Continuation rows use the full text width with normal text padding.
+   Flow also requests the saved command's parse-only server preview. Statically
+   known stages that have not been observed remain selectable: hover their first
+   fragment to reveal a marker, left-click the marker to toggle its breakpoint,
+   or right-click the clause to edit its condition. Continue must stop on the
+   stage's first occurrence. Selecting a static stage shows no recorded contexts
+   or measured counts or a captured call path; Current restores the actual stop.
+   Previous/Next retains the recorded visit from which the static stage was
+   selected, including repeated visits to the same invocation. A rejected marker
+   edit shows translated server feedback in its tooltip. Failed parse previews
+   retry once on a later snapshot; an in-flight preview keeps its request ID.
+   `Not executed yet`,
+   `Filtered out` after a measured zero-output filter, and `Stage data unavailable`
+   for missing/truncated evidence remain distinct. Changed saved text or
+   unavailable previews must never retarget a recorded invocation's suffix.
 3. After the terminal command executes, the completed record has one execution
    and one success. Before that observation, terminal values may be unmeasured;
    do not display them as measured zero.
@@ -61,6 +75,7 @@ similar UUIDs/positions or replay a command to reconstruct its effects.
 | Recorded navigation/layout | `clientTest`: `ClientExecutionFlowTimelineTest`, `ClientCommandSelectionTest`, `CommandFlowLayoutTest` |
 | Native branching/filtering and stage stops | `DebuggerExecutionFlowGameTest` |
 | Native `if function` / `unless function` chronology | `DebuggerConditionalFunctionFlowGameTest` |
+| Flow options/markers for never-observed stages, rejection feedback, recovered previews, then first-occurrence terminal and conditional stops | `DebuggerUnobservedFlowBreakpointGameTest`; `clientTest`: `ClientUnobservedFlowSelectionTest`, `ClientFlowPreviewRequestsTest`, `CommandFlowLayoutTest` |
 | Continuations and incomplete-record warnings | `DebuggerContinuationRecordingGameTest` |
 | Rendered command/context UI with injected data | `DebuggerPresentationGameTest` |
 

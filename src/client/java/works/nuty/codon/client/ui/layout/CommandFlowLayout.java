@@ -1,6 +1,7 @@
 package works.nuty.codon.client.ui.layout;
 
 import org.jspecify.annotations.Nullable;
+import works.nuty.codon.client.state.ClientStagePreviewState;
 import works.nuty.codon.core.model.CommandSnippet;
 import works.nuty.codon.core.model.ExecutionFlowStage;
 import works.nuty.codon.core.model.ExecutionFlowTrace;
@@ -18,8 +19,13 @@ public final class CommandFlowLayout {
     private CommandFlowLayout() {
     }
 
-    /** Stage index -2 is the non-interactive {@code execute } prefix. */
-    public record Part(String text, int stageIndex) {
+    public enum Observation { RECORDED, NOT_EXECUTED, FILTERED_OUT, UNAVAILABLE }
+
+    /** stageIndex is a recorded list position; targetStageIndex is an exact Brigadier stage identity. */
+    public record Part(String text, int stageIndex, int targetStageIndex, Observation observation) {
+        public Part(String text, int stageIndex) {
+            this(text, stageIndex, stageIndex, stageIndex >= 0 ? Observation.RECORDED : Observation.UNAVAILABLE);
+        }
     }
 
     public record Content(String command, List<Part> parts, boolean inline) {
@@ -71,7 +77,7 @@ public final class CommandFlowLayout {
             }
             for (int index = 0; index < stages.size(); index++) {
                 int end = stages.get(index).command().highlightEnd();
-                parts.add(new Part(text.substring(cursor, end), index));
+                parts.add(new Part(text.substring(cursor, end), index, stages.get(index).index(), Observation.RECORDED));
                 cursor = end;
             }
             if (cursor < text.length() || parts.isEmpty()) parts.add(new Part(text.substring(cursor), -1));
@@ -85,9 +91,57 @@ public final class CommandFlowLayout {
             String stageText = recorded != null && validRange(recorded, recordedText.length())
                 ? recordedText.substring(recorded.highlightStart(), recorded.highlightEnd())
                 : recordedText;
-            parts.add(new Part(stageText, index));
+            parts.add(new Part(stageText, index, stages.get(index).index(), Observation.RECORDED));
         }
         return new Content(text, parts, false);
+    }
+
+    /** Adds only server-parsed stages whose command and ranges agree exactly with this recording. */
+    public static Content content(CommandSnippet command, ExecutionFlowTrace flow,
+                                  ClientStagePreviewState.@Nullable Preview preview) {
+        if (preview == null || preview.status() != ClientStagePreviewState.Status.READY
+            || !command.text().equals(preview.savedCommand()) || preview.spans().isEmpty()) return content(command, flow);
+        String text = command.text();
+        List<ClientStagePreviewState.StageSpan> spans = preview.spans();
+        int previousEnd = 0;
+        for (int index = 0; index < spans.size(); index++) {
+            var span = spans.get(index);
+            if (span.index() != index || span.start() < previousEnd || span.start() >= span.end()
+                || span.end() > text.length() || span.terminal() != (index == spans.size() - 1)) return content(command, flow);
+            previousEnd = span.end();
+        }
+        if (previousEnd != text.length()) return content(command, flow);
+        int[] recorded = new int[spans.size()];
+        java.util.Arrays.fill(recorded, -1);
+        int previousIndex = -1;
+        for (int index = 0; index < flow.stages().size(); index++) {
+            ExecutionFlowStage stage = flow.stages().get(index);
+            if (stage.index() <= previousIndex || stage.index() >= spans.size())
+                return content(command, flow);
+            var span = spans.get(stage.index());
+            if (!text.equals(stage.command().text()) || span.start() != stage.command().highlightStart()
+                || span.end() != stage.command().highlightEnd() || span.terminal() != stage.terminal()) return content(command, flow);
+            recorded[stage.index()] = index;
+            previousIndex = stage.index();
+        }
+        Observation missing = Observation.NOT_EXECUTED;
+        if (flow.truncated() || !flow.warnings().isEmpty()) missing = Observation.UNAVAILABLE;
+        else if (!flow.stages().isEmpty()) {
+            ExecutionFlowStage last = flow.stages().getLast();
+            if (!last.terminal() && last.complete() && last.lineageComplete() && last.outputCount() == 0)
+                missing = Observation.FILTERED_OUT;
+        }
+        List<Part> parts = new ArrayList<>();
+        int cursor = executePrefixEnd(text);
+        if (spans.getFirst().start() > cursor || spans.getFirst().end() <= cursor) cursor = 0;
+        if (cursor > 0) parts.add(new Part(text.substring(0, cursor), -2));
+        for (var span : spans) {
+            int index = recorded[span.index()];
+            parts.add(new Part(text.substring(cursor, span.end()), index, span.index(),
+                index >= 0 ? Observation.RECORDED : span.index() < previousIndex ? Observation.UNAVAILABLE : missing));
+            cursor = span.end();
+        }
+        return new Content(text, parts, true);
     }
 
     /** Keep the command verb outside the first modifier's breakpoint target in the UI. */

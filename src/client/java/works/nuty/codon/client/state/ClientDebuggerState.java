@@ -34,6 +34,7 @@ public final class ClientDebuggerState {
     private int selectedCallFrameIndex = -1;
     private int selectedFlowIndex = -1;
     private int selectedFlowStageIndex = -1;
+    private @Nullable UnobservedSelection unobservedSelection;
     private boolean controlPending;
     private long controlRequestedAt;
     private final LongSupplier clock;
@@ -82,6 +83,7 @@ public final class ClientDebuggerState {
     }
 
     public void applyPause(PauseSnapshot snapshot) {
+        unobservedSelection = null;
         watchEditor.invalidate();
         FlowSelectionHint previousFlow = currentFlowHint();
         if (previousFlow == null) previousFlow = flowSelectionHint;
@@ -136,6 +138,7 @@ public final class ClientDebuggerState {
     }
 
     private void clearPause(boolean stepping) {
+        unobservedSelection = null;
         if (stepping) watchEditor.invalidate();
         else watchEditor.cancel();
         if (selectedSource() != null) selectionHint = selectedSource();
@@ -251,6 +254,7 @@ public final class ClientDebuggerState {
 
     /** Sources currently connected to the inspector and world markers. */
     public List<PauseSource> displayedSources() {
+        if (unobservedSelection != null) return List.of();
         ExecutionFlowStage stage = sourceStage();
         if (stage != null) {
             List<PauseSource> result = new ArrayList<>();
@@ -454,6 +458,7 @@ public final class ClientDebuggerState {
     }
 
     private void selectCallFrame(List<CallFrame> frames, int index) {
+        unobservedSelection = null;
         PauseSource previous = selectedSource() != null ? selectedSource() : selectionHint;
         if (selectedPauseSourceIndex() >= 0) selectionHint = selectedSource();
         displayedCallStack = frames;
@@ -508,6 +513,7 @@ public final class ClientDebuggerState {
         boolean currentWithoutStack = index == 0 && current != null && current.callStack().isEmpty();
         if (current == null || (!currentWithoutStack
             && (index < 0 || index >= current.callStack().size()))) return;
+        unobservedSelection = null;
         if (!currentWithoutStack) {
             selectCallFrame(current.callStack(), index);
             return;
@@ -548,11 +554,15 @@ public final class ClientDebuggerState {
     }
 
     public boolean isViewingCurrentCommand() {
-        return paused && snapshot != null && selectedFrameIndex == 0 && selectedCallFrameIndex <= 0
+        return unobservedSelection == null && paused && snapshot != null && selectedFrameIndex == 0 && selectedCallFrameIndex <= 0
             && selectedFlowStageIndex == pausedFlowStageIndex();
     }
 
     public @Nullable CommandSnippet selectedCommand() {
+        if (unobservedSelection != null) {
+            var span = unobservedSelection.span();
+            return new CommandSnippet(unobservedSelection.command(), span.start(), span.end());
+        }
         ExecutionFlowStage stage = selectedExecutionFlowStage();
         if (stage != null) return stage.command();
         PauseSnapshot current = inspectionSnapshot();
@@ -563,7 +573,7 @@ public final class ClientDebuggerState {
 
     public @Nullable SourceLocation selectedLocation() {
         ExecutionFlowTrace flow = selectedExecutionFlow();
-        if (selectedExecutionFlowStage() != null && flow != null) return flow.location();
+        if ((selectedExecutionFlowStage() != null || unobservedSelection != null) && flow != null) return flow.location();
         PauseSnapshot current = inspectionSnapshot();
         if (current == null) return null;
         CallFrame frame = selectedCallFrame();
@@ -622,6 +632,7 @@ public final class ClientDebuggerState {
         if (current == null || flowIndex < 0 || flowIndex >= current.executionFlows().size()) return;
         ExecutionFlowTrace flow = current.executionFlows().get(flowIndex);
         if (flow.stages().isEmpty()) return;
+        unobservedSelection = null;
         selectedFlowIndex = flowIndex;
         selectedFlowStageIndex = latestCompletedStage(flow);
         selectedFrameIndex = frameForSelectedFlow();
@@ -633,10 +644,41 @@ public final class ClientDebuggerState {
     public void selectExecutionFlowStage(int stageIndex) {
         ExecutionFlowTrace flow = selectedExecutionFlow();
         if (flow == null || stageIndex < 0 || stageIndex >= flow.stages().size()) return;
+        unobservedSelection = null;
         selectedFlowStageIndex = stageIndex;
         selectedFrameIndex = frameForSelectedFlow();
         followSelectedCallStack();
         selectedSourceIndex = displayedSources().isEmpty() ? -1 : 0;
+        syncLiveSourceSelection();
+    }
+
+    public int selectedUnobservedStageIndex() {
+        if (unobservedSelection == null) return -1;
+        ExecutionFlowTrace flow = selectedExecutionFlow();
+        var preview = flow == null ? null : stagePreviews.get(flow.location());
+        return flow != null && flow.invocationId() == unobservedSelection.invocationId()
+            && preview != null && preview.status() == ClientStagePreviewState.Status.READY
+            && preview.savedCommand().equals(unobservedSelection.command())
+            && preview.spans().contains(unobservedSelection.span()) ? unobservedSelection.span().index() : -1;
+    }
+
+    /** A static target has no recorded contexts, counts, observation order, or stage call stack. */
+    public void selectUnobservedExecutionFlowStage(int stageIndex) {
+        ExecutionFlowTrace flow = selectedExecutionFlow();
+        if (flow == null || flow.location() instanceof SourceLocation.Player || flow.stages().isEmpty()) return;
+        var preview = stagePreviews.get(flow.location());
+        if (preview == null || preview.status() != ClientStagePreviewState.Status.READY
+            || !preview.savedCommand().equals(flow.stages().getFirst().command().text())
+            || flow.stages().stream().anyMatch(stage -> stage.index() == stageIndex)) return;
+        var span = preview.spans().stream().filter(stage -> stage.index() == stageIndex).findFirst().orElse(null);
+        if (span == null) return;
+        int navigationStageIndex = unobservedSelection == null ? selectedFlowStageIndex
+            : unobservedSelection.navigationStageIndex();
+        unobservedSelection = new UnobservedSelection(flow.invocationId(), preview.savedCommand(), span, navigationStageIndex);
+        selectedFlowStageIndex = -1;
+        selectedSourceIndex = -1;
+        displayedCallStack = List.of();
+        selectedCallFrameIndex = -1;
         syncLiveSourceSelection();
     }
 
@@ -648,6 +690,7 @@ public final class ClientDebuggerState {
     public void selectAdjacentExecutionVisit(int direction) {
         ExecutionFlowTimeline.Visit visit = adjacentExecutionVisit(direction);
         if (visit == null) return;
+        unobservedSelection = null;
         selectedFlowIndex = visit.flowIndex();
         selectedFlowStageIndex = direction > 0 ? visit.stageIndices().getFirst() : visit.stageIndices().getLast();
         selectedFrameIndex = frameForSelectedFlow();
@@ -664,9 +707,11 @@ public final class ClientDebuggerState {
             executionVisits = current == null ? List.of() : ExecutionFlowTimeline.visits(current.executionFlows());
         }
         int selectedVisit = -1;
+        int navigationStageIndex = unobservedSelection == null ? selectedFlowStageIndex
+            : unobservedSelection.navigationStageIndex();
         for (int i = 0; i < executionVisits.size(); i++) {
             ExecutionFlowTimeline.Visit visit = executionVisits.get(i);
-            if (visit.flowIndex() == selectedFlowIndex && visit.stageIndices().contains(selectedFlowStageIndex)) {
+            if (visit.flowIndex() == selectedFlowIndex && visit.stageIndices().contains(navigationStageIndex)) {
                 selectedVisit = i;
                 break;
             }
@@ -730,6 +775,7 @@ public final class ClientDebuggerState {
     }
 
     private void selectLatestFlow(PauseSnapshot snapshot) {
+        unobservedSelection = null;
         selectedFlowIndex = -1;
         selectedFlowStageIndex = -1;
         long latestOrder = -1;
@@ -787,4 +833,7 @@ public final class ClientDebuggerState {
 
     private record FlowSelectionHint(long invocationId, int stageIndex, long contextId) {
     }
+
+    private record UnobservedSelection(long invocationId, String command, ClientStagePreviewState.StageSpan span,
+                                       int navigationStageIndex) { }
 }

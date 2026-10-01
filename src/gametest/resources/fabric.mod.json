@@ -47,6 +47,7 @@
       "works.nuty.codon.client.DebuggerExecutionFlowGameTest",
       "works.nuty.codon.client.DebuggerConditionalFunctionFlowGameTest",
       "works.nuty.codon.client.DebuggerBreakpointResultGameTest",
+      "works.nuty.codon.client.DebuggerUnobservedFlowBreakpointGameTest",
       "works.nuty.codon.client.DebuggerContinuationRecordingGameTest",
       "works.nuty.codon.client.DebuggerWatchGroupingGameTest",
       "works.nuty.codon.client.DebuggerPeekUiGameTest",

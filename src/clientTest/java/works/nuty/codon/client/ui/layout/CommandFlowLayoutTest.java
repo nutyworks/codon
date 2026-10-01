@@ -6,6 +6,7 @@ import works.nuty.codon.core.model.CommandSnippet;
 import works.nuty.codon.core.model.ExecutionFlowStage;
 import works.nuty.codon.core.model.ExecutionFlowTrace;
 import works.nuty.codon.core.model.SourceLocation;
+import works.nuty.codon.client.state.ClientStagePreviewState;
 
 import java.util.List;
 import java.util.function.IntUnaryOperator;
@@ -16,6 +17,69 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CommandFlowLayoutTest {
+    private static final String PREVIEW_COMMAND = "execute if function pack:truthy as @a run say truthy returned";
+
+    @Test
+    void serverPreviewMakesUnobservedStagesTargetableWithoutInventingRecords() {
+        var preview = preview();
+        var first = preview.spans().getFirst();
+        var flow = trace(new ExecutionFlowStage(0, new CommandSnippet(PREVIEW_COMMAND, first.start(), first.end()),
+            List.of(), List.of(), List.of(), List.of(), 1, -1, 0, false, -1, -1, false, false, false));
+        var content = CommandFlowLayout.content(CommandSnippet.plain(PREVIEW_COMMAND), flow, preview);
+        assertTrue(content.inline());
+        assertEquals(PREVIEW_COMMAND, joinParts(content.parts()));
+        assertEquals(List.of(-2, 0, -1, -1), content.parts().stream().map(CommandFlowLayout.Part::stageIndex).toList());
+        assertEquals(List.of(-2, 0, 1, 2), content.parts().stream().map(CommandFlowLayout.Part::targetStageIndex).toList());
+        assertEquals(CommandFlowLayout.Observation.NOT_EXECUTED, content.parts().getLast().observation());
+        assertEquals(1, flow.stages().size(), "static preview must not add a measured execution record");
+        var layout = CommandFlowLayout.layout(content.parts(), 30, CommandFlowLayoutTest::codePoints,
+            ignored -> 0, index -> content.parts().get(index).targetStageIndex() >= 0 ? 15 : 0);
+        assertEquals(PREVIEW_COMMAND, joinCells(layout));
+        assertGeometry(layout, 30);
+        assertTrue(layout.cells().stream().filter(cell -> content.parts().get(cell.partIndex()).targetStageIndex() == 2)
+            .allMatch(cell -> content.parts().get(cell.partIndex()).stageIndex() == -1));
+    }
+
+    @Test
+    void measuredZeroAndMissingRecordingHaveDifferentUnobservedStates() {
+        var span = preview().spans().getFirst();
+        var first = stage(new CommandSnippet(PREVIEW_COMMAND, span.start(), span.end()));
+        var zero = CommandFlowLayout.content(CommandSnippet.plain(PREVIEW_COMMAND), trace(first), preview());
+        assertEquals(CommandFlowLayout.Observation.FILTERED_OUT, zero.parts().getLast().observation());
+        var incomplete = new ExecutionFlowTrace(0, trace(first).location(), List.of(first), true);
+        var unknown = CommandFlowLayout.content(CommandSnippet.plain(PREVIEW_COMMAND), incomplete, preview());
+        assertEquals(CommandFlowLayout.Observation.UNAVAILABLE, unknown.parts().getLast().observation());
+        assertEquals(2, unknown.parts().getLast().targetStageIndex(), "known static identity remains configurable despite missing measurements");
+    }
+
+    @Test
+    void staleUnavailableAndInconsistentPreviewsCannotRetargetHistoricalText() {
+        var first = stage(new CommandSnippet(PREVIEW_COMMAND, 0, preview().spans().getFirst().end()));
+        var flow = trace(first);
+        var expected = CommandFlowLayout.content(CommandSnippet.plain(PREVIEW_COMMAND), flow);
+        for (var status : List.of(ClientStagePreviewState.Status.LOADING, ClientStagePreviewState.Status.NOT_FOUND,
+            ClientStagePreviewState.Status.UNAUTHORIZED, ClientStagePreviewState.Status.INVALID)) {
+            assertEquals(expected, CommandFlowLayout.content(CommandSnippet.plain(PREVIEW_COMMAND), flow,
+                new ClientStagePreviewState.Preview(status, "", List.of())));
+        }
+        assertEquals(expected, CommandFlowLayout.content(CommandSnippet.plain(PREVIEW_COMMAND), flow,
+            new ClientStagePreviewState.Preview(ClientStagePreviewState.Status.READY, PREVIEW_COMMAND + " changed", preview().spans())));
+        var conflicting = trace(stage(new CommandSnippet(PREVIEW_COMMAND, 0, 7)));
+        assertEquals(CommandFlowLayout.content(CommandSnippet.plain(PREVIEW_COMMAND), conflicting),
+            CommandFlowLayout.content(CommandSnippet.plain(PREVIEW_COMMAND), conflicting, preview()));
+        assertEquals(-1, expected.parts().getLast().targetStageIndex());
+        assertEquals(CommandFlowLayout.Observation.UNAVAILABLE, expected.parts().getLast().observation());
+    }
+
+    private static ClientStagePreviewState.Preview preview() {
+        int modifier = PREVIEW_COMMAND.indexOf("as @a");
+        int terminal = PREVIEW_COMMAND.indexOf("say truthy");
+        return new ClientStagePreviewState.Preview(ClientStagePreviewState.Status.READY, PREVIEW_COMMAND, List.of(
+            new ClientStagePreviewState.StageSpan(0, 0, modifier - 1, false),
+            new ClientStagePreviewState.StageSpan(1, modifier, terminal - 1, false),
+            new ClientStagePreviewState.StageSpan(2, terminal, PREVIEW_COMMAND.length(), true)));
+    }
+
     @Test
     void fillsLinesAcrossWordBoundariesWithoutLosingSpacesOrSplittingUnicode() {
         String command = "ab 😀cd ef";
