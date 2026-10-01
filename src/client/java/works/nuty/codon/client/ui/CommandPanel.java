@@ -6,8 +6,7 @@ import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.network.chat.Component;
 import org.jspecify.annotations.Nullable;
 import works.nuty.codon.client.input.InputManager;
-import works.nuty.codon.client.network.ClientNetworking;
-import works.nuty.codon.client.state.ClientBreakpointState;
+import works.nuty.codon.client.state.BreakpointTargetPolicy;
 import works.nuty.codon.client.state.ClientDebuggerState;
 import works.nuty.codon.client.state.ClientFlowPreviewRequests;
 import works.nuty.codon.client.ui.layout.CommandFlowLayout;
@@ -237,17 +236,27 @@ public final class CommandPanel {
         int unobserved = state.selectedUnobservedStageIndex();
         if (unobserved >= 0) return BreakpointTarget.stage(flow.location(), unobserved, state.selectedCommand().text());
         if (stage == null) return null;
-        return BreakpointTarget.stage(flow.location(), stage.index(), stage.command().text());
+        return breakpointTarget(flow, stage);
+    }
+
+    private int stageCount(ExecutionFlowTrace flow, String command) {
+        return BreakpointTargetPolicy.stageCount(command, state.stagePreviews().get(flow.location()), flow);
+    }
+
+    private @Nullable BreakpointTarget breakpointTarget(ExecutionFlowTrace flow, ExecutionFlowStage stage) {
+        return BreakpointTargetPolicy.target(flow.location(), stage.index(), stage.command().text(),
+            stageCount(flow, stage.command().text()));
     }
 
     private void openCondition(BreakpointTarget target) {
         if (client.gui.screen() == null) return;
-        BreakpointDefinition definition = state.breakpoints().get(target);
         BreakpointConditionScreen.Anchor anchor = conditionAnchor.width() <= 0 ? null
             : new BreakpointConditionScreen.Anchor(conditionAnchor.x(), conditionAnchor.y(),
                 conditionAnchor.width(), conditionAnchor.height());
-        ScreenLayers.open(client.gui.screen(), new BreakpointConditionScreen(client.gui.screen(), state,
-            definition == null ? BreakpointDefinition.plain(target) : definition, anchor));
+        ExecutionFlowTrace flow = state.selectedExecutionFlow();
+        CommandSnippet command = state.selectedCommand();
+        if (flow == null || command == null) return;
+        BreakpointUi.openCondition(client.gui.screen(), state, target, command.text(), stageCount(flow, command.text()), anchor);
     }
 
     private void renderClauses(GuiGraphicsExtractor graphics, Bounds body, PauseSnapshot snapshot) {
@@ -267,7 +276,8 @@ public final class CommandPanel {
             parts.addFirst(new Part(content.command(), -1));
         }
         List<Part> displayed = parts;
-        boolean editableSource = !(flow.location() instanceof SourceLocation.Player);
+        boolean editableSource = !(flow.location() instanceof SourceLocation.Player)
+            && stageCount(flow, snippet.text()) > 0;
         java.util.function.IntUnaryOperator minimumWidth = index -> {
                 int stage = displayed.get(index).stageIndex();
                 return stage == -2 ? client.font.width(displayed.get(index).text())
@@ -357,15 +367,16 @@ public final class CommandPanel {
                 int clauseX = x;
                 int clauseWidth = cell.width();
                 if (cell.first() && editableSource) {
-                    BreakpointTarget target = BreakpointTarget.stage(flow.location(), stage.index(), stage.command().text());
-                    BreakpointDefinition definition = state.breakpoints().get(target);
+                    BreakpointTarget target = breakpointTarget(flow, stage);
+                    int count = stageCount(flow, stage.command().text());
+                    BreakpointDefinition definition = target.wholeCommand()
+                        ? BreakpointUi.lineDefinition(BreakpointUi.lineDefinitions(state, target.location(), stage.command().text(), count))
+                        : state.breakpoints().get(target);
                     DebuggerButton breakpoint = button("breakpoint-" + flow.invocationId() + "-" + stageIndex,
                         new Bounds(x, y, 14, 16), Component.translatable("codon.breakpoint.toggle"),
-                        !state.breakpoints().pending(target), false, () -> {
+                        !BreakpointUi.pending(state, target, stage.command().text(), count), false, () -> {
                             if (state.selectedExecutionFlow() != flow) return;
-                            BreakpointDefinition current = state.breakpoints().get(target);
-                            ClientNetworking.sendBreakpointEdit(state, ClientBreakpointState.Action.TOGGLE,
-                                current == null ? BreakpointDefinition.plain(target) : current);
+                            BreakpointUi.toggle(state, target, stage.command().text(), count);
                             state.selectExecutionFlowStage(stageIndex);
                             changed();
                         });
@@ -394,8 +405,7 @@ public final class CommandPanel {
                 clause.withOpenEdges(!cell.first(), cellIndex + 1 < layout.cells().size()
                     && layout.cells().get(cellIndex + 1).partIndex() == cell.partIndex());
                 clause.setTooltip(Tooltip.create(Component.literal(part.text().strip() + "\n" + stageDetails(stage))));
-                if (editableSource) clause.withSecondaryAction(() -> openCondition(
-                    BreakpointTarget.stage(flow.location(), stage.index(), stage.command().text())));
+                if (editableSource) clause.withSecondaryAction(() -> openCondition(breakpointTarget(flow, stage)));
                 if (cell.first() && rowHeight < 30 && hasWarning(stage)) clause.withTextIcon(DebuggerIcon.WARNING);
                 if (stopped && cell.first()) clause.withTextIcon(DebuggerIcon.PAUSE);
                 if (cell.first() && rowHeight >= 30) {

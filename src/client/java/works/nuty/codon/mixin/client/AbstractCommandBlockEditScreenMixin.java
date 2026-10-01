@@ -27,10 +27,12 @@ import works.nuty.codon.client.CodonClientMod;
 import works.nuty.codon.client.network.ClientNetworking;
 import works.nuty.codon.client.state.ClientBreakpointState;
 import works.nuty.codon.client.state.ClientStagePreviewState;
+import works.nuty.codon.client.state.BreakpointTargetPolicy;
 import works.nuty.codon.client.ui.BreakpointConditionScreen;
 import works.nuty.codon.client.ui.ScreenLayers;
 import works.nuty.codon.client.ui.WrappedCommandEditBox;
 import works.nuty.codon.client.ui.InlineBreakpointButton;
+import works.nuty.codon.client.ui.BreakpointUi;
 import works.nuty.codon.client.ui.layout.CommandFlowLayout;
 import works.nuty.codon.core.model.BlockLocation;
 import works.nuty.codon.core.model.BreakpointDefinition;
@@ -92,10 +94,12 @@ public abstract class AbstractCommandBlockEditScreenMixin extends Screen {
         }
         BreakpointTarget whole = BreakpointTarget.whole(location);
         List<WrappedCommandEditBox.Marker> markers = new ArrayList<>();
-        markers.add(new WrappedCommandEditBox.Marker(whole, -1, -1, state.breakpoints().get(whole)));
         var preview = state.stagePreviews().get(location);
+        int count = BreakpointTargetPolicy.stageCount(command, preview, null);
+        markers.add(new WrappedCommandEditBox.Marker(whole, -1, -1,
+            BreakpointUi.lineDefinition(BreakpointUi.lineDefinitions(state, location, command, count))));
         if (preview != null && preview.status() == ClientStagePreviewState.Status.READY
-                && command.equals(preview.savedCommand())) {
+                && command.equals(preview.savedCommand()) && preview.spans().size() > 1) {
             int prefixEnd = CommandFlowLayout.executePrefixEnd(command);
             for (var span : preview.spans()) {
                 int start = Math.max(prefixEnd, span.start());
@@ -125,7 +129,8 @@ public abstract class AbstractCommandBlockEditScreenMixin extends Screen {
         var state = CodonClientMod.state();
         for (int index = 0; index < markers.size(); index++)
             codon$markerControls.get(index).update(markers.get(index), state == null
-                || state.breakpoints().pending(markers.get(index).target()));
+                || BreakpointUi.pending(state, markers.get(index).target(), editor.getValue(),
+                    BreakpointTargetPolicy.stageCount(editor.getValue(), state.stagePreviews().get(markers.get(index).target().location()), null)));
     }
 
     @Unique private void codon$activateMarker(BreakpointTarget target, boolean condition) {
@@ -133,16 +138,20 @@ public abstract class AbstractCommandBlockEditScreenMixin extends Screen {
         if (!(commandEdit instanceof WrappedCommandEditBox)
                 || codon$markerControls.stream().noneMatch(control -> control.target().equals(target))) return;
         var state = CodonClientMod.state();
-        if (state == null || state.breakpoints().pending(target)) return;
+        if (state == null || BreakpointUi.pending(state, target, commandEdit.getValue(),
+                BreakpointTargetPolicy.stageCount(commandEdit.getValue(), state.stagePreviews().get(target.location()), null))) return;
         BreakpointDefinition definition = state.breakpoints().get(target);
         if (definition == null) definition = BreakpointDefinition.plain(target);
         if (!condition) {
-            ClientNetworking.sendBreakpointEdit(state, ClientBreakpointState.Action.TOGGLE, definition);
+            String command = commandEdit.getValue();
+            BreakpointUi.toggle(state, target, command,
+                BreakpointTargetPolicy.stageCount(command, state.stagePreviews().get(target.location()), null));
         } else {
             var control = codon$markerControls.stream().filter(value -> value.target().equals(target)).findFirst().orElseThrow();
             var anchor = new BreakpointConditionScreen.Anchor(control.getX(), control.getY(), 9, 9);
-            ScreenLayers.open(this, new BreakpointConditionScreen(this, state,
-                definition, anchor));
+            String command = commandEdit.getValue();
+            BreakpointUi.openCondition(this, state, target, command,
+                BreakpointTargetPolicy.stageCount(command, state.stagePreviews().get(target.location()), null), anchor);
         }
     }
 

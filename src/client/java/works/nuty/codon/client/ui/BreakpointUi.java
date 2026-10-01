@@ -1,6 +1,13 @@
 package works.nuty.codon.client.ui;
 
+import java.util.List;
+import org.jspecify.annotations.Nullable;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import works.nuty.codon.client.state.ClientDebuggerState;
+import works.nuty.codon.client.state.ClientBreakpointState;
+import works.nuty.codon.client.state.BreakpointTargetPolicy;
+import works.nuty.codon.client.network.ClientNetworking;
 import works.nuty.codon.core.model.BreakpointCondition;
 import works.nuty.codon.core.model.BreakpointDefinition;
 import works.nuty.codon.core.model.BreakpointTarget;
@@ -45,6 +52,51 @@ public final class BreakpointUi {
         return conditional
             ? (enabled ? DebuggerIcon.BREAKPOINT_CONDITIONAL : DebuggerIcon.BREAKPOINT_CONDITIONAL_EMPTY)
             : (enabled ? DebuggerIcon.BREAKPOINT : DebuggerIcon.BREAKPOINT_EMPTY);
+    }
+
+    public static List<BreakpointDefinition> lineDefinitions(ClientDebuggerState state, SourceLocation location,
+                                                            String command, int stageCount) {
+        return BreakpointTargetPolicy.lineDefinitions(location, command, stageCount, state.breakpoints().definitions());
+    }
+
+    public static @Nullable BreakpointDefinition lineDefinition(List<BreakpointDefinition> definitions) {
+        return definitions.stream().filter(BreakpointDefinition::enabled).findFirst()
+            .orElse(definitions.isEmpty() ? null : definitions.getFirst());
+    }
+
+    public static boolean pending(ClientDebuggerState state, BreakpointTarget target, String command, int stageCount) {
+        return state.breakpoints().pending(target) || target.wholeCommand() && stageCount == 1
+            && lineDefinitions(state, target.location(), command, stageCount).stream()
+                .anyMatch(definition -> state.breakpoints().pending(definition.target()));
+    }
+
+    public static void toggle(ClientDebuggerState state, BreakpointTarget target, String command, int stageCount) {
+        if (pending(state, target, command, stageCount)) return;
+        var definitions = target.wholeCommand() && stageCount == 1
+            ? lineDefinitions(state, target.location(), command, stageCount) : List.<BreakpointDefinition>of();
+        if (definitions.isEmpty()) {
+            var existing = state.breakpoints().get(target);
+            ClientNetworking.sendBreakpointEdit(state, ClientBreakpointState.Action.TOGGLE,
+                existing == null ? BreakpointDefinition.plain(target) : existing);
+            return;
+        }
+        boolean enabled = definitions.stream().anyMatch(BreakpointDefinition::enabled);
+        for (var definition : definitions) if (definition.enabled() == enabled)
+            ClientNetworking.sendBreakpointEdit(state, ClientBreakpointState.Action.TOGGLE, definition);
+    }
+
+    public static void openCondition(Screen parent, ClientDebuggerState state, BreakpointTarget target,
+                                     String command, int stageCount, BreakpointConditionScreen.Anchor anchor) {
+        var definitions = target.wholeCommand() && stageCount == 1
+            ? lineDefinitions(state, target.location(), command, stageCount) : List.<BreakpointDefinition>of();
+        if (definitions.size() > 1) {
+            net.minecraft.client.Minecraft.getInstance().gui.setScreen(new BreakpointListScreen(parent, state,
+                definitions.stream().map(BreakpointDefinition::target).toList()));
+            return;
+        }
+        var existing = definitions.isEmpty() ? state.breakpoints().get(target) : definitions.getFirst();
+        ScreenLayers.open(parent, new BreakpointConditionScreen(parent, state,
+            existing == null ? BreakpointDefinition.plain(target) : existing, anchor));
     }
 
     private static String tr(String key, Object... args) {

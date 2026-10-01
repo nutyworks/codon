@@ -169,6 +169,8 @@
   "codon.source.no_breakpoint": "중단점 없음",
   "codon.source.line": "줄",
   "codon.source.resize_tree": "드래그하여 함수 목록 너비 조절",
+  "codon.breakpoint.saved_definitions_header": "저장된 중단점: %s개",
+  "codon.breakpoint.saved_line_definitions": "저장된 줄 중단점: %s개. 클릭하면 활성 정의를 모두 끄거나 저장된 정의를 다시 켭니다. 우클릭으로 각 조건을 편집합니다.",
   "codon.source.stage_breakpoints": "단계 중단점 %s개",
   "codon.source.select_command_or_stage": "명령 또는 단계를 선택하세요",
   "codon.source.no_stage_here": "이 위치에는 단계 중단점을 설정할 수 없습니다",

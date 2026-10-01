@@ -125,6 +125,32 @@ class WorldBreakpointPersistenceTest {
     }
 
     @Test
+    void soleStageAndLineConditionsSurviveToggleDeleteUndoAndExplicitClear() {
+        var location = new SourceLocation.Function(FUNCTION);
+        var stage = new BreakpointDefinition(BreakpointTarget.stage(location, 0, "say old_single"), false,
+            BreakpointCondition.count(BreakpointCondition.Kind.INPUT_COUNT, BreakpointCondition.Comparison.EQ, 1));
+        var line = BreakpointDefinition.plain(BreakpointTarget.whole(location));
+        Harness harness = new Harness();
+        harness.persistence.openWorld(directory);
+        harness.engine.saveBreakpoint(stage);
+        harness.engine.saveBreakpoint(line);
+        harness.persistence.openWorld(directory);
+        assertEquals(Set.of(stage, line), Set.copyOf(harness.engine.breakpointDefinitions()));
+        harness.engine.toggleBreakpoint(stage.target());
+        assertEquals(stage.withEnabled(true), harness.engine.breakpointDefinitions().stream()
+            .filter(value -> value.target().equals(stage.target())).findFirst().orElseThrow());
+        harness.engine.deleteBreakpoint(stage.target());
+        assertEquals(List.of(line), harness.engine.breakpointDefinitions());
+        harness.engine.saveBreakpoint(stage);
+        harness.persistence.openWorld(directory);
+        assertEquals(Set.of(stage, line), Set.copyOf(harness.engine.breakpointDefinitions()), "Undo restores the exact original identity and condition");
+        harness.engine.clearBreakpoints();
+        harness.persistence.openWorld(directory);
+        assertTrue(harness.engine.breakpointDefinitions().isEmpty(), "Clear removes disabled legacy definitions as well as active line targets");
+        assertTrue(harness.errors.isEmpty());
+    }
+
+    @Test
     void malformedOrUnsupportedDocumentsArePreservedWithoutPartialRestore() throws Exception {
         for (String invalid : List.of(
             "{broken", "null", "[]", "{\"version\":2,\"blocks\":[],\"functions\":[]}",

@@ -70,6 +70,7 @@ They toggle whole-command targets; use the UI for stage/condition editing.
 | Acknowledgement and pending UI state | `clientTest`: `ClientBreakpointStateTest` |
 | Persistence/preview codec | `test`: `WorldBreakpointPersistenceTest`, `BreakpointStagePreviewPayloadTest` |
 | Native editor input, modal details without screen replacement, server edits, wrapping and narrow layouts | `DebuggerBreakpointUiGameTest` |
+| Single-stage editor/Flow target, legacy toggle/clear and native first-occurrence stop | `SingleStageBreakpointGameTest` |
 | Native execution and measured-zero result breakpoints | `DebuggerBreakpointResultGameTest` |
 
 Example: `./gradlew runClientGameTest -PclientGameTest=DebuggerBreakpointUiGameTest`.
@@ -131,3 +132,11 @@ feedback growth keeps the panel and its Save button inside the viewport.
 Saving after a resize uses native mouse dispatch, so the same scenario also
 checks that the layer's input and rendering callbacks remain attached to
 Fabric's newly created per-screen events.
+
+A command with one server-parsed stage offers only its whole-command/line breakpoint in
+Source, Flow and the command-block editor. Multiple-stage commands retain separate stage
+controls. Existing single-stage saved definitions are kept; see the
+[legacy line-control rules](function-source.md) for condition collisions, disabling and Clear.
+`SingleStageBreakpointGameTest` checks actual acknowledged editor edits, a real vanilla
+single-stage command stop, the Flow line target, disabled legacy condition access, one execution
+on Continue, and the public Clear command. Its server/world is disposable.
