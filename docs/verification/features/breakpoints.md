@@ -106,7 +106,10 @@ The compact condition layer places the selected kind, comparison and numeric
 value on one row. Events and Always hide the comparison/value and expand the kind
 selector. Both selectors open on a short hover (180 ms), a click, or Enter/Space
 or an arrow key while focused. Hovering never changes the condition. Clicking an
-already-open selector keeps its menu open, including immediately after hover-open. The menu
+already-open selector closes its menu after a 250 ms opening guard; clicks during
+that guard, including just after hover-open, keep it open. Closing preserves the
+draft selection and consumes the click. The menu stays closed while the pointer
+remains on that selector, but an explicit click can reopen it immediately. The menu
 stays open while crossing the gap from its trigger and closes after the pointer
 leaves both for 220 ms. Re-entering the selector after that automatic close must
 open it again, including before another render observes the outside pointer.
@@ -128,7 +131,9 @@ controls. Full condition names and existing icons appear in the list, with short
 localized names in the compact count selector. Save has a visible text label.
 Panel height follows wrapped help and server feedback instead of reserving an
 empty comparison row or feedback area. The 320×240 hover-menu/count/event captures
-in `DebuggerBreakpointUiGameTest` check bounds, hover-only opening, leaving and
+in `DebuggerBreakpointUiGameTest` check bounds, hover-only opening, guarded and
+delayed trigger toggles for both selectors, repeated reopen/close, switching
+selectors mid-interaction, preserved draft values, Tab dismissal, leaving and
 crossing the menu gap, scrolling, keyboard selection/Escape, invalid count
 rejection, real acknowledged count-condition saving and switching back to an event.
 The closed-menu baseline moves the native cursor outside the resized layer and
