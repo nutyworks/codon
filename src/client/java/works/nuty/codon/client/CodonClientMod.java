@@ -78,7 +78,8 @@ public final class CodonClientMod implements ClientModInitializer {
         sourceState = ClientSourceBrowseNetworking.register();
         ClientTickEvents.START_CLIENT_TICK.register(camera::tick);
         ClientTickEvents.END_CLIENT_TICK.register(inputManager);
-        LevelRenderEvents.END_MAIN.register(new DebugLevelRenderer(state, inputManager));
+        // Submit before the current frame is finalized, so H also hides/restores markers immediately.
+        LevelRenderEvents.BEFORE_GIZMOS.register(new DebugLevelRenderer(state, inputManager));
         HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("codon", "debug_overlay"), new DebugHudElement(overlay, inputManager));
     }
 }
