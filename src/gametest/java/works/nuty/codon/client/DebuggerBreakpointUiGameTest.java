@@ -265,6 +265,7 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             nativeHover(context, parent, comparisonTrigger.getX() + 3, comparisonTrigger.getY() + 3);
             context.waitFor(client -> button(conditionLayer(parent), "≠").visible, 100);
             verifyDropdownToggle(context, parent, "= ▾", "≠", "comparison");
+            nativeHover(context, parent, comparisonTrigger.getX() + 3, comparisonTrigger.getY() + 3);
             context.runOnClient(client -> {
                 Screen screen = conditionLayer(parent);
                 click(screen, button(screen, "Output count ▾"));
@@ -385,10 +386,10 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
                 "Space reopens the focused " + capture + " menu");
             click(screen, trigger);
             require(button(screen, optionLabel).visible, "keyboard opening also guards an immediate trigger click");
-            require(screen.keyPressed(new KeyEvent(InputConstants.KEY_TAB, InputConstants.KEYCODE_TAB, 0)),
-                "Tab dismisses the menu and continues focus traversal");
-            require(!button(screen, optionLabel).visible && ScreenLayers.get(parent) == screen,
-                "Tab closes only the " + capture + " menu");
+            screen.keyPressed(new KeyEvent(InputConstants.KEY_TAB, InputConstants.KEYCODE_TAB, 0));
+            require(!button(screen, optionLabel).visible && ScreenLayers.get(parent) == screen
+                && screen.getFocused() != trigger,
+                "Tab closes only the " + capture + " menu and continues focus traversal");
             screen.setFocused(trigger);
         });
     }
