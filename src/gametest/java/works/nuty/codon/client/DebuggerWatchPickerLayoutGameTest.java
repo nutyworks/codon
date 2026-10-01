@@ -117,6 +117,7 @@ public final class DebuggerWatchPickerLayoutGameTest implements FabricClientGame
         context.waitTicks(3);
         checkGeometry(context);
         checkScrollIsolation(context, state, name, kind == WatchSpec.Kind.ENTITY_NBT && row == 0);
+        checkScrollbar(context, state, name, kind == WatchSpec.Kind.ENTITY_NBT && row == 0);
         capture(context, name);
         if (mode == WatchEditorQuery.Mode.NBT) {
             rowClick(context, 0, true);
@@ -245,6 +246,42 @@ public final class DebuggerWatchPickerLayoutGameTest implements FabricClientGame
     }
     private static void wheel(ClientGameTestContext context, double x, double y, double amount) {
         point(context, x, y); context.getInput().scroll(amount); context.waitTicks(3);
+    }
+    private static void checkScrollbar(ClientGameTestContext context, ClientDebuggerState state, String name, boolean evidence) {
+        var layout = context.computeOnClient(client -> WatchPickerLayout.create(screen(client).width, screen(client).height, WatchEditorPage.PAGE_SIZE));
+        int maximum = WatchEditorPage.PAGE_SIZE - layout.visibleRows();
+        int track = layout.listBottom() - layout.listTop();
+        int thumb = Math.max(16, track * layout.visibleRows() / WatchEditorPage.PAGE_SIZE);
+        var focus = context.computeOnClient(client -> screen(client).getFocused());
+        point(context, layout.scrollbarX() + 1, layout.listBottom() - 0.5);
+        context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_LEFT); context.waitTicks(3);
+        context.runOnClient(client -> {
+            require(screen(client) instanceof WatchPickerScreen, "Scrollbar track click cannot select a result");
+            require(rowOffset(screen(client)) == maximum, "Native track click reaches the last results");
+            require(!scrollbarCaptured(screen(client)), "Track click releases its pointer capture");
+            require(screen(client).getFocused() == focus, "Scrollbar track click preserves the keyboard input target");
+        });
+        if (evidence) capture(context, name + "-scrollbar-track");
+        point(context, layout.scrollbarX() + 1, layout.listBottom() - thumb / 2.0);
+        context.getInput().holdMouse(InputConstants.MOUSE_BUTTON_LEFT); context.waitTicks(1);
+        context.runOnClient(client -> require(rowOffset(screen(client)) == maximum && scrollbarCaptured(screen(client)), "Grabbing the thumb retains its offset"));
+        point(context, 1, 1); context.waitTicks(3);
+        context.runOnClient(client -> require(rowOffset(screen(client)) == 0, "Captured native drag outside the panel clamps to the first row"));
+        context.getInput().releaseMouse(InputConstants.MOUSE_BUTTON_LEFT); context.waitTicks(3);
+        context.runOnClient(client -> {
+            require(!scrollbarCaptured(screen(client)), "Release outside the list clears thumb capture");
+            require(state.watchEditor().drainQueries().isEmpty(), "Scrollbar movement preserves the current server page");
+            require(screen(client).getFocused() == focus, "Thumb drag/release preserves field/button focus");
+        });
+        if (evidence) capture(context, name + "-scrollbar-drag-release");
+    }
+    private static boolean scrollbarCaptured(Screen screen) {
+        try {
+            var owner = WatchPickerScreen.class.getDeclaredField("scrollbars"); owner.setAccessible(true);
+            Object input = owner.get(screen);
+            var capture = input.getClass().getDeclaredField("captured"); capture.setAccessible(true);
+            return capture.get(input) != null;
+        } catch (ReflectiveOperationException exception) { throw new AssertionError(exception); }
     }
     private static int rowOffset(Screen screen) {
         try {
