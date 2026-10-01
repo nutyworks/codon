@@ -15,6 +15,7 @@
       "works.nuty.codon.client.SingleStageBreakpointGameTest",
       "works.nuty.codon.client.FunctionSourceReviewGameTest",
       "works.nuty.codon.client.FunctionSourceKeyboardGameTest",
+      "works.nuty.codon.client.FunctionSourceTextInputGameTest",
       "works.nuty.codon.client.FunctionSourceInteractionGameTest",
       "works.nuty.codon.client.DebuggerBreakpointUiGameTest",
       "works.nuty.codon.client.FunctionSourceScreenGameTest",
