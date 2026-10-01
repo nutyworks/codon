@@ -33,6 +33,7 @@ public final class WatchPickerScreen extends ScaledCodonScreen {
     private final Consumer<WatchEditorPage.Option> selected;
     private final List<String> pathStack = new ArrayList<>();
     private final List<AbstractWidget> tabOrder = new ArrayList<>();
+    private final ScrollbarInput scrollbars = new ScrollbarInput();
     private WatchEditorQuery.Mode mode;
     private WatchSpec.Kind kind;
     private String target;
@@ -67,6 +68,7 @@ public final class WatchPickerScreen extends ScaledCodonScreen {
     }
 
     @Override protected void init() {
+        scrollbars.release();
         clearWidgets();
         tabOrder.clear();
         layout = WatchPickerLayout.create(width, height, 1);
@@ -223,6 +225,7 @@ public final class WatchPickerScreen extends ScaledCodonScreen {
     }
 
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+        scrollbars.beginFrame();
         refreshRequest();
         WatchEditorPage authoritativePage = state.watchEditor().page();
         WatchEditorPage page = state.watchEditor().displayedPage();
@@ -273,6 +276,8 @@ public final class WatchPickerScreen extends ScaledCodonScreen {
             int thumb = Math.max(4, track * visibleRows() / options.size());
             int thumbY = listTop + (track - thumb) * rowOffset / maxRowOffset(options);
             graphics.fill(layout.scrollbarX(), thumbY, layout.contentRight(), thumbY + thumb, DebuggerTheme.color(TEAL));
+            if (authoritative) scrollbars.add("picker", false, layout.scrollbarX(), listTop, track, 2,
+                thumb, rowOffset, maxRowOffset(options), value -> rowOffset = value);
         }
         if (options.isEmpty()) {
             String status = page == null ? WatchUi.text("picker.loading").getString()
@@ -281,11 +286,13 @@ public final class WatchPickerScreen extends ScaledCodonScreen {
             WatchUi.line(graphics, font, status, left + 13, listTop + 8, panelWidth - 26,
                 page != null && page.status() != works.nuty.codon.core.model.WatchResult.Status.VALUE ? AMBER : MUTED);
         }
+        scrollbars.endFrame();
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
     }
 
     @Override public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         if (interactionAvailable() && event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
+            if (scrollbars.click(event.x(), event.y())) return true;
             List<WatchEditorPage.Option> options = options(state.watchEditor().page(), true);
             int listTop = layout.listTop();
             if (event.y() >= listTop && event.y() < layout.listBottom()) {
@@ -305,7 +312,19 @@ public final class WatchPickerScreen extends ScaledCodonScreen {
         return super.mouseClicked(event, doubleClick);
     }
 
+    @Override public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
+        if (!interactionAvailable()) scrollbars.release();
+        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && scrollbars.drag(event.x(), event.y())) return true;
+        return super.mouseDragged(event, dx, dy);
+    }
+
+    @Override public boolean mouseReleased(MouseButtonEvent event) {
+        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && scrollbars.release()) return true;
+        return super.mouseReleased(event);
+    }
+
     @Override public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
+        if (scrollY == 0 || !layout.list().contains(x, y)) return super.mouseScrolled(x, y, scrollX, scrollY);
         if (!interactionAvailable()) return true;
         List<WatchEditorPage.Option> options = options(state.watchEditor().page(), true);
         rowOffset = Math.clamp(rowOffset - (int) Math.signum(scrollY) * 3, 0, maxRowOffset(options));
@@ -348,7 +367,7 @@ public final class WatchPickerScreen extends ScaledCodonScreen {
         return super.keyPressed(event);
     }
 
-    @Override public void removed() { state.watchEditor().cancel(); }
+    @Override public void removed() { scrollbars.release(); state.watchEditor().cancel(); }
     @Override public void onClose() { Minecraft.getInstance().gui.setScreen(parent); }
     @Override public void extractBackground(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) { }
     @Override public boolean isPauseScreen() { return false; }

@@ -16,6 +16,7 @@ import works.nuty.codon.client.ui.DebuggerOverlay;
 import works.nuty.codon.client.ui.ScaledCodonScreen;
 import works.nuty.codon.client.ui.WatchPickerScreen;
 import works.nuty.codon.client.ui.WatchScreen;
+import works.nuty.codon.client.ui.layout.WatchPickerLayout;
 import works.nuty.codon.core.model.WatchEditorPage;
 import works.nuty.codon.core.model.WatchEditorQuery;
 import works.nuty.codon.core.model.WatchResult;
@@ -39,7 +40,7 @@ public final class DebuggerWatchPickerLayoutGameTest implements FabricClientGame
                 new Scenario("en_us", 1280, 800, 2, 0, WatchSpec.Kind.STORAGE_NBT, 0), // Storage paging and Retry
                 new Scenario("en_us", 1280, 800, 3, 9, WatchSpec.Kind.STORAGE_NBT, 1), // Custom-scale NBT expand/Up
                 new Scenario("ko_kr", 320, 240, 1, 0, WatchSpec.Kind.SCORE, 0), // Short Objectives, keyboard/gap hits, scroll
-                new Scenario("ko_kr", 1280, 800, 2, 0, WatchSpec.Kind.ENTITY_NBT, 0), // Localized NBT expand/Up
+                new Scenario("ko_kr", 1364, 1024, 2, 8, WatchSpec.Kind.ENTITY_NBT, 0), // Manual repro: Korean NBT, custom 2.00
                 new Scenario("ko_kr", 1280, 800, 2, 0, WatchSpec.Kind.ENTITY_NBT, 1) // Entity selection
             )) {
                 language(context, scenario.language());
@@ -73,7 +74,9 @@ public final class DebuggerWatchPickerLayoutGameTest implements FabricClientGame
         clickWidget(context, context.computeOnClient(client -> buttons(form).stream().filter(button -> button.getY() == fields(form).get(row).getY()).findFirst().orElseThrow()));
         context.runOnClient(client -> require(screen(client) instanceof WatchPickerScreen, "Both Browse/Choose entry points open the actual picker"));
         context.runOnClient(client -> search(client).setValue(""));
-        String name = "codon-watch-picker-" + language + "-game-" + gameScale + (custom > 0 ? "-custom-2_25" : "") + "-" + kind.name().toLowerCase(Locale.ROOT) + "-row-" + row;
+        String name = "codon-watch-picker-" + language + "-game-" + gameScale
+            + (custom > 0 ? "-custom-" + String.format(Locale.ROOT, "%.2f", custom / 4.0).replace('.', '_') : "")
+            + "-" + kind.name().toLowerCase(Locale.ROOT) + "-row-" + row;
         if (kind == WatchSpec.Kind.SCORE && row == 0) {
             var shortPage = new WatchEditorPage(WatchResult.Status.VALUE, List.of(
                 new WatchEditorPage.Option("test", "test", "", false),
@@ -113,6 +116,8 @@ public final class DebuggerWatchPickerLayoutGameTest implements FabricClientGame
         context.runOnClient(client -> state.watchEditor().accept(query.pauseId(), query.requestId(), page));
         context.waitTicks(3);
         checkGeometry(context);
+        checkScrollIsolation(context, state, name, kind == WatchSpec.Kind.ENTITY_NBT && row == 0);
+        checkScrollbar(context, state, name, kind == WatchSpec.Kind.ENTITY_NBT && row == 0);
         capture(context, name);
         if (mode == WatchEditorQuery.Mode.NBT) {
             rowClick(context, 0, true);
@@ -193,6 +198,95 @@ public final class DebuggerWatchPickerLayoutGameTest implements FabricClientGame
             for (AbstractWidget widget : screen(client).children().stream().filter(AbstractWidget.class::isInstance).map(AbstractWidget.class::cast).filter(widget -> widget.visible).toList())
                 require(widget.getX() >= 0 && widget.getY() >= 0 && widget.getRight() <= screen(client).width && widget.getBottom() <= screen(client).height, "Picker controls fit the viewport");
         });
+    }
+    private static void checkScrollIsolation(ClientGameTestContext context, ClientDebuggerState state, String name, boolean evidence) {
+        var layout = context.computeOnClient(client -> WatchPickerLayout.create(screen(client).width, screen(client).height, WatchEditorPage.PAGE_SIZE));
+        var focused = context.computeOnClient(client -> screen(client).getFocused());
+        String queryText = context.computeOnClient(client -> search(client).getValue());
+        // Reproduce the reported search wheel before testing the other boundaries.
+        wheel(context, layout.search().x() + 10, layout.search().y() + 10, -1);
+        context.runOnClient(client -> require(rowOffset(screen(client)) == 0, "Wheel over search must not scroll picker results"));
+        if (evidence) capture(context, name + "-wheel-search-stable");
+        wheel(context, layout.list().x() + 10, layout.listTop() + 11, -1);
+        context.runOnClient(client -> require(rowOffset(screen(client)) == 3, "Wheel over a result still scrolls three rows"));
+        if (evidence) capture(context, name + "-wheel-list");
+        var footer = layout.previous();
+        wheel(context, footer.x() + 10, footer.y() + 10, 1);
+        context.runOnClient(client -> require(rowOffset(screen(client)) == 3, "Wheel over footer must not change picker results"));
+        if (evidence) capture(context, name + "-wheel-footer-stable");
+        point(context, layout.search().x() + 5, layout.search().y() + 10);
+        context.getInput().holdMouse(InputConstants.MOUSE_BUTTON_LEFT);
+        point(context, layout.search().x() + layout.search().width() - 5, layout.search().y() + 10);
+        context.waitTicks(3);
+        context.getInput().releaseMouse(InputConstants.MOUSE_BUTTON_LEFT);
+        context.runOnClient(client -> {
+            require(screen(client).getFocused() == search(client), "Native search-field drag retains field input");
+            require(rowOffset(screen(client)) == 3, "Search-field drag cannot move the results list");
+        });
+        double[][] outside = {{layout.contentX() - 1, layout.listTop() + 10},
+            {layout.contentRight(), layout.listTop() + 10}, {layout.contentX() + 10, layout.listTop() - 1},
+            {layout.contentX() + 10, layout.listBottom()}, {layout.close().x() + 10, layout.close().y() + 5},
+            {layout.panel().x() + 10, layout.panel().y() + 10}, {1, 1}};
+        for (double[] point : outside) {
+            wheel(context, point[0], point[1], -1);
+            context.runOnClient(client -> require(rowOffset(screen(client)) == 3, "Wheel outside the list stays isolated at every edge"));
+        }
+        context.runOnClient(client -> {
+            require(screen(client).getFocused() == focused, "Wheel preserves field/button focus");
+            require(search(client).getValue().equals(queryText), "Wheel preserves the current-page search");
+            require(state.watchEditor().drainQueries().isEmpty(), "Wheel does not issue a page/search request");
+        });
+        wheel(context, layout.contentRight() - 1, layout.listBottom() - 1, 1);
+        context.runOnClient(client -> require(rowOffset(screen(client)) == 0, "Last list pixel and scrollbar strip still accept wheel"));
+        wheel(context, layout.contentX() + 10, layout.listTop() + WatchPickerLayout.ROW_HEIGHT - 1, -1);
+        context.runOnClient(client -> require(rowOffset(screen(client)) == 3, "The rendered gap between list rows remains scrollable"));
+        // Use the first pixel's center: fractional custom-scale mapping can round an exact edge outward.
+        wheel(context, layout.contentX() + 0.5, layout.listTop() + 0.5, 1);
+        context.runOnClient(client -> require(rowOffset(screen(client)) == 0, "First list pixel accepts wheel and restores the initial rows"));
+    }
+    private static void wheel(ClientGameTestContext context, double x, double y, double amount) {
+        point(context, x, y); context.getInput().scroll(amount); context.waitTicks(3);
+    }
+    private static void checkScrollbar(ClientGameTestContext context, ClientDebuggerState state, String name, boolean evidence) {
+        var layout = context.computeOnClient(client -> WatchPickerLayout.create(screen(client).width, screen(client).height, WatchEditorPage.PAGE_SIZE));
+        int maximum = WatchEditorPage.PAGE_SIZE - layout.visibleRows();
+        int track = layout.listBottom() - layout.listTop();
+        int thumb = Math.max(4, track * layout.visibleRows() / WatchEditorPage.PAGE_SIZE);
+        var focus = context.computeOnClient(client -> screen(client).getFocused());
+        point(context, layout.scrollbarX() + 1, layout.listBottom() - 0.5);
+        context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_LEFT); context.waitTicks(3);
+        context.runOnClient(client -> {
+            require(screen(client) instanceof WatchPickerScreen, "Scrollbar track click cannot select a result");
+            require(rowOffset(screen(client)) == maximum, "Native track click reaches the last results");
+            require(!scrollbarCaptured(screen(client)), "Track click releases its pointer capture");
+            require(screen(client).getFocused() == focus, "Scrollbar track click preserves the keyboard input target");
+        });
+        if (evidence) capture(context, name + "-scrollbar-track");
+        point(context, layout.scrollbarX() + 1, layout.listBottom() - thumb / 2.0);
+        context.getInput().holdMouse(InputConstants.MOUSE_BUTTON_LEFT); context.waitTicks(1);
+        context.runOnClient(client -> require(rowOffset(screen(client)) == maximum && scrollbarCaptured(screen(client)), "Grabbing the thumb retains its offset"));
+        point(context, 1, 1); context.waitTicks(3);
+        context.runOnClient(client -> require(rowOffset(screen(client)) == 0, "Captured native drag outside the panel clamps to the first row"));
+        context.getInput().releaseMouse(InputConstants.MOUSE_BUTTON_LEFT); context.waitTicks(3);
+        context.runOnClient(client -> {
+            require(!scrollbarCaptured(screen(client)), "Release outside the list clears thumb capture");
+            require(state.watchEditor().drainQueries().isEmpty(), "Scrollbar movement preserves the current server page");
+            require(screen(client).getFocused() == focus, "Thumb drag/release preserves field/button focus");
+        });
+        if (evidence) capture(context, name + "-scrollbar-drag-release");
+    }
+    private static boolean scrollbarCaptured(Screen screen) {
+        try {
+            var owner = WatchPickerScreen.class.getDeclaredField("scrollbars"); owner.setAccessible(true);
+            Object input = owner.get(screen);
+            var capture = input.getClass().getDeclaredField("captured"); capture.setAccessible(true);
+            return capture.get(input) != null;
+        } catch (ReflectiveOperationException exception) { throw new AssertionError(exception); }
+    }
+    private static int rowOffset(Screen screen) {
+        try {
+            var field = WatchPickerScreen.class.getDeclaredField("rowOffset"); field.setAccessible(true); return field.getInt(screen);
+        } catch (ReflectiveOperationException exception) { throw new AssertionError(exception); }
     }
     private static int panelLeft(ClientGameTestContext context) { return context.computeOnClient(client -> search(client).getX() - 8); }
     private static int panelTop(ClientGameTestContext context) { return context.computeOnClient(client -> search(client).getY() - 29); }

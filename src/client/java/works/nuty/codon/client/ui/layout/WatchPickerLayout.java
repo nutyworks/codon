@@ -22,6 +22,7 @@ public record WatchPickerLayout(Bounds panel, int visibleRows) {
     public int contentWidth() { return Math.max(1, panel.width() - 16); }
     public int listTop() { return panel.y() + 70; }
     public int listBottom() { return listTop() + visibleRows * ROW_HEIGHT; }
+    public Bounds list() { return new Bounds(contentX(), listTop(), contentWidth(), listBottom() - listTop()); }
     public Bounds search() { return new Bounds(contentX(), panel.y() + 29, contentWidth(), 20); }
     public Bounds close() { return new Bounds(contentRight() - 54, panel.y() + 4, 54, 18); }
     public Bounds previous() { return footer(contentX()); }

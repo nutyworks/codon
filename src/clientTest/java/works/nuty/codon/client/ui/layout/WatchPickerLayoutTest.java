@@ -4,6 +4,27 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class WatchPickerLayoutTest {
+    @Test void scrollViewportIncludesRowsGapsAndScrollbarButExcludesSurroundingControls() {
+        for (int width : new int[]{320, 640}) {
+            for (int count : new int[]{0, 2, 32}) {
+                var layout = WatchPickerLayout.create(width, 240, count);
+                var list = layout.list();
+                assertTrue(list.contains(layout.contentX(), layout.listTop()));
+                assertTrue(list.contains(layout.contentRight() - 1, layout.listBottom() - 1));
+                assertTrue(list.contains(layout.scrollbarX(), layout.listTop() + 1));
+                assertTrue(list.contains(layout.contentX() + 10, layout.listTop() + WatchPickerLayout.ROW_HEIGHT - 1), "Row gap remains part of the list");
+                assertFalse(list.contains(layout.contentX() - 1, layout.listTop()));
+                assertFalse(list.contains(layout.contentRight(), layout.listTop()));
+                assertFalse(list.contains(layout.contentX(), layout.listTop() - 1));
+                assertFalse(list.contains(layout.contentX(), layout.listBottom()));
+                for (var control : new works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds[]{layout.search(), layout.close(),
+                    layout.previous(), layout.next(), layout.up(), layout.retry()}) {
+                    assertFalse(list.contains(control.x() + control.width() / 2.0, control.y() + control.height() / 2.0));
+                }
+            }
+        }
+    }
+
     @Test void shortResultsFitTheirRowsWithoutMovingTheSearchWhenPagesGrow() {
         for (int height : new int[]{240, 355, 400, 800}) {
             var shortPage = WatchPickerLayout.create(640, height, 2);
