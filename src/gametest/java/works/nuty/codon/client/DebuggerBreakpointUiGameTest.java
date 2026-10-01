@@ -26,6 +26,7 @@ import works.nuty.codon.client.state.ClientBreakpointState;
 import works.nuty.codon.core.model.SourceLocation;
 import works.nuty.codon.client.state.ClientStagePreviewState;
 import works.nuty.codon.client.ui.BreakpointConditionScreen;
+import works.nuty.codon.client.ui.BreakpointUi;
 import works.nuty.codon.client.ui.ScreenLayers;
 import works.nuty.codon.client.ui.BreakpointListScreen;
 import works.nuty.codon.client.ui.DebuggerButton;
@@ -452,6 +453,30 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             require(!editor.markerPosition(absent).visible(), "unsaved marker remains hidden without hover");
         });
         context.takeScreenshot("codon-breakpoint-disabled-reopened");
+        context.runOnClient(client -> BreakpointUi.openCondition(client.gui.screen(), CodonClientMod.state(),
+            stage, COMMAND, 3, null));
+        context.waitTicks(3);
+        context.runOnClient(client -> {
+            var screen = client.gui.screen();
+            require(ScreenLayers.get(screen) instanceof BreakpointConditionScreen, "disabled stage opens its condition editor");
+            var editor = commandBox(screen);
+            editor.updateMarkerHover(-100, -100);
+            var marker = new WrappedCommandEditBox.Marker(stage, 8, COMMAND.length(), CodonClientMod.state().breakpoints().get(stage));
+            require(editor.markerPosition(marker).visible(), "the exact disabled native-editor stage remains visible while editing");
+            var other = new WrappedCommandEditBox.Marker(BreakpointTarget.stage(location, 1, COMMAND), 14, COMMAND.length(), null);
+            require(!editor.markerPosition(other).visible(), "unrelated inactive native-editor stages remain hidden");
+            require(!CodonClientMod.state().breakpoints().get(stage).enabled(), "opening the editor does not enable the stage");
+        });
+        context.takeScreenshot("codon-breakpoint-disabled-editing");
+        context.runOnClient(client -> ScreenLayers.get(client.gui.screen()).onClose());
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            var editor = commandBox(client.gui.screen());
+            editor.updateMarkerHover(-100, -100);
+            var marker = new WrappedCommandEditBox.Marker(stage, 8, COMMAND.length(), CodonClientMod.state().breakpoints().get(stage));
+            require(!editor.markerPosition(marker).visible() && !CodonClientMod.state().breakpoints().get(stage).enabled(),
+                "Cancel removes the native-editor pin and preserves the disabled stage");
+        });
         context.runOnClient(client -> {
             var editor = commandBox(client.gui.screen());
             var marker = new WrappedCommandEditBox.Marker(stage, 8, COMMAND.length(),

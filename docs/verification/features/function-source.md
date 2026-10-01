@@ -207,7 +207,8 @@ condition chain retain their links. Unit checks also cover literal `run` slot an
 predicate tokens, unsupported target kinds and incomplete arguments. The lexical
 viewer does not validate item/slot registry entries or execute these conditions.
 
-Single-stage legacy saves retain their exact target, fingerprint, condition and enabled flag.
+Opening/cancelling a single-stage legacy editor retains its exact target, fingerprint,
+condition and enabled flag. Save enables that same target with the chosen condition.
 The single line control includes matching saved stage-zero definitions without rewriting the
 world file. A click disables every active matching definition; when all are disabled it restores
 all saved definitions. A sole legacy definition is toggled/edited in place, so a new duplicate
@@ -225,3 +226,12 @@ available without a matching legacy definition once the saved-breakpoint snapsho
 READY single-stage previews restore the in-place legacy action; READY multi-stage previews keep
 line and stage actions separate. `BreakpointTargetPolicyTest`, `FunctionLineBreakpointGameTest`
 and `SingleStageBreakpointGameTest` cover these transitions and condition Save identities.
+
+An inactive line/stage marker stays visible for the entire condition edit, including after
+the pointer leaves and while a selector menu is open. Only the edited marker is retained;
+unrelated inactive candidates remain hidden. Cancel removes that temporary marker/slot
+without enabling or creating a definition. Save enables the original target after server
+acknowledgement, including disabled legacy stage-zero saves. `BreakpointConditionVisibilityGameTest`
+checks native pixels, line/stage/legacy/new targets, menus, Cancel and real server Save edits
+in English and Korean at a fractional custom scale. Its source page is a presentation fixture
+matching the loaded `codon_test:condition_visibility` test function; it does not claim a native pause.

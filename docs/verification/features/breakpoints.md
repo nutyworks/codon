@@ -71,6 +71,8 @@ They toggle whole-command targets; use the UI for stage/condition editing.
 | Persistence/preview codec | `test`: `WorldBreakpointPersistenceTest`, `BreakpointStagePreviewPayloadTest` |
 | Native editor input, modal details without screen replacement, server edits, wrapping and narrow layouts | `DebuggerBreakpointUiGameTest` |
 | Single-stage editor/Flow target, legacy toggle/clear and native first-occurrence stop | `SingleStageBreakpointGameTest` |
+| Inactive condition marker retention, menus/Cancel and server-acknowledged Save enabling | `BreakpointConditionVisibilityGameTest`, `DebuggerBreakpointUiGameTest` |
+| Flow legacy condition labels/summary and pending action gating (presentation fixture) | `FlowLegacyConditionGameTest` |
 | Native execution and measured-zero result breakpoints | `DebuggerBreakpointResultGameTest` |
 
 Example: `./gradlew runClientGameTest -PclientGameTest=DebuggerBreakpointUiGameTest`.
@@ -111,6 +113,13 @@ open it again, including before another render observes the outside pointer.
 Clicking an option applies it to the draft and closes the
 menu; Save still waits for server acknowledgement. Escape closes an open menu
 first, then the layer. Tab closes the menu and continues through the form.
+
+The exact edited marker remains visible while the layer or its menus are open. Opening
+and cancelling preserve its saved enabled state; Save always enables the exact definition
+with the chosen condition. A sole legacy stage-zero definition uses the line's marker
+without creating a second whole-line target. Flow's selected-condition action and summary
+use the same effective saved definition as its inline marker. Pending edits to a matching
+legacy definition disable the action and prevent opening another editor.
 
 The menu opens above or below its trigger according to available space, with a
 scrollbar when the viewport cannot hold every row. Mouse wheel and Up/Down reach

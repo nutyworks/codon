@@ -403,7 +403,11 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             String number = Integer.toString(line);
             SourceLocation.Function location = new SourceLocation.Function(new FunctionLocation(selected, line));
             BreakpointDefinition definition = breakpoint(location);
-            boolean hovered = mouseX >= sourceLeft + 3 && mouseX < codeRight() && mouseY >= y && mouseY < y + ROW_HEIGHT;
+            String command = codeLines.get(index).source().trim();
+            boolean editingLine = BreakpointUi.editingMarker(this, BreakpointTarget.whole(location), command);
+            if (editingLine) definition = BreakpointUi.editingDefinition(this, BreakpointTarget.whole(location), command);
+            boolean hovered = ScreenLayers.get(this) == null && mouseX >= sourceLeft + 3 && mouseX < codeRight()
+                && mouseY >= y && mouseY < y + ROW_HEIGHT;
             boolean stopped = isActualStop(selected, line), inspected = selectedLine == line;
             if (stopped) {
                 graphics.fill(codeLeft, y, codeRight(), y + ROW_HEIGHT - 1, DebuggerTheme.color(AMBER_SURFACE));
@@ -439,7 +443,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             renderInlineMarkers(graphics, stages, layout, line, rowHoveredStage, codeLeft, y, codeWidth, mouseX, mouseY);
             graphics.disableScissor();
             boolean enabled = definition != null && definition.enabled();
-            if (enabled || hovered && wholeEligible(document, line)) {
+            if (SourceInteraction.markerVisible(enabled, hovered && wholeEligible(document, line), editingLine)) {
                 BreakpointUi.icon(definition).drawSmall(graphics, lineMarkerX(), y + 5,
                     DebuggerTheme.color(enabled ? RED : MUTED));
             } else if (counts.enabled() > 0 && stages.isEmpty()) {
@@ -508,11 +512,17 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         SourceCodeLine code = codeLines.get(line - 1);
         var location = new SourceLocation.Function(new FunctionLocation(sources.selected(), line));
         var preview = state.stagePreviews().get(location);
+        InlineRow cached = inlineRows.get(line);
+        // Refreshing the condition preview must not remove its already-confirmed
+        // marker slot. Reuse offsets only for the same document command and exact editor target.
+        if (preview != null && preview.status() == ClientStagePreviewState.Status.LOADING && cached != null
+            && previewMatchesLine(document, line, cached.preview())
+            && cached.stages().stream().anyMatch(stage -> BreakpointUi.editingMarker(this, stage.target(), code.source().trim())))
+            return cached.stages();
         if (requestIfMissing && ClientStagePreviewState.needsRefresh(preview, document.lines().get(line - 1).trim())) {
             ClientNetworking.requestStagePreview(state, location);
             preview = state.stagePreviews().get(location);
         }
-        InlineRow cached = inlineRows.get(line);
         if (cached != null && cached.preview() == preview) return cached.stages();
         List<InlineStage> stages = new ArrayList<>();
         if (previewMatchesLine(document, line, preview) && preview.spans().size() > 1) {
@@ -541,7 +551,8 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
 
     private SourceLineLayout visibleLayout(SourceCodeLine code, List<InlineStage> stages, int hover) {
         return new SourceLineLayout(code.source().length(), stages.stream()
-            .filter(stage -> SourceInteraction.markerVisible(stageEnabled(stage), stage.index() == hover))
+            .filter(stage -> SourceInteraction.markerVisible(stageEnabled(stage), stage.index() == hover,
+                BreakpointUi.editingMarker(this, stage.target(), code.source().trim())))
             .map(InlineStage::start).toList(), code::x);
     }
 
@@ -557,7 +568,8 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             boolean enabled = definition != null && definition.enabled(), hovered = hover == stage.index();
             if (selectedLine == line && selectedStageIndex == stage.index() && end > x && start < x + width)
                 graphics.outline(Math.max(x, start), y + 2, Math.min(x + width, end) - Math.max(x, start), 13, DebuggerTheme.color(TEAL));
-            if (SourceInteraction.markerVisible(enabled, hovered)) {
+            if (SourceInteraction.markerVisible(enabled, hovered,
+                BreakpointUi.editingMarker(this, stage.target(), codeLines.get(line - 1).source().trim()))) {
                 DebuggerIcon icon = BreakpointUi.icon(definition);
                 icon.drawSmall(graphics, markerX + (SourceLineLayout.MARKER_WIDTH - icon.smallSize()) / 2,
                     y + 5, DebuggerTheme.color(enabled ? RED : MUTED));

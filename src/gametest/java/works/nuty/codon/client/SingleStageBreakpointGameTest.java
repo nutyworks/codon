@@ -103,11 +103,19 @@ public final class SingleStageBreakpointGameTest implements FabricClientGameTest
                 && CodonClientMod.state().stagePreviews().get(location).status() == ClientStagePreviewState.Status.READY, 200);
             context.waitTicks(2);
             context.runOnClient(client -> {
+                check(CodonClientMod.state().breakpoints().get(legacy.target()).enabled(),
+                    "condition Save enables the original disabled legacy definition");
                 var screen = client.gui.screen();
                 var controls = screen.children().stream().filter(InlineBreakpointButton.class::isInstance)
                     .map(InlineBreakpointButton.class::cast).toList();
                 check(controls.size() == 1 && controls.getFirst().target().equals(whole), "native single-stage editor exposes only the whole-command control");
                 screen.setFocused(controls.getFirst());
+                screen.keyPressed(new KeyEvent(InputConstants.KEY_SPACE, 0, 0));
+            });
+            context.waitFor(client -> !CodonClientMod.state().breakpoints().pending(legacy.target())
+                && !CodonClientMod.state().breakpoints().get(legacy.target()).enabled(), 200);
+            context.runOnClient(client -> {
+                var screen = client.gui.screen();
                 screen.keyPressed(new KeyEvent(InputConstants.KEY_SPACE, 0, 0));
             });
             context.waitFor(client -> {

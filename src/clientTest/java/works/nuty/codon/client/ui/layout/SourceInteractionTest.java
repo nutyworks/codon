@@ -6,6 +6,15 @@ import works.nuty.codon.core.model.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SourceInteractionTest {
+    @Test void editingRetainsOnlyItsInactiveSlotUntilTheEditorCloses() {
+        assertTrue(SourceInteraction.markerVisible(false, false, true));
+        assertFalse(SourceInteraction.markerVisible(false, false, false));
+        assertTrue(SourceInteraction.markerVisible(true, false, false));
+        var pinned = new SourceLineLayout(10, List.of(3), i -> i * 6);
+        var closed = new SourceLineLayout(10, List.of(), i -> i * 6);
+        assertEquals(closed.width() + SourceLineLayout.MARKER_WIDTH, pinned.width());
+        for (int i = 0; i <= 10; i++) assertEquals(i * 6, closed.x(i));
+    }
     @Test void linksStayInsideTheirOwnRowAndVisibleViewport() {
         var first = SourceInteraction.clippedRowHit(190, 260, 100, 18, 200, 100, 40, 36);
         var second = SourceInteraction.clippedRowHit(190, 260, 118, 18, 200, 100, 40, 36);

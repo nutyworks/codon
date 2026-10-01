@@ -19,6 +19,16 @@ public final class BreakpointTargetPolicy {
             : BreakpointTarget.stage(location, stageIndex, command);
     }
 
+    /** The UI identity can be a line alias for an old sole-stage save; storage identity stays exact. */
+    public static boolean editedMarker(BreakpointTarget marker, BreakpointTarget editorMarker,
+                                       BreakpointDefinition edited, String command) {
+        var saved = edited.target();
+        if (!marker.equals(editorMarker) || !marker.location().equals(saved.location()) || edited.staleSource()) return false;
+        if (saved.wholeCommand()) return marker.wholeCommand();
+        return saved.commandFingerprint().equals(BreakpointTarget.fingerprint(command))
+            && (marker.equals(saved) || marker.wholeCommand() && saved.stageIndex() == 0);
+    }
+
     public static int stageCount(String command, ClientStagePreviewState.@Nullable Preview preview,
                                  @Nullable ExecutionFlowTrace flow) {
         if (preview != null && preview.status() == ClientStagePreviewState.Status.READY

@@ -9,6 +9,22 @@ class BreakpointTargetPolicyTest {
     private static final SourceLocation LOCATION = new SourceLocation.Function(new FunctionLocation(new FunctionId("test", "one"), 1));
     private static final String COMMAND = "say one";
 
+    @Test void editorPinsOnlyItsLogicalMarkerAndMatchingSavedFingerprint() {
+        var line = BreakpointTarget.whole(LOCATION);
+        var legacy = BreakpointDefinition.plain(BreakpointTarget.stage(LOCATION, 0, COMMAND)).withEnabled(false);
+        assertTrue(BreakpointTargetPolicy.editedMarker(line, line, legacy, COMMAND));
+        assertFalse(BreakpointTargetPolicy.editedMarker(legacy.target(), line, legacy, COMMAND));
+        assertFalse(BreakpointTargetPolicy.editedMarker(line, line, legacy, "say changed"));
+        assertFalse(BreakpointTargetPolicy.editedMarker(line, line, legacy.withStaleSource(true), COMMAND));
+        var otherLine = BreakpointTarget.whole(new SourceLocation.Function(new FunctionLocation(new FunctionId("test", "one"), 2)));
+        assertFalse(BreakpointTargetPolicy.editedMarker(otherLine, line, legacy, COMMAND));
+        var stage = BreakpointDefinition.plain(BreakpointTarget.stage(LOCATION, 1, COMMAND)).withEnabled(false);
+        assertTrue(BreakpointTargetPolicy.editedMarker(stage.target(), stage.target(), stage, COMMAND));
+        assertFalse(BreakpointTargetPolicy.editedMarker(line, stage.target(), stage, COMMAND));
+        assertFalse(BreakpointTargetPolicy.editedMarker(line, line, stage, COMMAND));
+        assertTrue(BreakpointTargetPolicy.editedMarker(line, line, BreakpointDefinition.plain(line), COMMAND));
+    }
+
     @Test void singleStageUsesLineAndMultipleStagesRetainExactIndex() {
         assertEquals(BreakpointTarget.whole(LOCATION), BreakpointTargetPolicy.target(LOCATION, 0, COMMAND, 1));
         assertEquals(BreakpointTarget.stage(LOCATION, 1, COMMAND), BreakpointTargetPolicy.target(LOCATION, 1, COMMAND, 2));

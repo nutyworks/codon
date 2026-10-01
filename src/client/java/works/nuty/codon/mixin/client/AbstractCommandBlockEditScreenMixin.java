@@ -46,6 +46,7 @@ public abstract class AbstractCommandBlockEditScreenMixin extends Screen {
     @Shadow protected Button doneButton;
     @Shadow protected abstract BaseCommandBlock getCommandBlock();
     @Unique private @Nullable String codon$requestedCommand;
+    @Unique private ClientStagePreviewState.@Nullable Preview codon$markerPreview;
     @Unique private final List<InlineBreakpointButton> codon$markerControls = new ArrayList<>();
 
     protected AbstractCommandBlockEditScreenMixin() { super(Component.empty()); }
@@ -85,6 +86,7 @@ public abstract class AbstractCommandBlockEditScreenMixin extends Screen {
         if (location == null || state == null || doneButton == null || !doneButton.active
                 || !command.equals(getCommandBlock().getCommand())) {
             editor.setBreakpointMarkers(command, List.of());
+            editor.setEditingBreakpoint(null);
             codon$syncMarkerControls(editor, List.of());
             return;
         }
@@ -95,9 +97,16 @@ public abstract class AbstractCommandBlockEditScreenMixin extends Screen {
         BreakpointTarget whole = BreakpointTarget.whole(location);
         List<WrappedCommandEditBox.Marker> markers = new ArrayList<>();
         var preview = state.stagePreviews().get(location);
+        if (preview != null && preview.status() == ClientStagePreviewState.Status.READY
+            && command.equals(preview.savedCommand())) codon$markerPreview = preview;
+        else if (preview != null && preview.status() == ClientStagePreviewState.Status.LOADING
+            && codon$markerPreview != null && command.equals(codon$markerPreview.savedCommand())
+            && codon$markerPreview.spans().stream().anyMatch(span -> BreakpointUi.editingMarker(this,
+                BreakpointTarget.stage(location, span.index(), command), command))) preview = codon$markerPreview;
         int count = BreakpointTargetPolicy.stageCount(command, preview, null);
+        var editingLine = BreakpointUi.editingDefinition(this, whole, command);
         markers.add(new WrappedCommandEditBox.Marker(whole, -1, -1,
-            BreakpointUi.lineDefinition(BreakpointUi.lineDefinitions(state, location, command, count))));
+            editingLine != null ? editingLine : BreakpointUi.definition(state, whole, command, count)));
         if (preview != null && preview.status() == ClientStagePreviewState.Status.READY
                 && command.equals(preview.savedCommand()) && preview.spans().size() > 1) {
             int prefixEnd = CommandFlowLayout.executePrefixEnd(command);
@@ -110,6 +119,8 @@ public abstract class AbstractCommandBlockEditScreenMixin extends Screen {
             }
         }
         editor.setBreakpointMarkers(command, markers);
+        editor.setEditingBreakpoint(markers.stream().map(WrappedCommandEditBox.Marker::target)
+            .filter(target -> BreakpointUi.editingMarker(this, target, command)).findFirst().orElse(null));
         codon$syncMarkerControls(editor, markers);
     }
 

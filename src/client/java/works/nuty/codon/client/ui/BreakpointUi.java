@@ -64,6 +64,21 @@ public final class BreakpointUi {
             .orElse(definitions.isEmpty() ? null : definitions.getFirst());
     }
 
+    public static @Nullable BreakpointDefinition definition(ClientDebuggerState state, BreakpointTarget target,
+                                                            String command, int stageCount) {
+        return target.wholeCommand() ? lineDefinition(lineDefinitions(state, target.location(), command, stageCount))
+            : state.breakpoints().get(target);
+    }
+
+    public static boolean editingMarker(Screen parent, BreakpointTarget target, String command) {
+        return ScreenLayers.get(parent) instanceof BreakpointConditionScreen editor && editor.editsMarker(target, command);
+    }
+
+    public static @Nullable BreakpointDefinition editingDefinition(Screen parent, BreakpointTarget target, String command) {
+        return ScreenLayers.get(parent) instanceof BreakpointConditionScreen editor && editor.editsMarker(target, command)
+            ? editor.markerDefinition() : null;
+    }
+
     public static boolean pending(ClientDebuggerState state, BreakpointTarget target, String command, int stageCount) {
         return waitingForPreview(state, target, command, stageCount) || state.breakpoints().pending(target)
             || target.wholeCommand() && stageCount == 1
@@ -95,7 +110,7 @@ public final class BreakpointUi {
 
     public static void openCondition(Screen parent, ClientDebuggerState state, BreakpointTarget target,
                                      String command, int stageCount, BreakpointConditionScreen.Anchor anchor) {
-        if (waitingForPreview(state, target, command, stageCount)) return;
+        if (pending(state, target, command, stageCount)) return;
         var definitions = target.wholeCommand() && stageCount == 1
             ? lineDefinitions(state, target.location(), command, stageCount) : List.<BreakpointDefinition>of();
         if (definitions.size() > 1) {
@@ -105,7 +120,7 @@ public final class BreakpointUi {
         }
         var existing = definitions.isEmpty() ? state.breakpoints().get(target) : definitions.getFirst();
         ScreenLayers.open(parent, new BreakpointConditionScreen(parent, state,
-            existing == null ? BreakpointDefinition.plain(target) : existing, anchor));
+            existing == null ? BreakpointDefinition.plain(target) : existing, target, anchor));
     }
 
     private static String tr(String key, Object... args) {

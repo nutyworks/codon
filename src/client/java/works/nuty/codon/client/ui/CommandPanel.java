@@ -217,12 +217,14 @@ public final class CommandPanel {
         }
         BreakpointTarget selectedBreakpoint = selectedBreakpoint();
         if (selectedBreakpoint != null && right - area.x() >= 104) {
-            BreakpointDefinition definition = state.breakpoints().get(selectedBreakpoint);
+            CommandSnippet command = state.selectedCommand();
+            int count = stageCount(state.selectedExecutionFlow(), command.text());
+            BreakpointDefinition definition = BreakpointUi.definition(state, selectedBreakpoint, command.text(), count);
             String label = definition == null ? tr("codon.breakpoint.condition_action")
                 : BreakpointUi.condition(definition.condition());
             conditionAnchor = new Bounds(right - 88, area.y(), 88, 16);
             button("selected-condition", conditionAnchor, Component.literal(label),
-                !state.breakpoints().pending(selectedBreakpoint), false,
+                !BreakpointUi.pending(state, selectedBreakpoint, command.text(), count), false,
                 () -> openCondition(selectedBreakpoint));
             right -= 91;
         }
@@ -369,9 +371,7 @@ public final class CommandPanel {
                 if (cell.first() && editableSource) {
                     BreakpointTarget target = breakpointTarget(flow, stage);
                     int count = stageCount(flow, stage.command().text());
-                    BreakpointDefinition definition = target.wholeCommand()
-                        ? BreakpointUi.lineDefinition(BreakpointUi.lineDefinitions(state, target.location(), stage.command().text(), count))
-                        : state.breakpoints().get(target);
+                    BreakpointDefinition definition = BreakpointUi.definition(state, target, stage.command().text(), count);
                     DebuggerButton breakpoint = button("breakpoint-" + flow.invocationId() + "-" + stageIndex,
                         new Bounds(x, y, 14, 16), Component.translatable("codon.breakpoint.toggle"),
                         !BreakpointUi.pending(state, target, stage.command().text(), count), false, () -> {
@@ -381,7 +381,9 @@ public final class CommandPanel {
                             changed();
                         });
                     breakpoint.withoutChrome().withSmallIcon(BreakpointUi.icon(definition));
-                    if (definition == null || !definition.enabled()) breakpoint.revealOnHover(x, y, cell.width(), 16);
+                    if ((definition == null || !definition.enabled())
+                        && !BreakpointUi.editingMarker(client.gui.screen(), target, stage.command().text()))
+                        breakpoint.revealOnHover(x, y, cell.width(), 16);
                     breakpoint.withStatusColor(definition != null && definition.enabled() ? RED : MUTED,
                         definition != null && definition.enabled() ? RED_SURFACE : SURFACE);
                     var error = state.breakpoints().error(target);
@@ -536,6 +538,8 @@ public final class CommandPanel {
         if (stage.terminal()) {
             String terminal = Component.translatable("codon.ui.terminal_results",
                 measuredCount(stage.executionCount()), measuredCount(stage.successCount())).getString();
+            String condition = conditionSummary(stage);
+            if (!condition.isEmpty()) terminal += " · " + condition;
             return withHistory(hasFlowWarning()
                 ? terminal + " · " + warningSummary(state.selectedExecutionFlow()) : terminal);
         }
@@ -557,7 +561,9 @@ public final class CommandPanel {
     private String conditionSummary(ExecutionFlowStage stage) {
         BreakpointTarget target = selectedBreakpoint();
         if (target == null) return "";
-        BreakpointDefinition definition = state.breakpoints().get(target);
+        ExecutionFlowTrace flow = state.selectedExecutionFlow();
+        BreakpointDefinition definition = BreakpointUi.definition(state, target, stage.command().text(),
+            stageCount(flow, stage.command().text()));
         if (definition == null || !definition.enabled()) {
             definition = state.breakpoints().get(BreakpointTarget.whole(target.location()));
         }
