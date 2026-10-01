@@ -171,6 +171,7 @@ public final class DebuggerUiScaleGameTest implements FabricClientGameTest {
             context.runOnClient(client -> require(state.preferences().uiScaleMode() == DebuggerPreferences.UiScaleMode.FOLLOW_GAME,
                 "Localized native reset restores defaults"));
             context.takeScreenshot("codon-scale-settings-korean-follow");
+            checkKoreanText(context, fixture);
         } finally {
             context.runOnClient(client -> {
                 ScreenLayers.close(ScreenLayers.get(client.gui.screen()));
@@ -187,6 +188,37 @@ public final class DebuggerUiScaleGameTest implements FabricClientGameTest {
                 context.waitFor(client -> restored.isDone() && client.gui.overlay() == null, 200);
             }
         }
+    }
+
+    private static void checkKoreanText(ClientGameTestContext context, Fixture fixture) {
+        // Match the manual defect: dense Help paragraphs, status/View labels and passive HUD.
+        context.getInput().resizeWindow(1280, 800);
+        for (int request : new int[]{6, 8}) {
+            context.runOnClient(client -> {
+                fixture.state().preferences().setCustomUiScale(request);
+                fixture.state().preferences().setUiScaleMode(DebuggerPreferences.UiScaleMode.CUSTOM);
+                client.setScreenAndShow(new DebuggerHelpScreen(fixture.screen(), fixture.input()));
+            });
+            context.waitTicks(3);
+            context.takeScreenshot("codon-scale-korean-help-" + request);
+            click(context, context.computeOnClient(client -> client.gui.screen()), "컨텍스트");
+            context.takeScreenshot("codon-scale-korean-help-context-" + request);
+        }
+        context.getInput().resizeWindow(640, 480);
+        context.runOnClient(client -> fixture.state().preferences().setCustomUiScale(6));
+        context.waitTicks(3);
+        context.takeScreenshot("codon-scale-korean-help-narrow-6");
+        context.runOnClient(client -> {
+            fixture.state().applyResume();
+            client.setScreenAndShow(fixture.screen());
+        });
+        context.waitTicks(3);
+        click(context, fixture.screen(), "보기");
+        context.takeScreenshot("codon-scale-korean-running-view-narrow-6");
+        context.getInput().pressKey(InputConstants.KEY_ESCAPE);
+        context.runOnClient(client -> client.setScreenAndShow(null));
+        context.waitTicks(3);
+        context.takeScreenshot("codon-scale-korean-running-hud-narrow-6");
     }
 
     private static void checkHelpScroll(ClientGameTestContext context, Fixture fixture) {

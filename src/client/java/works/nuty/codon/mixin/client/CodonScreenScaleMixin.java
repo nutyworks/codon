@@ -37,7 +37,8 @@ abstract class CodonScreenScaleMixin {
             if (screen.width != scale.width() || screen.height != scale.height()) screen.resize(scale.width(), scale.height());
             int localX = (int) Math.floor(scale.toLocal(x));
             int localY = (int) Math.floor(scale.toLocal(y));
-            original.call(new CodonGuiGraphics(graphics, scale, localX, localY), localX, localY, delta);
+            original.call(new CodonGuiGraphics(graphics, scale, localX, localY,
+                screen.uiPreferences().uiScaleMode() == works.nuty.codon.client.state.DebuggerPreferences.UiScaleMode.CUSTOM), localX, localY, delta);
         } else original.call(graphics, x, y, delta);
     }
 }
