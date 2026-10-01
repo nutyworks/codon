@@ -23,9 +23,8 @@ below before using it on a shared server. See the [alpha notes](CHANGELOG.md).
    and configure the launcher to use Java 25 or newer.
 2. Download the runtime `codon-0.1.0-alpha.1.jar` from the
    [GitHub prerelease](https://github.com/nutyworks/codon/releases), when available.
-   Put it and the matching Fabric API JAR in that profile's `mods/` folder. Remove
-   older Codon JARs to avoid loading duplicate versions. A `-sources.jar` is for
-   reading code and cannot be installed as the mod.
+   Put it and the matching Fabric API JAR in that profile's `mods/` folder. A
+   `-sources.jar` is for reading code and cannot be installed as the mod.
 3. Start the Fabric profile and open a disposable world with cheats enabled.
 
 For multiplayer, stop the server, back up its world, install Fabric Loader for
