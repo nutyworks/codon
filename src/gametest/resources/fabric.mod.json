@@ -8,6 +8,7 @@
   ],
   "entrypoints": {
     "fabric-client-gametest": [
+      "works.nuty.codon.client.DebuggerSourceIconGameTest",
       "works.nuty.codon.client.FunctionSourceReviewGameTest",
       "works.nuty.codon.client.FunctionSourceKeyboardGameTest",
       "works.nuty.codon.client.FunctionSourceInteractionGameTest",
