@@ -306,6 +306,7 @@ public final class WatchPickerScreen extends ScaledCodonScreen {
     }
 
     @Override public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
+        if (scrollY == 0 || !layout.list().contains(x, y)) return super.mouseScrolled(x, y, scrollX, scrollY);
         if (!interactionAvailable()) return true;
         List<WatchEditorPage.Option> options = options(state.watchEditor().page(), true);
         rowOffset = Math.clamp(rowOffset - (int) Math.signum(scrollY) * 3, 0, maxRowOffset(options));

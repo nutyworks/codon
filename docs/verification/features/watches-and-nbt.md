@@ -44,6 +44,9 @@ data modify storage codon:verify counter set value 0
    go Up. Check page navigation, Retry, scroll and keyboard selection in English
    and Korean at normal, narrow and custom Codon scales. Search retains its
    position as result sizes change; native selection updates only its draft field.
+   Wheel over the search, title, footer and outside the panel must leave the
+   results at the same offset. Wheel over a row, row gap or the list's scrollbar
+   strip scrolls the results; confirm normal field drag and keyboard selection.
 9. At 427x240, open View → Watches. Compact rows put name/actions above a value
    line; scope moves into the row tooltip and full-text inspector. Inspect shortened
    names and long values, check numeric/error states, scroll past the visible rows,
@@ -91,7 +94,9 @@ viewport × Watch-kind matrix. The form cases retain all three kinds in both
 languages, normal/compact layouts, custom-scale resize/clamping, validation,
 Retry, and Add/Save. The picker cases exercise each kind/field route once,
 including two short Objectives, paging/Retry, NBT expand/Up, narrow Korean
-scrolling and custom-scale selection. `WatchFormLayoutTest` and
+scrolling, custom-scale selection and native wheel isolation at each list edge.
+The Korean Entity NBT case uses Custom 2.00 at 1364×1024 to match the manual
+search/footer wheel report. `WatchFormLayoutTest` and
 `WatchPickerLayoutTest` retain the focused geometry and viewport boundary checks.
 `DebuggerCompactWatchGameTest` uses six representative English/Korean cases at
 427x240, 320x240 and regular viewports, with following/custom scales. It checks
