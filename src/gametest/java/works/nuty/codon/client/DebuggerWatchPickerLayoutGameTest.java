@@ -251,7 +251,7 @@ public final class DebuggerWatchPickerLayoutGameTest implements FabricClientGame
         var layout = context.computeOnClient(client -> WatchPickerLayout.create(screen(client).width, screen(client).height, WatchEditorPage.PAGE_SIZE));
         int maximum = WatchEditorPage.PAGE_SIZE - layout.visibleRows();
         int track = layout.listBottom() - layout.listTop();
-        int thumb = Math.max(16, track * layout.visibleRows() / WatchEditorPage.PAGE_SIZE);
+        int thumb = Math.max(4, track * layout.visibleRows() / WatchEditorPage.PAGE_SIZE);
         var focus = context.computeOnClient(client -> screen(client).getFocused());
         point(context, layout.scrollbarX() + 1, layout.listBottom() - 0.5);
         context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_LEFT); context.waitTicks(3);
