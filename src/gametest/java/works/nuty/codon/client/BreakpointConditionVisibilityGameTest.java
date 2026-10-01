@@ -126,10 +126,18 @@ public final class BreakpointConditionVisibilityGameTest implements FabricClient
             assertInk(context, other, name + "-unrelated-hidden", false);
             context.getInput().setCursorPos(0, 0);
         }
+        // SDL delivers the last cursor warp on a later frame. Settle it before
+        // opening a keyboard menu; a subsequent pointer move correctly dismisses it.
+        context.waitFor(client -> {
+            var layer = ScreenLayers.get(client.gui.screen());
+            return layer != null && (int) FunctionLineBreakpointGameTest.field(layer, "lastMouseX") == 0
+                && (int) FunctionLineBreakpointGameTest.field(layer, "lastMouseY") == 0;
+        }, 200);
         context.runOnClient(client -> {
             var layer = ScreenLayers.get(client.gui.screen());
             layer.setFocused((AbstractWidget) FunctionLineBreakpointGameTest.field(layer, "kindButton"));
             layer.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
+            require(!FunctionLineBreakpointGameTest.field(layer, "menu").toString().equals("NONE"), "keyboard opens the selector menu");
         });
         context.waitTicks(2);
         assertInk(context, point, name + "-menu", true);
