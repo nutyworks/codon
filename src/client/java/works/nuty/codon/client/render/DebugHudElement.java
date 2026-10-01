@@ -23,7 +23,8 @@ public final class DebugHudElement implements HudElement {
         // Avoid competing with chat, inventories, menus, or the interactive debugger screen.
         if (Minecraft.getInstance().gui.screen() == null && !input.isUiHidden()) {
             var scaled = new works.nuty.codon.client.ui.CodonGuiGraphics(graphics,
-                works.nuty.codon.client.ui.ScaledCodonScreen.scale(overlay.preferences()), -1, -1);
+                works.nuty.codon.client.ui.ScaledCodonScreen.scale(overlay.preferences()), -1, -1,
+                overlay.preferences().uiScaleMode() == works.nuty.codon.client.state.DebuggerPreferences.UiScaleMode.CUSTOM);
             overlay.render(scaled, -1, -1, 0, false, input);
             scaled.extractDeferredElements(-1, -1, 0);
         }
