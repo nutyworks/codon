@@ -188,6 +188,7 @@ public final class WatchPanel {
                     + mode.name().toLowerCase(java.util.Locale.ROOT))).withOpaqueColors());
             }
         }
+        if (groupingMenuContains(mouseX, mouseY)) mouseX = mouseY = -1;
         var save = state.watches().saveStatus();
         if (save == ClientWatchState.SaveStatus.FAILED) {
             button("watch-save-retry", new Bounds(bounds.x() + bounds.width() - 65, bounds.y() + 3, 18, 17), text("save.retry"),

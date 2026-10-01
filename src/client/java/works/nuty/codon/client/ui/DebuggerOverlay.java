@@ -181,12 +181,15 @@ public final class DebuggerOverlay {
             : layout.inspector();
         navigationGroup = DebuggerNavigation.Group.TOOLBAR;
         renderHeader(graphics, layout, input, snapshot);
+        if (viewMenuOpen) renderViewMenu(graphics);
+        if (viewMenuBounds.contains(mouseX, mouseY)) hoverX = hoverY = -1;
         navigationGroup = DebuggerNavigation.Group.WATCH;
         if (showWatches) {
             Bounds available = compactAuxiliary ? auxiliaryBounds
                 : WatchPanelLayout.available(layout, graphics.guiWidth());
-            renderWatchSummary(graphics, available, mouseX, mouseY, interactive, input);
+            renderWatchSummary(graphics, available, hoverX, hoverY, interactive, input);
         }
+        if (watchPanel.groupingMenuContains(mouseX, mouseY)) hoverX = hoverY = -1;
         navigationGroup = DebuggerNavigation.Group.WORLD;
         if (!narrowAuxiliary || auxiliaryPanel == AuxiliaryPanel.NONE)
             renderWorldLabels(graphics, layout.world(), snapshot);
@@ -194,17 +197,19 @@ public final class DebuggerOverlay {
         if (state.preferences().commandVisible()) {
             controls.addAll(commandPanel.render(graphics, layout.command(), snapshot, input, this, navigation));
         }
-        if (viewMenuOpen) renderViewMenu(graphics);
-
         buttonCache.keySet().retainAll(usedButtons);
         navigation.endFrame();
         scrollbars.endFrame();
         for (DebuggerButton button : controls) {
             if (viewMenuButtons.contains(button) || watchPanel.isGroupingChoice(button)) continue;
             if (!interactive) button.setFocused(false);
-            button.extractRenderState(graphics, interactive ? mouseX : -1, interactive ? mouseY : -1, partialTick);
+            boolean covered = viewMenuBounds.contains(mouseX, mouseY) || watchPanel.groupingMenuContains(mouseX, mouseY);
+            button.extractRenderState(graphics, interactive && !covered ? mouseX : -1,
+                interactive && !covered ? mouseY : -1, partialTick);
         }
-        watchPanel.paintGroupingMenu(graphics, mouseX, mouseY, partialTick, interactive);
+        boolean groupingCovered = viewMenuBounds.contains(mouseX, mouseY);
+        watchPanel.paintGroupingMenu(graphics, groupingCovered ? -1 : mouseX,
+            groupingCovered ? -1 : mouseY, partialTick, interactive);
         if (viewMenuOpen) {
             graphics.fill(viewMenuBounds.x(), viewMenuBounds.y(), viewMenuBounds.x() + viewMenuBounds.width(),
                 viewMenuBounds.y() + viewMenuBounds.height(), PANEL);

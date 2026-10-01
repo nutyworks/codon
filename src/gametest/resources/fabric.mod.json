@@ -9,6 +9,7 @@
   "entrypoints": {
     "fabric-client-gametest": [
       "works.nuty.codon.client.DebuggerSourceIconGameTest",
+      "works.nuty.codon.client.DebuggerTooltipGameTest",
       "works.nuty.codon.client.BreakpointConditionVisibilityGameTest",
       "works.nuty.codon.client.FlowLegacyConditionGameTest",
       "works.nuty.codon.client.FunctionLineBreakpointGameTest",

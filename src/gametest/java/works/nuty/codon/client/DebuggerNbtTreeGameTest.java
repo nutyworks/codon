@@ -451,6 +451,23 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
         context.runOnClient(client -> require(bounds(button(codonScreen(client.gui.screen()), message -> message.startsWith("▾ UUID:"))).equals(uuidBounds.get()),
             "re-expanding at the original coordinate keeps the branch in place"));
         showNode(context, executor, "  [0]:");
+        double[] hover = context.computeOnClient(client -> {
+            CodonScreen screen = codonScreen(client.gui.screen());
+            DebuggerButton leaf = button(screen, message -> message.startsWith("  [0]:"));
+            DebuggerButton pin = pinBeside(screen, leaf);
+            DebuggerTooltipGameTest.beginObservation();
+            return new double[]{screen.uiScale().toGame(pin.getX() + pin.getWidth() / 2.0)
+                    * client.getWindow().getScreenWidth() / client.getWindow().getGuiScaledWidth(),
+                screen.uiScale().toGame(pin.getY() + pin.getHeight() / 2.0)
+                    * client.getWindow().getScreenHeight() / client.getWindow().getGuiScaledHeight()};
+        });
+        context.getInput().setCursorPos(hover[0], hover[1]);
+        context.runOnClient(client -> client.setLastInputType(net.minecraft.client.InputType.MOUSE));
+        context.waitTicks(12);
+        String pinHint = context.computeOnClient(client -> DebuggerTooltipGameTest.endObservation());
+        require(pinHint.contains("Left-click:") && pinHint.contains("Right-click:") && pinHint.contains(UUID_LEAF),
+            "node preview must not obscure pin click hints: " + pinHint);
+        context.takeScreenshot("codon-nbt-pin-tooltip-" + sourceName);
         context.runOnClient(client -> {
             CodonScreen screen = codonScreen(client.gui.screen());
             DebuggerButton leaf = button(screen, message -> message.startsWith("  [0]:"));

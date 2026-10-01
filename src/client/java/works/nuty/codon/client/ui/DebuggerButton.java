@@ -274,6 +274,8 @@ public class DebuggerButton extends AbstractButton {
 
     @Override
     protected void extractTooltipForNextRenderPass(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
+        // Modal layers and covered menu controls deliberately receive no pointer.
+        if (mouseX < 0 && mouseY < 0) { hoverStartedAt = -1; return; }
         var client = Minecraft.getInstance();
         boolean keyboardFocus = isFocused() && client.getLastInputType().isKeyboard();
         if (!isHovered()) hoverStartedAt = -1;
@@ -310,11 +312,14 @@ public class DebuggerButton extends AbstractButton {
     private void showTooltip(GuiGraphicsExtractor graphics,
                              java.util.List<net.minecraft.util.FormattedCharSequence> lines,
                              int mouseX, int mouseY, boolean keyboardFocus) {
+        lines = CodonTooltips.fit(Minecraft.getInstance().font, lines, graphics.guiWidth());
         if (keyboardFocus) {
             graphics.setTooltipForNextFrame(Minecraft.getInstance().font, lines,
-                new BelowOrAboveWidgetTooltipPositioner(getRectangle()), getX(), getBottom(), true);
+                CodonTooltips.withinViewport(new BelowOrAboveWidgetTooltipPositioner(getRectangle())), getX(), getBottom(), true);
         } else {
-            graphics.setTooltipForNextFrame(Minecraft.getInstance().font, lines, mouseX, mouseY);
+            graphics.setTooltipForNextFrame(Minecraft.getInstance().font, lines,
+                CodonTooltips.withinViewport(net.minecraft.client.gui.screens.inventory.tooltip.DefaultTooltipPositioner.INSTANCE),
+                mouseX, mouseY, false);
         }
     }
 
