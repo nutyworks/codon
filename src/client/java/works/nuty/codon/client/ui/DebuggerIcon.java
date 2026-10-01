@@ -73,13 +73,18 @@ public enum DebuggerIcon {
     }),
     INFORMATION,
     SOURCE_FILE(new String[]{
-        ".#####.",
-        ".#...#.",
-        ".#..##.",
-        ".#.#.#.",
-        ".##..#.",
-        ".#...#.",
-        ".#####."
+        "............",
+        ".......#....",
+        ".......#....",
+        "..#...#..#..",
+        ".#....#...#.",
+        "#.....#....#",
+        "#....#.....#",
+        ".#...#....#.",
+        "..#..#...#..",
+        "....#.......",
+        "....#.......",
+        "............"
     }),
     BREAKPOINT_LIST(new String[]{
         ".......",
@@ -249,9 +254,10 @@ public enum DebuggerIcon {
             case DETAILS_OPEN -> details(graphics, x, y, color, true);
             case DETAILS_CLOSED -> details(graphics, x, y, color, false);
             case WATCHES -> drawSmall(graphics, x, y - 1, color);
+            case SOURCE_FILE -> drawSmall(graphics, x, y, color);
             case BREAKPOINT, BREAKPOINT_EMPTY, BREAKPOINT_CONDITIONAL, BREAKPOINT_CONDITIONAL_EMPTY ->
                 drawSmall(graphics, x + 1, y + 1, color);
-            case COMMAND, SOURCE_FILE, BREAKPOINT_LIST, WATCH_NBT, WATCH_STORAGE, WATCH_SCORE, CONFIRM, DELETE ->
+            case COMMAND, BREAKPOINT_LIST, WATCH_NBT, WATCH_STORAGE, WATCH_SCORE, CONFIRM, DELETE ->
                 drawSmall(graphics, x + 2, y + 2, color);
             case PIN -> pin(graphics, x, y, color);
             case EDIT -> {

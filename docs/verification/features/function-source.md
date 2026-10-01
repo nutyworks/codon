@@ -7,7 +7,7 @@ datapack containing a known function. Record its resource ID and file text; incl
 a comment/blank line and a long `execute` line so line numbering, horizontal source scrolling and inline stage markers can
 be checked. The viewer lists functions actually loaded by the current server.
 
-1. Press `V`, then the toolbar's **Source** icon. Search by namespace/path, expand
+1. Press `V`, then the toolbar's **Source** (`</>`) icon. Search by namespace/path, expand
    folders and select the function. Its source appears read-only; browsing does
    not require executing it. The header shows the datapack-relative
    `data/<namespace>/function/<path>.mcfunction` path (hover for the full path).
@@ -113,9 +113,18 @@ scroll settings. Synthetic callback input does not verify a physical trackpad.
 | Requests, selection and layout | `clientTest`: `ClientFunctionSourceStateTest`, `FunctionSourceScreenLayoutTest`, `SourceSyntaxTest`, `SourceLineLayoutTest`, `SourceInteractionTest`, `ClientStagePreviewStateTest`, `ScrollbarInputTest`, `CommandFlowLayoutTest` |
 | Network payloads | `test`: `FunctionSourcePayloadTest`, `BreakpointStagePreviewPayloadTest` |
 | Real rendering, selection, resize and inline stage markers | `FunctionSourceScreenGameTest`, `FunctionSourceInteractionGameTest`, `FunctionSourceReviewGameTest` |
+| Source toolbar icon, state styling, scale readability and native activation | `DebuggerSourceIconGameTest` |
 | F3/Shift+F3 press/repeat/release ownership and vanilla behavior outside Source | `FunctionSourceKeyboardGameTest` |
 
 Example: `./gradlew runClientGameTest -PclientGameTest=FunctionSourceScreenGameTest`.
+
+`DebuggerSourceIconGameTest` captures normal, hovered, keyboard-focused and disabled
+Source buttons at every quarter step from 1.00× to 4.50× (including the larger-window
+extension at 1920×1080). Native pixel assertions require separate outward chevrons
+and a forward slash with unchanged state colors. The real toolbar captures retain
+the Source tooltip and keyboard focus; Enter and clicks at both corners of the
+20×20 target open the same viewer. This verifies presentation and activation,
+not server source discovery or breakpoint execution.
 
 Source owns F3/Shift+F3 releases as well as their Find navigation presses, so the
 vanilla debug overlay retains its current visibility. `FunctionSourceKeyboardGameTest`
