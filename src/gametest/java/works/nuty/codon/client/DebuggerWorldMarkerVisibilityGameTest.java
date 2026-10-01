@@ -13,6 +13,7 @@ import net.minecraft.server.permissions.LevelBasedPermissionSet;
 import net.minecraft.world.phys.Vec3;
 import works.nuty.codon.CodonMod;
 import works.nuty.codon.adapter.DebuggerTaskQueue;
+import works.nuty.codon.client.input.InputManager;
 import works.nuty.codon.client.input.UiHideGesture;
 import works.nuty.codon.client.ui.CodonScreen;
 import works.nuty.codon.client.ui.DebuggerOverlay;
@@ -59,7 +60,9 @@ public final class DebuggerWorldMarkerVisibilityGameTest implements FabricClient
                 // Enter the actual execute-as/at stages until the entity ring has world coordinates.
                 for (int step = 0; step < 8 && !context.computeOnClient(client -> hasEntityContext()); step++) {
                     long id = context.computeOnClient(client -> CodonClientMod.state().snapshot().pauseId());
-                    context.getInput().pressKey(options -> CodonClientMod.input().stepIntoKey);
+                    // Other presentation fixtures register duplicate gameplay key mappings.
+                    // Setup uses the normal control request; H below still uses native dispatch.
+                    context.runOnClient(client -> CodonClientMod.input().control(InputManager.Control.INTO));
                     context.waitFor(client -> CodonClientMod.state().isPaused()
                         && CodonClientMod.state().snapshot().pauseId() != id, 200);
                 }
