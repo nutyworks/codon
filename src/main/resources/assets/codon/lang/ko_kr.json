@@ -132,6 +132,7 @@
   "codon.breakpoint.debugging": "디버깅",
   "codon.breakpoint.save_command_first": "명령을 저장한 뒤 단계 중단점을 편집하세요",
   "codon.breakpoint.loading_stages": "명령 단계 불러오는 중…",
+  "codon.breakpoint.preview_required": "저장된 중단점을 줄 제어로 편집하려면 명령 미리보기가 필요합니다",
   "codon.breakpoint.stages_unavailable": "단계 위치를 확인할 수 없습니다",
   "codon.breakpoint.select_stage": "조건을 편집할 단계를 선택하세요",
   "codon.breakpoint.toolbar": "중단점 %s개",

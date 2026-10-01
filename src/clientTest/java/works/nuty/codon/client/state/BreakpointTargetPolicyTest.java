@@ -36,6 +36,41 @@ class BreakpointTargetPolicyTest {
         assertEquals(0, BreakpointTargetPolicy.stageCount(COMMAND, null, new ExecutionFlowTrace(1, LOCATION, List.of(terminal), true)));
     }
 
+    @Test void unknownPreviewDefersOnlyAmbiguousCurrentLegacyStageZero() {
+        var legacy = new BreakpointDefinition(BreakpointTarget.stage(LOCATION, 0, COMMAND), false,
+            BreakpointCondition.count(BreakpointCondition.Kind.INPUT_COUNT, BreakpointCondition.Comparison.EQ, 1));
+        var line = BreakpointDefinition.plain(BreakpointTarget.whole(LOCATION));
+        assertTrue(BreakpointTargetPolicy.lineActionDeferred(LOCATION, COMMAND, 0, List.of(legacy)));
+        assertTrue(BreakpointTargetPolicy.lineActionDeferred(LOCATION, COMMAND, 0, List.of(line, legacy.withEnabled(true))));
+        assertFalse(BreakpointTargetPolicy.lineActionDeferred(LOCATION, COMMAND, 0, List.of(line)));
+        assertFalse(BreakpointTargetPolicy.lineActionDeferred(LOCATION, COMMAND, 0,
+            List.of(BreakpointDefinition.plain(BreakpointTarget.stage(LOCATION, 1, COMMAND)))));
+        assertFalse(BreakpointTargetPolicy.lineActionDeferred(LOCATION, "say changed", 0, List.of(legacy)));
+        assertFalse(BreakpointTargetPolicy.lineActionDeferred(LOCATION, COMMAND, 0, List.of(legacy.withStaleSource(true))));
+    }
+
+    @Test void missingLoadingAndStalePreviewBecomeUnambiguousOnlyAfterMatchingReady() {
+        var legacy = BreakpointDefinition.plain(BreakpointTarget.stage(LOCATION, 0, COMMAND));
+        var previews = new ClientStagePreviewState();
+        assertTrue(BreakpointTargetPolicy.lineActionDeferred(LOCATION, COMMAND,
+            BreakpointTargetPolicy.stageCount(COMMAND, previews.get(LOCATION), null), List.of(legacy)));
+        long request = previews.begin(LOCATION);
+        assertTrue(BreakpointTargetPolicy.lineActionDeferred(LOCATION, COMMAND,
+            BreakpointTargetPolicy.stageCount(COMMAND, previews.get(LOCATION), null), List.of(legacy)));
+        previews.accept(request, LOCATION, ClientStagePreviewState.Status.READY, "say changed",
+            List.of(new ClientStagePreviewState.StageSpan(0, 0, 11, true)));
+        assertTrue(BreakpointTargetPolicy.lineActionDeferred(LOCATION, COMMAND,
+            BreakpointTargetPolicy.stageCount(COMMAND, previews.get(LOCATION), null), List.of(legacy)));
+        request = previews.begin(LOCATION);
+        previews.accept(request, LOCATION, ClientStagePreviewState.Status.READY, COMMAND,
+            List.of(new ClientStagePreviewState.StageSpan(0, 0, COMMAND.length(), true)));
+        assertFalse(BreakpointTargetPolicy.lineActionDeferred(LOCATION, COMMAND,
+            BreakpointTargetPolicy.stageCount(COMMAND, previews.get(LOCATION), null), List.of(legacy)));
+        assertEquals(List.of(legacy), BreakpointTargetPolicy.lineDefinitions(LOCATION, COMMAND, 1, List.of(legacy)));
+        assertFalse(BreakpointTargetPolicy.lineActionDeferred(LOCATION, COMMAND, 2, List.of(legacy)));
+        assertTrue(BreakpointTargetPolicy.lineDefinitions(LOCATION, COMMAND, 2, List.of(legacy)).isEmpty());
+    }
+
     private static ExecutionFlowStage stage(boolean terminal, CommandSnippet command) {
         return new ExecutionFlowStage(0, command, List.of(), List.of(), List.of(), List.of(),
             0, 0, 0, terminal, 0, 0, true, true, false);

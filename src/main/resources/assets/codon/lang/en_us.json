@@ -132,6 +132,7 @@
   "codon.breakpoint.debugging": "Debugging",
   "codon.breakpoint.save_command_first": "Save command to edit stage breakpoints",
   "codon.breakpoint.loading_stages": "Loading command stages…",
+  "codon.breakpoint.preview_required": "Command preview required to edit this saved breakpoint from the line control",
   "codon.breakpoint.stages_unavailable": "Stage positions unavailable",
   "codon.breakpoint.select_stage": "Select a stage to edit its condition",
   "codon.breakpoint.toolbar": "Breakpoints %s",

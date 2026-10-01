@@ -61,6 +61,48 @@ public final class SingleStageBreakpointGameTest implements FabricClientGameTest
             }, 200);
             context.waitTicks(2);
             context.runOnClient(client -> {
+                var state = CodonClientMod.state();
+                var screen = client.gui.screen();
+                var control = screen.children().stream().filter(InlineBreakpointButton.class::isInstance)
+                    .map(InlineBreakpointButton.class::cast).findFirst().orElseThrow();
+                state.stagePreviews().reset();
+                screen.setFocused(control);
+                screen.keyPressed(new KeyEvent(InputConstants.KEY_SPACE, 0, 0));
+                check(!state.breakpoints().pending(whole) && !state.breakpoints().pending(legacy.target()),
+                    "native editor missing preview defers legacy-sensitive toggle");
+                check(!control.active, "native editor exposes the unresolved legacy control as disabled");
+                screen.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 1));
+                check(ScreenLayers.get(screen) == null, "native editor missing preview defers condition editing");
+                state.stagePreviews().begin(location);
+                screen.keyPressed(new KeyEvent(InputConstants.KEY_SPACE, 0, 0));
+                screen.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 1));
+                check(!state.breakpoints().pending(whole) && !state.breakpoints().pending(legacy.target())
+                    && ScreenLayers.get(screen) == null, "native editor loading preview cannot create a second definition");
+                long ready = state.stagePreviews().begin(location);
+                state.stagePreviews().accept(ready, location, ClientStagePreviewState.Status.READY, COMMAND,
+                    List.of(new ClientStagePreviewState.StageSpan(0, 0, COMMAND.length(), true)));
+            });
+            context.waitTicks(2);
+            context.runOnClient(client -> {
+                var screen = client.gui.screen();
+                var control = screen.children().stream().filter(InlineBreakpointButton.class::isInstance)
+                    .map(InlineBreakpointButton.class::cast).findFirst().orElseThrow();
+                screen.setFocused(control);
+                screen.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 1));
+                var condition = (BreakpointConditionScreen) ScreenLayers.get(screen);
+                check(legacy.equals(FunctionLineBreakpointGameTest.field(condition, "original")),
+                    "READY native editor condition preserves the exact disabled legacy definition");
+                condition.setFocused((net.minecraft.client.gui.components.AbstractWidget)
+                    FunctionLineBreakpointGameTest.field(condition, "saveButton"));
+                condition.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
+                check(CodonClientMod.state().breakpoints().pending(legacy.target())
+                    && !CodonClientMod.state().breakpoints().pending(whole), "native condition Save cannot duplicate the legacy target");
+                condition.onClose();
+            });
+            context.waitFor(client -> !CodonClientMod.state().breakpoints().pending(legacy.target())
+                && CodonClientMod.state().stagePreviews().get(location).status() == ClientStagePreviewState.Status.READY, 200);
+            context.waitTicks(2);
+            context.runOnClient(client -> {
                 var screen = client.gui.screen();
                 var controls = screen.children().stream().filter(InlineBreakpointButton.class::isInstance)
                     .map(InlineBreakpointButton.class::cast).toList();

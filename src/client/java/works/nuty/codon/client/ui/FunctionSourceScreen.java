@@ -456,7 +456,9 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             if (hovered && mouseX >= lineMarkerX() - 2 && mouseX < lineMarkerX() + 10) {
                 int count = BreakpointTargetPolicy.stageCount(code.source().trim(), debugger.stagePreviews().get(location), null);
                 var saved = BreakpointUi.lineDefinitions(debugger, location, code.source().trim(), count);
-                if (count == 1 && saved.stream().anyMatch(value -> !value.target().wholeCommand()))
+                if (BreakpointUi.waitingForPreview(debugger, BreakpointTarget.whole(location), code.source().trim(), count))
+                    graphics.setTooltipForNextFrame(font, Component.translatable("codon.breakpoint.preview_required"), mouseX, mouseY);
+                else if (count == 1 && saved.stream().anyMatch(value -> !value.target().wholeCommand()))
                     graphics.setTooltipForNextFrame(font, Component.translatable("codon.breakpoint.saved_line_definitions", saved.size()), mouseX, mouseY);
                 else if (counts.enabled() > 0)
                     graphics.setTooltipForNextFrame(font, Component.translatable("codon.source.stage_breakpoints", counts.enabled()), mouseX, mouseY);
@@ -781,7 +783,15 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         BreakpointTarget stage = selectedStageTarget();
         lineCondition.visible = lineCondition.active = !drawerOpen && line != null;
         stageCondition.visible = stageCondition.active = !drawerOpen && stage != null;
-        if (line != null) lineCondition.setMessage(Component.translatable("codon.source.line_condition"));
+        if (line != null) {
+            lineCondition.setMessage(Component.translatable("codon.source.line_condition"));
+            var state = CodonClientMod.state();
+            String command = codeLines.get(selectedLine - 1).source().trim();
+            int count = state == null ? 0 : BreakpointTargetPolicy.stageCount(command, state.stagePreviews().get(line.location()), null);
+            lineCondition.active &= state != null && !BreakpointUi.pending(state, line, command, count);
+            lineCondition.setTooltip(state != null && BreakpointUi.waitingForPreview(state, line, command, count)
+                ? net.minecraft.client.gui.components.Tooltip.create(Component.translatable("codon.breakpoint.preview_required")) : null);
+        }
         if (stage != null) stageCondition.setMessage(Component.translatable("codon.source.stage_condition"));
     }
 

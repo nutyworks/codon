@@ -34,6 +34,16 @@ public final class BreakpointTargetPolicy {
             ? Math.max(2, flow.stages().stream().mapToInt(stage -> stage.index() + 1).max().orElse(0)) : 0;
     }
 
+    /** Unknown counts cannot decide whether stage zero belongs to the line or remains separate. */
+    public static boolean lineActionDeferred(SourceLocation location, String command, int stageCount,
+                                             List<BreakpointDefinition> definitions) {
+        if (stageCount > 0) return false;
+        String fingerprint = BreakpointTarget.fingerprint(command);
+        return definitions.stream().anyMatch(definition -> definition.target().location().equals(location)
+            && definition.target().stageIndex() == 0 && !definition.staleSource()
+            && definition.target().commandFingerprint().equals(fingerprint));
+    }
+
     /** Treat an old sole-stage definition as part of the line control without rewriting its condition. */
     public static List<BreakpointDefinition> lineDefinitions(SourceLocation location, String command, int stageCount,
                                                             List<BreakpointDefinition> definitions) {

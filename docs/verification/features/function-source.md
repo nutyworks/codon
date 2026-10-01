@@ -216,3 +216,12 @@ Line condition opens their filtered management list, including disabled definiti
 condition can be edited/deleted separately and Undo restores its exact original definition.
 Obsolete fingerprints remain review warnings and are never silently attached to new text.
 `/codon breakpoint clear` explicitly removes all definitions, including disabled legacy saves.
+
+While the matching stage count is unresolved (missing/LOADING preview or old READY text after
+reload), a matching saved stage-zero definition makes the line action ambiguous. Source and
+the native editor defer its toggle and condition editor until the current preview resolves;
+they never create a second plain line target in that window. Ordinary whole-line actions remain
+available without a matching legacy definition once the saved-breakpoint snapshot is ready.
+READY single-stage previews restore the in-place legacy action; READY multi-stage previews keep
+line and stage actions separate. `BreakpointTargetPolicyTest`, `FunctionLineBreakpointGameTest`
+and `SingleStageBreakpointGameTest` cover these transitions and condition Save identities.

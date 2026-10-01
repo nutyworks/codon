@@ -60,6 +60,7 @@ public final class FunctionLineBreakpointGameTest implements FabricClientGameTes
                 require(marker + 10 <= codeLeft - 6 - client.font.width("1"),
                     "line breakpoint artwork and hit target must be LEFT of the line number; marker=" + marker + " code=" + codeLeft);
             });
+            verifyPreviewTransitions(context);
             verifySingleStage(context, "en-default");
             context.runOnClient(client -> {
                 var screen = (ScaledCodonScreen) client.gui.screen();
@@ -84,6 +85,70 @@ public final class FunctionLineBreakpointGameTest implements FabricClientGameTes
             context.waitFor(client -> restore.isDone() && client.gui.overlay() == null, 200);
             context.runOnClient(client -> client.setScreenAndShow(null));
         }
+    }
+
+    private static void verifyPreviewTransitions(ClientGameTestContext context) {
+        context.runOnClient(client -> {
+            var state = CodonClientMod.state();
+            var screen = client.gui.screen();
+            int x = value(screen, "lineMarkerX"), y = value(screen, "sourceLineTop") + 9;
+            var whole = BreakpointTarget.whole(LOCATION);
+            var legacy = BreakpointDefinition.plain(BreakpointTarget.stage(LOCATION, 0, COMMAND));
+            state.breakpoints().reset();
+            click(screen, x, y, false);
+            click(screen, x, y, true);
+            require(!state.breakpoints().pending(whole) && ScreenLayers.get(screen) == null,
+                "READY preview cannot edit a line before the saved-breakpoint snapshot arrives");
+            state.breakpoints().acceptPage(1, 0, true, List.of(legacy));
+            state.stagePreviews().reset();
+            for (String phase : List.of("missing", "loading", "stale READY")) {
+                click(screen, x, y, false);
+                require(!state.breakpoints().pending(whole) && !state.breakpoints().pending(legacy.target()),
+                    "Source " + phase + " preview must defer legacy-sensitive toggle without creating a whole target");
+                click(screen, x, y, true);
+                require(ScreenLayers.get(screen) == null,
+                    "Source " + phase + " preview must defer legacy-sensitive condition editing");
+                long request = state.stagePreviews().begin(LOCATION);
+                if (phase.equals("loading")) state.stagePreviews().accept(request, LOCATION,
+                    ClientStagePreviewState.Status.READY, "say old", List.of(new ClientStagePreviewState.StageSpan(0, 0, 7, true)));
+            }
+            long ready = state.stagePreviews().begin(LOCATION);
+            state.stagePreviews().accept(ready, LOCATION, ClientStagePreviewState.Status.READY, COMMAND,
+                List.of(new ClientStagePreviewState.StageSpan(0, 0, COMMAND.length(), true)));
+            click(screen, x, y, false);
+            require(state.breakpoints().pending(legacy.target()) && !state.breakpoints().pending(whole),
+                "READY single-stage toggle edits the original legacy target");
+            state.breakpoints().reset();
+            state.breakpoints().acceptPage(1, 0, true, List.of(legacy));
+            click(screen, x, y, true);
+            var condition = (BreakpointConditionScreen) ScreenLayers.get(screen);
+            require(legacy.equals(field(condition, "original")), "READY condition editor retains the legacy definition");
+            condition.setFocused((net.minecraft.client.gui.components.AbstractWidget) field(condition, "saveButton"));
+            condition.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
+            require(state.breakpoints().pending(legacy.target()) && !state.breakpoints().pending(whole),
+                "condition Save edits the original legacy target, never a new whole target");
+            condition.onClose();
+            state.breakpoints().reset();
+            state.breakpoints().acceptPage(1, 0, true, List.of());
+            state.stagePreviews().begin(LOCATION);
+            click(screen, x, y, false);
+            require(state.breakpoints().pending(whole), "ordinary whole-line toggle remains available while preview loads");
+            state.breakpoints().reset();
+            state.breakpoints().acceptPage(1, 0, true, List.of());
+            click(screen, x, y, true);
+            condition = (BreakpointConditionScreen) ScreenLayers.get(screen);
+            require(((BreakpointDefinition) field(condition, "original")).target().equals(whole),
+                "ordinary whole-line conditions remain available while preview loads");
+            condition.onClose();
+            state.breakpoints().reset();
+            state.breakpoints().acceptPage(1, 0, true, List.of(legacy));
+            state.stagePreviews().begin(LOCATION);
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> require(!((net.minecraft.client.gui.components.AbstractWidget)
+            field(client.gui.screen(), "lineCondition")).active,
+            "Source condition button is disabled while its legacy target remains ambiguous"));
+        context.takeScreenshot("codon-line-preview-deferred-legacy");
     }
 
     private static void verifySingleStage(ClientGameTestContext context, String name) {
@@ -191,7 +256,7 @@ public final class FunctionLineBreakpointGameTest implements FabricClientGameTes
         require(screen.mouseClicked(event, false), "source consumes native row click");
         screen.mouseReleased(event);
     }
-    private static Object field(Object object, String name) {
+    static Object field(Object object, String name) {
         try {
             var field = object.getClass().getDeclaredField(name);
             field.setAccessible(true);

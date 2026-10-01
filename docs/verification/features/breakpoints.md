@@ -139,4 +139,5 @@ controls. Existing single-stage saved definitions are kept; see the
 [legacy line-control rules](function-source.md) for condition collisions, disabling and Clear.
 `SingleStageBreakpointGameTest` checks actual acknowledged editor edits, a real vanilla
 single-stage command stop, the Flow line target, disabled legacy condition access, one execution
-on Continue, and the public Clear command. Its server/world is disposable.
+on Continue, and the public Clear command. It also checks missing/LOADING preview actions,
+then READY condition Save and toggle against the same legacy target. Its server/world is disposable.

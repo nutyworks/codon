@@ -65,9 +65,17 @@ public final class BreakpointUi {
     }
 
     public static boolean pending(ClientDebuggerState state, BreakpointTarget target, String command, int stageCount) {
-        return state.breakpoints().pending(target) || target.wholeCommand() && stageCount == 1
+        return waitingForPreview(state, target, command, stageCount) || state.breakpoints().pending(target)
+            || target.wholeCommand() && stageCount == 1
             && lineDefinitions(state, target.location(), command, stageCount).stream()
                 .anyMatch(definition -> state.breakpoints().pending(definition.target()));
+    }
+
+    public static boolean waitingForPreview(ClientDebuggerState state, BreakpointTarget target,
+                                           String command, int stageCount) {
+        return target.wholeCommand() && (!state.breakpoints().ready()
+            || BreakpointTargetPolicy.lineActionDeferred(target.location(), command, stageCount,
+                state.breakpoints().definitions()));
     }
 
     public static void toggle(ClientDebuggerState state, BreakpointTarget target, String command, int stageCount) {
@@ -87,6 +95,7 @@ public final class BreakpointUi {
 
     public static void openCondition(Screen parent, ClientDebuggerState state, BreakpointTarget target,
                                      String command, int stageCount, BreakpointConditionScreen.Anchor anchor) {
+        if (waitingForPreview(state, target, command, stageCount)) return;
         var definitions = target.wholeCommand() && stageCount == 1
             ? lineDefinitions(state, target.location(), command, stageCount) : List.<BreakpointDefinition>of();
         if (definitions.size() > 1) {
