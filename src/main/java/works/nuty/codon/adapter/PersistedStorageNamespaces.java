@@ -23,12 +23,16 @@ public final class PersistedStorageNamespaces {
         if (!server.isSameThread()) throw new IllegalStateException("Storage discovery requires the server thread");
         var storage = server.getCommandStorage();
         var loaded = ((CommandStorageAccessor) storage).codon$loadedNamespaces();
+        var reads = (StorageReadStatus) server.getDataStorage();
         try {
             for (String namespace : namespaces(server.getWorldPath(LevelResource.DATA))) {
+                if (reads.codon$hadIncompleteStorageRead(namespace)) {
+                    throw new IllegalStateException("Incomplete persisted storage namespace " + namespace);
+                }
                 if (loaded.containsKey(namespace)) continue;
                 // get() loads an existing namespace without creating a container, key or dirty value.
                 storage.get(Identifier.fromNamespaceAndPath(namespace, "__codon_snapshot_probe__"));
-                if (!loaded.containsKey(namespace)) {
+                if (!loaded.containsKey(namespace) || reads.codon$hadIncompleteStorageRead(namespace)) {
                     throw new IllegalStateException("Could not read persisted storage namespace " + namespace);
                 }
             }

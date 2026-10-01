@@ -70,6 +70,13 @@ remain correct. The first automatic snapshot discovers only immediate valid
 vanilla's non-creating read path. This occurs once per execution baseline, not at
 world startup or on every Continue. Already loaded containers are not reread;
 reads must not dirty values, add probe keys or change persisted bytes.
+Codec errors can return a partial vanilla container, including an empty one. The
+SavedDataStorage mixin records incomplete Storage decodes without changing vanilla's
+returned data or cache. Automatic baseline discovery rejects those namespaces,
+including cached partial reads, and leaves its previous baseline intact. Truncated
+files likewise withhold the baseline. Repairing a file in the same server does not
+clear vanilla's cached failed/partial result; a fresh saved-world reopen can read
+the repaired values and establish a complete baseline.
 
 ## Code entry points
 
@@ -89,6 +96,7 @@ reads must not dirty values, add probe keys or change persisted bytes.
 | Files and transfer | `test`: `WorldWatchPersistenceTest`, `WatchDefinitionTransferTest` |
 | Watch readers and rendered values | `DebuggerWatchGameTest` |
 | Cold persisted Storage baseline, real restart/Continue, deletion/creation and entity/score history | `test`: `PersistedStorageNamespacesTest`; `DebuggerColdStorageWatchGameTest`, `PauseWatchChangesGameTest`, `DebuggerAutomaticWatchGameTest` |
+| Truncated/partial Storage decode, withheld baseline, and repaired-world reopen | `test`: `StorageReadFailureTest` (actual untransformed vanilla reader); `DebuggerStorageReadFailureGameTest` (actual mixin/snapshot/reopen) |
 | Editor and server request/reply | `DebuggerWatchEditorGameTest`, `WatchEditorTransportGameTest` |
 | Watch form alignment, languages and native input | `clientTest`: `WatchFormLayoutTest`; `DebuggerWatchFormLayoutGameTest` |
 | Browse dialog alignment, short Objectives, paging and selection | `clientTest`: `WatchPickerLayoutTest`; `DebuggerWatchPickerLayoutGameTest`, `WatchEditorTransportGameTest` |
