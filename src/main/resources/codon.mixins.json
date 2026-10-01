@@ -5,6 +5,7 @@
   "mixins": [
     "BuildContextsMixin",
     "CommandBlockMixin",
+    "CommandStorageAccessor",
     "CommandFunctionMixin",
     "CommandsMixin",
     "FunctionBuilderMixin",
