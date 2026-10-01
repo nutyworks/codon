@@ -566,8 +566,13 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             int end = x + layout.before(stage.end()) - horizontalOffset;
             BreakpointDefinition definition = state.breakpoints().get(stage.target());
             boolean enabled = definition != null && definition.enabled(), hovered = hover == stage.index();
-            if (selectedLine == line && selectedStageIndex == stage.index() && end > x && start < x + width)
-                graphics.outline(Math.max(x, start), y + 2, Math.min(x + width, end) - Math.max(x, start), 13, DebuggerTheme.color(TEAL));
+            if (selectedLine == line && selectedStageIndex == stage.index() && end > x && start < x + width) {
+                // Keep the selection in the row's clear vertical padding. Side borders at
+                // stage/viewport edges cover glyphs; widening them can cover adjacent stages.
+                int from = Math.max(x, start), to = Math.min(x + width, end);
+                graphics.fill(from, y + 2, to, y + 3, DebuggerTheme.color(TEAL));
+                graphics.fill(from, y + 15, to, y + 16, DebuggerTheme.color(TEAL));
+            }
             if (SourceInteraction.markerVisible(enabled, hovered,
                 BreakpointUi.editingMarker(this, stage.target(), codeLines.get(line - 1).source().trim()))) {
                 DebuggerIcon icon = BreakpointUi.icon(definition);

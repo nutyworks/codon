@@ -32,6 +32,9 @@ be checked. The viewer lists functions actually loaded by the current server.
    marker. Leaving a stage removes its temporary slot and restores original glyph
    advances; enabled markers keep their necessary slot. No separate stage row or
    panel is shown. Hover the gutter marker for the enabled stage count.
+   A selected stage has cyan rules above and below its text, in the row's vertical
+   padding. It has no side stroke through glyphs or at horizontal clipping edges;
+   selection retains the original text advances and stage/marker hitboxes.
 3. Close the viewer and execute `/function <namespace:path>`. Check the breakpoint
    stops at the selected location. Reopen Source at the pause and distinguish the
    actual stopped line from a manually inspected line/record. A live pause has an
@@ -120,11 +123,23 @@ scroll settings. Synthetic callback input does not verify a physical trackpad.
 | Network payloads | `test`: `FunctionSourcePayloadTest`, `BreakpointStagePreviewPayloadTest` |
 | Line gutter, one-stage suppression, EN/KO/custom scale and hit boxes | `FunctionLineBreakpointGameTest` |
 | Real rendering, selection, resize and inline stage markers | `FunctionSourceScreenGameTest`, `FunctionSourceInteractionGameTest`, `FunctionSourceReviewGameTest` |
+| Active stage readability, adjacent stages, horizontal clipping and every supported scale | `FunctionSourceStageHighlightGameTest` |
 | Source toolbar icon, state styling, scale readability and native activation | `DebuggerSourceIconGameTest` |
 | F3/Shift+F3 press/repeat/release ownership and vanilla behavior outside Source | `FunctionSourceKeyboardGameTest` |
 | Focused Find/function-list Search key press before character input, bound/unbound/remapped cursor-mode keys, parent shortcuts and focus navigation | `FunctionSourceTextInputGameTest` |
 
 Example: `./gradlew runClientGameTest -PclientGameTest=FunctionSourceScreenGameTest`.
+
+`FunctionSourceStageHighlightGameTest` compares native source-row pixels before and
+after selecting adjacent stages at every quarter step from 1.00× to 4.50× in a
+1920×1080 viewport. Selection must leave the entire glyph band, including syntax
+colors and neighboring stages, identical while adding a visible highlight in the
+vertical padding. Native clicks at both ends of each visible text hitbox preserve
+the original stage target, enabled breakpoint and condition. Scrolled captures cut
+through a stage at the left edge and reach the long line's tail. Inspect
+`*codon-stage-highlight-*.png`. The injected document/parse spans establish client
+presentation and interaction; real server source discovery and stage breakpoints
+remain separate checks.
 
 `FunctionSourceTextInputGameTest` uses a real docked `CodonScreen` parent and sends
 press/repeat/release and character callbacks through Minecraft's `KeyboardHandler`.
