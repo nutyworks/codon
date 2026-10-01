@@ -182,11 +182,24 @@ public final class DebuggerUnobservedFlowBreakpointGameTest implements FabricCli
         context.runOnClient(client -> {
             require(state().breakpoints().definitions().stream().filter(BreakpointDefinition::enabled).count() == before + 1,
                 "left-clicking the never-observed Flow marker adds one acknowledged breakpoint");
+            ClientNetworking.sendBreakpointEdit(state(), ClientBreakpointState.Action.TOGGLE, state().breakpoints().get(target));
+        });
+        context.waitFor(client -> !state().breakpoints().pending(target) && !state().breakpoints().get(target).enabled(), 200);
+        context.runOnClient(client -> {
             click(client.gui.screen(), clause(client.gui.screen(), fragment), InputConstants.MOUSE_BUTTON_RIGHT);
             require(ScreenLayers.get(client.gui.screen()) instanceof BreakpointConditionScreen,
                 "Flow right-click opens breakpoint options for an unobserved stage");
         });
+        context.getInput().setCursorPos(0, 0);
         context.waitTicks(3);
+        context.runOnClient(client -> {
+            require(state().selectedUnobservedStageIndex() == target.stageIndex() && state().selectedExecutionFlowStage() == null
+                && state().displayedSources().isEmpty(), "condition editing retains the static target without borrowing recorded contexts");
+            require(!state().breakpoints().get(target).enabled(), "opening static-stage conditions preserves disabled state");
+            var control = marker(client.gui.screen(), clause(client.gui.screen(), fragment));
+            require(!(boolean) FunctionLineBreakpointGameTest.field(control, "revealOnHover"),
+                "the exact inactive unobserved Flow marker remains visible after the pointer leaves");
+        });
         if (condition.kind() != BreakpointCondition.Kind.ALWAYS) {
             context.runOnClient(client -> {
                 Screen layer = ScreenLayers.get(client.gui.screen());

@@ -30,6 +30,7 @@ public final class WrappedCommandEditBox extends EditBox {
     private List<Marker> shownMarkers = List.of();
     private @Nullable BreakpointTarget hoveredTarget;
     private @Nullable BreakpointTarget focusedTarget;
+    private @Nullable BreakpointTarget editingTarget;
     private int hoverLeft, hoverRight, hoverTop, hoverBottom;
 
     private String markerCommand = "";
@@ -48,6 +49,7 @@ public final class WrappedCommandEditBox extends EditBox {
     }
 
     public void focusBreakpoint(BreakpointTarget target) { focusedTarget = target; layout(); }
+    public void setEditingBreakpoint(@Nullable BreakpointTarget target) { editingTarget = target; }
     public void clearBreakpointFocus(BreakpointTarget target) {
         if (target.equals(focusedTarget)) focusedTarget = null;
     }
@@ -190,7 +192,7 @@ public final class WrappedCommandEditBox extends EditBox {
         if (!value.equals(laidOutValue)) hoveredTarget = null;
         shownMarkers = value.equals(markerCommand) ? markers.stream()
             .filter(marker -> marker.target().wholeCommand() || marker.enabled() || marker.target().equals(hoveredTarget)
-                || marker.target().equals(focusedTarget))
+                || marker.target().equals(focusedTarget) || marker.target().equals(editingTarget))
             .sorted(java.util.Comparator.comparingInt(this::markerOffset)).toList() : List.of();
         List<BreakpointTarget> visibleTargets = shownMarkers.stream().map(Marker::target).toList();
         boolean changed = !value.equals(laidOutValue) || width != laidOutWidth || !visibleTargets.equals(laidOutMarkers);
@@ -313,7 +315,9 @@ public final class WrappedCommandEditBox extends EditBox {
 
     @Override public void extractWidgetRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         if (!isVisible()) return;
-        updateMarkerHover(mouseX, mouseY);
+        if (ScreenLayers.get(net.minecraft.client.Minecraft.getInstance().gui.screen()) == null)
+            updateMarkerHover(mouseX, mouseY);
+        else updateMarkerHover(-1, -1);
         layout();
         EditBoxAccessor access = (EditBoxAccessor) (Object) this;
         graphics.fill(getX(), getY(), getRight(), getBottom(), 0xFF101010);

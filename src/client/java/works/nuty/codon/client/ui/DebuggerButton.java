@@ -218,7 +218,8 @@ public class DebuggerButton extends AbstractButton {
     protected void extractContents(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         var client = Minecraft.getInstance();
         boolean keyboardFocus = isFocused() && client.getLastInputType().isKeyboard();
-        if (revealOnHover && !keyboardFocus && (mouseX < revealX || mouseX >= revealX + revealWidth
+        if (revealOnHover && !keyboardFocus && (ScreenLayers.get(client.gui.screen()) != null
+            || mouseX < revealX || mouseX >= revealX + revealWidth
             || mouseY < revealY || mouseY >= revealY + revealHeight)) return;
         if (hitSurface) {
             if (keyboardFocus || isHovered()) graphics.outline(getX(), getY(), getWidth(), getHeight(), paintColor(DebuggerTheme.TEAL));

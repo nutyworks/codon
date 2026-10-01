@@ -70,6 +70,9 @@ They toggle whole-command targets; use the UI for stage/condition editing.
 | Acknowledgement and pending UI state | `clientTest`: `ClientBreakpointStateTest` |
 | Persistence/preview codec | `test`: `WorldBreakpointPersistenceTest`, `BreakpointStagePreviewPayloadTest` |
 | Native editor input, modal details without screen replacement, server edits, wrapping and narrow layouts | `DebuggerBreakpointUiGameTest` |
+| Single-stage editor/Flow target, legacy toggle/clear and native first-occurrence stop | `SingleStageBreakpointGameTest` |
+| Inactive condition marker retention, menus/Cancel and server-acknowledged Save enabling | `BreakpointConditionVisibilityGameTest`, `DebuggerBreakpointUiGameTest` |
+| Flow legacy condition labels, rejected toggle feedback, terminal condition attribution and pending action gating (presentation fixture) | `FlowLegacyConditionGameTest` |
 | Native execution and measured-zero result breakpoints | `DebuggerBreakpointResultGameTest` |
 
 Example: `./gradlew runClientGameTest -PclientGameTest=DebuggerBreakpointUiGameTest`.
@@ -111,6 +114,13 @@ Clicking an option applies it to the draft and closes the
 menu; Save still waits for server acknowledgement. Escape closes an open menu
 first, then the layer. Tab closes the menu and continues through the form.
 
+The exact edited marker remains visible while the layer or its menus are open. Opening
+and cancelling preserve its saved enabled state; Save always enables the exact definition
+with the chosen condition. A sole legacy stage-zero definition uses the line's marker
+without creating a second whole-line target. Flow's selected-condition action and summary
+use the same effective saved definition as its inline marker. Pending edits to a matching
+legacy definition disable the action and prevent opening another editor.
+
 The menu opens above or below its trigger according to available space, with a
 scrollbar when the viewport cannot hold every row. Mouse wheel and Up/Down reach
 all nine kinds and all six comparisons; menu input must not reach covered form
@@ -131,3 +141,12 @@ feedback growth keeps the panel and its Save button inside the viewport.
 Saving after a resize uses native mouse dispatch, so the same scenario also
 checks that the layer's input and rendering callbacks remain attached to
 Fabric's newly created per-screen events.
+
+A command with one server-parsed stage offers only its whole-command/line breakpoint in
+Source, Flow and the command-block editor. Multiple-stage commands retain separate stage
+controls. Existing single-stage saved definitions are kept; see the
+[legacy line-control rules](function-source.md) for condition collisions, disabling and Clear.
+`SingleStageBreakpointGameTest` checks actual acknowledged editor edits, a real vanilla
+single-stage command stop, the Flow line target, disabled legacy condition access, one execution
+on Continue, and the public Clear command. It also checks missing/LOADING preview actions,
+then READY condition Save and toggle against the same legacy target. Its server/world is disposable.

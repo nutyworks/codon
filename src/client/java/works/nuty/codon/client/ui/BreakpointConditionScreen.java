@@ -16,6 +16,7 @@ import works.nuty.codon.client.network.ClientNetworking;
 import works.nuty.codon.client.state.ClientBreakpointState;
 import works.nuty.codon.client.state.ClientDebuggerState;
 import works.nuty.codon.client.state.ClientStagePreviewState;
+import works.nuty.codon.client.state.BreakpointTargetPolicy;
 import works.nuty.codon.client.ui.layout.CommandFlowLayout;
 import works.nuty.codon.core.model.BreakpointCondition;
 import works.nuty.codon.core.model.BreakpointDefinition;
@@ -35,6 +36,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     private final Screen parent;
     private final ClientDebuggerState state;
     private final BreakpointDefinition original;
+    private final BreakpointTarget markerTarget;
     private final Anchor anchor;
     private BreakpointCondition.Kind kind;
     private BreakpointCondition.Comparison comparison;
@@ -64,14 +66,29 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
 
     public BreakpointConditionScreen(Screen parent, ClientDebuggerState state, BreakpointDefinition definition,
                                      Anchor anchor) {
+        this(parent, state, definition, definition.target(), anchor);
+    }
+
+    public BreakpointConditionScreen(Screen parent, ClientDebuggerState state, BreakpointDefinition definition,
+                                     BreakpointTarget markerTarget, Anchor anchor) {
         super(Component.translatable("codon.breakpoint.condition_title"), state.preferences());
         this.parent = parent;
         this.state = state;
         this.original = definition;
+        this.markerTarget = markerTarget;
         this.anchor = localAnchor(parent, anchor);
         this.kind = definition.condition().kind();
         this.comparison = definition.condition().comparison();
         this.thresholdText = Integer.toString(definition.condition().threshold());
+    }
+
+    public boolean editsMarker(BreakpointTarget target, String command) {
+        return BreakpointTargetPolicy.editedMarker(target, markerTarget, markerDefinition(), command);
+    }
+
+    public BreakpointDefinition markerDefinition() {
+        var acknowledged = state.breakpoints().get(original.target());
+        return acknowledged == null ? original.withEnabled(false) : acknowledged;
     }
 
     @Override protected void init() {
@@ -92,7 +109,13 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
                 : above >= 6 ? above : Math.clamp(top, 6, height - panelHeight - 6);
         }
         if (!previewRequested) {
-            previewRequested = ClientNetworking.requestStagePreview(state, original.target().location());
+            var preview = state.stagePreviews().get(original.target().location());
+            // An exact READY stage preview already validates these offsets. Keeping
+            // it also preserves an unobserved Flow selection while its editor is open.
+            previewRequested = !original.target().wholeCommand() && preview != null
+                && preview.status() == ClientStagePreviewState.Status.READY
+                && original.target().commandFingerprint().equals(BreakpointTarget.fingerprint(preview.savedCommand()))
+                || ClientNetworking.requestStagePreview(state, original.target().location());
         }
         kindButton = addRenderableWidget(WatchUi.button(left + 8, top + 58, panelWidth - 16, 20,
             Component.empty(), () -> openMenu(Menu.KIND, false))).withTextPadding(6);
@@ -306,7 +329,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
         if (!validCount() || !supportedCondition() || state.breakpoints().pending(original.target())) return;
         BreakpointDefinition current = state.breakpoints().get(original.target());
         saving = ClientNetworking.sendBreakpointEdit(state, ClientBreakpointState.Action.SAVE,
-            (current == null ? original : current).withCondition(draft()));
+            (current == null ? original : current).withCondition(draft()).withEnabled(true));
         sendFailed = !saving;
         refreshControls();
     }
@@ -351,7 +374,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
         if (saving && validCount() && !state.breakpoints().pending(original.target())
             && state.breakpoints().error(original.target()) == null) {
             BreakpointDefinition saved = state.breakpoints().get(original.target());
-            if (saved != null && saved.condition().equals(draft())) { onClose(); return; }
+            if (saved != null && saved.enabled() && saved.condition().equals(draft())) { onClose(); return; }
         }
         graphics.fill(0, 0, width, height, DebuggerTheme.color(0x70000000));
         graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.color(PANEL));

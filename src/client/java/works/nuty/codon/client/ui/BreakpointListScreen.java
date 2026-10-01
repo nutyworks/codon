@@ -25,6 +25,7 @@ import static works.nuty.codon.client.ui.DebuggerTheme.*;
 public final class BreakpointListScreen extends ScaledCodonScreen {
     private final Screen parent;
     private final ClientDebuggerState state;
+    private final @Nullable List<BreakpointTarget> targets;
     private List<BreakpointDefinition> displayed = List.of();
     private @Nullable BreakpointTarget selected;
     private @Nullable BreakpointDefinition deleted;
@@ -33,9 +34,15 @@ public final class BreakpointListScreen extends ScaledCodonScreen {
     private @Nullable DebuggerButton undoButton;
 
     public BreakpointListScreen(Screen parent, ClientDebuggerState state) {
+        this(parent, state, null);
+    }
+
+    /** A line with coexisting legacy conditions exposes every saved definition, including disabled ones. */
+    public BreakpointListScreen(Screen parent, ClientDebuggerState state, @Nullable List<BreakpointTarget> targets) {
         super(Component.translatable("codon.breakpoint.list_title"), state.preferences());
         this.parent = parent;
         this.state = state;
+        this.targets = targets == null ? null : List.copyOf(targets);
     }
 
     @Override protected void init() {
@@ -50,7 +57,7 @@ public final class BreakpointListScreen extends ScaledCodonScreen {
     private void rebuild() {
         clearWidgets();
         displayed = state.breakpoints().definitions().stream()
-            .filter(BreakpointDefinition::enabled)
+            .filter(definition -> targets == null ? definition.enabled() : targets.contains(definition.target()))
             .sorted(Comparator.comparing(definition -> BreakpointUi.target(definition.target()))).toList();
         offset = Math.clamp(offset, 0, Math.max(0, displayed.size() - rows));
         if (selected != null && displayed.stream().noneMatch(definition -> definition.target().equals(selected))) selected = null;
@@ -68,7 +75,7 @@ public final class BreakpointListScreen extends ScaledCodonScreen {
             button.configure(left + 8, y, panelWidth - 16 - actionWidth, 18, Component.literal(label),
                 true, target.equals(selected), true, false, () -> {
                     selected = target;
-                    if (function) source();
+                    if (function && targets == null) source();
                     else rebuild();
                 });
             button.withTextIcon(BreakpointUi.icon(definition));
@@ -154,7 +161,7 @@ public final class BreakpointListScreen extends ScaledCodonScreen {
 
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         List<BreakpointDefinition> latest = state.breakpoints().definitions().stream()
-            .filter(BreakpointDefinition::enabled)
+            .filter(definition -> targets == null ? definition.enabled() : targets.contains(definition.target()))
             .sorted(Comparator.comparing(definition -> BreakpointUi.target(definition.target()))).toList();
         if (!latest.equals(displayed)) rebuild();
         if (undoButton != null) undoButton.active = canUndo() && deleted != null
@@ -162,7 +169,7 @@ public final class BreakpointListScreen extends ScaledCodonScreen {
         graphics.fill(0, 0, width, height, DebuggerTheme.color(0x70000000));
         graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.color(PANEL));
         graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.color(BORDER));
-        WatchUi.line(graphics, font, tr("codon.breakpoint.list_header", displayed.size()),
+        WatchUi.line(graphics, font, tr(targets == null ? "codon.breakpoint.list_header" : "codon.breakpoint.saved_definitions_header", displayed.size()),
             left + 8, top + 10, panelWidth - 16, TEXT);
         if (displayed.isEmpty()) WatchUi.line(graphics, font, tr("codon.breakpoint.list_empty"), left + 12, top + 43,
             panelWidth - 24, MUTED);

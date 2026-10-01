@@ -26,6 +26,7 @@ import works.nuty.codon.client.network.ClientNetworking;
 import works.nuty.codon.client.state.ClientBreakpointState;
 import works.nuty.codon.client.state.ClientDebuggerState;
 import works.nuty.codon.client.state.ClientStagePreviewState;
+import works.nuty.codon.client.state.BreakpointTargetPolicy;
 import works.nuty.codon.client.ui.layout.CommandFlowLayout;
 import works.nuty.codon.client.ui.layout.SourceSyntax;
 import works.nuty.codon.client.ui.layout.SourceLineLayout;
@@ -206,7 +207,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
     private int sourceWidth() { return panelWidth - treeWidth - 16; }
     private int codeRight() { return sourceLeft() + sourceWidth() - 12; }
     private int codeWidth() { return Math.max(1, sourceWidth() - gutterWidth() - 12); }
-    private int lineMarkerX() { return sourceLeft() + gutterWidth() - 12; }
+    private int lineMarkerX() { return sourceLeft() + 11; }
     private int maximumLineOffset() { return sources.document() == null ? 0 : Math.max(0, codeLines.size() - sourceRows()); }
 
     private boolean splitterContains(double x, double y) {
@@ -402,7 +403,11 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             String number = Integer.toString(line);
             SourceLocation.Function location = new SourceLocation.Function(new FunctionLocation(selected, line));
             BreakpointDefinition definition = breakpoint(location);
-            boolean hovered = mouseX >= sourceLeft + 3 && mouseX < codeRight() && mouseY >= y && mouseY < y + ROW_HEIGHT;
+            String command = codeLines.get(index).source().trim();
+            boolean editingLine = BreakpointUi.editingMarker(this, BreakpointTarget.whole(location), command);
+            if (editingLine) definition = BreakpointUi.editingDefinition(this, BreakpointTarget.whole(location), command);
+            boolean hovered = ScreenLayers.get(this) == null && mouseX >= sourceLeft + 3 && mouseX < codeRight()
+                && mouseY >= y && mouseY < y + ROW_HEIGHT;
             boolean stopped = isActualStop(selected, line), inspected = selectedLine == line;
             if (stopped) {
                 graphics.fill(codeLeft, y, codeRight(), y + ROW_HEIGHT - 1, DebuggerTheme.color(AMBER_SURFACE));
@@ -412,7 +417,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                 if (!stopped) graphics.fill(codeLeft, y, codeRight(), y + ROW_HEIGHT - 1, DebuggerTheme.color(TEAL_SURFACE));
                 graphics.outline(codeLeft, y, codeWidth, ROW_HEIGHT - 1, DebuggerTheme.color(TEAL));
             }
-            graphics.text(font, SourceCodeLine.plain(number), lineMarkerX() - 4 - font.width(SourceCodeLine.plain(number)),
+            graphics.text(font, SourceCodeLine.plain(number), codeLeft - 6 - font.width(SourceCodeLine.plain(number)),
                 y + 5, DebuggerTheme.color(stopped ? AMBER : MUTED), false);
             SourceCodeLine code = codeLines.get(index);
             StageCounts counts = stageCounts.getOrDefault(line, new StageCounts(0, 0));
@@ -438,7 +443,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             renderInlineMarkers(graphics, stages, layout, line, rowHoveredStage, codeLeft, y, codeWidth, mouseX, mouseY);
             graphics.disableScissor();
             boolean enabled = definition != null && definition.enabled();
-            if (enabled || hovered && wholeEligible(document, line)) {
+            if (SourceInteraction.markerVisible(enabled, hovered && wholeEligible(document, line), editingLine)) {
                 BreakpointUi.icon(definition).drawSmall(graphics, lineMarkerX(), y + 5,
                     DebuggerTheme.color(enabled ? RED : MUTED));
             } else if (counts.enabled() > 0 && stages.isEmpty()) {
@@ -448,12 +453,20 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             if (counts.obsolete() > 0) {
                 // A changed fingerprint has no valid marker in the new command. Keep a
                 // separate review warning; never disguise it as a current stage control.
-                graphics.text(font, "!", sourceLeft + 10, y + 5, DebuggerTheme.color(AMBER), false);
-                if (hovered && mouseX >= sourceLeft + 8 && mouseX < sourceLeft + 15)
+                graphics.text(font, "!", sourceLeft + 21, y + 5, DebuggerTheme.color(AMBER), false);
+                if (hovered && mouseX >= sourceLeft + 21 && mouseX < sourceLeft + 26)
                     graphics.setTooltipForNextFrame(font, Component.translatable("codon.breakpoint.error.stale_source"), mouseX, mouseY);
             }
-            if (hovered && mouseX >= lineMarkerX() - 2 && mouseX < lineMarkerX() + 10 && counts.enabled() > 0)
-                graphics.setTooltipForNextFrame(font, Component.translatable("codon.source.stage_breakpoints", counts.enabled()), mouseX, mouseY);
+            if (hovered && mouseX >= lineMarkerX() - 2 && mouseX < lineMarkerX() + 10) {
+                int count = BreakpointTargetPolicy.stageCount(code.source().trim(), debugger.stagePreviews().get(location), null);
+                var saved = BreakpointUi.lineDefinitions(debugger, location, code.source().trim(), count);
+                if (BreakpointUi.waitingForPreview(debugger, BreakpointTarget.whole(location), code.source().trim(), count))
+                    graphics.setTooltipForNextFrame(font, Component.translatable("codon.breakpoint.preview_required"), mouseX, mouseY);
+                else if (count == 1 && saved.stream().anyMatch(value -> !value.target().wholeCommand()))
+                    graphics.setTooltipForNextFrame(font, Component.translatable("codon.breakpoint.saved_line_definitions", saved.size()), mouseX, mouseY);
+                else if (counts.enabled() > 0)
+                    graphics.setTooltipForNextFrame(font, Component.translatable("codon.source.stage_breakpoints", counts.enabled()), mouseX, mouseY);
+            }
             lineHits.add(new LineHit(y, ROW_HEIGHT, line));
         }
         hoveredLine = nextHoveredLine; hoveredStage = nextHoveredStage;
@@ -499,14 +512,20 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         SourceCodeLine code = codeLines.get(line - 1);
         var location = new SourceLocation.Function(new FunctionLocation(sources.selected(), line));
         var preview = state.stagePreviews().get(location);
+        InlineRow cached = inlineRows.get(line);
+        // Refreshing the condition preview must not remove its already-confirmed
+        // marker slot. Reuse offsets only for the same document command and exact editor target.
+        if (preview != null && preview.status() == ClientStagePreviewState.Status.LOADING && cached != null
+            && previewMatchesLine(document, line, cached.preview())
+            && cached.stages().stream().anyMatch(stage -> BreakpointUi.editingMarker(this, stage.target(), code.source().trim())))
+            return cached.stages();
         if (requestIfMissing && ClientStagePreviewState.needsRefresh(preview, document.lines().get(line - 1).trim())) {
             ClientNetworking.requestStagePreview(state, location);
             preview = state.stagePreviews().get(location);
         }
-        InlineRow cached = inlineRows.get(line);
         if (cached != null && cached.preview() == preview) return cached.stages();
         List<InlineStage> stages = new ArrayList<>();
-        if (previewMatchesLine(document, line, preview)) {
+        if (previewMatchesLine(document, line, preview) && preview.spans().size() > 1) {
             int leading = code.source().indexOf(preview.savedCommand());
             int prefixEnd = CommandFlowLayout.executePrefixEnd(preview.savedCommand()), previousEnd = 0;
             for (var span : preview.spans()) {
@@ -532,7 +551,8 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
 
     private SourceLineLayout visibleLayout(SourceCodeLine code, List<InlineStage> stages, int hover) {
         return new SourceLineLayout(code.source().length(), stages.stream()
-            .filter(stage -> SourceInteraction.markerVisible(stageEnabled(stage), stage.index() == hover))
+            .filter(stage -> SourceInteraction.markerVisible(stageEnabled(stage), stage.index() == hover,
+                BreakpointUi.editingMarker(this, stage.target(), code.source().trim())))
             .map(InlineStage::start).toList(), code::x);
     }
 
@@ -548,7 +568,8 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             boolean enabled = definition != null && definition.enabled(), hovered = hover == stage.index();
             if (selectedLine == line && selectedStageIndex == stage.index() && end > x && start < x + width)
                 graphics.outline(Math.max(x, start), y + 2, Math.min(x + width, end) - Math.max(x, start), 13, DebuggerTheme.color(TEAL));
-            if (SourceInteraction.markerVisible(enabled, hovered)) {
+            if (SourceInteraction.markerVisible(enabled, hovered,
+                BreakpointUi.editingMarker(this, stage.target(), codeLines.get(line - 1).source().trim()))) {
                 DebuggerIcon icon = BreakpointUi.icon(definition);
                 icon.drawSmall(graphics, markerX + (SourceLineLayout.MARKER_WIDTH - icon.smallSize()) / 2,
                     y + 5, DebuggerTheme.color(enabled ? RED : MUTED));
@@ -704,7 +725,10 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
 
     private BreakpointDefinition breakpoint(SourceLocation.Function location) {
         ClientDebuggerState state = CodonClientMod.state();
-        return state == null ? null : state.breakpoints().get(BreakpointTarget.whole(location));
+        if (state == null) return null;
+        String command = codeLines.get(location.location().line() - 1).source().trim();
+        return BreakpointUi.lineDefinition(BreakpointUi.lineDefinitions(state, location, command,
+            BreakpointTargetPolicy.stageCount(command, state.stagePreviews().get(location), null)));
     }
 
     private String sourceStatus() {
@@ -754,7 +778,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         SourceLocation.Function location = new SourceLocation.Function(new FunctionLocation(sources.selected(), selectedLine));
         ClientStagePreviewState.Preview preview = state.stagePreviews().get(location);
         FunctionSourceDocument document = sources.document();
-        if (document == null || !previewMatchesLine(document, selectedLine, preview)
+        if (document == null || !previewMatchesLine(document, selectedLine, preview) || preview.spans().size() <= 1
             || preview.spans().stream().noneMatch(span -> span.index() == selectedStageIndex)) return null;
         return BreakpointTarget.stage(location, selectedStageIndex, preview.savedCommand());
     }
@@ -771,8 +795,20 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         BreakpointTarget stage = selectedStageTarget();
         lineCondition.visible = lineCondition.active = !drawerOpen && line != null;
         stageCondition.visible = stageCondition.active = !drawerOpen && stage != null;
-        if (line != null) lineCondition.setMessage(Component.translatable("codon.source.line_condition"));
-        if (stage != null) stageCondition.setMessage(Component.translatable("codon.source.stage_condition"));
+        if (line != null) {
+            lineCondition.setMessage(Component.translatable("codon.source.line_condition"));
+            var state = CodonClientMod.state();
+            String command = codeLines.get(selectedLine - 1).source().trim();
+            int count = state == null ? 0 : BreakpointTargetPolicy.stageCount(command, state.stagePreviews().get(line.location()), null);
+            lineCondition.active &= state != null && !BreakpointUi.pending(state, line, command, count);
+            lineCondition.setTooltip(state != null && BreakpointUi.waitingForPreview(state, line, command, count)
+                ? net.minecraft.client.gui.components.Tooltip.create(Component.translatable("codon.breakpoint.preview_required")) : null);
+        }
+        if (stage != null) {
+            stageCondition.setMessage(Component.translatable("codon.source.stage_condition"));
+            var state = CodonClientMod.state();
+            stageCondition.active &= state != null && !state.breakpoints().pending(stage);
+        }
     }
 
     private void editLineCondition() { editCondition(selectedLineTarget()); }
@@ -781,13 +817,13 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
     private void editCondition(@org.jspecify.annotations.Nullable BreakpointTarget target) {
         ClientDebuggerState debugger = CodonClientMod.state();
         if (debugger == null || target == null) return;
-        BreakpointDefinition existing = debugger.breakpoints().get(target);
         DebuggerButton trigger = target.wholeCommand() ? lineCondition : stageCondition;
         BreakpointConditionScreen.Anchor anchor = trigger == null ? null
             : new BreakpointConditionScreen.Anchor(trigger.getX(), trigger.getY(),
                 trigger.getWidth(), trigger.getHeight());
-        ScreenLayers.open(this, new BreakpointConditionScreen(this, debugger,
-            existing == null ? BreakpointDefinition.plain(target) : existing, anchor));
+        String command = codeLines.get(selectedLine - 1).source().trim();
+        BreakpointUi.openCondition(this, debugger, target, command,
+            BreakpointTargetPolicy.stageCount(command, debugger.stagePreviews().get(target.location()), null), anchor);
     }
 
     private void rememberView() {
@@ -855,7 +891,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             }
             return true;
         }
-        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
+        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT || event.button() == InputConstants.MOUSE_BUTTON_RIGHT) {
             FunctionSourceDocument document = sources.document();
             int sourceLeft = left + treeWidth + 8;
             int lineTop = sourceLineTop();
@@ -870,9 +906,12 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                         selectedLine = line;
                         selectedStageIndex = -1;
                         BreakpointTarget target = BreakpointTarget.whole(location);
-                        BreakpointDefinition definition = debugger.breakpoints().get(target);
-                        ClientNetworking.sendBreakpointEdit(debugger, ClientBreakpointState.Action.TOGGLE,
-                            definition == null ? BreakpointDefinition.plain(target) : definition);
+                        if (event.button() == InputConstants.MOUSE_BUTTON_RIGHT) editCondition(target);
+                        else {
+                            String command = document.lines().get(line - 1).trim();
+                            BreakpointUi.toggle(debugger, target, command,
+                                BreakpointTargetPolicy.stageCount(command, debugger.stagePreviews().get(location), null));
+                        }
                         rememberView();
                     } else selectLine(line);
                     setFocused(null);
@@ -880,7 +919,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                 }
             }
             int listTop = top + 54;
-            if (event.x() >= left + 5 && event.x() < left + treeWidth - 5 && event.y() >= listTop
+            if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && event.x() >= left + 5 && event.x() < left + treeWidth - 5 && event.y() >= listTop
                 && event.y() < listTop + visibleRows() * ROW_HEIGHT) {
                 int index = listOffset + (int) ((event.y() - listTop) / ROW_HEIGHT);
                 if (index < entries.size()) {
