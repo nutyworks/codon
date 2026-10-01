@@ -66,7 +66,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
                 state.applyPause(fixture);
                 BlockLocation active = ((SourceLocation.Block) fixture.location()).block();
                 state.applyBreakpoints(List.of(active, new BlockLocation(active.x() + 2, active.y(), active.z(), active.dimension())));
-                LevelRenderEvents.END_MAIN.register(new DebugLevelRenderer(state, input));
+                LevelRenderEvents.BEFORE_GIZMOS.register(new DebugLevelRenderer(state, input));
                 CodonScreen result = new CodonScreen(input, new DebuggerOverlay(state));
                 client.setScreenAndShow(result);
                 return result;

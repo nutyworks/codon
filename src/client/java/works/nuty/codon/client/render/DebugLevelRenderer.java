@@ -26,7 +26,7 @@ import java.util.List;
 import java.util.Map;
 
 /** Draws debugger markers above terrain, preserving their exact execution coordinates. */
-public final class DebugLevelRenderer implements LevelRenderEvents.EndMain {
+public final class DebugLevelRenderer implements LevelRenderEvents.BeforeGizmos {
     private static final int BREAKPOINT_RED = ARGB.color(0.9f, 0xFC8C8C);
     private static final int PAUSED_AMBER = ARGB.color(1.0f, 0xF3C171);
     private static final int SOURCE_TEAL = ARGB.color(0.95f, 0x75DFD6);
@@ -55,7 +55,7 @@ public final class DebugLevelRenderer implements LevelRenderEvents.EndMain {
     }
 
     @Override
-    public void endMain(@NonNull LevelRenderContext context) {
+    public void beforeGizmos(@NonNull LevelRenderContext context) {
         ClientLevel level = Minecraft.getInstance().level;
         if (level == null || input.isUiHidden()) {
             return;

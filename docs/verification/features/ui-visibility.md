@@ -22,6 +22,7 @@ The default binding is `H`; the same gesture works in world and debugger cursor 
 
 - [UiHideGesture](../../../src/client/java/works/nuty/codon/client/input/UiHideGesture.java): monotonic press/release classification and cancelled gestures.
 - [InputManager](../../../src/client/java/works/nuty/codon/client/input/InputManager.java): binding, typing guard and lifecycle reset.
+- [DebugLevelRenderer](../../../src/client/java/works/nuty/codon/client/render/DebugLevelRenderer.java): submits Codon's markers at `BEFORE_GIZMOS`, before the current frame is finalized. Skipping submission when hidden leaves vanilla and other mods' gizmos intact.
 - [CodonScreen](../../../src/client/java/works/nuty/codon/client/ui/CodonScreen.java): hidden interaction suppression.
 - [Client mixins](../../../src/client/resources/codon.client.mixins.json): native keyboard/mouse events and screen transitions.
 
@@ -32,10 +33,11 @@ The default binding is `H`; the same gesture works in world and debugger cursor 
 | Short/long boundary, repeated events and cancellation | `clientTest`: `UiHideGestureTest` |
 | Native keyboard/mouse dispatch, screen input, rebind, chat, missed mouse release, focus flag and rejoin | `DebuggerPeekUiGameTest` |
 | Real server breakpoint stays paused, then each command executes once after Resume | `DebuggerFreecamResumeGameTest` |
+| First hidden/restored frame and sustained holds in world/cursor mode at a real entity-context pause; running breakpoint outlines, unrelated gizmos, disconnect/rejoin | `DebuggerWorldMarkerVisibilityGameTest` |
 
 ```sh
 ./gradlew clientTest --tests '*UiHideGestureTest'
-./gradlew runClientGameTest -PclientGameTest=DebuggerPeekUiGameTest,DebuggerFreecamResumeGameTest
+./gradlew runClientGameTest -PclientGameTest=DebuggerPeekUiGameTest,DebuggerWorldMarkerVisibilityGameTest
 ```
 
 Inspect the `codon-peek-*` screenshots: compare world and cursor-mode baselines,
@@ -47,3 +49,12 @@ checks the first fresh press, continued-hold suppression and text-field guard.
 Manual window switching remains necessary to observe platform-specific lost releases.
 Use real short taps and sustained holds when judging the 250 ms threshold; automated
 boundary assertions establish classification, not a user's timing preference.
+
+The world-marker regression records primitives finalized for each native rendered frame,
+including the first frame after the keyboard callback. Its `codon-marker-*` PNGs capture
+the first completed native frame, without the framework's additional screenshot render.
+Compare the turquoise entity ring and amber/red block outlines against the magenta
+unrelated-gizmo sentinel. Hidden captures retain the sentinel, vanilla hotbar and chat.
+The actual server pause and snapshot must remain unchanged across H gestures, and
+the scoreboard command must execute exactly once after Resume. This does not cover
+physical focus changes, a separate dedicated server, or the original packaged VM runtime.
