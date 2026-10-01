@@ -6,6 +6,8 @@ import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.network.chat.Component;
 import org.jspecify.annotations.Nullable;
 import works.nuty.codon.client.input.InputManager;
+import works.nuty.codon.client.network.ClientNetworking;
+import works.nuty.codon.client.state.ClientBreakpointState;
 import works.nuty.codon.client.state.BreakpointTargetPolicy;
 import works.nuty.codon.client.state.ClientDebuggerState;
 import works.nuty.codon.client.state.ClientFlowPreviewRequests;
@@ -454,7 +456,9 @@ public final class CommandPanel {
                         current == null ? BreakpointDefinition.plain(target) : current);
                 });
             marker.withoutChrome().withSmallIcon(BreakpointUi.icon(definition));
-            if (definition == null || !definition.enabled()) marker.revealOnHover(x, y, cell.width(), 16);
+            if ((definition == null || !definition.enabled())
+                && !BreakpointUi.editingMarker(client.gui.screen(), target, state.selectedCommand().text()))
+                marker.revealOnHover(x, y, cell.width(), 16);
             marker.withStatusColor(definition != null && definition.enabled() ? RED : MUTED,
                 definition != null && definition.enabled() ? RED_SURFACE : SURFACE);
             var error = state.breakpoints().error(target);

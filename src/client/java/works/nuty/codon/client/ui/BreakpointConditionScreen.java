@@ -109,7 +109,13 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
                 : above >= 6 ? above : Math.clamp(top, 6, height - panelHeight - 6);
         }
         if (!previewRequested) {
-            previewRequested = ClientNetworking.requestStagePreview(state, original.target().location());
+            var preview = state.stagePreviews().get(original.target().location());
+            // An exact READY stage preview already validates these offsets. Keeping
+            // it also preserves an unobserved Flow selection while its editor is open.
+            previewRequested = !original.target().wholeCommand() && preview != null
+                && preview.status() == ClientStagePreviewState.Status.READY
+                && original.target().commandFingerprint().equals(BreakpointTarget.fingerprint(preview.savedCommand()))
+                || ClientNetworking.requestStagePreview(state, original.target().location());
         }
         kindButton = addRenderableWidget(WatchUi.button(left + 8, top + 58, panelWidth - 16, 20,
             Component.empty(), () -> openMenu(Menu.KIND, false))).withTextPadding(6);
