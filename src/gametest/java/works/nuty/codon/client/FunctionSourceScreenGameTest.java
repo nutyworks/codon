@@ -599,15 +599,17 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
                     var previews = CodonClientMod.state().stagePreviews();
                     long request = previews.begin(location);
                     previews.accept(request, location, ClientStagePreviewState.Status.READY, command,
-                        List.of(new ClientStagePreviewState.StageSpan(0, 0, command.length(), true)));
+                        List.of(new ClientStagePreviewState.StageSpan(0, 0, 13, false),
+                            new ClientStagePreviewState.StageSpan(1, 14, command.length(), true)));
                 });
+                context.getInput().setCursorPos(0, 0);
                 context.waitTicks(2);
                 int[] geometry = context.computeOnClient(client -> {
                     var screen = client.gui.screen();
                     var find = sourceSearchBox(screen);
                     int codeX = find.getX() + 33;
                     return new int[]{screen.width, screen.height, codeX + client.font.width(command.substring(0, 8)),
-                        find.getBottom() + 5, codeX - 12};
+                        find.getBottom() + 5, find.getX() + 6};
                 });
                 String name = "codon-function-source-matrix-enabled-" + enabled + "-selected-" + selected;
                 assertMatrixPixels(context, geometry, enabled, enabled, name + "-nohover");

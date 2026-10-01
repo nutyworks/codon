@@ -300,9 +300,8 @@ public final class FunctionSourceReviewGameTest implements FabricClientGameTest 
         context.runOnClient(client -> {
             var screen = client.gui.screen();
             List<?> hits = list(screen, "stageHits");
-            var current = BreakpointTarget.stage(first, 0, replacement);
-            check(hits.stream().anyMatch(hit -> current.equals(call(hit, "target", new Class<?>[0]))),
-                "fresh nonempty preview exposes the current command's stage candidate without selecting its row");
+            check(hits.isEmpty(),
+                "fresh single-stage preview exposes only the line affordance, without an inline stage candidate");
             check(hits.stream().noneMatch(hit -> obsolete.target().equals(call(hit, "target", new Class<?>[0]))),
                 "obsolete fingerprint must never become a current stage click target");
         });
@@ -328,7 +327,7 @@ public final class FunctionSourceReviewGameTest implements FabricClientGameTest 
             var image = javax.imageio.ImageIO.read(context.takeScreenshot(name).toFile());
             double sx = (double) image.getWidth() / geometry[0], sy = (double) image.getHeight() / geometry[1];
             boolean warning = false, active = false;
-            for (int x = (int) Math.ceil((geometry[2] + 10) * sx); x < (int) Math.floor((geometry[2] + 14) * sx); x++)
+            for (int x = (int) Math.ceil((geometry[2] + 21) * sx); x < (int) Math.floor((geometry[2] + 25) * sx); x++)
                 for (int y = (int) Math.ceil((geometry[3] + 5) * sy); y < (int) Math.floor((geometry[3] + 14) * sy); y++)
                     warning |= (image.getRGB(x, y) & 0xFFFFFF) == (DebuggerTheme.AMBER & 0xFFFFFF);
             for (int x = (int) Math.ceil((geometry[2] + 16) * sx); x < (int) Math.floor(geometry[4] * sx); x++)

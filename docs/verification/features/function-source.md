@@ -18,8 +18,10 @@ be checked. The viewer lists functions actually loaded by the current server.
    scrollbar or use the vertical wheel to reach original lines. Drag the horizontal
    scrollbar, use a horizontal wheel/Shift+wheel, or focus the code and use Left/Right;
    the line numbers and breakpoint gutter stay fixed.
-2. Select an executable line. Toggle the line marker; select a parsed stage and
-   toggle its marker. Use **Line condition…** or **Stage condition…** to edit
+2. Select an executable line. Toggle its gutter marker to the **left of the line number**.
+   The line number itself only selects the row. A line with exactly one server-parsed stage
+   has only the line control: no inline stage marker, stage hit box, or Stage condition button.
+   For multiple-stage lines, select a parsed stage and toggle its marker. Use **Line condition…** or **Stage condition…** to edit
    conditions. Breakpoints refer to original file line numbers and saved stage
    offsets, not wrapped display rows. Stage markers are inserted at the server-confirmed boundaries inside the
    original row, following the command-block editor. Visual marker slots do not
@@ -103,6 +105,7 @@ scroll settings. Synthetic callback input does not verify a physical trackpad.
 
 ## Code entry points
 
+- [BreakpointTargetPolicy](../../../src/client/java/works/nuty/codon/client/state/BreakpointTargetPolicy.java): single-stage target selection shared with Flow and the command editor; partial recording never establishes a one-stage command.
 - [FunctionSourceScreen](../../../src/client/java/works/nuty/codon/client/ui/FunctionSourceScreen.java), [SourceCodeLine](../../../src/client/java/works/nuty/codon/client/ui/SourceCodeLine.java), [SourceSyntax](../../../src/client/java/works/nuty/codon/client/ui/layout/SourceSyntax.java), [SourceLineLayout](../../../src/client/java/works/nuty/codon/client/ui/layout/SourceLineLayout.java), [CommandFlowLayout](../../../src/client/java/works/nuty/codon/client/ui/layout/CommandFlowLayout.java): tree, lines and stage layout.
 - [ClientFunctionSourceState](../../../src/client/java/works/nuty/codon/client/state/ClientFunctionSourceState.java): list/source requests and browsing state.
 - [FunctionSourceRepository](../../../src/main/java/works/nuty/codon/adapter/FunctionSourceRepository.java): loaded server functions and source reads.
@@ -115,6 +118,7 @@ scroll settings. Synthetic callback input does not verify a physical trackpad.
 | Line/source model | `coreTest`: `FunctionSourceDocumentTest` |
 | Requests, selection and layout | `clientTest`: `ClientFunctionSourceStateTest`, `FunctionSourceScreenLayoutTest`, `SourceSyntaxTest`, `SourceLineLayoutTest`, `SourceInteractionTest`, `ClientStagePreviewStateTest`, `ScrollbarInputTest`, `CommandFlowLayoutTest` |
 | Network payloads | `test`: `FunctionSourcePayloadTest`, `BreakpointStagePreviewPayloadTest` |
+| Line gutter, one-stage suppression, EN/KO/custom scale and hit boxes | `FunctionLineBreakpointGameTest` |
 | Real rendering, selection, resize and inline stage markers | `FunctionSourceScreenGameTest`, `FunctionSourceInteractionGameTest`, `FunctionSourceReviewGameTest` |
 | Source toolbar icon, state styling, scale readability and native activation | `DebuggerSourceIconGameTest` |
 | F3/Shift+F3 press/repeat/release ownership and vanilla behavior outside Source | `FunctionSourceKeyboardGameTest` |
@@ -213,3 +217,33 @@ block positions, literal/wildcard slots, item/wildcard/component predicates and 
 condition chain retain their links. Unit checks also cover literal `run` slot and
 predicate tokens, unsupported target kinds and incomplete arguments. The lexical
 viewer does not validate item/slot registry entries or execute these conditions.
+
+Opening/cancelling a single-stage legacy editor retains its exact target, fingerprint,
+condition and enabled flag. Save enables that same target with the chosen condition.
+The single line control includes matching saved stage-zero definitions without rewriting the
+world file. A click disables every active matching definition; when all are disabled it restores
+all saved definitions. A sole legacy definition is toggled/edited in place, so a new duplicate
+line definition is not created. When line and legacy definitions coexist, right-click or
+Line condition opens their filtered management list, including disabled definitions. Each
+condition can be edited/deleted separately and Undo restores its exact original definition.
+Obsolete fingerprints remain review warnings and are never silently attached to new text.
+`/codon breakpoint clear` explicitly removes all definitions, including disabled legacy saves.
+
+While the matching stage count is unresolved (missing/LOADING preview or old READY text after
+reload), a matching saved stage-zero definition makes the line action ambiguous. Source and
+the native editor defer its toggle and condition editor until the current preview resolves;
+they never create a second plain line target in that window. Ordinary whole-line actions remain
+available without a matching legacy definition once the saved-breakpoint snapshot is ready.
+READY single-stage previews restore the in-place legacy action; READY multi-stage previews keep
+line and stage actions separate. `BreakpointTargetPolicyTest`, `FunctionLineBreakpointGameTest`
+and `SingleStageBreakpointGameTest` cover these transitions and condition Save identities.
+
+An inactive line/stage marker stays visible for the entire condition edit, including after
+the pointer leaves and while a selector menu is open. Only the edited marker is retained;
+unrelated inactive candidates remain hidden. Cancel removes that temporary marker/slot
+without enabling or creating a definition. Save enables the original target after server
+acknowledgement, including disabled legacy stage-zero saves. `BreakpointConditionVisibilityGameTest`
+checks native pixels, line/stage/legacy/new targets, menus, Cancel and real server Save edits
+in English and Korean at a fractional custom scale. A controlled pending request also verifies
+that Stage condition disables until acknowledgement. Its source page is a presentation fixture
+matching the loaded `codon_test:condition_visibility` test function; it does not claim a native pause.
