@@ -143,6 +143,7 @@ public final class PauseWatchChanges {
         Map<WatchSpec, Observation> after = new LinkedHashMap<>();
         Set<Identifier> keys;
         try {
+            if (!storageBaseline) PersistedStorageNamespaces.loadForSnapshot(server);
             keys = server.getCommandStorage().keys().collect(java.util.stream.Collectors.toSet());
         } catch (RuntimeException ignored) {
             return;

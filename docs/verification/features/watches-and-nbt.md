@@ -65,6 +65,24 @@ Queries while paused must remain read-only and must not cause an extra execution
 step. Keep previous/current comparison tied to observed pauses. A brief retained
 display during a pending reply must not enable actions on stale data.
 
+For cold Storage history, persist `changed:0,removed:1,unchanged:7`, save/close the
+world, then reopen before any Storage query. Pause before changing the values and
+Continue to a later breakpoint after changing `changed` to 1 and deleting `removed`.
+Watches must show `0→1` and `1→missing`, with unchanged/initially missing fields
+neutral and no spurious preexisting automatic rows. Entity/score history must also
+remain correct. The first automatic snapshot discovers only immediate valid
+`DATA/<namespace>/command_storage.dat` files and loads existing containers through
+vanilla's non-creating read path. This occurs once per execution baseline, not at
+world startup or on every Continue. Already loaded containers are not reread;
+reads must not dirty values, add probe keys or change persisted bytes.
+Codec errors can return a partial vanilla container, including an empty one. The
+SavedDataStorage mixin records incomplete Storage decodes without changing vanilla's
+returned data or cache. Automatic baseline discovery rejects those namespaces,
+including cached partial reads, and leaves its previous baseline intact. Truncated
+files likewise withhold the baseline. Repairing a file in the same server does not
+clear vanilla's cached failed/partial result; a fresh saved-world reopen can read
+the repaired values and establish a complete baseline.
+
 ## Code entry points
 
 - [WatchReader](../../../src/main/java/works/nuty/codon/adapter/WatchReader.java), [NbtTreeReader](../../../src/main/java/works/nuty/codon/adapter/NbtTreeReader.java): server-side reads.
@@ -82,6 +100,8 @@ display during a pending reply must not enable actions on stale data.
 | Pending/paged data | `clientTest`: `ClientNbtStateTest`, `ClientNbtDisplayDelayTest`, `ClientWatchDisplayDelayTest` |
 | Files and transfer | `test`: `WorldWatchPersistenceTest`, `WatchDefinitionTransferTest` |
 | Watch readers and rendered values | `DebuggerWatchGameTest` |
+| Cold persisted Storage baseline, real restart/Continue, deletion/creation and entity/score history | `test`: `PersistedStorageNamespacesTest`; `DebuggerColdStorageWatchGameTest`, `PauseWatchChangesGameTest`, `DebuggerAutomaticWatchGameTest` |
+| Truncated/partial Storage decode, withheld baseline, and repaired-world reopen | `test`: `StorageReadFailureTest` (actual untransformed vanilla reader); `DebuggerStorageReadFailureGameTest` (actual mixin/snapshot/reopen) |
 | Editor and server request/reply | `DebuggerWatchEditorGameTest`, `WatchEditorTransportGameTest` |
 | Watch form alignment, languages and native input | `clientTest`: `WatchFormLayoutTest`; `DebuggerWatchFormLayoutGameTest` |
 | Browse dialog alignment, short Objectives, paging and selection | `clientTest`: `WatchPickerLayoutTest`; `DebuggerWatchPickerLayoutGameTest`, `WatchEditorTransportGameTest` |
