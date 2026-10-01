@@ -13,6 +13,57 @@ class ClientUnobservedFlowSelectionTest {
     private static final int TERMINAL_START = COMMAND.indexOf("say truthy");
     private static final PauseSource SOURCE = new PauseSource(new Vec3d(1, 64, 1), 0, 0, null, "minecraft:overworld");
 
+    @Test void staticSelectionClearsCapturedCallPathAndRecordedSelectionRestoresIt() {
+        var state = state();
+        var frames = state.displayedCallStack();
+        assertFalse(frames.isEmpty());
+        state.selectUnobservedExecutionFlowStage(1);
+        assertTrue(state.displayedCallStack().isEmpty());
+        assertEquals(-1, state.selectedCallFrameIndex());
+        state.selectCallFrame(0);
+        assertEquals(1, state.selectedUnobservedStageIndex(), "old frame buttons must not remain actionable");
+        state.selectExecutionFlowStage(0);
+        assertEquals(frames, state.displayedCallStack());
+        assertEquals(0, state.selectedCallFrameIndex());
+        state.selectUnobservedExecutionFlowStage(1);
+        state.selectCurrentCommand();
+        assertEquals(frames, state.displayedCallStack());
+    }
+
+    @Test void staticSelectionRetainsItsRecordedVisitAcrossRepeatedSelectionsAndPreviewRefresh() {
+        var first = pause(1).executionFlows().getFirst().stages().getFirst();
+        var parent = new ExecutionFlowTrace(7, LOCATION, List.of(first,
+            new ExecutionFlowStage(2, first.command(), List.of(), List.of(), List.of(), List.of(),
+                0, 0, 0, false, -1, -1, true, true, false, 2, first.callStack())), false);
+        var other = new ExecutionFlowTrace(8, LOCATION, List.of(new ExecutionFlowStage(0, first.command(),
+            List.of(), List.of(), List.of(), List.of(), 0, 0, 0, false, -1, -1, true, true, false, 1)), false);
+        var tail = new ExecutionFlowTrace(9, LOCATION, List.of(new ExecutionFlowStage(0, first.command(),
+            List.of(), List.of(), List.of(), List.of(), 0, 0, 0, false, -1, -1, true, true, false, 3)), false);
+        var state = new ClientDebuggerState();
+        state.applyPause(new PauseSnapshot(LOCATION, first.command(), 0, first.callStack(), List.of(SOURCE),
+            List.of(parent, other, tail), PauseReason.BREAKPOINT, 1));
+        long request = state.stagePreviews().begin(LOCATION);
+        state.stagePreviews().accept(request, LOCATION, ClientStagePreviewState.Status.READY, COMMAND, spans());
+        state.selectExecutionFlowStage(1);
+        state.selectUnobservedExecutionFlowStage(1);
+        state.selectUnobservedExecutionFlowStage(1);
+        state.stagePreviews().begin(LOCATION);
+        state.selectAdjacentExecutionVisit(-1);
+        assertEquals(8, state.selectedExecutionFlow().invocationId(), "Previous stays before the originating return visit");
+        state.selectExecutionFlow(0);
+        request = state.stagePreviews().begin(LOCATION);
+        state.stagePreviews().accept(request, LOCATION, ClientStagePreviewState.Status.READY, COMMAND, spans());
+        state.selectUnobservedExecutionFlowStage(1);
+        state.selectAdjacentExecutionVisit(1);
+        assertEquals(9, state.selectedExecutionFlow().invocationId(), "Next stays after the originating return visit");
+        state.selectExecutionFlow(0);
+        state.selectExecutionFlowStage(0);
+        state.selectUnobservedExecutionFlowStage(1);
+        assertFalse(state.hasAdjacentExecutionVisit(-1), "the first visit does not gain a guessed Previous target");
+        state.selectAdjacentExecutionVisit(1);
+        assertEquals(8, state.selectedExecutionFlow().invocationId());
+    }
+
     @Test void staticSelectionHasIdentityAndCommandButNoBorrowedLiveEvidence() {
         var state = state();
         assertTrue(state.isViewingCurrentCommand());

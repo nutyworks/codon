@@ -52,6 +52,7 @@ public final class DebuggerUnobservedFlowBreakpointGameTest implements FabricCli
                         "Flow exposes the never-observed terminal as a selectable stage");
                 });
                 BreakpointTarget terminal = context.computeOnClient(client -> target(location(1), "say truthy returned"));
+                rejectedMarkerFeedback(context, terminal);
                 configure(context, "say truthy returned", terminal, BreakpointCondition.ALWAYS);
                 disableWhole(context, location(1));
                 long firstPause = context.computeOnClient(client -> state().snapshot().pauseId());
@@ -67,6 +68,10 @@ public final class DebuggerUnobservedFlowBreakpointGameTest implements FabricCli
                 });
                 context.takeScreenshot("codon-unobserved-flow-first-terminal-stop");
                 long terminalPause = context.computeOnClient(client -> state().snapshot().pauseId());
+                context.runOnClient(client -> {
+                    long request = state().stagePreviews().begin(location(2));
+                    state().stagePreviews().accept(request, location(2), ClientStagePreviewState.Status.NOT_FOUND, "", List.of());
+                });
                 resume(context);
                 awaitPause(context, location(2), terminalPause);
                 context.runOnClient(client -> {
@@ -157,7 +162,8 @@ public final class DebuggerUnobservedFlowBreakpointGameTest implements FabricCli
         context.waitTicks(2);
         context.runOnClient(client -> {
             require(state().selectedExecutionFlowStage() == null && state().displayedSources().isEmpty()
-                    && state().selectedPauseSourceIndex() == -1,
+                    && state().selectedPauseSourceIndex() == -1 && state().displayedCallStack().isEmpty()
+                    && state().selectedCallFrameIndex() == -1,
                 "unobserved selection contains no invented record or borrowed live contexts");
         });
         long before = context.computeOnClient(client -> state().breakpoints().definitions().stream().filter(BreakpointDefinition::enabled).count());
@@ -202,6 +208,45 @@ public final class DebuggerUnobservedFlowBreakpointGameTest implements FabricCli
         context.runOnClient(client -> require(state().breakpoints().get(target).enabled()
                 && state().breakpoints().get(target).condition().equals(condition),
             "server acknowledges the exact static stage index, fingerprint, and condition"));
+    }
+
+    /** Controlled rejected acknowledgements verify UI feedback without inventing execution records. */
+    private static void rejectedMarkerFeedback(ClientGameTestContext context, BreakpointTarget target) {
+        for (var result : List.of(ClientBreakpointState.Result.STALE_SOURCE, ClientBreakpointState.Result.NO_PERMISSION)) {
+            context.runOnClient(client -> {
+                var edit = state().breakpoints().begin(ClientBreakpointState.Action.TOGGLE, BreakpointDefinition.plain(target));
+                state().breakpoints().finish(edit.requestId(), result);
+            });
+            context.waitTicks(2);
+            double[] pointer = context.computeOnClient(client -> {
+                var marker = marker(client.gui.screen(), clause(client.gui.screen(), "say truthy returned"));
+                return new double[]{(marker.getX() + 7.0) * client.getWindow().getScreenWidth() / client.gui.screen().width,
+                    (marker.getY() + 4.0) * client.getWindow().getScreenHeight() / client.gui.screen().height};
+            });
+            context.getInput().setCursorPos(pointer[0], pointer[1]);
+            context.waitTicks(12);
+            context.runOnClient(client -> {
+                var marker = marker(client.gui.screen(), clause(client.gui.screen(), "say truthy returned"));
+                try {
+                    var field = DebuggerButton.class.getDeclaredField("tooltip");
+                    field.setAccessible(true);
+                    var tooltip = (net.minecraft.client.gui.components.Tooltip) field.get(marker);
+                    StringBuilder text = new StringBuilder();
+                    for (var line : tooltip.toCharSequence(client)) {
+                        line.accept((index, style, codePoint) -> {
+                            text.appendCodePoint(codePoint);
+                            return true;
+                        });
+                        text.append(' ');
+                    }
+                    String expected = net.minecraft.network.chat.Component.translatable("codon.breakpoint.error."
+                        + result.name().toLowerCase(java.util.Locale.ROOT)).getString();
+                    require(text.toString().replaceAll("\\s+", " ").contains(expected.replaceAll("\\s+", " ")),
+                        "unobserved marker explains rejected edit: " + result + " tooltip=" + text + " expected=" + expected);
+                } catch (ReflectiveOperationException failure) { throw new AssertionError(failure); }
+            });
+            context.takeScreenshot("codon-unobserved-flow-rejected-" + result.name().toLowerCase(java.util.Locale.ROOT));
+        }
     }
 
     private static void disableWhole(ClientGameTestContext context, SourceLocation location) {

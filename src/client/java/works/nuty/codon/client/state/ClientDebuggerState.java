@@ -672,9 +672,13 @@ public final class ClientDebuggerState {
             || flow.stages().stream().anyMatch(stage -> stage.index() == stageIndex)) return;
         var span = preview.spans().stream().filter(stage -> stage.index() == stageIndex).findFirst().orElse(null);
         if (span == null) return;
-        unobservedSelection = new UnobservedSelection(flow.invocationId(), preview.savedCommand(), span);
+        int navigationStageIndex = unobservedSelection == null ? selectedFlowStageIndex
+            : unobservedSelection.navigationStageIndex();
+        unobservedSelection = new UnobservedSelection(flow.invocationId(), preview.savedCommand(), span, navigationStageIndex);
         selectedFlowStageIndex = -1;
         selectedSourceIndex = -1;
+        displayedCallStack = List.of();
+        selectedCallFrameIndex = -1;
         syncLiveSourceSelection();
     }
 
@@ -703,9 +707,11 @@ public final class ClientDebuggerState {
             executionVisits = current == null ? List.of() : ExecutionFlowTimeline.visits(current.executionFlows());
         }
         int selectedVisit = -1;
+        int navigationStageIndex = unobservedSelection == null ? selectedFlowStageIndex
+            : unobservedSelection.navigationStageIndex();
         for (int i = 0; i < executionVisits.size(); i++) {
             ExecutionFlowTimeline.Visit visit = executionVisits.get(i);
-            if (visit.flowIndex() == selectedFlowIndex && visit.stageIndices().contains(selectedFlowStageIndex)) {
+            if (visit.flowIndex() == selectedFlowIndex && visit.stageIndices().contains(navigationStageIndex)) {
                 selectedVisit = i;
                 break;
             }
@@ -828,5 +834,6 @@ public final class ClientDebuggerState {
     private record FlowSelectionHint(long invocationId, int stageIndex, long contextId) {
     }
 
-    private record UnobservedSelection(long invocationId, String command, ClientStagePreviewState.StageSpan span) { }
+    private record UnobservedSelection(long invocationId, String command, ClientStagePreviewState.StageSpan span,
+                                       int navigationStageIndex) { }
 }

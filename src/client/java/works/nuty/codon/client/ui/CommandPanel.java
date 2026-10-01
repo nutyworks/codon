@@ -9,7 +9,7 @@ import works.nuty.codon.client.input.InputManager;
 import works.nuty.codon.client.network.ClientNetworking;
 import works.nuty.codon.client.state.ClientBreakpointState;
 import works.nuty.codon.client.state.ClientDebuggerState;
-import works.nuty.codon.client.state.ClientStagePreviewState;
+import works.nuty.codon.client.state.ClientFlowPreviewRequests;
 import works.nuty.codon.client.ui.layout.CommandFlowLayout;
 import works.nuty.codon.client.ui.layout.CommandFlowLayout.Part;
 import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds;
@@ -54,7 +54,7 @@ public final class CommandPanel {
     private @Nullable Selection lastSelection;
     private @Nullable StackSelection lastStackSelection;
     private @Nullable PauseSnapshot renderedSnapshot;
-    private final Set<SourceLocation> requestedPreviews = new HashSet<>();
+    private final ClientFlowPreviewRequests previewRequests = new ClientFlowPreviewRequests();
     private DebuggerNavigation navigation;
     private ScrollbarInput scrollbars;
     private DebuggerNavigation.Group navigationGroup = DebuggerNavigation.Group.ACTIONS;
@@ -78,7 +78,6 @@ public final class CommandPanel {
         this.scrollbars = overlay.scrollbars();
         used.clear();
         buttons.clear();
-        if (renderedSnapshot != snapshot) requestedPreviews.clear();
         renderedSnapshot = snapshot;
         commandBounds = stackBounds = EMPTY;
         conditionAnchor = EMPTY;
@@ -94,9 +93,8 @@ public final class CommandPanel {
         ExecutionFlowTrace flow = state.selectedExecutionFlow();
         CommandSnippet snippet = state.selectedCommand();
         if (flow != null && snippet != null && !(flow.location() instanceof SourceLocation.Player)
-            && !requestedPreviews.contains(flow.location())
-            && ClientStagePreviewState.needsRefresh(state.stagePreviews().get(flow.location()), snippet.text())
-            && ClientNetworking.requestStagePreview(state, flow.location())) requestedPreviews.add(flow.location());
+            && previewRequests.needsRequest(snapshot, flow.location(), state.stagePreviews().get(flow.location()), snippet.text())
+            && ClientNetworking.requestStagePreview(state, flow.location())) previewRequests.requested(flow.location());
 
         // The action row is anchored to the screen's bottom, independently of expansion.
         int actionY = Math.max(area.y() + 1, area.y() + area.height() - 20);
@@ -447,9 +445,12 @@ public final class CommandPanel {
             if (definition == null || !definition.enabled()) marker.revealOnHover(x, y, cell.width(), 16);
             marker.withStatusColor(definition != null && definition.enabled() ? RED : MUTED,
                 definition != null && definition.enabled() ? RED_SURFACE : SURFACE);
+            var error = state.breakpoints().error(target);
             marker.setTooltip(Tooltip.create(Component.literal((definition == null ? tr("codon.breakpoint.add")
                 : definition.enabled() ? tr("codon.breakpoint.disable") : tr("codon.breakpoint.enable"))
-                + (definition == null ? "" : " · " + BreakpointUi.condition(definition.condition())))));
+                + (definition == null ? "" : " · " + BreakpointUi.condition(definition.condition()))
+                + (error == null ? "" : "\n" + tr("codon.breakpoint.error."
+                    + error.name().toLowerCase(java.util.Locale.ROOT))))));
         }
         DebuggerButton clause = button(unobservedKey("clause", flow, part) + "-" + cell.row(),
             new Bounds(x + inset, y, Math.max(1, cell.width() - inset), 16), Component.literal(cell.text()), true,
