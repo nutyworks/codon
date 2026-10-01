@@ -9,7 +9,12 @@ be checked. The viewer lists functions actually loaded by the current server.
 
 1. Press `V`, then the toolbar's **Source** (`</>`) icon. Search by namespace/path, expand
    folders and select the function. Its source appears read-only; browsing does
-   not require executing it. The header shows the datapack-relative
+   not require executing it.
+   The Functions tree shows a separate scrollbar only while its expanded or
+   filtered rows overflow. Click its track or drag its thumb to navigate without
+   selecting a row or scrolling Source. Search, folder collapse and resizing
+   clamp its position and remove the track when all rows fit.
+   The header shows the datapack-relative
    `data/<namespace>/function/<path>.mcfunction` path (hover for the full path).
    The code pane uses the default Minecraft font and measures its actual glyph
    advances; Unicode comments retain their glyphs. Commands, `execute` keywords, strings, values,
@@ -198,6 +203,15 @@ maximum/minimum, custom scale, the compact drawer, a real HUD control before/aft
 Source covers it, a modal blocking Source and Korean minimum layout. It uses the
 same injected-source limitation as the other UI fixture. Physical trackpad input
 and the manual loaded-function path remain separate acceptance checks.
+
+`FunctionListScrollbarGameTest` covers the Functions tree's native wheel direction,
+track clicks, captured thumb drag, source-scroll isolation and row hit clipping.
+It checks text focus/Tab, modal blocking, disappearance during a drag, empty and
+exact-fit filters, one-row overflow, namespace collapse, taller windows, fractional
+custom scale and the compact drawer. Its `functions-scrollbar-*` screenshots show
+the track at the end/start, custom scale and a filtered drawer without overflow.
+The decoded function/source fixtures establish UI behavior; they do not establish
+real server function discovery or physical trackpad behavior.
 
 `FunctionSourceReviewGameTest` targets the adjacent-row link boundary, unqualified
 identifier collision and two cached previews followed by reload of an unselected

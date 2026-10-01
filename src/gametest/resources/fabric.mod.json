@@ -17,6 +17,7 @@
       "works.nuty.codon.client.FunctionSourceKeyboardGameTest",
       "works.nuty.codon.client.FunctionSourceTextInputGameTest",
       "works.nuty.codon.client.FunctionSourceInteractionGameTest",
+      "works.nuty.codon.client.FunctionListScrollbarGameTest",
       "works.nuty.codon.client.DebuggerBreakpointUiGameTest",
       "works.nuty.codon.client.FunctionSourceScreenGameTest",
       "works.nuty.codon.client.DebuggerOpacityGameTest",
