@@ -37,7 +37,7 @@ The default binding is `H`; the same gesture works in world and debugger cursor 
 
 ```sh
 ./gradlew clientTest --tests '*UiHideGestureTest'
-./gradlew runClientGameTest -PclientGameTest=DebuggerPeekUiGameTest,DebuggerWorldMarkerVisibilityGameTest
+./gradlew runClientGameTest -PclientGameTest=DebuggerPeekUiGameTest,DebuggerFreecamResumeGameTest,DebuggerWorldMarkerVisibilityGameTest
 ```
 
 Inspect the `codon-peek-*` screenshots: compare world and cursor-mode baselines,
