@@ -263,11 +263,14 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             }
             if (!hidden) entries.add(new Entry.Function(id, parts[parts.length - 1], parts.length));
         }
-        listOffset = Math.clamp(listOffset, 0, Math.max(0, entries.size() - visibleRows()));
+        int clamped = Math.clamp(listOffset, 0, maximumListOffset());
+        if (listOffset != clamped) { listOffset = clamped; rememberView(); }
     }
 
     private boolean expanded(String key, String needle) { return !needle.isEmpty() || !collapsed.contains(key); }
     private int visibleRows() { return Math.max(1, (panelHeight - 76) / ROW_HEIGHT); }
+    private int maximumListOffset() { return Math.max(0, entries.size() - visibleRows()); }
+    private int treeRowRight() { return left + treeWidth - (maximumListOffset() > 0 ? 12 : 5); }
     private int sourceLineTop() { return top + ClientFunctionSourceState.ScreenLayout.sourceInset(compactSourceControls); }
     private int sourceRows() { return ClientFunctionSourceState.ScreenLayout.sourceRows(panelHeight, compactSourceControls); }
 
@@ -317,25 +320,30 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
     private void renderTree(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
         int listTop = top + 54;
         int rows = visibleRows();
-        graphics.enableScissor(left + 4, listTop, left + treeWidth - 4, listTop + rows * ROW_HEIGHT);
+        int rowRight = treeRowRight();
+        int reserved = maximumListOffset() > 0 ? 7 : 0;
+        graphics.enableScissor(left + 4, listTop, rowRight, listTop + rows * ROW_HEIGHT);
         for (int row = 0; row < rows && listOffset + row < entries.size(); row++) {
             Entry entry = entries.get(listOffset + row);
             int y = listTop + row * ROW_HEIGHT;
             boolean selected = entry instanceof Entry.Function function && function.id().equals(sources.selected());
-            boolean hovered = mouseX >= left + 5 && mouseX < left + treeWidth - 5 && mouseY >= y && mouseY < y + ROW_HEIGHT;
-            if (selected || hovered) graphics.fill(left + 5, y, left + treeWidth - 5, y + ROW_HEIGHT - 1,
+            boolean hovered = mouseX >= left + 5 && mouseX < rowRight && mouseY >= y && mouseY < y + ROW_HEIGHT;
+            if (selected || hovered) graphics.fill(left + 5, y, rowRight, y + ROW_HEIGHT - 1,
                 DebuggerTheme.color(selected ? TEAL_SURFACE : RAISED));
             switch (entry) {
                 case Entry.Group group -> {
                     boolean open = expanded(group.key(), search.getValue());
                     WatchUi.line(graphics, font, (open ? "− " : "+ ") + group.label(), left + 9 + group.depth() * 10,
-                        y + 5, treeWidth - 16 - group.depth() * 10, open ? TEAL : MUTED);
+                        y + 5, treeWidth - 16 - reserved - group.depth() * 10, open ? TEAL : MUTED);
                 }
                 case Entry.Function function -> WatchUi.line(graphics, font, function.label(),
-                    left + 18 + function.depth() * 10, y + 5, treeWidth - 26 - function.depth() * 10, TEXT);
+                    left + 18 + function.depth() * 10, y + 5, treeWidth - 26 - reserved - function.depth() * 10, TEXT);
             }
         }
         graphics.disableScissor();
+        if (maximumListOffset() > 0) renderVerticalScrollbar(graphics, "functions", left + treeWidth - 10,
+            listTop, rows * ROW_HEIGHT, listOffset, maximumListOffset(), rows,
+            value -> { listOffset = value; rememberView(); });
         String footer = switch (sources.listStatus()) {
             case IDLE, LOADING -> tr("codon.source.loading_functions");
             case READY -> tr("codon.source.function_count", sources.functions().size());
@@ -919,7 +927,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                 }
             }
             int listTop = top + 54;
-            if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && event.x() >= left + 5 && event.x() < left + treeWidth - 5 && event.y() >= listTop
+            if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && event.x() >= left + 5 && event.x() < treeRowRight() && event.y() >= listTop
                 && event.y() < listTop + visibleRows() * ROW_HEIGHT) {
                 int index = listOffset + (int) ((event.y() - listTop) / ROW_HEIGHT);
                 if (index < entries.size()) {
@@ -949,7 +957,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         if (!containsPanel(x, y)) return docked && parent.mouseScrolled(x, y, scrollX, scrollY);
         int delta = -(int) Math.signum(scrollY) * 3;
         if (x < left + treeWidth && y >= top + 54 && y < top + 54 + visibleRows() * ROW_HEIGHT)
-            listOffset = Math.clamp(listOffset + delta, 0, Math.max(0, entries.size() - visibleRows()));
+            listOffset = Math.clamp(listOffset + delta, 0, maximumListOffset());
         else if (!drawerOpen && sources.document() != null && x >= sourceLeft() + 3
             && y >= sourceLineTop() && y < horizontalTrackY() + 6) {
             boolean shift = Minecraft.getInstance().hasShiftDown();
