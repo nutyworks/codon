@@ -11,13 +11,29 @@ are excluded from rendering, hitboxes and keyboard navigation; explicit watch re
 expand their group. This is local display state only. Narrow stacked rows and all
 Add, grouping, pin, copy, edit, delete and Undo controls retain their action targets.
 Watch row hover uses a subtle neutral fill; keyboard focus uses a stronger neutral
-fill, and an explicitly revealed watch retains its temporary teal fill. No row
+fill plus a small filled corner caret; an explicitly revealed watch retains its
+temporary teal fill. Group headers show Δ changed values and ! read issues
+(invalid paths, size limits, errors and unavailable reads), including while collapsed.
+Observation continues independently of collapse. Row action space is always reserved;
+unselected actions appear on row hover or their own keyboard focus. No row
 outline is drawn. Native clipping/keyboard/appearance checks remain manual acceptance work.
 The nested NBT section uses only a top divider; value rows, pin controls and Retry
 share flat chrome instead of a box around every item. NBT and Watch pin icons are
-teal when pinned and muted when unpinned; hover never changes that state color.
-Pin keyboard focus keeps its light outline, and the scrollbar is neutral.
+teal when present/fixed and muted otherwise; hover never changes that state color.
+NBT uses the Watches icon and Add/Remove Watch labels. The Watch pin separately
+fixes its target or returns to following the selected executor. The NBT heading
+explicitly identifies a current-pause read, or labels retained values while a new
+read is pending. Retained rows keep their existing input-blocking guard. Keyboard focus uses a filled corner
+caret, and the scrollbar is neutral. Foreground text/icons bypass panel opacity.
 Expansion, pin/right-click actions, disabled states and hit bounds are unchanged.
+Watch forms and details return to the existing originating screen, retaining its
+selection/search/scroll and restoring semantic widget or HUD-row focus. Returning
+from Edit in details restores the same expanded view and text offset.
+
+Research-follow-up validation: `JAVA_HOME=<JDK 25> ./gradlew compileClientJava
+processResources --console=plain` passed; evidence is `../ui-research-followup-compile.log`
+beside the checkout. No automated tests or GUI runs were performed. Rendering,
+focus/cancel/back interactions and server rejection presentation remain unverified.
 
 Screenshot-feedback scaffold validation: `JAVA_HOME=<JDK 25> ./gradlew
 compileClientJava --console=plain` completed successfully (client Java output was

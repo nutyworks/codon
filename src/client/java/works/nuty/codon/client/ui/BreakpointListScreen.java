@@ -4,6 +4,7 @@ import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.network.chat.Component;
@@ -17,6 +18,8 @@ import works.nuty.codon.core.model.BreakpointTarget;
 import works.nuty.codon.core.model.SourceLocation;
 
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.List;
 
 import static works.nuty.codon.client.ui.DebuggerTheme.*;
@@ -26,6 +29,7 @@ public final class BreakpointListScreen extends ScaledCodonScreen {
     private final Screen parent;
     private final ClientDebuggerState state;
     private final @Nullable List<BreakpointTarget> targets;
+    private final Map<String, DebuggerButton> buttons = new HashMap<>();
     private List<BreakpointDefinition> displayed = List.of();
     private @Nullable BreakpointTarget selected;
     private @Nullable BreakpointDefinition deleted;
@@ -55,9 +59,10 @@ public final class BreakpointListScreen extends ScaledCodonScreen {
     }
 
     private void rebuild() {
+        var focused = getFocused();
         clearWidgets();
         displayed = state.breakpoints().definitions().stream()
-            .filter(definition -> targets == null ? definition.enabled() : targets.contains(definition.target()))
+            .filter(definition -> targets == null || targets.contains(definition.target()))
             .sorted(Comparator.comparing(definition -> BreakpointUi.target(definition.target()))).toList();
         offset = Math.clamp(offset, 0, Math.max(0, displayed.size() - rows));
         if (selected != null && displayed.stream().noneMatch(definition -> definition.target().equals(selected))) selected = null;
@@ -66,12 +71,13 @@ public final class BreakpointListScreen extends ScaledCodonScreen {
             BreakpointDefinition definition = displayed.get(offset + row);
             BreakpointTarget target = definition.target();
             int y = listTop + row * 20;
-            String label = (definition.staleSource() ? "! " + tr("codon.breakpoint.location_review") + " · " : "")
+            String label = tr(definition.enabled() ? "codon.breakpoint.enabled" : "codon.breakpoint.disabled") + " · "
+                + (definition.staleSource() ? "! " + tr("codon.breakpoint.location_review") + " · " : "")
                 + BreakpointUi.target(target)
                 + " · " + BreakpointUi.condition(definition.condition());
             boolean function = target.location() instanceof SourceLocation.Function;
             int actionWidth = function ? 24 : 0;
-            DebuggerButton button = addRenderableWidget(new DebuggerButton());
+            DebuggerButton button = addRenderableWidget(buttons.computeIfAbsent("row:" + target, ignored -> new DebuggerButton()));
             button.configure(left + 8, y, panelWidth - 16 - actionWidth, 18, Component.literal(label),
                 true, target.equals(selected), true, false, () -> {
                     selected = target;
@@ -90,20 +96,22 @@ public final class BreakpointListScreen extends ScaledCodonScreen {
         int actionsY = top + panelHeight - 53;
         int unit = Math.max(42, (panelWidth - 20) / 5);
         BreakpointDefinition current = current();
-        button(0, actionsY, unit - 3, tr("codon.breakpoint.toggle"), this::toggle,
+        button(0, actionsY, unit - 3, tr(current != null && current.enabled() ? "codon.breakpoint.disable_short" : "codon.breakpoint.enable_short"), this::toggle,
             current != null && !current.staleSource());
         button(unit, actionsY, unit - 3, tr("codon.breakpoint.condition_action"), this::condition, selected != null);
         button(unit * 2, actionsY, unit - 3, tr("codon.breakpoint.source"), this::source,
             selected != null && selected.location() instanceof SourceLocation.Function);
         button(unit * 3, actionsY, unit - 3, tr("codon.breakpoint.delete"), this::delete, selected != null);
         undoButton = button(unit * 4, actionsY, unit - 3, tr("codon.breakpoint.undo"), this::undo, canUndo());
-        button(0, top + panelHeight - 27, Math.max(56, panelWidth - 16), tr("codon.breakpoint.close"), this::onClose, true);
+        DebuggerButton close = button(0, top + panelHeight - 27, Math.max(56, panelWidth - 16), tr("codon.breakpoint.close"), this::onClose, true);
+        if (focused instanceof AbstractWidget widget && children().contains(widget) && widget.active) setFocused(widget);
+        else if (focused != null) setFocused(close);
     }
 
     private DebuggerButton button(int x, int y, int width, String label, Runnable action, boolean active) {
-        DebuggerButton button = addRenderableWidget(WatchUi.button(left + 8 + x, y, width, 20,
-            Component.literal(label), action));
-        button.active = active;
+        String key = "action:" + x + (y == top + panelHeight - 27 ? ":close" : "");
+        DebuggerButton button = addRenderableWidget(buttons.computeIfAbsent(key, ignored -> new DebuggerButton()));
+        button.configure(left + 8 + x, y, width, 20, Component.literal(label), active, false, false, false, action);
         button.setTabOrderGroup(100 + x);
         return button;
     }
@@ -161,7 +169,7 @@ public final class BreakpointListScreen extends ScaledCodonScreen {
 
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         List<BreakpointDefinition> latest = state.breakpoints().definitions().stream()
-            .filter(definition -> targets == null ? definition.enabled() : targets.contains(definition.target()))
+            .filter(definition -> targets == null || targets.contains(definition.target()))
             .sorted(Comparator.comparing(definition -> BreakpointUi.target(definition.target()))).toList();
         if (!latest.equals(displayed)) rebuild();
         if (undoButton != null) undoButton.active = canUndo() && deleted != null

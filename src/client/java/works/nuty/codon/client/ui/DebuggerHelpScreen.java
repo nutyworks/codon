@@ -175,13 +175,13 @@ public final class DebuggerHelpScreen extends ScaledCodonScreen {
         scrollbars.beginFrame();
         graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.color(SURFACE));
         graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.color(BORDER));
-        graphics.text(font, title, left + 8, top + 9, DebuggerTheme.color(TEAL), false);
+        graphics.text(font, title, left + 8, top + 9, DebuggerTheme.foreground(TEAL), false);
         graphics.enableScissor(left + 6, top + 54, left + panelWidth - 6, top + panelHeight - 22);
         for (int row = 0; row < visibleLines() && offset + row < lines.size(); row++) {
             Line line = lines.get(offset + row);
             int y = top + 54 + row * (font.lineHeight + 3);
             if (line.icon() != null) line.icon().draw(graphics, left + 9, y - 1, DebuggerTheme.color(line.color()));
-            graphics.text(font, line.text(), left + 26, y, DebuggerTheme.color(line.color()), false);
+            graphics.text(font, line.text(), left + 26, y, DebuggerTheme.foreground(line.color()), false);
         }
         graphics.disableScissor();
         if (maxOffset() > 0) {
@@ -194,7 +194,7 @@ public final class DebuggerHelpScreen extends ScaledCodonScreen {
         }
         scrollbars.endFrame();
         graphics.text(font, help("navigation", keybind(Component.literal("↑ / ↓ / PgUp / PgDn")),
-            keybind(Component.literal("Esc"))), left + 8, top + panelHeight - 14, DebuggerTheme.color(MUTED), false);
+            keybind(Component.literal("Esc"))), left + 8, top + panelHeight - 14, DebuggerTheme.foreground(MUTED), false);
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
     }
 

@@ -41,5 +41,15 @@ public final class DebuggerTheme {
         return (color & 0x00FFFFFF) | (Math.round((color >>> 24) * opacity.getAsInt() / 100f) << 24);
     }
 
+    /** Panel transparency must not reduce the contrast of text, icons or keyboard focus. */
+    public static int foreground(int color) { return color | 0xFF000000; }
+
+    /** A filled corner caret is separate from selection color and does not frame the row. */
+    public static void focusMark(net.minecraft.client.gui.GuiGraphicsExtractor graphics, int x, int y) {
+        graphics.fill(x, y, x + 3, y + 1, TEXT);
+        graphics.fill(x, y + 1, x + 2, y + 2, TEXT);
+        graphics.fill(x, y + 2, x + 1, y + 3, TEXT);
+    }
+
     private DebuggerTheme() { }
 }

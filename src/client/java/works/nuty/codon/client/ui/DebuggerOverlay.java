@@ -636,13 +636,13 @@ public final class DebuggerOverlay {
         graphics.pose().pushMatrix();
         graphics.pose().translate(x, y + (client.font.lineHeight * (1.0f - scale)) / 2.0f);
         graphics.pose().scale(scale, scale);
-        graphics.text(client.font, value, 0, 0, DebuggerTheme.color(color), false);
+        graphics.text(client.font, value, 0, 0, DebuggerTheme.foreground(color), false);
         graphics.pose().popMatrix();
     }
 
     private void sourceStatusIcon(GuiGraphicsExtractor graphics, int x, int y, DebuggerIcon icon,
                                   int color, Component description) {
-        icon.draw(graphics, x + 2, y + 2, DebuggerTheme.color(color));
+        icon.draw(graphics, x + 2, y + 2, DebuggerTheme.foreground(color));
         if (hoverX >= x && hoverX < x + 16 && hoverY >= y && hoverY < y + 16) {
             graphics.setTooltipForNextFrame(client.font, description, hoverX, hoverY);
         }
@@ -726,7 +726,7 @@ public final class DebuggerOverlay {
         if (width <= 0) return;
         graphics.enableScissor(x, y, x + width, y + client.font.lineHeight + 1);
         if (opaque) graphics.text(client.font, trimmed(value, width), x, y, color, false);
-        else graphics.text(client.font, trimmed(value, width), x, y, DebuggerTheme.color(color), false);
+        else graphics.text(client.font, trimmed(value, width), x, y, DebuggerTheme.foreground(color), false);
         graphics.disableScissor();
         if (client.font.width(value) > width && hoverX >= x && hoverX < x + width
             && hoverY >= y && hoverY < y + client.font.lineHeight + 1) {
@@ -745,7 +745,7 @@ public final class DebuggerOverlay {
         int y = bounds.y();
         for (FormattedCharSequence line : client.font.split(value, bounds.width())) {
             if (y + client.font.lineHeight > bounds.y() + bounds.height()) break;
-            graphics.text(client.font, line, bounds.x(), y, DebuggerTheme.color(color), false);
+            graphics.text(client.font, line, bounds.x(), y, DebuggerTheme.foreground(color), false);
             y += 11;
         }
     }

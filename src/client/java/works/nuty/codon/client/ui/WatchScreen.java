@@ -36,6 +36,7 @@ public final class WatchScreen extends ScaledCodonScreen {
     private final InputManager input;
     private final ClientDebuggerState state;
     private final DebuggerOverlay overlay;
+    private final ScreenReturn origin;
     private final long editId;
     private final EnumMap<WatchSpec.Kind, ClientWatchEditorState.Draft> drafts = new EnumMap<>(WatchSpec.Kind.class);
     private final Map<String, EditBox> fields = new LinkedHashMap<>();
@@ -61,6 +62,7 @@ public final class WatchScreen extends ScaledCodonScreen {
         this.input = input;
         this.state = state;
         this.overlay = overlay;
+        this.origin = new ScreenReturn(input, overlay);
         this.editId = editId;
         kind = state.watchEditor().kind();
         for (WatchSpec.Kind type : WatchSpec.Kind.values()) drafts.put(type, state.watchEditor().draft(type));
@@ -480,7 +482,7 @@ public final class WatchScreen extends ScaledCodonScreen {
     }
 
     @Override public void removed() { rememberDraft(); state.watchEditor().cancel(); }
-    @Override public void onClose() { rememberDraft(); Minecraft.getInstance().gui.setScreen(new CodonScreen(input, overlay)); }
+    @Override public void onClose() { rememberDraft(); origin.restore(); }
     @Override public void extractBackground(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) { }
     @Override public boolean isPauseScreen() { return false; }
     @Override public boolean isInGameUi() { return true; }

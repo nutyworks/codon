@@ -16,7 +16,7 @@ public final class WatchRowRenderer {
         if (!badge.isEmpty()) label += " · " + badge;
         WatchUi.line(graphics, font, label, x + kindInset, y, labelWidth - kindInset, labelColor);
         graphics.text(font, fitValue(font, entry, paused, valueWidth), x, y + 16,
-            DebuggerTheme.color(valueColor), false);
+            DebuggerTheme.foreground(valueColor), false);
     }
 
     public static void render(GuiGraphicsExtractor graphics, Font font, ClientWatchState.Entry entry,
@@ -27,8 +27,8 @@ public final class WatchRowRenderer {
         String value = fitValue(font, entry, paused, label.isEmpty() ? width : width / 2);
         int valueX = x + width - font.width(value);
         label = fit(font, label, Math.max(0, valueX - x - 8));
-        graphics.text(font, label, x, y, DebuggerTheme.color(labelColor), false);
-        graphics.text(font, value, valueX, y, DebuggerTheme.color(valueColor), false);
+        graphics.text(font, label, x, y, DebuggerTheme.foreground(labelColor), false);
+        graphics.text(font, value, valueX, y, DebuggerTheme.foreground(valueColor), false);
     }
 
     private static String fitValue(Font font, ClientWatchState.Entry entry, boolean paused, int width) {

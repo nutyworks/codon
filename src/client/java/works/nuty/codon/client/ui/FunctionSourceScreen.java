@@ -428,13 +428,13 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             boolean inspectedStage = inspected && stages.stream().anyMatch(stage -> stage.index() == selectedStageIndex);
             if (stopped) {
                 graphics.fill(codeLeft, y, codeRight(), y + ROW_HEIGHT - 1, DebuggerTheme.color(AMBER_SURFACE));
-                graphics.text(font, ">", sourceLeft + 3, y + 5, DebuggerTheme.color(AMBER), false);
+                graphics.text(font, ">", sourceLeft + 3, y + 5, DebuggerTheme.foreground(AMBER), false);
             }
             if (inspected && !inspectedStage) {
                 if (!stopped) graphics.fill(codeLeft, y, codeRight(), y + ROW_HEIGHT - 1, DebuggerTheme.color(TEAL_SURFACE));
             }
             graphics.text(font, SourceCodeLine.plain(number), codeLeft - 6 - font.width(SourceCodeLine.plain(number)),
-                y + 5, DebuggerTheme.color(stopped ? AMBER : MUTED), false);
+                y + 5, DebuggerTheme.foreground(stopped ? AMBER : MUTED), false);
             SourceLineLayout layout = visibleLayout(code, stages, hovered && hoveredLine == line ? hoveredStage : -1);
             int rowHoveredStage = -1;
             if (hovered && mouseX >= codeLeft) {
@@ -459,15 +459,15 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             boolean enabled = definition != null && definition.enabled();
             if (SourceInteraction.markerVisible(enabled, hovered && wholeEligible(document, line), editingLine)) {
                 BreakpointUi.icon(definition).drawSmall(graphics, lineMarkerX(), y + 5,
-                    DebuggerTheme.color(enabled ? RED : MUTED));
+                    DebuggerTheme.foreground(enabled ? RED : MUTED));
             } else if (counts.enabled() > 0 && stages.isEmpty()) {
                 // Acknowledged stages stay visible in the gutter while their server preview loads.
-                DebuggerIcon.BREAKPOINT.drawSmall(graphics, lineMarkerX(), y + 5, DebuggerTheme.color(RED));
+                DebuggerIcon.BREAKPOINT.drawSmall(graphics, lineMarkerX(), y + 5, DebuggerTheme.foreground(RED));
             }
             if (counts.obsolete() > 0) {
                 // A changed fingerprint has no valid marker in the new command. Keep a
                 // separate review warning; never disguise it as a current stage control.
-                graphics.text(font, "!", sourceLeft + 21, y + 5, DebuggerTheme.color(AMBER), false);
+                graphics.text(font, "!", sourceLeft + 21, y + 5, DebuggerTheme.foreground(AMBER), false);
                 if (hovered && mouseX >= sourceLeft + 21 && mouseX < sourceLeft + 26)
                     graphics.setTooltipForNextFrame(font, Component.translatable("codon.breakpoint.error.stale_source"), mouseX, mouseY);
             }
@@ -608,7 +608,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                 BreakpointUi.editingMarker(this, stage.target(), codeLines.get(line - 1).source().trim()))) {
                 DebuggerIcon icon = BreakpointUi.icon(definition);
                 icon.drawSmall(graphics, markerX + (SourceLineLayout.MARKER_WIDTH - icon.smallSize()) / 2,
-                    y + 5, DebuggerTheme.color(enabled ? RED : MUTED));
+                    y + 5, DebuggerTheme.foreground(enabled ? RED : MUTED));
                 addStageHit(markerX, y, start, x, width, stage.target(), true);
             }
             addStageHit(start, y, end, x, width, stage.target(), false);
@@ -714,7 +714,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                     Math.max(1, Math.min(x + width, end) - Math.max(x, start)), 12, DebuggerTheme.color(AMBER));
             }
             SourceCodeLine.Slice slice = code.slice(horizontalOffset - segment.inset(), width, segment.start(), segment.end());
-            graphics.text(font, slice.text(), x + slice.x(), y, DebuggerTheme.color(TEXT), false);
+            graphics.text(font, slice.text(), x + slice.x(), y, DebuggerTheme.foreground(TEXT), false);
         }
         List<SourceSyntax.Span> spans = code.spans();
         for (int i = 0; i + 1 < spans.size(); i++) {

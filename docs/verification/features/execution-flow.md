@@ -4,7 +4,8 @@
 
 The UI scaffold uses shared neutral surfaces and flat Contexts, call-path and Flow
 buttons: idle rows have no repeated frame, hover has a neutral fill, selection keeps
-its semantic fill and underline, and keyboard focus has a light outline. Live amber,
+its semantic fill and underline, and keyboard focus has a filled corner caret.
+Foreground text and icons remain opaque when panel opacity is reduced. Live amber,
 selected teal, context-change colors, breakpoint icons and counts retain their roles.
 Unobserved stages use compact translated labels (Unrun/Filtered/Unknown) and keep
 the full observation text in their clause tooltip and selection summary. Their cell

@@ -2,10 +2,11 @@
 
 ## User path and expected result
 
-Deleting from the condition modal closes that layer back to its existing parent
-(including Source), without opening a new Breakpoints list. If the parent already
-is the list, its deletion Undo record is retained. The send/pending/error permissions
-are unchanged. Parent focus restoration still needs native manual verification.
+Deleting from the condition modal waits for server acknowledgement before closing
+back to its existing parent (including Source). Pending, rejected and unavailable
+requests remain visible in the same modal. A confirmed deletion records Undo when
+the parent is the list. List rows and footer buttons retain focus across rebuilds;
+native return/focus behavior still needs manual verification.
 
 Use the [shared setup](../README.md#prepare-and-launch). In a disposable Creative
 world, obtain a command block with `/give @s minecraft:command_block`, place it,
@@ -36,9 +37,10 @@ Plain markers are circles and conditional markers are diamonds. All editor, sour
 flow and management-list markers use the same symmetric 9-pixel artwork, with
 solid enabled markers and hollow disabled/unused markers instead of font glyphs. Empty affordances
 appear on hover/focus; disabled markers also appear only on hover/focus, while
-enabled breakpoints remain visible. The management list, toolbar count and source
-stage summaries include only enabled breakpoints. Disabling preserves the saved
-condition; hover/focus its original marker to enable it again. The whole-command
+enabled breakpoints remain visible. The management list retains enabled and disabled definitions, with an explicit
+state label and Enable/Disable action. The toolbar count and source stage summaries
+still count enabled breakpoints. Disabling preserves the saved condition; use the
+list or hover/focus its original marker to enable it again. The whole-command
 marker at the front of the command-block editor is always visible, including when
 unused or disabled. Text selection in the
 wrapped editor must not toggle a marker, and soft wrapping must not change the

@@ -35,7 +35,7 @@ public final class WatchPanel {
     private static final int DIVIDER_MARGIN = 2;
     private static final int DIVIDER_TOP_MARGIN = 1;
     private record Row(long key, ClientWatchState.@Nullable Entry entry, Component heading, boolean grouped,
-                       @Nullable DebuggerIcon icon, boolean noExecutor, boolean muted, int groupSize) {
+                       @Nullable DebuggerIcon icon, boolean noExecutor, boolean muted, int groupSize, int changedCount, int issueCount) {
         boolean showScope() {
             return entry != null && !grouped && !noExecutor && entry.spec().kind() != WatchSpec.Kind.STORAGE_NBT;
         }
@@ -46,6 +46,7 @@ public final class WatchPanel {
     private final Set<String> used = new HashSet<>();
     private Bounds bounds = EMPTY;
     private Bounds scrollBounds = EMPTY;
+    private Bounds actionReveal = EMPTY;
     private int offset;
     private int maximum;
     private long selectedId;
@@ -162,7 +163,10 @@ public final class WatchPanel {
         WatchUi.line(graphics, font, text("title").getString(),
             bounds.x() + 7, bounds.y() + (HEADER - font.lineHeight) / 2 + 1, Math.max(0, bounds.width() - 74), TEXT);
         button("watch-add", new Bounds(bounds.x() + bounds.width() - 23, bounds.y() + 3, 18, 17), Component.literal("+"),
-            true, false, () -> client.gui.setScreen(new WatchScreen(input, state, overlay)), navigation, -4, 3)
+            true, false, () -> {
+                navigation.requestFocus("watch-add");
+                client.gui.setScreen(new WatchScreen(input, state, overlay));
+            }, navigation, -4, 3)
             .withIcon(DebuggerIcon.WATCHES).withIconOffsetY(2).withSingleLineTooltip(text("keep"));
         groupingTriggerBounds = new Bounds(bounds.x() + bounds.width() - 44, bounds.y() + 3, 18, 17);
         button("watch-grouping", groupingTriggerBounds,
@@ -245,13 +249,16 @@ public final class WatchPanel {
                 int headingColor = row.muted() ? MUTED : TEXT;
                 int inset = row.icon() == null ? 0 : KIND_ICON_INSET;
                 WatchUi.line(graphics, font, collapsed ? "▸" : "▾", bounds.x() + 8, headingY, 8, MUTED);
-                if (row.icon() != null) row.icon().drawSmall(graphics, bounds.x() + 19, headingY, DebuggerTheme.color(headingColor));
-                String count = Integer.toString(row.groupSize());
+                if (row.icon() != null) row.icon().drawSmall(graphics, bounds.x() + 19, headingY, DebuggerTheme.foreground(headingColor));
+                String count = Integer.toString(row.groupSize())
+                    + (row.changedCount() > 0 ? " · Δ" + row.changedCount() : "")
+                    + (row.issueCount() > 0 ? " · !" + row.issueCount() : "");
                 int countX = bounds.x() + bounds.width() - 12 - font.width(count);
                 WatchUi.line(graphics, font, row.heading().getString(), bounds.x() + 19 + inset,
                     headingY, Math.max(0, countX - bounds.x() - 25 - inset), headingColor);
-                WatchUi.line(graphics, font, count, countX, headingY, font.width(count), MUTED);
-                Component label = text(collapsed ? "group.expand" : "group.collapse", row.heading().getString(), row.groupSize());
+                WatchUi.line(graphics, font, count, countX, headingY, font.width(count), row.issueCount() > 0 ? RED : row.changedCount() > 0 ? AMBER : MUTED);
+                Component label = text(collapsed ? "group.expand" : "group.collapse", row.heading().getString(), row.groupSize())
+                    .copy().append("\n").append(text("group.summary", row.changedCount(), row.issueCount()));
                 button(id, header, label, true, false, () -> {
                     if (!collapsedHeadings.add(row.key())) collapsedHeadings.remove(row.key());
                     navigation.requestFocus(id);
@@ -281,7 +288,7 @@ public final class WatchPanel {
                 : y + (rowHeight - textHeight) / 2 + 1;
             int labelColor = row.muted() ? MUTED : TEXT;
             int kindInset = row.icon() == null ? 0 : KIND_ICON_INSET;
-            if (row.icon() != null) row.icon().drawSmall(graphics, bounds.x() + 7, textY, DebuggerTheme.color(labelColor));
+            if (row.icon() != null) row.icon().drawSmall(graphics, bounds.x() + 7, textY, DebuggerTheme.foreground(labelColor));
             int valueColor = row.muted() ? MUTED : changed ? AMBER : TEXT;
             if (stackedValues)
                 WatchRowRenderer.renderStacked(graphics, font, entry, state.isPaused(), rowLabel(entry, row.grouped()),
@@ -299,9 +306,14 @@ public final class WatchPanel {
             for (int line = 0; line < inspectionBounds.size(); line++) {
                 button((line == 0 ? "watch-row-" : "watch-value-") + entry.id(), inspectionBounds.get(line),
                     inspectionLabel, true, entry.id() == selectedId,
-                    () -> { selectedId = entry.id(); client.gui.setScreen(new WatchDetailsScreen(input, state, overlay, entry.id())); },
+                    () -> {
+                        selectedId = entry.id();
+                        navigation.requestFocus("watch-row-" + entry.id());
+                        client.gui.setScreen(new WatchDetailsScreen(input, state, overlay, entry.id()));
+                    },
                     navigation, offset + index, 0).asHitSurface().setTooltip(inspectionTooltip);
             }
+            actionReveal = new Bounds(bounds.x() + 3, y, bounds.width() - 6, rowHeight - 1);
             int actionX = bounds.x() + bounds.width() - 76;
             int actionY = stackedValues ? y + 1 : y + (rowHeight - ACTION_SIZE) / 2;
             if (entry.automatic()) {
@@ -323,13 +335,16 @@ public final class WatchPanel {
                         pinned || executor(entry) != null, pinned, () -> togglePin(entry.id()), navigation, offset + index, 1)
                         .withSmallIcon(DebuggerIcon.PIN).withStatusColor(pinned ? TEAL : MUTED, TEAL_SURFACE)
                         .withSingleLineTooltip(pinned ? text("unpin")
-                            : text("tooltip.pin_context", targetLabel));
+                            : target == null ? text("pin_unavailable") : text("tooltip.pin_context", targetLabel));
                 }
                 button("watch-copy-" + entry.id(), new Bounds(actionX + 17, actionY, ACTION_SIZE, ACTION_SIZE), text("details.copy_value"), true, false,
                     () -> copyValue(entry), navigation, offset + index, 2)
                     .withSmallIcon(DebuggerIcon.COPY_UUID).withSingleLineTooltip(text("details.copy_value"));
                 button("watch-edit-" + entry.id(), new Bounds(actionX + 34, actionY, ACTION_SIZE, ACTION_SIZE), text("edit"), true, false,
-                    () -> client.gui.setScreen(WatchScreen.edit(input, state, overlay, entry.id())),
+                    () -> {
+                        navigation.requestFocus("watch-edit-" + entry.id());
+                        client.gui.setScreen(WatchScreen.edit(input, state, overlay, entry.id()));
+                    },
                     navigation, offset + index, 3).withSmallIcon(DebuggerIcon.EDIT).withSingleLineTooltip(text("edit"));
                 button("watch-remove-" + entry.id(), new Bounds(actionX + 51, actionY, ACTION_SIZE, ACTION_SIZE), text("remove"), true, false,
                     () -> {
@@ -385,7 +400,9 @@ public final class WatchPanel {
                         + (name.isBlank() ? group.key().value() : group.key().value().substring(0, 8)));
                 }
                 result.add(new Row(key, null, heading, true, headingIcon, false,
-                    group.entries().stream().allMatch(WatchGrouping::isUnchangedMissing), group.entries().size()));
+                    group.entries().stream().allMatch(WatchGrouping::isUnchangedMissing), group.entries().size(),
+                    (int) group.entries().stream().filter(entry -> entry.displayedChange().isValueChange()).count(),
+                    (int) group.entries().stream().filter(WatchPanel::hasIssue).count()));
                 // Explicit reveals (new pins, Undo, details) must still reach their watch.
                 if (requestedId != 0 && group.entries().stream().anyMatch(entry -> entry.id() == requestedId))
                     collapsedHeadings.remove(key);
@@ -394,11 +411,19 @@ public final class WatchPanel {
             group.entries().forEach(entry -> result.add(new Row(entry.id(), entry, Component.empty(), grouped,
                 grouped && state.watches().grouping() == WatchGrouping.Mode.PATH
                     && entry.spec().kind() != WatchSpec.Kind.STORAGE_NBT ? null : kindIcon(entry.spec()),
-                noExecutor(entry), WatchGrouping.isUnchangedMissing(entry), 0)));
+                noExecutor(entry), WatchGrouping.isUnchangedMissing(entry), 0, 0, 0)));
         }
         headingKeys.keySet().retainAll(usedHeadings);
         collapsedHeadings.retainAll(headingKeys.values());
         return result;
+    }
+
+    private static boolean hasIssue(ClientWatchState.Entry entry) {
+        WatchResult result = entry.displayedResult();
+        return result != null && switch (result.status()) {
+            case INVALID_PATH, TOO_LARGE, ERROR, UNAVAILABLE -> true;
+            default -> false;
+        };
     }
 
     private boolean keyboardFocused(String id, boolean interactive) {
@@ -477,6 +502,8 @@ public final class WatchPanel {
         DebuggerButton button = buttons.computeIfAbsent(id, ignored -> new DebuggerButton());
         button.configure(b.x(), b.y(), b.width(), b.height(), label, active, selected, false, false, action);
         button.withoutChrome();
+        if (row >= 0 && column > 0 && !selected)
+            button.revealOnHover(actionReveal.x(), actionReveal.y(), actionReveal.width(), actionReveal.height());
         if (selected) button.withStatusColor(TEAL, TEAL_SURFACE);
         used.add(id); controls.add(button);
         // Logical rows were registered for hidden entries; bind only the controls in the viewport.

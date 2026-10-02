@@ -13,7 +13,7 @@ import net.minecraft.util.FormattedCharSequence;
 import org.joml.Matrix3x2fStack;
 
 /**
- * A vanilla edit box whose complete field chrome participates in Codon's panel-opacity setting.
+ * A vanilla edit box with adjustable background opacity and independently readable foreground.
  * Input, layout, scrolling, narration, and IME positioning remain owned by {@link EditBox}.
  */
 public final class DebuggerEditBox extends EditBox {
@@ -25,11 +25,13 @@ public final class DebuggerEditBox extends EditBox {
     @Override
     public void extractWidgetRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         super.extractWidgetRenderState(new TintedGraphics(graphics, mouseX, mouseY), mouseX, mouseY, partialTick);
+        if (isFocused() && Minecraft.getInstance().getLastInputType().isKeyboard())
+            DebuggerTheme.focusMark(graphics, getX() + 1, getY() + 1);
     }
 
     /**
      * EditBox only uses this narrow portion of GuiGraphicsExtractor. Delegating it keeps the
-     * existing pose, scissor stack, and deferred-render state intact while fading every visual.
+     * existing pose, scissor stack, and deferred-render state intact while applying opacity only to its background.
      */
     private static final class TintedGraphics extends GuiGraphicsExtractor {
         private final GuiGraphicsExtractor delegate;
@@ -109,20 +111,17 @@ public final class DebuggerEditBox extends EditBox {
 
         @Override
         public void text(Font font, String text, int x, int y, int color, boolean shadow) {
-            int faded = tint(color);
-            if (visible(faded)) delegate.text(font, text, x, y, faded, shadow);
+            delegate.text(font, text, x, y, DebuggerTheme.foreground(color), shadow);
         }
 
         @Override
         public void text(Font font, FormattedCharSequence text, int x, int y, int color, boolean shadow) {
-            int faded = tint(color);
-            if (visible(faded)) delegate.text(font, text, x, y, faded, shadow);
+            delegate.text(font, text, x, y, DebuggerTheme.foreground(color), shadow);
         }
 
         @Override
         public void text(Font font, Component text, int x, int y, int color, boolean shadow) {
-            int faded = tint(color);
-            if (visible(faded)) delegate.text(font, text, x, y, faded, shadow);
+            delegate.text(font, text, x, y, DebuggerTheme.foreground(color), shadow);
         }
 
         @Override

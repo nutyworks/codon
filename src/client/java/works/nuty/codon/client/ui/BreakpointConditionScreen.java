@@ -50,6 +50,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     private final List<DebuggerButton> kinds = new ArrayList<>();
     private final List<DebuggerButton> comparisons = new ArrayList<>();
     private boolean saving;
+    private boolean deleting;
     private boolean sendFailed;
     private boolean previewRequested;
     private int left, top, panelWidth, panelHeight;
@@ -214,6 +215,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
         if (saveButton != null) saveButton.active = validCount() && supportedCondition() && state.breakpoints().ready()
             && !state.breakpoints().pending(original.target());
         if (deleteButton != null) {
+            deleteButton.active = state.breakpoints().ready() && !state.breakpoints().pending(original.target());
             panelHeight = contentHeight();
             int nextTop = Math.max(6, Math.min(top, height - panelHeight - 6));
             if (nextTop != top) {
@@ -330,6 +332,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
 
     private void save() {
         if (!validCount() || !supportedCondition() || state.breakpoints().pending(original.target())) return;
+        deleting = false;
         BreakpointDefinition current = state.breakpoints().get(original.target());
         saving = ClientNetworking.sendBreakpointEdit(state, ClientBreakpointState.Action.SAVE,
             (current == null ? original : current).withCondition(draft()).withEnabled(true));
@@ -338,12 +341,11 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     }
 
     private void delete() {
-        if (!ClientNetworking.sendBreakpointEdit(state, ClientBreakpointState.Action.DELETE, original)) {
-            sendFailed = true;
-            return;
-        }
-        if (parent instanceof BreakpointListScreen list) list.recordDeleted(original);
-        onClose();
+        if (state.breakpoints().pending(original.target())) return;
+        saving = false;
+        deleting = ClientNetworking.sendBreakpointEdit(state, ClientBreakpointState.Action.DELETE, original);
+        sendFailed = !deleting;
+        refreshControls();
     }
 
     private String hint() {
@@ -357,8 +359,9 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     private String feedback() {
         var error = state.breakpoints().error(original.target());
         return error != null ? tr("codon.breakpoint.error." + error.name().toLowerCase(java.util.Locale.ROOT))
-            : sendFailed ? tr("codon.breakpoint.request_unavailable")
-            : state.breakpoints().pending(original.target()) ? tr("codon.breakpoint.saving") : "";
+            : sendFailed || !state.breakpoints().ready() ? tr("codon.breakpoint.request_unavailable")
+            : state.breakpoints().pending(original.target())
+                ? tr(deleting ? "codon.breakpoint.deleting" : "codon.breakpoint.saving") : "";
     }
 
     private int textHeight(String text) {
@@ -372,6 +375,12 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         refreshControls();
         updateMenuHover(mouseX, mouseY);
+        if (deleting && state.breakpoints().ready() && !state.breakpoints().pending(original.target())
+            && state.breakpoints().error(original.target()) == null && state.breakpoints().get(original.target()) == null) {
+            onClose();
+            if (parent instanceof BreakpointListScreen list) list.recordDeleted(original);
+            return;
+        }
         if (saving && validCount() && !state.breakpoints().pending(original.target())
             && state.breakpoints().error(original.target()) == null) {
             BreakpointDefinition saved = state.breakpoints().get(original.target());
@@ -411,7 +420,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     private int drawLines(GuiGraphicsExtractor graphics, String text, int y, int color) {
         for (var line : font.split(Component.literal(text), panelWidth - 16)) {
             if (y + font.lineHeight > top + panelHeight - 32) break;
-            graphics.text(font, line, left + 8, y, DebuggerTheme.color(color), false);
+            graphics.text(font, line, left + 8, y, DebuggerTheme.foreground(color), false);
             y += font.lineHeight + 1;
         }
         return y;

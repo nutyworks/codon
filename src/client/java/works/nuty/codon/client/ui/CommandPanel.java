@@ -360,7 +360,7 @@ public final class CommandPanel {
             if (cellIndex + 1 < layout.cells().size()
                     && layout.cells().get(cellIndex + 1).row() > cell.row()
                     && (content.inline() || layout.cells().get(cellIndex + 1).partIndex() == cell.partIndex())) {
-                DebuggerIcon.LINE_WRAP.draw(graphics, x + cell.width(), y + 2, DebuggerTheme.color(MUTED));
+                DebuggerIcon.LINE_WRAP.draw(graphics, x + cell.width(), y + 2, DebuggerTheme.foreground(MUTED));
             }
             if (stageIndex < 0 && part.targetStageIndex() >= 0) {
                 renderUnobservedClause(graphics, flow, part, cell, x, y, rowHeight, editableSource,
@@ -517,10 +517,10 @@ public final class CommandPanel {
         graphics.fill(body.x(), body.y(), body.x() + 2, body.y() + body.height(), DebuggerTheme.color(state.isViewingCurrentCommand() ? AMBER : MUTED));
         graphics.enableScissor(body.x() + 4, body.y(), body.x() + body.width() - 4, body.y() + body.height());
         for (int i = 0; i < rows && commandOffset + i < lines.size(); i++) {
-            graphics.text(client.font, lines.get(commandOffset + i), body.x() + 5, body.y() + i * 11, DebuggerTheme.color(TEXT), false);
+            graphics.text(client.font, lines.get(commandOffset + i), body.x() + 5, body.y() + i * 11, DebuggerTheme.foreground(TEXT), false);
             if (commandOffset + i + 1 < lines.size()) {
                 DebuggerIcon.LINE_WRAP.draw(graphics,
-                    body.x() + 5 + client.font.width(lines.get(commandOffset + i)), body.y() + i * 11 - 1, DebuggerTheme.color(MUTED));
+                    body.x() + 5 + client.font.width(lines.get(commandOffset + i)), body.y() + i * 11 - 1, DebuggerTheme.foreground(MUTED));
             }
         }
         graphics.disableScissor();
@@ -738,7 +738,7 @@ public final class CommandPanel {
         String clipped = client.font.width(value) <= width ? value
             : client.font.plainSubstrByWidth(value, Math.max(0, width - client.font.width("…"))) + "…";
         graphics.enableScissor(x, y, x + width, y + client.font.lineHeight + 1);
-        graphics.text(client.font, clipped, x, y, DebuggerTheme.color(color), false);
+        graphics.text(client.font, clipped, x, y, DebuggerTheme.foreground(color), false);
         graphics.disableScissor();
     }
 
