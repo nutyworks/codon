@@ -20,6 +20,11 @@ block pointing into an unconditional, always-active chain command block. Give th
 
 The controls must work from the cursor screen as well as the world view, follow
 remapped key hints and reject duplicate actions while a request is pending.
+UI controls send the observed pause ID with their command. The server checks that
+ID when the mailbox executes the request: a delayed control for an earlier stop
+must not advance a newer stop, including an execution-complete inspection stop.
+Explicit `/codon resume`, `stepinto`, `stepover` and `stepout` commands without an
+ID retain their manual/console behavior and target the stop present at execution.
 After completion, current-stop controls must not act on a historical snapshot.
 Releasing the execution-complete stop with Continue or any Step action must also
 retain a selected, read-only completed Flow stage and its measured results. The
@@ -53,6 +58,7 @@ captures a selected row alongside a keyboard-focused, truncated action label.
 | Concern | Existing tests |
 | --- | --- |
 | Depth, chain boundaries and completion | `coreTest`: `StepControllerTest`, `CommandBlockSteppingTest`, `DebuggerEngineTest` |
+| Delayed controls and pause ID validation | `coreTest`: `DebuggerControlTest`; command transport: `DebuggerRequestTransportGameTest` |
 | Pending state, current/history separation | `clientTest`: `ClientDebuggerStateTest`, `ClientHistoricalCallStackTest`, `DebuggerStatusTest` |
 | Native command-chain execution/stage recording | `DebuggerExecutionFlowGameTest` |
 | Stop after step/resume in a parked native command context | `DebuggerStopRoutingGameTest` |

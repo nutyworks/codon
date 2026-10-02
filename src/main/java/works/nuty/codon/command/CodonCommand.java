@@ -2,6 +2,8 @@ package works.nuty.codon.command;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
+import com.mojang.brigadier.arguments.LongArgumentType;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -15,6 +17,7 @@ import net.minecraft.server.permissions.Permissions;
 import works.nuty.codon.adapter.SourceMapper;
 import works.nuty.codon.core.model.BlockLocation;
 import works.nuty.codon.core.model.FunctionLocation;
+import works.nuty.codon.core.model.StepMode;
 import works.nuty.codon.core.service.DebuggerEngine;
 
 /**
@@ -40,10 +43,10 @@ public final class CodonCommand {
                 .then(Commands.literal("block")
                     .then(Commands.argument("pos", BlockPosArgument.blockPos())
                         .executes(c -> toggleBlockBreakpoint(c, engine)))))
-            .then(Commands.literal("resume").executes(c -> resume(c, engine)))
-            .then(Commands.literal("stepinto").executes(c -> step(c, engine, StepKind.INTO)))
-            .then(Commands.literal("stepout").executes(c -> step(c, engine, StepKind.OUT)))
-            .then(Commands.literal("stepover").executes(c -> step(c, engine, StepKind.OVER)))
+            .then(control("resume", engine, StepMode.NONE))
+            .then(control("stepinto", engine, StepMode.INTO))
+            .then(control("stepout", engine, StepMode.OUT))
+            .then(control("stepover", engine, StepMode.OVER))
         );
     }
 
@@ -106,27 +109,25 @@ public final class CodonCommand {
         return 1;
     }
 
-    private static int resume(CommandContext<CommandSourceStack> context, DebuggerEngine engine) {
-        if (!engine.isPaused()) {
+    private static LiteralArgumentBuilder<CommandSourceStack> control(String name, DebuggerEngine engine, StepMode action) {
+        return Commands.literal(name)
+            // A deliberate manual/console command targets the pause present when it executes.
+            .executes(c -> control(c, engine, action, 0))
+            .then(Commands.argument("pauseId", LongArgumentType.longArg(1))
+                .executes(c -> control(c, engine, action, LongArgumentType.getLong(c, "pauseId"))));
+    }
+
+    private static int control(CommandContext<CommandSourceStack> context, DebuggerEngine engine,
+                               StepMode action, long expectedPauseId) {
+        var snapshot = engine.currentSnapshot();
+        if (!engine.isPaused() || snapshot == null) {
             context.getSource().sendFailure(Component.translatable("command.codon.error.not_paused"));
             return 0;
         }
-        engine.resume();
-        return 1;
-    }
-
-    private static int step(CommandContext<CommandSourceStack> context, DebuggerEngine engine, StepKind kind) {
-        if (!engine.isPaused()) {
-            context.getSource().sendFailure(Component.translatable("command.codon.error.not_paused"));
+        if (!engine.control(action, expectedPauseId == 0 ? snapshot.pauseId() : expectedPauseId)) {
+            context.getSource().sendFailure(Component.translatable("command.codon.error.stale_pause"));
             return 0;
         }
-        switch (kind) {
-            case INTO -> engine.stepInto();
-            case OVER -> engine.stepOver();
-            case OUT -> engine.stepOut();
-        }
         return 1;
     }
-
-    private enum StepKind {INTO, OVER, OUT}
 }

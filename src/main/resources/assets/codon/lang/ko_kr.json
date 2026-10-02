@@ -27,6 +27,7 @@
   "command.codon.breakpoint.list.function": " - 함수: %s (%s번째 줄)",
   "command.codon.breakpoint.clear.success": "중단점 %s개를 제거했습니다.",
   "command.codon.error.not_paused": "디버거가 일시 정지 상태가 아닙니다.",
+  "command.codon.error.stale_pause": "디버거의 정지 지점이 변경되었습니다. 현재 정지 지점에서 다시 조작하세요.",
   "codon.debugger.paused.player": "플레이어 %s",
   "codon.debugger.paused.block": "%s, %s, %s의 블록",
   "codon.debugger.paused.function": "함수 %s의 %s번째 줄",
