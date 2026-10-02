@@ -34,8 +34,8 @@ existing tests; they are not a record of passing runs.
 
 Default keys come from
 [InputManager](../../src/client/java/works/nuty/codon/client/input/InputManager.java):
-`V` opens/closes cursor mode, `F10` toggles the targeted block breakpoint, `F7`
-continues, `F8` steps over, `F9` steps into, `Shift+F9` steps out, `G` toggles Keep
+`V` opens/closes cursor mode, `F10` toggles the targeted block breakpoint, `F9`
+continues, `F8` steps over, `F7` steps into, `Ctrl+F7` steps out, `G` toggles Keep
 Freecam While Running, and tapping `H` toggles the debugger UI. Holding `H` for at least 250 ms hides it
 only while pressed, then restores the previous visibility. Remapped keys and
 on-screen hints take precedence. On keyboards with media keys, use the appropriate

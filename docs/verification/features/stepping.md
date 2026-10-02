@@ -8,18 +8,27 @@ block pointing into an unconditional, always-active chain command block. Give th
 
 1. At the stop, press `V`. Inspect the current command, call path and execution
    contexts. The world remains paused while navigating the UI.
-2. `F9` (Into) advances to the next command stage, including deeper function calls.
+2. `F7` (Into) advances to the next command stage, including deeper function calls.
    One step must not silently execute the whole remaining chain.
 3. Repeat the fixture with `F8` (Over): the next stop is at the same or shallower
    call depth. To distinguish Over from Into, use a loaded function that calls
    another function; record those functions' text with the evidence.
-4. From inside that call, `Shift+F9` (Out) stops after returning to a shallower
+4. From inside that call, `Ctrl+F7` (Out) stops after returning to a shallower
    depth. Root-level Out is satisfied by the final execution-complete stop.
-5. `F7` continues until another breakpoint or execution end. A completed step
+5. `F9` continues until another breakpoint or execution end. A completed step
    offers a final inspection stop; continuing from it releases the execution.
 
 The controls must work from the cursor screen as well as the world view, follow
 remapped key hints and reject duplicate actions while a request is pending.
+World keyboard presses use the event's physical Ctrl modifier and consume the native
+key queue path; Ctrl+Into resolves only Out, even if Ctrl is released before the
+next tick. Key repeats are consumed without another request. Screens use the same
+exclusive chord resolver. The existing click path remains for remapped mouse buttons.
+Saved bindings are not migrated: reset only Into and Resume to adopt F7/F9; Over
+stays F8. Out follows Ctrl plus the current Into binding, replacing Shift plus Into.
+Check custom bindings and both screen/world paths manually before runtime acceptance.
+Automatic Watch, Watch chain and world-sync fixtures resolve the configured Step
+Into binding, keeping their existing assertions independent of default key changes.
 UI controls send the observed pause ID with their command. The server checks that
 ID when the mailbox executes the request: a delayed control for an earlier stop
 must not advance a newer stop, including an execution-complete inspection stop.

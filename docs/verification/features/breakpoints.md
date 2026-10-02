@@ -10,7 +10,7 @@ enter `say codon breakpoint check`, save with Done, and attach a button.
    marker to the left of the input. Close the editor. The block is marked as a
    breakpoint; pressing its button pauses before the command executes.
 2. Press `V` to interact with the debugger. The current stop is distinguished from
-   other breakpoints. Continue with `F7`; the command executes.
+   other breakpoints. Continue with `F9`; the command executes.
 3. Reopen the editor and toggle the marker off/on. Existing conditions are preserved
    by a toggle; deletion is a separate action in breakpoint options.
 4. For stage conditions, save this command in the block first:

@@ -41,7 +41,7 @@ versioned custom network payloads.
 2. Aim at the block and press `F10` to toggle its breakpoint. Press the button:
    execution pauses before the command runs.
 3. Press `V` for cursor mode. Inspect the current command and contexts, then use
-   `F9` to step or `F7` to continue. Stepping to execution completion offers a final
+   `F7` to step or `F9` to continue. Stepping to execution completion offers a final
    inspection stop; continue again to release it.
 4. Open **Source** in the debugger toolbar to browse loaded datapack functions and
    set line/stage breakpoints. Source is read-only; change datapack files outside
@@ -56,15 +56,20 @@ NBT tree. These inspection reads do not execute the watched command again.
 Bindings can be changed in Minecraft's Controls menu under Codon's debugger
 category. On keyboards with media keys, the function keys may require `Fn`.
 Stepping and Continue work only at a live pause and wait for the server's reply.
+The defaults follow [IDA stepping shortcuts](https://docs.hex-rays.com/8.5/user-guide/configuration/shortcuts).
+Continue uses F9 to leave F7 available for Step Into. Step Out is Ctrl plus the
+current Step Into binding, including a customized binding; on macOS use Ctrl, not Cmd.
+Saved bindings are preserved. To adopt the new defaults in an existing profile,
+reset only Step Into and Resume in Controls > Key Binds > Codon Debugger.
 
 | Key | Action |
 | --- | --- |
 | `V` | Open/close debugger cursor mode |
 | `F10` | Toggle a whole-command breakpoint on the targeted block |
-| `F7` | Continue until another breakpoint or execution end |
+| `F9` | Continue until another breakpoint or execution end |
 | `F8` | Step over to the next observed stage at the same or shallower call depth |
-| `F9` | Step into the next observed command stage, including deeper calls |
-| `Shift+F9` | Step out to a shallower call depth; at the root, stop at execution completion |
+| `F7` | Step into the next observed command stage, including deeper calls |
+| `Ctrl+F7` | Step out to a shallower call depth; at the root, stop at execution completion |
 | `G` | Toggle **Keep Freecam While Running** |
 | `H` | Hide Codon UI immediately; a tap shorter than 250 ms toggles visibility, a hold restores the previous visibility on release |
 
@@ -72,7 +77,7 @@ While the camera is detached, movement keys navigate it, jump/sneak move vertica
 and sprint accelerates. Cursor mode stops camera movement. With Keep Freecam
 enabled, the player body resumes normal simulation when execution runs even
 though the camera remains detached. Hiding UI does not resume execution; press
-`F7` to continue. The hide gesture is inactive while typing in chat or text fields.
+`F9` to continue. The hide gesture is inactive while typing in chat or text fields.
 Use **View → Codon UI scale** to size Codon's interface independently of game GUI
 scale. English and Korean interface translations are included.
 

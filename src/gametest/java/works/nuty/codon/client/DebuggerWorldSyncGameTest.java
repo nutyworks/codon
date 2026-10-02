@@ -1,6 +1,5 @@
 package works.nuty.codon.client;
 
-import com.mojang.blaze3d.platform.InputConstants;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
@@ -186,7 +185,7 @@ public final class DebuggerWorldSyncGameTest implements FabricClientGameTest {
         for (int attempt = 0; attempt < 16; attempt++) {
             if (locationOf(context).equals(expected)) return;
             long previous = context.computeOnClient(client -> CodonClientMod.state().snapshot().pauseId());
-            context.getInput().pressKey(InputConstants.KEY_F9);
+            context.getInput().pressKey(options -> CodonClientMod.input().stepIntoKey);
             context.waitFor(client -> CodonClientMod.state().isPaused()
                 && CodonClientMod.state().snapshot().pauseId() != previous, 200);
         }
@@ -197,7 +196,7 @@ public final class DebuggerWorldSyncGameTest implements FabricClientGameTest {
         for (int attempt = 0; attempt < 16; attempt++) {
             if (context.computeOnClient(client -> CodonClientMod.state().snapshot().reason() == PauseReason.EXECUTION_COMPLETE)) return;
             long previous = context.computeOnClient(client -> CodonClientMod.state().snapshot().pauseId());
-            context.getInput().pressKey(InputConstants.KEY_F9);
+            context.getInput().pressKey(options -> CodonClientMod.input().stepIntoKey);
             context.waitFor(client -> CodonClientMod.state().isPaused()
                 && CodonClientMod.state().snapshot().pauseId() != previous, 200);
         }
