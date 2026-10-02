@@ -21,6 +21,11 @@ block pointing into an unconditional, always-active chain command block. Give th
 The controls must work from the cursor screen as well as the world view, follow
 remapped key hints and reject duplicate actions while a request is pending.
 After completion, current-stop controls must not act on a historical snapshot.
+Releasing the execution-complete stop with Continue or any Step action must also
+retain a selected, read-only completed Flow stage and its measured results. The
+server publishes that completed record once after releasing the pause, then
+discards its execution state. `DebuggerEngineTest` covers all four terminal
+actions, including the enclosing completion cleanup after a parked control runs.
 The command panel's Current action is disabled at the live command; select a
 historical visit before testing keyboard focus and navigation from that action.
 Camera retention has a separate [freecam](freecam.md) contract.
@@ -59,6 +64,10 @@ Example: `./gradlew coreTest --tests '*CommandBlockSteppingTest'`.
 For runtime execution changes, select the relevant native GameTest as well. A
 camera test that sends synthetic packets does not establish command-step semantics.
 Record the before/after command and call depth, not merely that the screen opened.
+
+`DebuggerExecutionFlowGameTest` steps the final command through the
+execution-complete stop, then continues. Its native command runs once; the client
+receives the completed record with a selected Flow stage and inactive controls.
 
 `DebuggerStopRoutingGameTest` uses a real outer vanilla Commands execution with
 command limit 1 and stops at the terminal after `execute positioned ~ ~ ~ run`.

@@ -1,6 +1,8 @@
 package works.nuty.codon.core.service;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import works.nuty.codon.core.model.BlockLocation;
 import works.nuty.codon.core.model.BreakpointDefinition;
 import works.nuty.codon.core.model.BreakpointCondition;
@@ -13,8 +15,12 @@ import works.nuty.codon.core.model.ExecutionFlowWarning;
 import works.nuty.codon.core.model.FunctionId;
 import works.nuty.codon.core.model.FunctionLocation;
 import works.nuty.codon.core.model.PauseReason;
+import works.nuty.codon.core.model.PauseSnapshot;
 import works.nuty.codon.core.model.PauseSource;
 import works.nuty.codon.core.model.SourceLocation;
+import works.nuty.codon.core.model.StepMode;
+import works.nuty.codon.core.port.DebuggerEventSink;
+import works.nuty.codon.core.port.ExecutionController;
 import works.nuty.codon.core.model.Vec3d;
 import works.nuty.codon.core.support.ImmediateExecutionController;
 import works.nuty.codon.core.support.RecordingEventSink;
@@ -658,6 +664,76 @@ class DebuggerEngineTest {
             engine.onExecutionFinished();
             assertEquals(resumesBefore + 2, sink.resumes, "plain continue adds no completion pause");
         }
+    }
+
+    @ParameterizedTest
+    @EnumSource(StepMode.class)
+    void terminalPauseActionsPublishCompletedFlowsAfterResumeExactlyOnce(StepMode action) {
+        ExecutionFlowHistory flows = new ExecutionFlowHistory();
+        AtomicReference<DebuggerEngine> reference = new AtomicReference<>();
+        DebuggerEventSink orderedSink = new DebuggerEventSink() {
+            @Override
+            public void paused(PauseSnapshot snapshot) {
+                sink.paused(snapshot);
+            }
+
+            @Override
+            public void resumed() {
+                sink.resumed();
+            }
+
+            @Override
+            public void stepping() {
+                sink.stepping();
+            }
+
+            @Override
+            public void executionFlowsCompleted(List<ExecutionFlowTrace> completed) {
+                assertEquals(1, sink.resumes, "release presentation before restoring read-only flow selection");
+                assertFalse(reference.get().isPaused());
+                assertNull(reference.get().currentSnapshot());
+                sink.executionFlowsCompleted(completed);
+            }
+        };
+        // Run controls inside parkUntil, as the real server's mailbox does. Completion cleanup
+        // must also survive the enclosing onExecutionFinished finally after the park returns.
+        ExecutionController mailbox = resumed -> {
+            DebuggerEngine local = reference.get();
+            if (local.currentSnapshot().reason() != PauseReason.EXECUTION_COMPLETE) {
+                local.stepOut();
+            } else {
+                switch (action) {
+                    case NONE -> local.resume();
+                    case INTO -> local.stepInto();
+                    case OVER -> local.stepOver();
+                    case OUT -> local.stepOut();
+                }
+            }
+            assertTrue(resumed.getAsBoolean());
+            return ExecutionController.ParkResult.RESUMED;
+        };
+        DebuggerEngine local = new DebuggerEngine(breakpoints, step, callStack, mailbox, orderedSink, flows);
+        reference.set(local);
+        breakpoints.toggleFunction(tick(3));
+        local.onExecutionStarted();
+        ExecutionFlowRecorder recorder = flows.start(501, new SourceLocation.Function(tick(3)));
+        recorder.beginStage(CommandSnippet.plain("say hi"), List.of(), 0, true);
+        local.onCommandStage(functionStage(501, 0, 3));
+        recorder.executionStarted();
+        recorder.executionResult(true);
+        local.onExecutionFinished();
+        local.onTickBoundary();
+
+        assertEquals(2, sink.pauses.size());
+        assertEquals(PauseReason.EXECUTION_COMPLETE, sink.lastPause().reason());
+        assertEquals(List.of(sink.lastPause().executionFlows()), sink.completedFlows);
+        assertEquals(1, sink.completedFlows.getFirst().getFirst().executionCount());
+        assertEquals(1, sink.completedFlows.getFirst().getFirst().successCount());
+        assertEquals(1, sink.resumes);
+        assertFalse(step.isStepping());
+        assertTrue(flows.snapshot().isEmpty(), "completed data is published, then discarded by the server");
+        local.resetSession();
+        assertEquals(1, sink.completedFlows.size(), "session cleanup must not republish old history");
     }
 
     @Test
