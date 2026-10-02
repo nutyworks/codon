@@ -61,17 +61,38 @@ fabricApi {
 // Omitting the property restores the complete manifest, including after a focused run.
 def clientGameTests = providers.gradleProperty("clientGameTest")
 	.map { it.split(",", -1).collect { name -> name.trim() } }.orElse([])
+def clientGameTestShard = providers.gradleProperty("clientGameTestShard")
 tasks.named("processGametestResources") {
 	inputs.property("clientGameTest", clientGameTests)
+	inputs.property("clientGameTestShard", clientGameTestShard.orElse(""))
+	inputs.property("clientGameTestShardSet", clientGameTestShard.isPresent())
 	doLast {
 		def requested = clientGameTests.get()
-		if (requested.isEmpty()) return
+		def sharded = clientGameTestShard.isPresent()
+		def shard = clientGameTestShard.getOrElse("")
+		if (requested.isEmpty() && !sharded) return
+		if (!requested.isEmpty() && sharded) {
+			throw new GradleException("Use either clientGameTest or clientGameTestShard, not both.")
+		}
 		if (requested.any { it.isEmpty() }) {
 			throw new GradleException("clientGameTest must contain non-empty, comma-separated class names.")
 		}
 		def manifestFile = new File(destinationDir, "fabric.mod.json")
 		def manifest = new groovy.json.JsonSlurper().parse(manifestFile)
 		def registered = manifest.entrypoints["fabric-client-gametest"]
+		// Partition the complete manifest, preserving class order within each isolated runner.
+		// New registrations automatically join one shard; none rely on a second class list.
+		if (sharded) {
+			if (!(shard ==~ /[1-9][0-9]*\/[1-9][0-9]*/)) {
+				throw new GradleException("clientGameTestShard must be a one-based index/count, e.g. 1/4.")
+			}
+			def (index, count) = shard.split('/').collect { it.toInteger() }
+			if (index > count || count > registered.size() || registered.toSet().size() != registered.size()) {
+				throw new GradleException("Invalid clientGameTestShard or duplicate test registration: ${shard}.")
+			}
+			requested = (0..<registered.size()).findAll { it % count == index - 1 }.collect { registered[it] }
+			logger.lifecycle("Client GameTest shard ${shard}: ${requested.size()} of ${registered.size()} classes")
+		}
 		def matches = { entry, name -> entry == name || entry.tokenize('.').last() == name }
 		def unknown = requested.findAll { name -> !registered.any { matches(it, name) } }
 		if (!unknown.isEmpty()) {

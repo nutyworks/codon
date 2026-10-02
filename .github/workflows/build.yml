@@ -1,10 +1,14 @@
-# Automatically build the project and run any configured tests for every push
-# and submitted pull request. This can help catch issues that only occur on
+# Build pull requests once, then validate main after merge and retain tag builds.
+# This can help catch issues that only occur on
 # certain platforms or Java versions, and provides a first line of defence
 # against bad commits.
 
 name: build
-on: [pull_request, push]
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['**']
 
 permissions:
   contents: read
@@ -26,7 +30,7 @@ jobs:
       - name: make gradle wrapper executable
         run: chmod +x ./gradlew
       - name: build
-        run: ./gradlew build
+        run: ./gradlew build --profile
       - name: capture build artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -40,16 +44,23 @@ jobs:
           path: |
             build/reports/tests/
             build/test-results/
+            build/reports/profile/
           retention-days: 14
 
-  client-game-test:
+  client-game-test-shard:
+    name: client-game-test shard ${{ matrix.shard }}/${{ strategy.job-total }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     env:
       LIBGL_ALWAYS_SOFTWARE: 'true'
       # Minecraft 26.3's SDL OpenGL window needs EGL under Xvfb.
       SDL_VIDEO_FORCE_EGL: '1'
       ALSOFT_DRIVERS: pulse
+      CLIENT_GAME_TEST_SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
     steps:
       - name: checkout repository
         uses: actions/checkout@v4
@@ -91,16 +102,28 @@ jobs:
           ) &
           diagnostic_pid=$!
           trap 'kill "$diagnostic_pid" 2>/dev/null || true' EXIT
-          xvfb-run -a -s '-screen 0 1920x1080x24' ./gradlew --no-daemon runClientGameTest --stacktrace 2>&1 | tee build/ci/client-game-test.log
+          xvfb-run -a -s '-screen 0 1920x1080x24' ./gradlew --no-daemon runClientGameTest "-PclientGameTestShard=$CLIENT_GAME_TEST_SHARD" --profile --stacktrace 2>&1 | tee build/ci/client-game-test.log
       - name: capture client game test evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: client-game-test-evidence
+          name: client-game-test-evidence-${{ matrix.shard }}
           path: |
             build/ci/
             build/run/clientGameTest/logs/
             build/run/clientGameTest/screenshots/
             build/run/clientGameTest/crash-reports/
             build/run/clientGameTest/hs_err_pid*.log
+            build/reports/profile/
           retention-days: 14
+
+  # Preserve the required check name and fail it if any shard fails or is cancelled.
+  client-game-test:
+    if: always()
+    needs: client-game-test-shard
+    runs-on: ubuntu-24.04
+    steps:
+      - name: require every native shard to pass
+        env:
+          SHARD_RESULT: ${{ needs.client-game-test-shard.result }}
+        run: test "$SHARD_RESULT" = success

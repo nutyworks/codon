@@ -7,6 +7,8 @@ import java.util.List;
 import javax.imageio.ImageIO;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
+import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.InputType;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.navigation.ScreenRectangle;
@@ -50,7 +52,7 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
                 state.breakpoints().acceptPage(1, 0, true, java.util.stream.IntStream.range(0, 4)
                     .mapToObj(stage -> BreakpointDefinition.plain(BreakpointTarget.stage(LOCATION, stage, COMMAND))
                         .withCondition(BreakpointCondition.event(BreakpointCondition.Kind.CREATED))).toList());
-                client.setScreenAndShow(new FunctionSourceScreen(new ScaledCodonScreen(Component.empty(), preferences) { }, sources));
+                openSource(client, preferences, sources);
             });
             context.waitTicks(2); // Let the absent fixture's initial source-preview reply settle.
             context.runOnClient(client -> installPreview());
@@ -65,7 +67,7 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
                 context.getInput().setCursorPos(0, 0);
                 context.runOnClient(client -> {
                     sources.rememberBrowseView(0, 0, -1, -1, 0, 0);
-                    client.setScreenAndShow(new FunctionSourceScreen(new ScaledCodonScreen(Component.empty(), preferences) { }, sources));
+                    openSource(client, preferences, sources);
                 });
                 context.waitTicks(2);
                 require(context.computeOnClient(client -> ((ScaledCodonScreen) client.gui.screen()).uiScale().effective()) == scenario.scale / 4.0,
@@ -83,7 +85,7 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
             preferences.setCustomUiScale(5);
             context.runOnClient(client -> {
                 sources.rememberBrowseView(0, 0, -1, -1, 0, 0);
-                client.setScreenAndShow(new FunctionSourceScreen(new ScaledCodonScreen(Component.empty(), preferences) { }, sources));
+                openSource(client, preferences, sources);
             });
             context.waitTicks(2);
             context.runOnClient(client -> {
@@ -100,6 +102,16 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
                 client.resizeGui();
             });
         }
+    }
+
+    private static void openSource(Minecraft client, DebuggerPreferences preferences, ClientFunctionSourceState sources) {
+        var screen = new FunctionSourceScreen(new ScaledCodonScreen(Component.empty(), preferences) { }, sources);
+        client.setScreenAndShow(screen);
+        // Keep the entire pixel oracle, including the column outside the rounded scissor.
+        // That column exposes the translucent panel, so an animated world is not a stable reference.
+        ScreenEvents.beforeExtract(screen).register((current, graphics, mouseX, mouseY, delta) ->
+            graphics.fill(0, 0, Math.max(current.width, graphics.guiWidth()),
+                Math.max(current.height, graphics.guiHeight()), DebuggerTheme.SURFACE));
     }
 
     private static void prepareReference(ClientGameTestContext context) {
