@@ -8,6 +8,7 @@ import javax.imageio.ImageIO;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.minecraft.client.InputType;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.network.chat.Component;
 import works.nuty.codon.client.state.ClientFunctionSourceState;
 import works.nuty.codon.client.state.ClientStagePreviewState;
@@ -92,6 +93,8 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
     }
 
     private static void checkSelection(ClientGameTestContext context, String label, List<Integer> stages) {
+        // Opening a screen can restore the pointer inside Find even if it was moved before init.
+        context.getInput().setCursorPos(0, 0);
         context.runOnClient(client -> {
             // New compact screens may focus Find and display its tooltip over the code.
             // Compare the same unfocused-code state that native stage clicks leave behind.
@@ -100,6 +103,10 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
             set(client.gui.screen(), "selectedStageIndex", -1);
         });
         context.waitTicks(2);
+        context.runOnClient(client -> {
+            var find = (AbstractWidget) field(client.gui.screen(), "sourceSearch");
+            require(!find.isHovered() && !find.isFocused(), "reference Find has neither pointer nor keyboard focus");
+        });
         List<Hit> before = context.computeOnClient(client -> hits(client.gui.screen()));
         require(before.stream().anyMatch(value -> !value.control && stages.contains(value.target.stageIndex())), label + " viewport contains a tested stage");
         BufferedImage reference = capture(context, label + "-reference");
