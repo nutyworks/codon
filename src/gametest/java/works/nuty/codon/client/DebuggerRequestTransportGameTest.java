@@ -115,6 +115,19 @@ public final class DebuggerRequestTransportGameTest implements FabricClientGameT
                 require(replies.nbt(103).page().status() == WatchResult.Status.VALUE,
                     "an owner can request the selected executor NBT over C2S while parked");
 
+                context.runOnClient(client -> {
+                    for (String action : new String[]{"resume", "stepinto", "stepover", "stepout"}) {
+                        client.player.connection.sendCommand("codon " + action + " " + firstPause);
+                    }
+                    // This query follows all stale controls through the same mailbox.
+                    ClientPlayNetworking.send(new WatchQueryPayload(secondPause, 108, 0, SCORE));
+                });
+                context.waitFor(client -> replies.watch(108) != null, 200);
+                require(replies.watch(108).result().status() == WatchResult.Status.VALUE
+                        && replies.watch(108).result().value().equals("11")
+                        && CodonMod.engine().isPaused() && CodonMod.engine().currentSnapshot().pauseId() == secondPause,
+                    "delayed controls for the first pause must leave the second pause unchanged");
+
                 setOwner(context, server, false);
                 context.runOnClient(client -> {
                     ClientPlayNetworking.send(new WatchQueryPayload(secondPause, 104, 0, SCORE));
@@ -134,13 +147,14 @@ public final class DebuggerRequestTransportGameTest implements FabricClientGameT
                 require(replies.watch(107).result().value().equals("11"),
                     "permission is checked at request execution time and an owner can read again");
 
-                context.runOnClient(client -> client.player.connection.sendCommand("codon stepinto"));
+                context.runOnClient(client -> client.player.connection.sendCommand("codon stepinto " + secondPause));
                 context.waitFor(client -> CodonClientMod.state().isPaused()
                     && CodonClientMod.state().snapshot().reason() == works.nuty.codon.core.model.PauseReason.EXECUTION_COMPLETE, 200);
                 context.runOnClient(client -> client.player.connection.sendCommand("codon stepinto"));
                 context.waitFor(client -> completed.get() && !CodonClientMod.state().isPaused(), 200);
                 if (failure.get() != null) throw new AssertionError("parked transport fixture failed", failure.get());
                 context.waitFor(client -> ordinaryTask.get(), 200);
+                CodonMod.LOGGER.info("Paused control transport PASS: stale IDs rejected for all four actions; current ID and unversioned steps accepted");
             } finally {
                 AtomicBoolean cleaned = new AtomicBoolean();
                 DebuggerTaskQueue.execute(server, () -> {

@@ -27,6 +27,7 @@
   "command.codon.breakpoint.list.function": " - Function: %s (line %s)",
   "command.codon.breakpoint.clear.success": "Cleared %s breakpoints.",
   "command.codon.error.not_paused": "Debugger is not paused.",
+  "command.codon.error.stale_pause": "Debugger pause changed. Use the current pause's controls.",
   "codon.debugger.paused.player": "player %s",
   "codon.debugger.paused.block": "block at %s, %s, %s",
   "codon.debugger.paused.function": "function %s at line %s",

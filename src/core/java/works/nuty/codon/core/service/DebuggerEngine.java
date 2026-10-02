@@ -12,6 +12,7 @@ import works.nuty.codon.core.model.PauseReason;
 import works.nuty.codon.core.model.PauseSnapshot;
 import works.nuty.codon.core.model.PauseSource;
 import works.nuty.codon.core.model.SourceLocation;
+import works.nuty.codon.core.model.StepMode;
 import works.nuty.codon.core.port.DebuggerEventSink;
 import works.nuty.codon.core.port.ExecutionController;
 
@@ -299,6 +300,25 @@ public final class DebuggerEngine {
             resetSession();
             throw failure;
         }
+    }
+
+    /**
+     * Apply a control to the exact pause its sender observed. Called on the execution thread,
+     * so validation and advancement cannot be separated by another mailbox control or stage.
+     * Unversioned host controls can explicitly use the current snapshot's ID at execution time.
+     */
+    public boolean control(StepMode action, long expectedPauseId) {
+        PauseSnapshot snapshot = currentSnapshot;
+        if (!paused || snapshot == null || expectedPauseId <= 0 || snapshot.pauseId() != expectedPauseId) {
+            return false;
+        }
+        switch (action) {
+            case NONE -> resume();
+            case INTO -> stepInto();
+            case OVER -> stepOver();
+            case OUT -> stepOut();
+        }
+        return true;
     }
 
     /** Resume normal execution (run to the next breakpoint). */
