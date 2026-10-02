@@ -33,6 +33,17 @@ class WatchDefinitionTransferTest {
         assertEquals(definitions, pages.stream().flatMap(List::stream).toList());
     }
 
+    @Test void acceptsThePageJsonLengthLimitAndRejectsOneExtraCharacter() {
+        List<WatchSpec> definitions = List.of(A, B);
+        String json = WatchDefinitions.toPageJson(definitions);
+        // Keep the JSON valid so only the transport length bound can reject it.
+        String atLimit = json + " ".repeat(WatchDefinitions.MAX_JSON_LENGTH - json.length());
+        assertEquals(definitions, WatchDefinitions.fromPageJson(atLimit));
+        String overLimit = atLimit + " ";
+        assertThrows(IllegalArgumentException.class, () -> WatchDefinitions.fromPageJson(overLimit));
+        assertEquals(definitions, WatchDefinitions.fromJson(overLimit), "persistence JSON is not transport-bounded");
+    }
+
     @Test void rejectsBadOrderAndDuplicatePagesWithoutReturningPartialDefinitions() {
         var transfer = new WatchDefinitionTransfer();
         assertEquals(Optional.empty(), transfer.accept(3, 0, false, List.of(A)));
