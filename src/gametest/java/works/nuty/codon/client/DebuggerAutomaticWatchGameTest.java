@@ -1,6 +1,5 @@
 package works.nuty.codon.client;
 
-import com.mojang.blaze3d.platform.InputConstants;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import works.nuty.codon.CodonMod;
@@ -18,7 +17,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/** Real F9/Continue command-block execution with no saved watch for the changed score. */
+/** Real Step Into/Continue command-block execution with no saved watch for the changed score. */
 @SuppressWarnings("UnstableApiUsage")
 public final class DebuggerAutomaticWatchGameTest implements FabricClientGameTest {
     @Override
@@ -90,12 +89,12 @@ public final class DebuggerAutomaticWatchGameTest implements FabricClientGameTes
                         continued = true;
                         context.runOnClient(client -> client.player.connection.sendCommand("codon resume"));
                     } else {
-                        context.getInput().pressKey(InputConstants.KEY_F9);
+                        context.getInput().pressKey(options -> CodonClientMod.input().stepIntoKey);
                     }
                     context.waitFor(client -> CodonClientMod.state().isPaused()
                         && CodonClientMod.state().snapshot().pauseId() != previousPause, 200);
                 }
-                require(firstChange && completed && continued, "both Continue and F9 produce automatic changes through the real chain");
+                require(firstChange && completed && continued, "both Continue and Step Into produce automatic changes through the real chain");
                 context.runOnClient(client -> client.player.connection.sendCommand("codon resume"));
                 context.waitFor(client -> !CodonClientMod.state().isPaused(), 200);
                 context.runOnClient(client -> require(CodonClientMod.state().watches().displayedEntries().stream()

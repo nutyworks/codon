@@ -104,7 +104,7 @@ public final class DebuggerWatchChainGameTest implements FabricClientGameTest {
                         // Do not take another step: the outgoing executor must be refreshed at THIS stop.
                         context.waitFor(client -> watch().completedStep() != null, 200);
                         require(context.computeOnClient(client -> CodonClientMod.state().snapshot().pauseId()) == snapshot.pauseId(),
-                            "the post-command value arrives without another F9 press");
+                            "the post-command value arrives without another Step Into press");
                     }
                     var entry = context.computeOnClient(client -> watch());
                     String display = context.computeOnClient(client -> WatchFormatting.value(watch(), true).getString());
@@ -159,16 +159,16 @@ public final class DebuggerWatchChainGameTest implements FabricClientGameTest {
                     }
                     long previousPause = snapshot.pauseId();
                     long inputAt = System.nanoTime();
-                    context.getInput().pressKey(InputConstants.KEY_F9);
+                    context.getInput().pressKey(options -> CodonClientMod.input().stepIntoKey);
                     context.waitFor(client -> hasNewPause(previousPause), 200);
                     long controlMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - inputAt);
                     context.waitFor(client -> hasCurrentAndRequiredCapturedWatchRead(previousPause), 200);
                     long readsMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - inputAt);
-                    CodonMod.LOGGER.info("Command-block F9 latency (missing={}, pause={}): control={} ms, control+reads={} ms",
+                    CodonMod.LOGGER.info("Command-block Step Into latency (missing={}, pause={}): control={} ms, control+reads={} ms",
                         initiallyMissing, context.computeOnClient(client -> CodonClientMod.state().snapshot().pauseId()),
                         controlMillis, readsMillis);
                     require(readsMillis < WATCH_READ_LIMIT_MILLIS,
-                        "F9 control plus current/captured watch reads took " + readsMillis
+                        "Step Into control plus current/captured watch reads took " + readsMillis
                             + " ms (limit " + WATCH_READ_LIMIT_MILLIS + " ms after warmup)");
                 }
                 require(sawFirstChange, expectedFirstChange + " must be shown in the chain. Trace: " + trace);

@@ -27,8 +27,8 @@ exclusive chord resolver. The existing click path remains for remapped mouse but
 Saved bindings are not migrated: reset only Into and Resume to adopt F7/F9; Over
 stays F8. Out follows Ctrl plus the current Into binding, replacing Shift plus Into.
 Check custom bindings and both screen/world paths manually before runtime acceptance.
-Existing native fixtures with hard-coded old keys still need to be updated before
-they can establish acceptance of these defaults.
+Automatic Watch, Watch chain and world-sync fixtures resolve the configured Step
+Into binding, keeping their existing assertions independent of default key changes.
 UI controls send the observed pause ID with their command. The server checks that
 ID when the mailbox executes the request: a delayed control for an earlier stop
 must not advance a newer stop, including an execution-complete inspection stop.
