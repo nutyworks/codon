@@ -148,8 +148,9 @@ fractional 1.25×/2.25× clipping, and maximum 4.50× compact/tail views in a
 including the first/last viewport pixels, and allows only a uniform dark background
 within the selected stage. Partially transparent font texels must retain the same
 syntax color and alpha coverage over both backgrounds, within 8-bit blend rounding.
-Neighboring stages stay
-identical. Native clicks at both ends of each visible text hitbox preserve
+Minecraft's rounded scissor bounds constrain the fill; the comparison still includes
+the full logical viewport and requires pixels outside that native clip to stay identical.
+Neighboring stages stay identical. Native clicks at both ends of each visible text hitbox preserve
 the original stage target, enabled breakpoint and condition. Scrolled captures cut
 through a stage at each edge and reach the long line's tail. A one-pixel mutation
 over glyphs or background at either clipped edge must fail the same comparator.

@@ -9,7 +9,9 @@ import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.minecraft.client.InputType;
 import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.navigation.ScreenRectangle;
 import net.minecraft.network.chat.Component;
+import org.joml.Matrix3x2f;
 import works.nuty.codon.client.state.ClientFunctionSourceState;
 import works.nuty.codon.client.state.ClientStagePreviewState;
 import works.nuty.codon.client.state.DebuggerPreferences;
@@ -161,6 +163,16 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
             invoke(client.gui.screen(), "codeRight")});
         int fromX = (int) Math.floor(viewport[0] * scale), toX = (int) Math.ceil(viewport[1] * scale);
         int fromY = (int) Math.floor((hit.y + 4) * scale), toY = (int) Math.floor((hit.y + 15) * scale);
+        double[] clip = context.computeOnClient(client -> {
+            var screen = (ScaledCodonScreen) client.gui.screen();
+            var uiScale = screen.uiScale();
+            var pose = new Matrix3x2f().scale((float) uiScale.renderFactor());
+            int left = invoke(screen, "sourceLeft") + 3, top = invoke(screen, "sourceLineTop");
+            var outer = new ScreenRectangle(left, top, viewport[1] - left, invoke(screen, "sourceRows") * 18).transformAxisAligned(pose);
+            var row = new ScreenRectangle(viewport[0], hit.y, viewport[1] - viewport[0], hit.height).transformAxisAligned(pose);
+            var visible = row.intersection(outer);
+            return new double[]{visible.left() * uiScale.gameScale(), visible.right() * uiScale.gameScale()};
+        });
         int background = backgroundPixel(context, selected, hit);
         int referenceBackground = backgroundPixel(context, reference, hit);
         int ink = 0;
@@ -168,7 +180,7 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
             for (int x = fromX; x < toX; x++)
                 if (isInk(reference.getRGB(x, y))) ink++;
         int unexpected = unexpectedPixels(reference, selected, fromX, toX, fromY, toY,
-            hit.x * scale, (hit.x + hit.width) * scale, referenceBackground, background);
+            Math.max(hit.x * scale, clip[0]), Math.min((hit.x + hit.width) * scale, clip[1]), referenceBackground, background);
         require(ink > 20, "reference contains visible source glyphs");
         require(unexpected == 0, label + " altered " + unexpected + " glyph, neighboring or clipped-edge pixels");
         require(!isInk(background), "background remains darker than source glyphs");
@@ -352,24 +364,25 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
         for (double scale : new double[]{1, 1.25, 2.25, 4.5}) {
             double start = 3 * scale, end = 11 * scale;
             int from = (int) Math.floor(start), to = (int) Math.ceil(end), before = 0xff172126, background = 0xff203336;
+            int clippedEnd = to - 2; // Native scissor rounding can leave unchanged columns inside the logical viewport.
             var reference = new BufferedImage(64, 4, BufferedImage.TYPE_INT_ARGB);
             var selected = new BufferedImage(64, 4, BufferedImage.TYPE_INT_ARGB);
             for (int y = 0; y < 4; y++) for (int x = from; x < to; x++) {
                 reference.setRGB(x, y, before);
-                selected.setRGB(x, y, background);
+                selected.setRGB(x, y, x < clippedEnd ? background : before);
             }
-            for (int edge : new int[]{from, to - 1}) {
+            for (int edge : new int[]{from, clippedEnd - 1, to - 1}) {
                 reference.setRGB(edge, 1, 0xffc7a0ff);
                 selected.setRGB(edge, 1, 0xffc7a0ff);
             }
             reference.setRGB(from + 1, 0, 0xffc59efc);
             selected.setRGB(from + 1, 0, 0xffc59ffd);
-            require(unexpectedPixels(reference, selected, from, to, 0, 4, start, end, before, background) == 0,
+            require(unexpectedPixels(reference, selected, from, to, 0, 4, start, clippedEnd, before, background) == 0,
                 "background with intact opaque and partial-alpha glyphs passes");
-            for (int edge : new int[]{from, to - 1}) for (int y : new int[]{1, 2}) {
+            for (int edge : new int[]{from, clippedEnd - 1, to - 1}) for (int y : new int[]{1, 2}) {
                 int original = selected.getRGB(edge, y);
                 selected.setRGB(edge, y, 0xff75dfd6);
-                require(unexpectedPixels(reference, selected, from, to, 0, 4, start, end, before, background) == 1,
+                require(unexpectedPixels(reference, selected, from, to, 0, 4, start, clippedEnd, before, background) == 1,
                     "clipped glyph/background edge mutation is detected at " + scale);
                 selected.setRGB(edge, y, original);
             }
