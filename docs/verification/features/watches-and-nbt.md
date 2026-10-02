@@ -7,6 +7,10 @@ bounded by the same free area above Flow. Neutral headings and removal of the do
 leaders leave more room for names/values. Narrow stacked rows and all Add, grouping,
 pin, copy, edit, delete and Undo controls keep their existing layout rules and focus
 targets. Native clipping/keyboard/appearance checks remain manual acceptance work.
+The nested NBT section uses only a top divider; value rows, pin controls and Retry
+share flat chrome instead of a box around every item. Pinned controls keep teal
+selection, keyboard focus keeps its light outline, and the scrollbar is neutral.
+Expansion, pin/right-click actions, disabled states and hit bounds are unchanged.
 
 Use the [shared setup](../README.md#prepare-and-launch). Before pausing, prepare a
 score and a storage value in the scratch world:

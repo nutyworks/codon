@@ -488,7 +488,8 @@ public final class DebuggerOverlay {
         if (nbtHeight > 0) nbtPanel.render(graphics,
             new Bounds(body.x() + 3, body.y() + listHeight + detailHeight, body.width() - 6, nbtHeight),
             hoverX, hoverY, navigation, scrollbars,
-            (id, bounds, label, active, selected, action) -> button(id, bounds, label, active, selected, true, false, action));
+            (id, bounds, label, active, selected, action) -> button(id, bounds, label, active, selected, true, false, action)
+                .withFlatChrome());
     }
 
     private void renderSources(GuiGraphicsExtractor graphics, Bounds area, PauseSnapshot snapshot, int headingInset) {

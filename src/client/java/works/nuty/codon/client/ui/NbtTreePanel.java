@@ -67,7 +67,8 @@ public final class NbtTreePanel {
         }
         boundsSource = selectedSource;
         graphics.fill(area.x(), area.y(), area.x() + area.width(), area.y() + area.height(), DebuggerTheme.color(SURFACE));
-        graphics.outline(area.x(), area.y(), area.width(), area.height(), DebuggerTheme.color(BORDER));
+        // NBT already sits inside the inspector; separate the section without a nested frame.
+        graphics.fill(area.x(), area.y(), area.x() + area.width(), area.y() + 1, DebuggerTheme.color(DIVIDER));
 
         // This is an inert heading, registered only so the screen can retain its stable bounds.
         controls.button("nbt-heading", new Bounds(area.x() + 2, area.y() + 1, Math.max(1, area.width() - 4), HEADER_HEIGHT - 2),
@@ -128,7 +129,7 @@ public final class NbtTreePanel {
                 });
             graphics.fill(area.x() + area.width() - 3, area.y() + HEADER_HEIGHT,
                 area.x() + area.width() - 1, area.y() + HEADER_HEIGHT + height, DebuggerTheme.color(BORDER));
-            graphics.fill(area.x() + area.width() - 3, top, area.x() + area.width() - 1, top + thumb, DebuggerTheme.color(TEAL));
+            graphics.fill(area.x() + area.width() - 3, top, area.x() + area.width() - 1, top + thumb, DebuggerTheme.color(SCROLLBAR));
         }
     }
 
