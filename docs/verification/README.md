@@ -116,7 +116,9 @@ Keep screenshots/logs out of commits.
 ## CI
 
 [build.yml](../../.github/workflows/build.yml) runs `build` alongside eight
-`client-game-test-shard` jobs on pushes and pull requests. Together the shards run
+`client-game-test-shard` jobs on pull requests, main pushes and tags. Feature-branch
+pushes use only the pull-request event, avoiding duplicate suites; post-merge main
+validation and tag builds remain enabled. Together the shards run
 the complete registered client suite with JDK 25, Xvfb/Mesa software rendering,
 and a PulseAudio null sink for OpenAL channel tests. Each uses the same
 `runClientGameTest` task as local development. Shards continue after another shard
