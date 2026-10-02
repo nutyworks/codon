@@ -243,7 +243,7 @@
   "codon.nbt.empty": "(empty)",
   "codon.nbt.pending": "…",
   "codon.nbt.pin": "Pin this field for %s",
-  "codon.nbt.unpin": "Remove this pinned field",
+  "codon.nbt.unpin": "Unpin this field for %s",
   "codon.nbt.path_unavailable": "This path is too long or unsupported for a watch.",
   "codon.nbt.refresh": "Refresh NBT",
   "codon.nbt.collapse": "Collapse entity NBT",

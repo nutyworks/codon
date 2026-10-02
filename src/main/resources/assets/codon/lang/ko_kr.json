@@ -243,7 +243,7 @@
   "codon.nbt.empty": "(비어 있음)",
   "codon.nbt.pending": "…",
   "codon.nbt.pin": "%s의 이 필드 고정",
-  "codon.nbt.unpin": "이 필드의 고정 해제",
+  "codon.nbt.unpin": "%s의 이 필드 고정 해제",
   "codon.nbt.path_unavailable": "경로가 너무 길거나 감시 항목에서 지원하지 않는 경로입니다.",
   "codon.nbt.refresh": "NBT 새로고침",
   "codon.nbt.collapse": "엔티티 NBT 접기",
