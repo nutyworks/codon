@@ -23,7 +23,11 @@ teal when present/fixed and muted otherwise; hover never changes that state colo
 NBT uses the Watches icon and Add/Remove Watch labels. The Watch pin separately
 fixes its target or returns to following the selected executor. The NBT heading
 explicitly identifies a current-pause read, or labels retained values while a new
-read is pending. Retained rows keep their existing input-blocking guard. Keyboard focus uses a filled corner
+read is pending. Retained rows keep their existing input-blocking guard. Historical
+contexts with no current-pause occurrence cannot open a live NBT tree; when room
+permits, the empty NBT area explains that no historical NBT was captured. A recorded
+context which still maps to a live occurrence may show NBT, explicitly labeled as
+a current-pause read rather than a historical value. Query/occurrence matching is unchanged. Keyboard focus uses a filled corner
 caret, and the scrollbar is neutral. Foreground text/icons bypass panel opacity.
 Expansion, pin/right-click actions, disabled states and hit bounds are unchanged.
 Watch forms and details return to the existing originating screen, retaining its

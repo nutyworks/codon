@@ -20,6 +20,7 @@ import works.nuty.codon.client.ui.layout.DebuggerHeaderLayout;
 import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Anchor;
 import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds;
 import works.nuty.codon.core.model.ExecutionFlowContext;
+import works.nuty.codon.core.model.ExecutionFlowStage;
 import works.nuty.codon.core.model.BreakpointDefinition;
 import works.nuty.codon.core.model.PauseSnapshot;
 import works.nuty.codon.core.model.PauseSource;
@@ -41,8 +42,9 @@ public final class DebuggerOverlay {
     private enum AuxiliaryPanel { NONE, INSPECTOR, WATCHES }
     private static final Bounds EMPTY = new Bounds(0, 0, 0, 0);
     private static final int MAX_WORLD_LABELS = 20;
-    private static final int SOURCE_LIST_MIN_HEIGHT = 40;
-    private static final int SOURCE_LIST_MAX_HEIGHT = 87;
+    private static final int SOURCE_LIST_MIN_HEIGHT = 62;
+    private static final int SOURCE_LIST_MAX_HEIGHT = 109;
+    private static final int SOURCE_ROWS_TOP = 43;
     private static final int SOURCE_DETAILS_VIEWPORT_HEIGHT = 102;
     private static final int NBT_HEADER_VIEWPORT_HEIGHT = 20;
     private static final int NBT_MIN_VIEWPORT_HEIGHT = 54;
@@ -485,17 +487,30 @@ public final class DebuggerOverlay {
         if (detailHeight > 0) renderSourceDetails(graphics,
             new Bounds(body.x(), body.y() + listHeight, body.width(), detailHeight), 0);
         navigationGroup = DebuggerNavigation.Group.NBT;
-        if (nbtHeight > 0) nbtPanel.render(graphics,
-            new Bounds(body.x() + 3, body.y() + listHeight + detailHeight, body.width() - 6, nbtHeight),
+        Bounds nbtBounds = new Bounds(body.x() + 3, body.y() + listHeight + detailHeight, body.width() - 6, nbtHeight);
+        if (nbtHeight > 0 && !hasNbt && state.selectedPauseSourceIndex() < 0
+            && state.selectedSource() != null && state.selectedSource().entity() != null) {
+            wrapped(graphics, component("codon.nbt.history_unavailable"),
+                new Bounds(nbtBounds.x() + 4, nbtBounds.y() + 5, nbtBounds.width() - 8, nbtBounds.height() - 5), MUTED);
+        }
+        if (nbtHeight > 0) nbtPanel.render(graphics, nbtBounds,
             hoverX, hoverY, navigation, scrollbars,
             (id, bounds, label, active, selected, action) -> button(id, bounds, label, active, selected, true, false, action)
                 .withFlatChrome());
     }
 
     private void renderSources(GuiGraphicsExtractor graphics, Bounds area, PauseSnapshot snapshot, int headingInset) {
+        boolean compactCaption = area.height() < SOURCE_ROWS_TOP + 19;
+        int rowTop = compactCaption ? 21 : SOURCE_ROWS_TOP;
         String heading = expandedGroup.isEmpty() ? tr("codon.ui.contexts")
             : Component.translatable("codon.ui.group", expandedGroup.size()).getString();
+        if (compactCaption) heading = contextProvenance();
         text(graphics, heading, area.x() + 7 + headingInset, area.y() + 6, area.width() - 42 - headingInset, TEXT);
+        if (!compactCaption) {
+            text(graphics, contextSelection(), area.x() + 7, area.y() + 18, area.width() - 14,
+                state.isViewingCurrentCommand() ? AMBER : TEAL);
+            text(graphics, contextProvenance(), area.x() + 7, area.y() + 29, area.width() - 14, MUTED);
+        }
         if (!expandedGroup.isEmpty()) {
             navigation.add("all-sources", DebuggerNavigation.Group.SOURCES, -1, 0, () -> { });
             button("all-sources", new Bounds(area.x() + area.width() - 39, area.y() + 2, 35, 15),
@@ -507,7 +522,7 @@ public final class DebuggerOverlay {
             for (int i = 0; i < state.displayedSources().size(); i++) all.add(i);
             indices = all;
         }
-        int rows = Math.max(0, (area.height() - 21) / 19);
+        int rows = Math.max(0, (area.height() - rowTop) / 19);
         maxSourceOffset = Math.max(0, indices.size() - Math.max(1, rows));
         int selectedSource = state.selectedSourceIndex();
         if (rows > 0 && (rows != lastSourceRows || selectedSource != lastSelectedSource)) {
@@ -529,7 +544,8 @@ public final class DebuggerOverlay {
             }
         }
         navigation.revealFocus(DebuggerNavigation.Group.SOURCES);
-        if (indices.isEmpty()) text(graphics, tr("codon.ui.no_sources"), area.x() + 7, area.y() + 24, area.width() - 14, MUTED);
+        if (indices.isEmpty() && area.height() >= rowTop + 12)
+            text(graphics, tr("codon.ui.no_sources"), area.x() + 7, area.y() + rowTop + 3, area.width() - 14, MUTED);
         for (int row = 0; row < rows && sourceOffset + row < indices.size(); row++) {
             int index = indices.get(sourceOffset + row);
             PauseSource source = state.displayedSources().get(index);
@@ -538,7 +554,7 @@ public final class DebuggerOverlay {
             Component tooltip = sourceTooltip(title, index);
             if (!source.dimension().equals(dimension())) tooltip = tooltip.copy().append("\n" + shortDimension(source.dimension()));
             int labelWidth = area.width() - 13;
-            colorSourceButton(button("source-" + index, new Bounds(area.x() + 5, area.y() + 21 + row * 19, labelWidth, 17),
+            colorSourceButton(button("source-" + index, new Bounds(area.x() + 5, area.y() + rowTop + row * 19, labelWidth, 17),
                 title, true, index == state.selectedSourceIndex(), true, false, () -> {
                     if (state.snapshot() == snapshot) {
                         state.selectSource(index);
@@ -547,13 +563,33 @@ public final class DebuggerOverlay {
                 }).withFlatChrome(), index).setTooltip(Tooltip.create(tooltip));
         }
         if (rows > 0 && indices.size() > rows) {
-            if (area.height() - (21 + rows * 19) >= 9) {
+            if (area.height() - (rowTop + rows * 19) >= 9) {
                 text(graphics, (sourceOffset + 1) + "–" + Math.min(indices.size(), sourceOffset + rows) + " / " + indices.size(),
                     area.x() + 7, area.y() + area.height() - 8, area.width() - 14, MUTED);
             }
-            scrollbar(graphics, "sources", value -> sourceOffset = value, area.x() + area.width() - 5, area.y() + 21, Math.max(1, rows * 19 - 2),
+            scrollbar(graphics, "sources", value -> sourceOffset = value, area.x() + area.width() - 5, area.y() + rowTop, Math.max(1, rows * 19 - 2),
                 sourceOffset, maxSourceOffset, rows, indices.size());
         }
+    }
+
+    private String contextSelection() {
+        if (state.selectedUnobservedStageIndex() >= 0)
+            return tr("codon.ui.contexts.unobserved", state.selectedUnobservedStageIndex() + 1);
+        ExecutionFlowStage stage = state.selectedExecutionFlowStage();
+        if (stage == null) return tr(state.displayedSources().isEmpty()
+            ? "codon.ui.contexts.no_stage" : "codon.ui.contexts.pause_packet");
+        return tr(state.isViewingCurrentCommand() ? "codon.ui.contexts.current" : "codon.ui.contexts.history", stage.index() + 1);
+    }
+
+    private String contextProvenance() {
+        if (state.selectedUnobservedStageIndex() >= 0)
+            return tr("codon.ui.contexts.not_recorded");
+        ExecutionFlowStage stage = state.displayedSourceStage();
+        if (stage == null) return tr(state.displayedSources().isEmpty()
+            ? "codon.ui.contexts.not_recorded" : "codon.ui.contexts.pause_inputs");
+        // Match ExecutionFlowStage.displayContexts exactly, including its input fallback.
+        boolean inputs = stage.terminal() || !stage.complete() || !stage.lineageComplete();
+        return tr(inputs ? "codon.ui.contexts.inputs" : "codon.ui.contexts.outputs", stage.index() + 1);
     }
 
     private void renderSourceDetails(GuiGraphicsExtractor graphics, Bounds area, int headingInset) {
@@ -810,7 +846,7 @@ public final class DebuggerOverlay {
         return Component.translatable(key);
     }
 
-    private static String tr(String key) {
-        return component(key).getString();
+    private static String tr(String key, Object... args) {
+        return Component.translatable(key, args).getString();
     }
 }

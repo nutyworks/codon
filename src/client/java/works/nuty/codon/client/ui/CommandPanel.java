@@ -38,6 +38,8 @@ import static works.nuty.codon.client.ui.DebuggerTheme.*;
 /** A single command surface: its call path, recorded clauses, and the authoritative stop. */
 public final class CommandPanel {
     private static final Bounds EMPTY = new Bounds(0, 0, 0, 0);
+    private static final int DETAIL_HEIGHT = 26;
+    private record SelectionDetail(String title, String values, String explanation, int color) { }
     private final Minecraft client = Minecraft.getInstance();
     private final ClientDebuggerState state;
     private final Runnable selectionChanged;
@@ -68,7 +70,7 @@ public final class CommandPanel {
     public int preferredHeight(int width, int height, @Nullable PauseSnapshot snapshot) {
         if (snapshot == null) return 36;
         // Selection and recording availability must not move the panel's controls.
-        int base = height < 240 ? 64 : 76;
+        int base = (height < 240 ? 64 : 76) + DETAIL_HEIGHT + 2;
         return expanded ? Math.max(120, height / 2) : base;
     }
 
@@ -104,8 +106,21 @@ public final class CommandPanel {
             int y = area.y() + 3;
             renderPath(graphics, new Bounds(area.x() + 4, y, area.width() - 8, 17), snapshot);
             y += 19;
-            Bounds body = new Bounds(area.x() + 5, y, area.width() - 12, Math.max(0, actionY - 4 - y));
+            // Fixed full-width detail band: selected state never changes clause widths or action positions.
+            int detailHeight = Math.min(DETAIL_HEIGHT, Math.max(0, actionY - y - 21));
+            int detailY = actionY - 4 - detailHeight;
+            Bounds body = new Bounds(area.x() + 5, y, area.width() - 12, Math.max(0, detailY - 2 - y));
             renderClauses(graphics, body, snapshot);
+            SelectionDetail detail = selectionDetail();
+            if (detailHeight >= client.font.lineHeight + 2) {
+                drawText(graphics, detail.title(), area.x() + 8, detailY + 2, area.width() - 16, detail.color());
+                if (detailHeight >= 2 * client.font.lineHeight + 5)
+                    drawText(graphics, detail.values(), area.x() + 8, detailY + 13, area.width() - 16, TEXT);
+                navigationGroup = DebuggerNavigation.Group.ACTIONS;
+                Component label = Component.literal(detail.title() + "\n" + detail.values() + "\n" + detail.explanation());
+                button("selected-flow-details", new Bounds(area.x() + 5, detailY, area.width() - 10, detailHeight),
+                    label, true, false, () -> { }).asHitSurface().setTooltip(Tooltip.create(label));
+            }
             graphics.fill(area.x() + 1, actionY - 3, area.x() + area.width() - 1, actionY - 2, DebuggerTheme.color(BORDER));
             ExecutionFlowStage stage = state.selectedExecutionFlowStage();
             boolean warning = stage != null && hasFlowWarning();
@@ -115,7 +130,11 @@ public final class CommandPanel {
                 warningButton("flow-warning", new Bounds(summaryX, actionY, 16, 14), stage);
                 summaryX += 18;
             }
-            drawText(graphics, summary(), summaryX, actionY + 4, Math.max(0, actionLeft - summaryX - 6), MUTED);
+            String footer = stage == null ? "" : conditionSummary(stage);
+            if (hasFlowWarning()) footer = (footer.isEmpty() ? "" : footer + " · ")
+                + tr("codon.ui.flow_detail.trace_warning", warningSummary(state.selectedExecutionFlow()));
+            drawText(graphics, detailHeight < client.font.lineHeight + 2 ? detail.title() : footer,
+                summaryX, actionY + 4, Math.max(0, actionLeft - summaryX - 6), MUTED);
         }
         return finish();
     }
@@ -486,21 +505,28 @@ public final class CommandPanel {
         return "unobserved-" + control + "-" + flow.invocationId() + "-" + part.targetStageIndex();
     }
 
-    private static String observationText(Part part) {
-        return tr(switch (part.observation()) {
-            case NOT_EXECUTED -> "codon.ui.not_executed";
-            case FILTERED_OUT -> "codon.ui.filtered_out";
-            case RECORDED, UNAVAILABLE -> "codon.ui.stage_unavailable";
-        });
+    private boolean executionError(int stageIndex) {
+        if (stageIndex < 0) return false;
+        return warningsForStage(state.selectedExecutionFlow(), stageIndex).stream()
+            .anyMatch(warning -> warning.reason() == ExecutionFlowWarning.Reason.EXECUTION_ERROR);
     }
 
-    private static String observationLabel(Part part) {
-        return tr(switch (part.observation()) {
-            case NOT_EXECUTED -> "codon.ui.not_executed.short";
-            case FILTERED_OUT -> "codon.ui.filtered_out.short";
-            case RECORDED, UNAVAILABLE -> "codon.ui.stage_unavailable.short";
-        });
+    private String observationKey(Part part) {
+        if (executionError(part.targetStageIndex())) return "codon.ui.flow_detail.error";
+        if (part.observation() == CommandFlowLayout.Observation.FILTERED_OUT) return "codon.ui.filtered_out";
+        // An absent historical clause does not prove non-execution. Only the suffix beyond
+        // the actual pause in this same invocation has evidence that execution has not reached it.
+        if (part.observation() == CommandFlowLayout.Observation.NOT_EXECUTED && state.isPaused()
+            && state.selectedFlowIndex() == state.pausedFlowIndex() && state.pausedFlowStageIndex() >= 0) {
+            ExecutionFlowTrace flow = state.selectedExecutionFlow();
+            if (flow != null && part.targetStageIndex() > flow.stages().get(state.pausedFlowStageIndex()).index())
+                return "codon.ui.not_executed";
+        }
+        return "codon.ui.stage_unavailable";
     }
+
+    private String observationText(Part part) { return tr(observationKey(part)); }
+    private String observationLabel(Part part) { return tr(observationKey(part) + ".short"); }
 
     private void renderRawCommand(GuiGraphicsExtractor graphics, Bounds body, CommandSnippet command, PauseSnapshot snapshot) {
         var lines = rawCommandLines(command, Math.max(1, body.width() - 12));
@@ -538,37 +564,45 @@ public final class CommandPanel {
         return lines;
     }
 
-    private String summary() {
+    private SelectionDetail selectionDetail() {
         ExecutionFlowStage stage = state.selectedExecutionFlowStage();
-        if (state.selectedUnobservedStageIndex() >= 0) {
+        int unobserved = state.selectedUnobservedStageIndex();
+        if (unobserved >= 0) {
             ExecutionFlowTrace flow = state.selectedExecutionFlow();
-            return CommandFlowLayout.content(state.selectedCommand(), flow, state.stagePreviews().get(flow.location())).parts().stream()
-                .filter(part -> part.targetStageIndex() == state.selectedUnobservedStageIndex()).findFirst()
-                .map(CommandPanel::observationText).orElse(tr("codon.ui.stage_unavailable"));
+            CommandSnippet command = state.selectedCommand();
+            Part part = flow == null || command == null ? null
+                : CommandFlowLayout.content(command, flow, state.stagePreviews().get(flow.location())).parts().stream()
+                    .filter(candidate -> candidate.targetStageIndex() == unobserved).findFirst().orElse(null);
+            String key = executionError(unobserved) ? "codon.ui.flow_detail.error"
+                : part == null ? "codon.ui.stage_unavailable" : observationKey(part);
+            String values = tr(key.equals("codon.ui.filtered_out") ? "codon.ui.flow_detail.unreached_counts"
+                : key.equals("codon.ui.not_executed") ? "codon.ui.flow_detail.future_counts"
+                : key.equals("codon.ui.stage_unavailable") ? "codon.ui.flow_detail.unknown_counts" : "codon.ui.flow_detail.no_counts");
+            return new SelectionDetail(tr("codon.ui.flow_detail.title", tr("codon.ui.flow_detail.selected"),
+                unobserved + 1, tr(key + ".short")), values, tr(key),
+                executionError(unobserved) ? RED : TEAL);
         }
-        if (stage == null) return withHistory(tr("codon.ui.no_flow"));
-        if (stage.terminal()) {
-            String terminal = Component.translatable("codon.ui.terminal_results",
-                measuredCount(stage.executionCount()), measuredCount(stage.successCount())).getString();
-            String condition = conditionSummary(stage);
-            if (!condition.isEmpty()) terminal += " · " + condition;
-            return withHistory(hasFlowWarning()
-                ? terminal + " · " + warningSummary(state.selectedExecutionFlow()) : terminal);
-        }
-        // Per-clause counts already describe input/output contexts. Keep this fixed row
-        // for additional information, rather than repeating those counts below them.
-        String condition = conditionSummary(stage);
-        if (hasFlowWarning()) condition = condition.isEmpty() ? warningSummary(state.selectedExecutionFlow())
-            : condition + " · " + warningSummary(state.selectedExecutionFlow());
-        return withHistory(condition);
+        if (stage == null) return new SelectionDetail(tr("codon.ui.no_flow"),
+            tr("codon.ui.flow_detail.no_counts"), tr("codon.ui.stage_unavailable"), MUTED);
+        boolean error = executionError(stage.index());
+        boolean incomplete = hasWarning(stage);
+        boolean resultMissing = stage.terminal() ? stage.executionCount() < 0 || stage.successCount() < 0
+            : !stage.complete() || stage.outputCount() < 0;
+        String status = error ? "error.short" : incomplete ? "capture_incomplete"
+            : resultMissing ? state.isViewingCurrentCommand() ? "awaiting_result" : "unknown_result" : "observed";
+        String scope = tr(state.isViewingCurrentCommand() ? "codon.ui.flow_detail.stop" : "codon.ui.flow_detail.history");
+        String title = tr("codon.ui.flow_detail.title", scope, stage.index() + 1, tr("codon.ui.flow_detail." + status));
+        String values = stage.terminal()
+            ? tr("codon.ui.flow_detail.results", detailCount(stage.inputCount()), detailCount(stage.executionCount()),
+                detailCount(stage.successCount()))
+            : tr("codon.ui.flow_detail.contexts", detailCount(stage.inputCount()),
+                detailCount(stage.complete() ? stage.outputCount() : ExecutionFlowStage.UNMEASURED),
+                detailCount(stage.complete() && stage.outputCount() >= 0 ? stage.droppedCount() : ExecutionFlowStage.UNMEASURED));
+        return new SelectionDetail(title, values, stageDetails(stage) + "\n" + tr("codon.ui.flow_detail.count_hint"),
+            error ? RED : incomplete ? AMBER : state.isViewingCurrentCommand() ? AMBER : TEAL);
     }
 
-    private String withHistory(String summary) {
-        if (state.isViewingCurrentCommand()) return summary;
-        String label = tr(commandBounds.width() < 400
-            ? "codon.ui.viewing_recording_short" : "codon.ui.viewing_recording");
-        return summary.isEmpty() ? label : label + " · " + summary;
-    }
+    private static String detailCount(int count) { return count < 0 ? "?" : Integer.toString(count); }
 
     private String conditionSummary(ExecutionFlowStage stage) {
         BreakpointTarget target = selectedBreakpoint();

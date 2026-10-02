@@ -7,12 +7,38 @@ buttons: idle rows have no repeated frame, hover has a neutral fill, selection k
 its semantic fill and underline, and keyboard focus has a filled corner caret.
 Foreground text and icons remain opaque when panel opacity is reduced. Live amber,
 selected teal, context-change colors, breakpoint icons and counts retain their roles.
-Unobserved stages use compact translated labels (Unrun/Filtered/Unknown) and keep
+Unobserved stages use compact translated labels (Unrun/Unreached/Unknown/Error) and keep
 the full observation text in their clause tooltip and selection summary. Their cell
 width follows the command and marker padding, not the full status sentence. Recorded
 counts still reserve their required width. Stage targets, secondary actions,
 character wrapping and navigation are unchanged.
-These appearance changes still need manual viewing in the native client.
+Contexts now labels the selected stop/recorded stage separately from the stage
+which supplies its displayed contexts. Complete modifier records show outputs plus
+excluded inputs; terminal, unfinished or incomplete-lineage records show inputs.
+A predecessor's outputs retain that predecessor's stage number. Empty observed
+context sets are not relabeled as missing recordings. Very short inspector viewports
+use the provenance caption as the heading to retain a selectable context row.
+
+Flow has a persistent two-line selection detail band with a keyboard focus/narration
+target. It names Stop/Recorded/Selected, the stage number, observation state and
+counts. The collapsed panel reserves 28 additional logical pixels; stage widths,
+wrapping rules and bottom action positions do not depend on the selected status.
+Expanded Flow retains its existing outer size and allocates the same detail band.
+Measured zero stays `0`; missing counts are `?`. Explicit stage-scoped execution
+warnings produce Error; zero successes alone do not. A missing suffix is Unrun only
+beyond the actual stop in the same invocation. A complete, reliable preceding stage
+with zero outputs permits Unreached. Other absent historical stages remain Unknown,
+with recording-missing/execution-unknown text. No lifecycle facts or error attribution
+are inferred for unrecorded stages or warnings without a stage identity.
+
+The trace model does not carry an authoritative lifecycle state for every absent
+parsed stage. Distinguishing all other non-execution versus missing-capture cases
+would require additional server evidence; this patch does not extend the protocol.
+
+Validation for this follow-up: `JAVA_HOME=<JDK 25> ./gradlew compileClientJava
+processResources --console=plain` passed; evidence is `../ui-provenance-compile.log` beside
+the checkout. No tests or GUI runs. Native layout, clipping, keyboard narration and
+live/historical selection acceptance remain unverified.
 
 Use the [shared setup](../README.md#prepare-and-launch). In a fresh scratch world,
 summon two tagged armor stands before pausing:
