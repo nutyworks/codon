@@ -186,7 +186,7 @@ and changes that require subsequent simulation ticks still wait for normal execu
   rendering at execution end; the paused body's third-person arms and equipment remain visible.
 - `CodonClientMod` — client composition root.
 
-`B` opens/closes cursor mode. `F7` continues, `F8` steps over, `F9` steps into, `Shift+F9` steps
+`B` opens/closes cursor mode. `F9` continues, `F8` steps over, `F7` steps into, `Ctrl+F7` steps
 out, and `F10` toggles the targeted block breakpoint; UI hints follow remapped keys. Gizmo modes
 are Grouped (default), Labels, and Focus. Context numbers identify entries in the current snapshot;
 selection survives a step only when an exact context or unambiguous entity/dimension match exists.

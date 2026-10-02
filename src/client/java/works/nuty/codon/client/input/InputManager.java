@@ -14,6 +14,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
+import org.jspecify.annotations.Nullable;
 import works.nuty.codon.client.state.ClientDebuggerState;
 import works.nuty.codon.client.network.ClientNetworking;
 import works.nuty.codon.client.ui.CodonScreen;
@@ -69,7 +70,7 @@ public final class InputManager implements ClientTickEvents.EndTick {
                 control(Control.OVER);
             }
             while (stepIntoKey.consumeClick()) {
-                control(client.hasShiftDown() ? Control.OUT : Control.INTO);
+                control(client.hasControlDown() ? Control.OUT : Control.INTO);
             }
         } else {
             // Drain clicks so they don't fire later when paused.
@@ -169,19 +170,44 @@ public final class InputManager implements ClientTickEvents.EndTick {
             case RESUME -> resumeKey.getTranslatedKeyMessage();
             case OVER -> stepOverKey.getTranslatedKeyMessage();
             case INTO -> stepIntoKey.getTranslatedKeyMessage();
-            case OUT -> Component.literal("Shift+").append(stepIntoKey.getTranslatedKeyMessage());
+            case OUT -> Component.translatable("codon.ui.control.stepout_shortcut", stepIntoKey.getTranslatedKeyMessage());
         };
     }
 
-    /** Screens consume key events before gameplay mappings, so route both through one action. */
-    public boolean handleScreenKey(KeyEvent event) {
-        Control action = resumeKey.matches(event) ? Control.RESUME
+    private @Nullable Control controlFor(KeyEvent event) {
+        // Resolve the chord first and use physical Ctrl, including on macOS (not Cmd).
+        if (stepIntoKey.matches(event) && event.hasControlDown()) return Control.OUT;
+        return resumeKey.matches(event) ? Control.RESUME
             : stepOverKey.matches(event) ? Control.OVER
-            : stepIntoKey.matches(event) ? (event.hasShiftDown() ? Control.OUT : Control.INTO) : null;
+            : stepIntoKey.matches(event) ? Control.INTO : null;
+    }
+
+    private void drainControlClicks() {
+        while (resumeKey.consumeClick()) { }
+        while (stepOverKey.consumeClick()) { }
+        while (stepIntoKey.consumeClick()) { }
+    }
+
+    /** Keep the press-time modifier: releasing Ctrl before the next tick cannot turn Out into Into. */
+    public boolean handleWorldControlKey(KeyEvent event, int keyAction) {
+        Minecraft client = Minecraft.getInstance();
+        if (keyAction == InputConstants.RELEASE || client.player == null || !state.isPaused()
+            || client.gui.screen() != null || client.gui.overlay() != null || !client.isWindowActive()) return false;
+        Control action = controlFor(event);
+        if (action == null) return false;
+        if (keyAction == InputConstants.PRESS) {
+            drainControlClicks();
+            control(action);
+        }
+        // Cancel native queueing and key repeats so a chord cannot also enqueue plain Step Into.
+        return true;
+    }
+
+    /** Screens and world key presses resolve the same exclusive action. */
+    public boolean handleScreenKey(KeyEvent event) {
+        Control action = controlFor(event);
         if (action != null) {
-            while (resumeKey.consumeClick()) { }
-            while (stepOverKey.consumeClick()) { }
-            while (stepIntoKey.consumeClick()) { }
+            drainControlClicks();
             control(action);
             return true;
         }
@@ -215,9 +241,9 @@ public final class InputManager implements ClientTickEvents.EndTick {
         this.hideUiKey = register("key.codon.hide_ui", InputConstants.KEY_H, category);
         this.menuKey = register("key.codon.open_menu", InputConstants.KEY_V, category);
         this.breakpointKey = register("key.codon.breakpoint", InputConstants.KEY_F10, category);
-        this.resumeKey = register("key.codon.resume", InputConstants.KEY_F7, category);
+        this.resumeKey = register("key.codon.resume", InputConstants.KEY_F9, category);
         this.stepOverKey = register("key.codon.step_over", InputConstants.KEY_F8, category);
-        this.stepIntoKey = register("key.codon.step_into", InputConstants.KEY_F9, category);
+        this.stepIntoKey = register("key.codon.step_into", InputConstants.KEY_F7, category);
     }
 
     private static KeyMapping register(String translationKey, int key, KeyMapping.Category category) {

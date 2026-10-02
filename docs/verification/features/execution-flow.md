@@ -17,7 +17,7 @@ and trigger it:
 execute as @e[type=minecraft:armor_stand,tag=codon_verify] at @s if entity @s[tag=codon_keep] run say kept
 ```
 
-1. Step with `F9` and inspect the command's stages and context markers using `V`.
+1. Step with `F7` and inspect the command's stages and context markers using `V`.
    The `as` stage branches into two contexts; `at` changes their recorded anchors;
    `if` retains one and removes the other. These are context changes, not entity
    creation/deletion.

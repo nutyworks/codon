@@ -11,11 +11,13 @@ import works.nuty.codon.client.CodonClientMod;
 
 @Mixin(KeyboardHandler.class)
 abstract class KeyboardHandlerMixin {
-    @Inject(method = "keyPress", at = @At("HEAD"))
-    private void codon$hideUi(long window, int action, KeyEvent event, CallbackInfo ci) {
+    @Inject(method = "keyPress", at = @At("HEAD"), cancellable = true)
+    private void codon$debuggerInput(long window, int action, KeyEvent event, CallbackInfo ci) {
         Minecraft client = Minecraft.getInstance();
         var input = CodonClientMod.input();
-        if (input != null && window == client.getWindow().handle())
+        if (input != null && window == client.getWindow().handle()) {
             input.handleHideKey(event, action);
+            if (input.handleWorldControlKey(event, action)) ci.cancel();
+        }
     }
 }
