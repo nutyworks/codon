@@ -45,9 +45,12 @@ viewport margins. `./gradlew build` runs the configured full JVM checks.
 observes the actual deferred native tooltip components and positioner with a
 test-only mixin. It checks Source's saved-line marker, disabled definitions,
 modal suppression, direct text/component lists, styled long identifiers,
-keyboard/disabled buttons, scissor clipping and hover-delay recovery. The matrix
-uses English/Korean at 1.00, 1.50, 2.25 and 4.00 custom scale plus the 320×240
-minimum with a retained large-scale request. Native captures use
+keyboard/disabled buttons, scissor clipping and hover-delay recovery once at
+English 1.00 scale. Source hover also runs in Korean at 2.25 fractional scale;
+direct-text edge placement covers Korean 2.25 and 4.00 scales plus the 320×240
+minimum with a retained large-scale request. This representative set produces
+ten screenshots without repeating every input mode across language/scale pairs.
+Native captures use
 `codon-tooltip-*`; inspect every image. Synthetic details establish rendering and
 input presentation, not server-driven breakpoint execution.
 

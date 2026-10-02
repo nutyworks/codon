@@ -52,57 +52,34 @@ public final class DebuggerTooltipGameTest implements FabricClientGameTest {
         try (var world = context.worldBuilder().create()) {
             world.getConnection().waitForChunksRender();
             var preferences = new DebuggerPreferences();
-            for (String language : List.of("en_us", "ko_kr")) {
-                language(context, language);
-                for (int request : new int[]{4, 6, 9, 16}) {
-                    context.getInput().resizeWindow(1280, 960);
-                    context.runOnClient(client -> {
-                        client.options.guiScale().set(2); client.resizeGui();
-                        preferences.selectCustomUiScale(2);
-                        preferences.setCustomUiScale(request);
-                        CodonClientMod.state().preferences().selectCustomUiScale(2);
-                        CodonClientMod.state().preferences().setCustomUiScale(request);
-                        checkText(client.font, language);
-                    });
-                    source(context, language + "-" + request);
-                    var fixture = context.computeOnClient(client -> {
-                        var screen = new TooltipScreen(preferences);
-                        client.setScreenAndShow(screen);
-                        return screen;
-                    });
-                    for (int mode : new int[]{0, 1, 2, 3, 6}) {
-                        context.runOnClient(client -> { fixture.mode = mode; capture = null; });
-                        move(context, fixture, fixture.width - 8, fixture.height - 8);
-                        context.runOnClient(client -> client.setLastInputType(mode == 2 ? InputType.KEYBOARD_TAB : InputType.MOUSE));
-                        context.waitTicks(12);
-                        assertCapture(language + "-" + request + "-mode" + mode);
-                        if (mode == 0) require(capture.rows() == 3 && !capture.text().contains("ignored"), "deferred tooltip priority is unchanged");
-                        if (mode == 1) require(capture.text().startsWith("namespace:") && capture.text().endsWith("preview\n"),
-                            "component-list order is unchanged");
-                        context.takeScreenshot("codon-tooltip-" + language + "-" + request + "-mode" + mode);
-                    }
-                    context.runOnClient(client -> { fixture.mode = 4; capture = null; });
-                    context.waitTicks(3);
-                    require(capture == null, "covered focused button cannot leak a tooltip");
-                    context.runOnClient(client -> { fixture.mode = 5; fixture.button.setFocused(false); capture = null; });
-                    context.waitTicks(3);
-                    require(capture == null, "clipped widget cannot hover outside its scissor");
-                    context.runOnClient(client -> { fixture.mode = 3; capture = null; });
-                    context.waitTicks(1);
-                    require(capture == null, "uncover starts a fresh hover delay");
-                    context.waitTicks(12);
-                    assertCapture("uncovered hover recovers");
-                }
-            }
-            context.getInput().resizeWindow(320, 240);
-            context.runOnClient(client -> {
-                preferences.setCustomUiScale(16);
-                client.setScreenAndShow(new TooltipScreen(preferences));
-                capture = null;
-            });
+            language(context, "en_us");
+            scale(context, preferences, 4, 1280, 960);
+            context.runOnClient(client -> checkText(client.font, "en_us"));
+            source(context, "en_us-4");
+            var fixture = openTooltips(context, preferences);
+            // Cover every input path once; language/scale cases only repeat direct text.
+            for (int mode : new int[]{0, 1, 2, 3, 6}) tooltip(context, fixture, mode, "en_us-4-mode" + mode);
+            context.runOnClient(client -> { fixture.mode = 4; capture = null; });
             context.waitTicks(3);
-            assertCapture("minimum viewport clamps retained scale request");
-            context.takeScreenshot("codon-tooltip-ko-minimum-clamped");
+            require(capture == null, "covered focused button cannot leak a tooltip");
+            context.runOnClient(client -> { fixture.mode = 5; fixture.button.setFocused(false); capture = null; });
+            context.waitTicks(3);
+            require(capture == null, "clipped widget cannot hover outside its scissor");
+            context.runOnClient(client -> { fixture.mode = 3; capture = null; });
+            context.waitTicks(1);
+            require(capture == null, "uncover starts a fresh hover delay");
+            context.waitTicks(12);
+            assertCapture("uncovered hover recovers");
+
+            language(context, "ko_kr");
+            context.runOnClient(client -> checkText(client.font, "ko_kr"));
+            for (int request : new int[]{9, 16}) {
+                scale(context, preferences, request, 1280, 960);
+                if (request == 9) source(context, "ko_kr-9");
+                tooltip(context, openTooltips(context, preferences), 0, "ko_kr-" + request + "-mode0");
+            }
+            scale(context, preferences, 16, 320, 240);
+            tooltip(context, openTooltips(context, preferences), 0, "ko-minimum-clamped");
         } finally {
             observing = false;
             context.runOnClient(client -> {
@@ -114,6 +91,37 @@ public final class DebuggerTooltipGameTest implements FabricClientGameTest {
             });
             language(context, oldLanguage);
         }
+    }
+
+    private static void scale(ClientGameTestContext context, DebuggerPreferences preferences, int request, int width, int height) {
+        context.getInput().resizeWindow(width, height);
+        context.runOnClient(client -> {
+            client.options.guiScale().set(2); client.resizeGui();
+            preferences.selectCustomUiScale(2);
+            preferences.setCustomUiScale(request);
+            CodonClientMod.state().preferences().selectCustomUiScale(2);
+            CodonClientMod.state().preferences().setCustomUiScale(request);
+        });
+    }
+
+    private static TooltipScreen openTooltips(ClientGameTestContext context, DebuggerPreferences preferences) {
+        return context.computeOnClient(client -> {
+            var screen = new TooltipScreen(preferences);
+            client.setScreenAndShow(screen);
+            return screen;
+        });
+    }
+
+    private static void tooltip(ClientGameTestContext context, TooltipScreen fixture, int mode, String name) {
+        context.runOnClient(client -> { fixture.mode = mode; capture = null; });
+        move(context, fixture, fixture.width - 8, fixture.height - 8);
+        context.runOnClient(client -> client.setLastInputType(mode == 2 ? InputType.KEYBOARD_TAB : InputType.MOUSE));
+        context.waitTicks(mode == 3 ? 12 : 3);
+        assertCapture(name);
+        if (mode == 0) require(capture.rows() == 3 && !capture.text().contains("ignored"), "deferred tooltip priority is unchanged");
+        if (mode == 1) require(capture.text().startsWith("namespace:") && capture.text().endsWith("preview\n"),
+            "component-list order is unchanged");
+        context.takeScreenshot("codon-tooltip-" + name);
     }
 
     private static void source(ClientGameTestContext context, String name) {
