@@ -35,8 +35,18 @@ class WatchEditorQueryCodecTest {
     }
 
     @Test
-    void rejectsMissingFieldsAndOverlongJson() {
+    void rejectsMissingFields() {
         assertThrows(IllegalArgumentException.class, () -> WatchEditorQueryCodec.fromJson("{}"));
-        assertThrows(IllegalArgumentException.class, () -> WatchEditorQueryCodec.fromJson("x".repeat(WatchEditorQueryCodec.MAX_JSON_LENGTH + 1)));
+    }
+
+    @Test
+    void acceptsTheJsonLengthLimitAndRejectsOneExtraCharacter() {
+        var query = new WatchEditorQuery(WatchEditorQuery.Mode.PREVIEW, WatchSpec.Kind.SCORE, "points", "",
+            null, "", 0);
+        String json = WatchEditorQueryCodec.toJson(query);
+        // JSON whitespace reaches the wire limit without violating any query field's limit.
+        String atLimit = json + " ".repeat(WatchEditorQueryCodec.MAX_JSON_LENGTH - json.length());
+        assertEquals(query, WatchEditorQueryCodec.fromJson(atLimit));
+        assertThrows(IllegalArgumentException.class, () -> WatchEditorQueryCodec.fromJson(atLimit + " "));
     }
 }
