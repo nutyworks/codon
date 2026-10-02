@@ -574,7 +574,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             if (!stopped && (selectedLine != line || selectedStageIndex != stage.index())) continue;
             int start = x + layout.x(stage.start()) - horizontalOffset;
             int end = x + layout.before(stage.end()) - horizontalOffset;
-            int tint = ((stopped ? AMBER : TEAL) & 0xffffff) | (stopped ? 0x30000000 : 0x18000000);
+            int tint = ((stopped ? AMBER : TEAL) & 0xffffff) | (stopped ? 0x70000000 : 0x50000000);
             if (end > x && start < x + width)
                 // Tint behind text, with stronger amber reserved for the authoritative pause.
                 graphics.fill(Math.max(x, start), y + 3, Math.min(x + width, end), y + 15,

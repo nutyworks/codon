@@ -29,6 +29,7 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
     private static final SourceLocation.Function LOCATION = new SourceLocation.Function(new FunctionLocation(FUNCTION, 2));
     private static final int[] SOURCE_COLORS = {DebuggerTheme.TEXT, DebuggerTheme.TEAL, DebuggerTheme.PURPLE,
         DebuggerTheme.GREEN, DebuggerTheme.AMBER, DebuggerTheme.MUTED, 0xffb3d5ff};
+    private static final int SELECTED_TINT = 0x5075dfd6, STOPPED_TINT = 0x70f3c171;
     private record Hit(int x, int y, int width, int height, BreakpointTarget target, boolean control) { }
     private record Scenario(int scale, int scroll, String name, List<Integer> stages) { }
 
@@ -127,9 +128,9 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
                 .orElseThrow(() -> new AssertionError(label + " is missing expected visible stage " + stage));
             selectStage(context, hit, before);
             BufferedImage selected = capture(context, label + "-stage-" + stage);
-            assertBackground(context, reference, selected, hit, label + " stage " + stage);
+            assertBackground(context, reference, selected, hit, SELECTED_TINT, label + " stage " + stage);
             int background = backgroundPixel(context, selected, hit);
-            require((background >> 8 & 255) > (background >> 16 & 255), "manual selection has a subtle teal background");
+            require((background >> 8 & 255) > (background >> 16 & 255), "manual selection has a distinct teal background");
         }
     }
 
@@ -157,7 +158,8 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
         }
     }
 
-    private static int assertBackground(ClientGameTestContext context, BufferedImage reference, BufferedImage selected, Hit hit, String label) {
+    private static int assertBackground(ClientGameTestContext context, BufferedImage reference, BufferedImage selected, Hit hit,
+                                        int tint, String label) {
         double scale = scale(context);
         int[] viewport = context.computeOnClient(client -> new int[]{invoke(client.gui.screen(), "sourceLeft") + invoke(client.gui.screen(), "gutterWidth"),
             invoke(client.gui.screen(), "codeRight")});
@@ -183,9 +185,10 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
             Math.max(hit.x * scale, clip[0]), Math.min((hit.x + hit.width) * scale, clip[1]), referenceBackground, background);
         require(ink > 20, "reference contains visible source glyphs");
         require(unexpected == 0, label + " altered " + unexpected + " glyph, neighboring or clipped-edge pixels");
-        require(!isInk(background), "background remains darker than source glyphs");
+        require(matchesBlend(background, tint, referenceBackground, tint >>> 24),
+            label + " uses the expected background hue and opacity");
         int contrast = colorDistance(referenceBackground, background);
-        require(contrast > 0 && contrast < 120, "stage has a visible subtle background, without a border");
+        require(contrast >= 120, "stage background is clearly distinct from the row behind it");
         require(sourcesText(context).equals(COMMAND), "source text and original offsets remain unchanged");
         return contrast;
     }
@@ -216,7 +219,7 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
             "a pause without an authoritative stage does not guess a stopped stage");
         selectStage(context, inspected, before);
         BufferedImage selected = capture(context, "pause-unknown-stage-selected-3");
-        int selectedContrast = assertBackground(context, unknown, selected, inspected, "paused manual selection");
+        int selectedContrast = assertBackground(context, unknown, selected, inspected, SELECTED_TINT, "paused manual selection");
         context.runOnClient(client -> {
             var state = CodonClientMod.state();
             state.applyPause(pause(2, COMMAND));
@@ -225,7 +228,7 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
         });
         context.waitTicks(2);
         BufferedImage actual = capture(context, "pause-actual-stage-2-other-frame-selected-3");
-        int pausedContrast = assertBackground(context, selected, actual, stopped, "authoritative stopped stage");
+        int pausedContrast = assertBackground(context, selected, actual, stopped, STOPPED_TINT, "authoritative stopped stage");
         int background = backgroundPixel(context, actual, stopped);
         require((background >> 16 & 255) > (background >> 8 & 255), "actual stop retains amber semantics");
         require(pausedContrast > selectedContrast, "actual stopped stage is stronger than manual selection");
@@ -363,7 +366,7 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
         // The allowed dark fill must never hide a one-pixel stroke over clipped glyphs or background.
         for (double scale : new double[]{1, 1.25, 2.25, 4.5}) {
             double start = 3 * scale, end = 11 * scale;
-            int from = (int) Math.floor(start), to = (int) Math.ceil(end), before = 0xff172126, background = 0xff203336;
+            int from = (int) Math.floor(start), to = (int) Math.ceil(end), before = 0xff172126, background = 0xff345d5d;
             int clippedEnd = to - 2; // Native scissor rounding can leave unchanged columns inside the logical viewport.
             var reference = new BufferedImage(64, 4, BufferedImage.TYPE_INT_ARGB);
             var selected = new BufferedImage(64, 4, BufferedImage.TYPE_INT_ARGB);

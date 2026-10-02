@@ -37,8 +37,9 @@ be checked. The viewer lists functions actually loaded by the current server.
    marker. Leaving a stage removes its temporary slot and restores original glyph
    advances; enabled markers keep their necessary slot. No separate stage row or
    panel is shown. Hover the gutter marker for the enabled stage count.
-   A selected stage has a subtle teal background behind its text, without a border.
-   The actual stopped stage has a stronger amber background, using the top live
+   A selected stage has a distinct teal background behind its text, without a border
+   (31% tint at full panel opacity). The actual stopped stage has a stronger amber
+   background (44% tint), using the top live
    pause frame's stage index only when its location and command match the source.
    A live stopped row requests its stage preview without requiring selection,
    hover or an enabled stage breakpoint.
@@ -145,9 +146,10 @@ Example: `./gradlew runClientGameTest -PclientGameTest=FunctionSourceScreenGameT
 after selecting adjacent stages in five representative scenarios: minimum 1.00×,
 fractional 1.25×/2.25× clipping, and maximum 4.50× compact/tail views in a
 1920×1080 viewport. The native pixel comparison preserves glyph colors and coverage,
-including the first/last viewport pixels, and allows only a uniform dark background
-within the selected stage. Partially transparent font texels must retain the same
-syntax color and alpha coverage over both backgrounds, within 8-bit blend rounding.
+including the first/last viewport pixels, and allows only a uniform background
+within the selected stage, with the expected teal/amber hue and opacity. Partially
+transparent font texels must retain the same syntax color and alpha coverage over
+both backgrounds, within 8-bit blend rounding.
 Minecraft's rounded scissor bounds constrain the fill; the comparison still includes
 the full logical viewport and requires pixels outside that native clip to stay identical.
 Neighboring stages stay identical. Native clicks at both ends of each visible text hitbox preserve
