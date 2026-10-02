@@ -71,8 +71,8 @@ fail. Omitting the property restores all entries from the
 ./gradlew runClientGameTest
 ```
 
-CI partitions that same manifest across four isolated runners with
-`-PclientGameTestShard=1/4` through `4/4`. Entries are assigned by their position
+CI partitions that same manifest across eight isolated runners with
+`-PclientGameTestShard=1/8` through `8/8`. Entries are assigned by their position
 modulo the shard count, preserving their order within each runner. Every registered
 class runs once, including newly added classes. Sharding and `clientGameTest` cannot
 be combined; malformed, out-of-range or empty shard requests fail. Omitting both
@@ -81,7 +81,7 @@ the generated manifest and cleared run directory belong to one runner.
 
 The five-minute goal concerns the full CI critical path, including setup,
 compilation, client startup and evidence upload. Queue time is reported separately.
-Four runners reduce elapsed native execution but increase total runner time.
+Eight runners reduce elapsed native execution but increase total runner time.
 Measure the slowest shard and the final status check; passing a focused subset or
 an estimated division of a prior run does not establish this goal. Gradle profiles
 in the evidence artifacts distinguish task execution from preparation.
@@ -115,7 +115,7 @@ Keep screenshots/logs out of commits.
 
 ## CI
 
-[build.yml](../../.github/workflows/build.yml) runs `build` alongside four
+[build.yml](../../.github/workflows/build.yml) runs `build` alongside eight
 `client-game-test-shard` jobs on pushes and pull requests. Together the shards run
 the complete registered client suite with JDK 25, Xvfb/Mesa software rendering,
 and a PulseAudio null sink for OpenAL channel tests. Each uses the same
@@ -130,7 +130,7 @@ so SDL uses EGL instead of GLX. Without this, client startup can fail with
 fallback error does not establish a Codon test failure.
 
 Artifacts are uploaded even after a failed test step and retained for 14 days:
-`unit-test-results` contains JVM reports; `client-game-test-evidence-1` through `-4` contain the
+`unit-test-results` contains JVM reports; `client-game-test-evidence-1` through `-8` contain the
 Gradle console log plus client logs, screenshots and crash reports. A setup failure
 may produce no files. The client test step has a 15-minute timeout within the
 45-minute job limit, leaving time to upload evidence after a stuck client is
