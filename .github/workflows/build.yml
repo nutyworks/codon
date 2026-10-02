@@ -42,6 +42,17 @@ jobs:
             build/test-results/
           retention-days: 14
 
+
+      - name: verify trace count boundary mutation
+        run: bash .github/scripts/verify-trace-count-boundary.sh
+      - name: capture trace count mutation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trace-count-mutation-evidence
+          path: build/trace-count-evidence/
+          retention-days: 14
+
   client-game-test:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
