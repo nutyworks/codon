@@ -316,7 +316,7 @@ public final class DebuggerEngine {
             clearAdvancement();
             unpause();
         }
-        if (complete) clearExecutionState();
+        if (complete) completeExecutionState();
     }
 
     /** Resume, pausing at the next command stage (descending into called functions). */

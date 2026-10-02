@@ -22,6 +22,7 @@ import works.nuty.codon.core.model.ExecutionFlowEdge;
 import works.nuty.codon.core.model.ExecutionFlowStage;
 import works.nuty.codon.core.model.ExecutionFlowTrace;
 import works.nuty.codon.core.model.PauseSnapshot;
+import works.nuty.codon.core.model.PauseReason;
 import works.nuty.codon.core.model.SourceLocation;
 import works.nuty.codon.core.service.DebuggerEngine;
 
@@ -87,16 +88,23 @@ public final class DebuggerExecutionFlowGameTest implements FabricClientGameTest
                 ExecutionFlowTrace executed = flowAt(secondPause, setup.first());
                 require(executed.executionCount() == 3 && executed.successCount() == 3,
                     "the next command-block pause retains the previous final attempt and success");
+                require(pauses.stream().filter(snapshot -> snapshot.reason() == PauseReason.EXECUTION_COMPLETE).count() == 1,
+                    "stepping the last command reaches exactly one execution-complete inspection stop");
 
                 context.waitFor(client -> {
                     PauseSnapshot recent = state().inspectionSnapshot();
                     if (state().isPaused() || recent == null) return false;
                     SourceLocation location = new SourceLocation.Block(setup.second());
-                    return recent.executionFlows().stream().anyMatch(flow -> flow.location().equals(location)
+                    ExecutionFlowTrace selected = state().selectedExecutionFlow();
+                    return selected != null && state().selectedExecutionFlowStage() != null
+                        && selected.location().equals(location)
+                        && recent.executionFlows().stream().anyMatch(flow -> flow.location().equals(location)
                         && flow.executionCount() == 1 && flow.successCount() == 1);
                 }, 5);
-                require(!state().isPaused() && state().snapshot() == null,
+                require(!state().isPaused() && !state().isStepping() && !state().isContinuing()
+                        && state().snapshot() == null && !state().beginControlRequest(),
                     "completed flow sync remains read-only and does not recreate a pause");
+                CodonMod.LOGGER.info("Native terminal completion PASS: final command executed once, flow selected, controls inactive");
             } finally {
                 setup.driver().close();
                 world.getServer().runOnServer(server -> cleanup(server, setup));
@@ -321,9 +329,13 @@ public final class DebuggerExecutionFlowGameTest implements FabricClientGameTest
                     if (engine.isPaused() && snapshot != null && snapshot != previous) {
                         previous = snapshot;
                         snapshots.add(snapshot);
-                        if (snapshot.location().equals(second)) {
+                        if (snapshot.reason() == PauseReason.EXECUTION_COMPLETE) {
                             DebuggerTaskQueue.execute(server, engine::resume);
                             awaitingCompletion = true;
+                            continue;
+                        }
+                        if (snapshot.location().equals(second)) {
+                            DebuggerTaskQueue.execute(server, engine::stepInto);
                             continue;
                         }
                         if (!snapshot.location().equals(first)) {
