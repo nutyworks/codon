@@ -19,6 +19,7 @@ assert s.count(needle) == 1
 p.write_text(s.replace(needle, '.apply(ByteBufCodecs.list());'))
 PY
 git diff -- "$codec" > "$evidence/mutation.patch"
+git fetch --no-tags --depth=1 origin 5dc7d916e39875eedf2ffde134862b553070b054
 git show 5dc7d916e39875eedf2ffde134862b553070b054:"$test_source" > "$test_source"
 ./gradlew --no-daemon test --tests '*NetworkCodecsTest' > "$evidence/old-tests-mutated.log" 2>&1
 cp "$report" "$evidence/old-tests-mutated.xml"
