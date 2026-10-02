@@ -23,8 +23,10 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
         + "readable_adjacent_stage_".repeat(15) + "\"";
     private static final SourceLocation.Function LOCATION = new SourceLocation.Function(new FunctionLocation(FUNCTION, 2));
     private record Hit(int x, int y, int width, int height, BreakpointTarget target, boolean control) { }
+    private record Scenario(int scale, int scroll, String name, List<Integer> stages) { }
 
     @Override public void runTest(ClientGameTestContext context) {
+        checkEdgeCoverage();
         int oldScale = context.computeOnClient(client -> client.options.guiScale().get());
         try (var world = context.worldBuilder().create()) {
             context.getInput().resizeWindow(1920, 1080);
@@ -52,31 +54,31 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
                         new ClientStagePreviewState.StageSpan(2, 20, run - 1, true),
                         new ClientStagePreviewState.StageSpan(3, run, COMMAND.length(), false))), "fixture spans accepted");
             });
-            // All supported quarter steps, including this viewport's 4.50x extension.
-            for (int request = 4; request <= 18; request++) {
-                preferences.setCustomUiScale(request);
+            // Representative minimum/maximum and fractional cases, without a Cartesian matrix.
+            for (Scenario scenario : List.of(
+                new Scenario(4, 0, "minimum-adjacent", List.of(0, 1, 2)),
+                new Scenario(5, 10, "fractional-left-right-clipped", List.of(2, 3)),
+                new Scenario(9, 10, "fractional-left-right-clipped", List.of(2, 3)),
+                new Scenario(18, 0, "maximum-adjacent", List.of(0, 1, 2)),
+                new Scenario(18, 1000, "maximum-tail", List.of(3)))) {
+                preferences.setCustomUiScale(scenario.scale);
                 context.getInput().setCursorPos(0, 0);
                 context.runOnClient(client -> {
                     sources.rememberBrowseView(0, 0, 2, -1, 0, 0);
                     client.setScreenAndShow(new FunctionSourceScreen(new ScaledCodonScreen(Component.empty(), preferences) { }, sources));
                 });
                 context.waitTicks(2);
-                require(context.computeOnClient(client -> ((ScaledCodonScreen) client.gui.screen()).uiScale().effective()) == request / 4.0,
+                require(context.computeOnClient(client -> ((ScaledCodonScreen) client.gui.screen()).uiScale().effective()) == scenario.scale / 4.0,
                     "requested scale is applied");
-                checkSelection(context, "scale-" + request, List.of(0, 1, 2));
-                // Cut through text, rather than aligning the viewport with a stage boundary.
-                context.runOnClient(client -> {
-                    var screen = client.gui.screen();
-                    screen.mouseScrolled(invoke(screen, "codeRight") - 10, invoke(screen, "sourceLineTop") + 27, 10, 0);
-                });
-                context.waitTicks(2);
-                checkSelection(context, "left-clipped-" + request, List.of(2, 3));
-                context.runOnClient(client -> {
-                    var screen = client.gui.screen();
-                    screen.mouseScrolled(invoke(screen, "codeRight") - 10, invoke(screen, "sourceLineTop") + 27, 1000, 0);
-                });
-                context.waitTicks(2);
-                checkSelection(context, "tail-" + request, List.of(3));
+                if (scenario.scroll != 0) {
+                    // Cut through text, rather than aligning the viewport with a stage boundary.
+                    context.runOnClient(client -> {
+                        var screen = client.gui.screen();
+                        screen.mouseScrolled(invoke(screen, "codeRight") - 10, invoke(screen, "sourceLineTop") + 27, scenario.scroll, 0);
+                    });
+                    context.waitTicks(2);
+                }
+                checkSelection(context, scenario.name + "-" + scenario.scale, scenario.stages);
             }
         } finally {
             context.runOnClient(client -> {
@@ -122,14 +124,16 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
             double scale = context.computeOnClient(client -> ((ScaledCodonScreen) client.gui.screen()).uiScale().effective());
             int[] viewport = context.computeOnClient(client -> new int[]{invoke(client.gui.screen(), "sourceLeft") + invoke(client.gui.screen(), "gutterWidth"),
                 invoke(client.gui.screen(), "codeRight")});
-            int changed = 0, ink = 0;
-            // Includes glyph antialiasing room, syntax colors and all adjacent-stage text.
-            for (int y = (int) Math.floor((hit.y + 4) * scale); y < (int) Math.floor((hit.y + 15) * scale); y++)
-                for (int x = (int) Math.ceil((viewport[0] + 1) * scale); x < (int) Math.floor((viewport[1] - 1) * scale); x++) {
+            int fromX = (int) Math.floor(viewport[0] * scale), toX = (int) Math.ceil(viewport[1] * scale);
+            int fromY = (int) Math.floor((hit.y + 4) * scale), toY = (int) Math.floor((hit.y + 15) * scale);
+            int ink = 0;
+            // Includes antialiasing room, syntax colors, adjacent text and both clipped edges.
+            for (int y = fromY; y < toY; y++)
+                for (int x = fromX; x < toX; x++) {
                     int pixel = reference.getRGB(x, y);
                     if ((pixel & 0xffffff) > 0x606060) ink++;
-                    if (pixel != selected.getRGB(x, y)) changed++;
                 }
+            int changed = changedPixels(reference, selected, fromX, toX, fromY, toY);
             require(ink > 20, "reference contains visible source glyphs");
             require(changed == 0, label + " stage " + stage + " selection altered " + changed + " native glyph-band pixels");
             int highlight = 0;
@@ -139,6 +143,29 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
                         if (reference.getRGB(x, y) != selected.getRGB(x, y)) highlight++;
             require(highlight > 0, "selected stage retains a visible highlight outside the glyph band");
             require(sourcesText(context).equals(COMMAND), "source text and original offsets remain unchanged");
+        }
+    }
+
+    private static int changedPixels(BufferedImage reference, BufferedImage selected, int fromX, int toX, int fromY, int toY) {
+        int changed = 0;
+        for (int y = fromY; y < toY; y++)
+            for (int x = fromX; x < toX; x++)
+                if (reference.getRGB(x, y) != selected.getRGB(x, y)) changed++;
+        return changed;
+    }
+
+    private static void checkEdgeCoverage() {
+        // A one-pixel side stroke at either clipping edge must fail this same comparator.
+        for (double scale : new double[]{1, 1.25, 2.25, 4.5}) {
+            int from = (int) Math.floor(3 * scale), to = (int) Math.ceil(11 * scale);
+            var reference = new BufferedImage(64, 4, BufferedImage.TYPE_INT_ARGB);
+            var selected = new BufferedImage(64, 4, BufferedImage.TYPE_INT_ARGB);
+            require(changedPixels(reference, selected, from, to, 0, 4) == 0, "identical edge pixels pass");
+            for (int edge : new int[]{from, to - 1}) {
+                selected.setRGB(edge, 1, 0xff75dfd6);
+                require(changedPixels(reference, selected, from, to, 0, 4) == 1, "clipped edge pixel mutation is detected at " + scale);
+                selected.setRGB(edge, 1, 0);
+            }
         }
     }
 

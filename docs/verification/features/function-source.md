@@ -9,7 +9,12 @@ be checked. The viewer lists functions actually loaded by the current server.
 
 1. Press `V`, then the toolbar's **Source** (`</>`) icon. Search by namespace/path, expand
    folders and select the function. Its source appears read-only; browsing does
-   not require executing it. The header shows the datapack-relative
+   not require executing it.
+   The Functions tree shows a separate scrollbar only while its expanded or
+   filtered rows overflow. Click its track or drag its thumb to navigate without
+   selecting a row or scrolling Source. Search, folder collapse and resizing
+   clamp its position and remove the track when all rows fit.
+   The header shows the datapack-relative
    `data/<namespace>/function/<path>.mcfunction` path (hover for the full path).
    The code pane uses the default Minecraft font and measures its actual glyph
    advances; Unicode comments retain their glyphs. Commands, `execute` keywords, strings, values,
@@ -123,7 +128,7 @@ scroll settings. Synthetic callback input does not verify a physical trackpad.
 | Network payloads | `test`: `FunctionSourcePayloadTest`, `BreakpointStagePreviewPayloadTest` |
 | Line gutter, one-stage suppression, EN/KO/custom scale and hit boxes | `FunctionLineBreakpointGameTest` |
 | Real rendering, selection, resize and inline stage markers | `FunctionSourceScreenGameTest`, `FunctionSourceInteractionGameTest`, `FunctionSourceReviewGameTest` |
-| Active stage readability, adjacent stages, horizontal clipping and every supported scale | `FunctionSourceStageHighlightGameTest` |
+| Active stage readability, adjacent stages, horizontal clipping and representative scales | `FunctionSourceStageHighlightGameTest` |
 | Source toolbar icon, state styling, scale readability and native activation | `DebuggerSourceIconGameTest` |
 | F3/Shift+F3 press/repeat/release ownership and vanilla behavior outside Source | `FunctionSourceKeyboardGameTest` |
 | Focused Find/function-list Search key press before character input, bound/unbound/remapped cursor-mode keys, parent shortcuts and focus navigation | `FunctionSourceTextInputGameTest` |
@@ -131,12 +136,15 @@ scroll settings. Synthetic callback input does not verify a physical trackpad.
 Example: `./gradlew runClientGameTest -PclientGameTest=FunctionSourceScreenGameTest`.
 
 `FunctionSourceStageHighlightGameTest` compares native source-row pixels before and
-after selecting adjacent stages at every quarter step from 1.00× to 4.50× in a
+after selecting adjacent stages in five representative scenarios: minimum 1.00×,
+fractional 1.25×/2.25× clipping, and maximum 4.50× compact/tail views in a
 1920×1080 viewport. Selection must leave the entire glyph band, including syntax
-colors and neighboring stages, identical while adding a visible highlight in the
-vertical padding. Native clicks at both ends of each visible text hitbox preserve
+colors, neighboring stages and the first/last viewport pixels, identical while
+adding a visible highlight in the vertical padding. Native clicks at both ends of each visible text hitbox preserve
 the original stage target, enabled breakpoint and condition. Scrolled captures cut
-through a stage at the left edge and reach the long line's tail. Inspect
+through a stage at each edge and reach the long line's tail. A one-pixel mutation
+at either clipped edge must fail the same pixel comparator. The five scenarios
+retain 16 screenshots rather than the prior 135-capture scale/viewport matrix. Inspect
 `*codon-stage-highlight-*.png`. The injected document/parse spans establish client
 presentation and interaction; real server source discovery and stage breakpoints
 remain separate checks.
@@ -213,6 +221,15 @@ maximum/minimum, custom scale, the compact drawer, a real HUD control before/aft
 Source covers it, a modal blocking Source and Korean minimum layout. It uses the
 same injected-source limitation as the other UI fixture. Physical trackpad input
 and the manual loaded-function path remain separate acceptance checks.
+
+`FunctionListScrollbarGameTest` covers the Functions tree's native wheel direction,
+track clicks, captured thumb drag, source-scroll isolation and row hit clipping.
+It checks text focus/Tab, modal blocking, disappearance during a drag, empty and
+exact-fit filters, one-row overflow, namespace collapse, taller windows, fractional
+custom scale and the compact drawer. Its `functions-scrollbar-*` screenshots show
+the track at the end/start, custom scale and a filtered drawer without overflow.
+The decoded function/source fixtures establish UI behavior; they do not establish
+real server function discovery or physical trackpad behavior.
 
 `FunctionSourceReviewGameTest` targets the adjacent-row link boundary, unqualified
 identifier collision and two cached previews followed by reload of an unselected

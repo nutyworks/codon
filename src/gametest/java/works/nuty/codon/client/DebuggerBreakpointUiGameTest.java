@@ -232,6 +232,8 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             context.runOnClient(client -> require(CodonClientMod.state().breakpoints().get(first).condition().equals(BreakpointCondition.ALWAYS),
                 "hovering opens the menu without changing the saved condition"));
             context.takeScreenshot("codon-breakpoint-condition-hover-menu-320x240");
+            verifyDropdownToggle(context, parent, "Always ▾", "Context created", "kind");
+            context.runOnClient(client -> click(conditionLayer(parent), kindTrigger));
             nativeHover(context, parent, 0, 0);
             context.waitFor(client -> !button(conditionLayer(parent), "Context created").visible, 100);
             nativeHover(context, parent, kindTrigger.getX() + 3, kindTrigger.getY() + 3);
@@ -258,6 +260,30 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
                 require(!button(screen, "Save").active, "negative count disables save immediately");
                 count.setValue("2");
                 screen.setFocused(button(screen, "= ▾"));
+            });
+            AbstractButton comparisonTrigger = context.computeOnClient(client -> button(conditionLayer(parent), "= ▾"));
+            nativeHover(context, parent, comparisonTrigger.getX() + 3, comparisonTrigger.getY() + 3);
+            context.waitFor(client -> button(conditionLayer(parent), "≠").visible, 100);
+            verifyDropdownToggle(context, parent, "= ▾", "≠", "comparison");
+            nativeHover(context, parent, comparisonTrigger.getX() + 3, comparisonTrigger.getY() + 3);
+            context.runOnClient(client -> {
+                Screen screen = conditionLayer(parent);
+                click(screen, button(screen, "Output count ▾"));
+                click(screen, comparisonTrigger);
+                click(screen, comparisonTrigger);
+                require(button(screen, "≠").visible && !button(screen, "Output context count").visible,
+                    "switching selectors starts a fresh opening guard on the new menu");
+            });
+            waitForToggleDelay(context);
+            nativeClick(context, parent, comparisonTrigger.getX() + 3, comparisonTrigger.getY() + 3,
+                InputConstants.MOUSE_BUTTON_LEFT);
+            context.runOnClient(client -> {
+                Screen screen = conditionLayer(parent);
+                require(!button(screen, "≠").visible && button(screen, "= ▾").visible,
+                    "closing the switched comparison preserves its selected value");
+                require(screen.children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast)
+                    .anyMatch(value -> value.visible && value.getValue().equals("2")),
+                    "dropdown toggles preserve the draft threshold");
             });
             nativeHover(context, parent, 0, 0);
             context.getInput().pressKey(InputConstants.KEY_RETURN);
@@ -318,6 +344,59 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             verifyDisabledMarkersAfterReopen(context, position, location, first);
             context.runOnClient(client -> client.setScreenAndShow(null));
         }
+    }
+
+    /** Uses native dispatch for delayed toggles and same-turn dispatch for the immediate guard. */
+    private static void verifyDropdownToggle(ClientGameTestContext context, Screen parent, String triggerLabel,
+                                             String optionLabel, String capture) {
+        AbstractButton trigger = context.computeOnClient(client -> button(conditionLayer(parent), triggerLabel));
+        waitForToggleDelay(context);
+        context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_RIGHT);
+        context.runOnClient(client -> require(button(conditionLayer(parent), optionLabel).visible,
+            "secondary click does not toggle the open " + capture + " menu"));
+        context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_LEFT);
+        context.runOnClient(client -> {
+            Screen screen = conditionLayer(parent);
+            require(!button(screen, optionLabel).visible && button(screen, triggerLabel).visible,
+                "delayed trigger click closes the " + capture + " menu without selecting an option");
+        });
+        waitForToggleDelay(context);
+        context.runOnClient(client -> require(!button(conditionLayer(parent), optionLabel).visible,
+            "remaining over the closed " + capture + " trigger does not reopen it"));
+        context.takeScreenshot("codon-breakpoint-condition-" + capture + "-toggle-closed-320x240");
+        context.runOnClient(client -> {
+            Screen screen = conditionLayer(parent);
+            click(screen, trigger);
+            MouseButtonEvent repeated = new MouseButtonEvent(trigger.getX() + 3, trigger.getY() + 3,
+                new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
+            require(screen.mouseClicked(repeated, true), "immediate repeated toggle is consumed");
+            screen.mouseReleased(repeated);
+            require(button(screen, optionLabel).visible && button(screen, triggerLabel).visible,
+                "click reopen and immediate repeated click keep the " + capture + " menu and selection");
+        });
+        waitForToggleDelay(context);
+        context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_LEFT);
+        context.runOnClient(client -> require(!button(conditionLayer(parent), optionLabel).visible,
+            "a repeated delayed click closes the reopened " + capture + " menu"));
+        nativeHover(context, parent, 0, 0);
+        context.runOnClient(client -> {
+            Screen screen = conditionLayer(parent);
+            screen.setFocused(trigger);
+            require(screen.keyPressed(new KeyEvent(InputConstants.KEY_SPACE, InputConstants.KEYCODE_SPACE, 0)),
+                "Space reopens the focused " + capture + " menu");
+            click(screen, trigger);
+            require(button(screen, optionLabel).visible, "keyboard opening also guards an immediate trigger click");
+            screen.keyPressed(new KeyEvent(InputConstants.KEY_TAB, InputConstants.KEYCODE_TAB, 0));
+            require(!button(screen, optionLabel).visible && ScreenLayers.get(parent) == screen
+                && screen.getFocused() != trigger,
+                "Tab closes only the " + capture + " menu and continues focus traversal");
+            screen.setFocused(trigger);
+        });
+    }
+
+    private static void waitForToggleDelay(ClientGameTestContext context) {
+        long started = System.nanoTime();
+        context.waitFor(client -> System.nanoTime() - started >= 300_000_000L, 100);
     }
 
     private static void verifyFeedbackBounds(ClientGameTestContext context, BreakpointTarget target) {
