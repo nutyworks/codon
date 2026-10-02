@@ -16,6 +16,7 @@ existing tests; they are not a record of passing runs.
 | Toggle or temporarily hide debugger panels and markers | [UI visibility](features/ui-visibility.md) |
 | Search loaded functions and inspect line/stage source | [Function source](features/function-source.md) |
 | Resize Codon independently of game GUI scale | [UI scale](features/ui-scale.md) |
+| Read hover/focus details and action hints | [Tooltips](features/tooltips.md) |
 
 ## Prepare and launch
 

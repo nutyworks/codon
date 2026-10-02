@@ -114,6 +114,10 @@ public final class SingleStageBreakpointGameTest implements FabricClientGameTest
             });
             context.waitFor(client -> !CodonClientMod.state().breakpoints().pending(legacy.target())
                 && !CodonClientMod.state().breakpoints().get(legacy.target()).enabled(), 200);
+            // The acknowledgment can precede the render pass that reactivates the widget.
+            // A real keyboard activation requires the focused control to be active too.
+            context.waitFor(client -> client.gui.screen().getFocused() instanceof InlineBreakpointButton control
+                && control.target().equals(whole) && control.isFocused() && control.isActive(), 200);
             context.runOnClient(client -> {
                 var screen = client.gui.screen();
                 screen.keyPressed(new KeyEvent(InputConstants.KEY_SPACE, 0, 0));

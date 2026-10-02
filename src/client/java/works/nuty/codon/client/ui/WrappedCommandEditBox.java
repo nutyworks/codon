@@ -173,8 +173,9 @@ public final class WrappedCommandEditBox extends EditBox {
                     .append(Component.translatable(marker.target().equals(focusedTarget)
                         ? "codon.breakpoint.inline_keyboard_help" : "codon.breakpoint.inline_help")),
                     Math.min(240, graphics.guiWidth() - 24)),
+                    CodonTooltips.withinViewport(net.minecraft.client.gui.screens.inventory.tooltip.DefaultTooltipPositioner.INSTANCE),
                     marker.target().equals(focusedTarget) ? point.x() : mouseX,
-                    marker.target().equals(focusedTarget) ? point.y() : mouseY);
+                    marker.target().equals(focusedTarget) ? point.y() : mouseY, false);
             }
         }
     }

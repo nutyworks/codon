@@ -50,6 +50,9 @@ label tooltip, while `hover-condition` retains the full clipped label after a
 short hover. The keyboard capture keeps immediate access to the same label.
 
 Function-line and stage targets use the [Source viewer](function-source.md).
+Saved line hover shows its count, click toggle and right-click condition hints
+on separate localized lines; see [tooltip coverage](tooltips.md) for wrapping,
+viewport placement and the rendering checks.
 The command alternatives are `/codon breakpoint block <x> <y> <z>` and
 `/codon breakpoint function <namespace:path> <line>` (one-based file line).
 They toggle whole-command targets; use the UI for stage/condition editing.

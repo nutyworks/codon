@@ -226,7 +226,7 @@ public final class NbtTreePanel {
         String nodeId = nodeId(node);
         controls.button(idPrefix + "node-" + nodeId, content, label, node.expandable(), false,
             () -> toggleNode(pauseId, executor.uuid(), node.path())).withInputBlocked(!current);
-        if (bounds.contains(mouseX, mouseY)) {
+        if (content.contains(mouseX, mouseY)) {
             graphics.setComponentTooltipForNextFrame(Minecraft.getInstance().font,
                 List.of(Component.literal(node.path()), Component.literal(node.preview())), mouseX, mouseY);
         }

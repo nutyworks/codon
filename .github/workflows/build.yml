@@ -72,6 +72,7 @@ jobs:
       - name: make gradle wrapper executable
         run: chmod +x ./gradlew
       - name: run client game tests
+        # Leave room for the native suite on software-rendered CI runners.
         timeout-minutes: 15
         shell: bash
         run: |
