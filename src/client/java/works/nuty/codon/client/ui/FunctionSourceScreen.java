@@ -133,9 +133,10 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         search.setMaxLength(128);
         search.setValue(searchValue);
         search.setResponder(ignored -> { listOffset = 0; rebuildEntries(); rememberView(); });
-        refresh = addRenderableWidget(WatchUi.button(drawerMode ? left + 74 : left + treeWidth + 8, top + 5, 58, 18,
+        refresh = addRenderableWidget(WatchUi.button(drawerMode ? left + 74 : left + treeWidth - 86, top + 5, 78, 18,
             Component.translatable("codon.source.refresh"), () -> { sources.refreshList(); listOffset = 0; }));
-        reread = addRenderableWidget(WatchUi.button(drawerMode ? left + 134 : left + treeWidth + 68, top + 5, 54, 18,
+        refresh.setTooltip(Tooltip.create(Component.translatable("codon.source.refresh_hint")));
+        reread = addRenderableWidget(WatchUi.button(drawerMode ? left + 74 : sourceLeft, top + 5, 84, 18,
             Component.translatable("codon.source.reload"), () -> {
                 sources.refreshSource();
                 lineOffset = 0;
@@ -144,10 +145,11 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                     ClientNetworking.requestStagePreview(debugger, new SourceLocation.Function(
                         new FunctionLocation(sources.selected(), selectedLine)));
             }));
-        lineCondition = addRenderableWidget(WatchUi.button(compactSourceControls ? sourceLeft : left + treeWidth + 124,
+        reread.setTooltip(Tooltip.create(Component.translatable("codon.source.reload_hint")));
+        lineCondition = addRenderableWidget(WatchUi.button(compactSourceControls ? sourceLeft : sourceLeft + 88,
             compactSourceControls ? top + 29 : top + 5, compactSourceControls ? (sourceWidth - 4) / 2 : 92, 18,
             Component.translatable("codon.source.line_condition"), this::editLineCondition));
-        stageCondition = addRenderableWidget(WatchUi.button(compactSourceControls ? sourceLeft + (sourceWidth - 4) / 2 + 4 : left + treeWidth + 218,
+        stageCondition = addRenderableWidget(WatchUi.button(compactSourceControls ? sourceLeft + (sourceWidth - 4) / 2 + 4 : sourceLeft + 182,
             compactSourceControls ? top + 29 : top + 5, compactSourceControls ? (sourceWidth - 4) / 2 : 98, 18,
             Component.translatable("codon.source.stage_condition"), this::editStageCondition));
         close = addRenderableWidget(WatchUi.button(left + panelWidth - 58, top + 5, 50, 18,
@@ -222,11 +224,11 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         int sourceLeft = sourceLeft(), sourceWidth = sourceWidth();
         compactSourceControls = sourceWidth < 450;
         search.setWidth(treeWidth - 16);
-        refresh.setX(sourceLeft); reread.setX(sourceLeft + 60);
-        lineCondition.setX(compactSourceControls ? sourceLeft : sourceLeft + 116);
+        refresh.setX(left + treeWidth - 86); reread.setX(sourceLeft);
+        lineCondition.setX(compactSourceControls ? sourceLeft : sourceLeft + 88);
         lineCondition.setY(top + (compactSourceControls ? 29 : 5));
         lineCondition.setWidth(compactSourceControls ? (sourceWidth - 4) / 2 : 92);
-        stageCondition.setX(compactSourceControls ? sourceLeft + (sourceWidth - 4) / 2 + 4 : sourceLeft + 210);
+        stageCondition.setX(compactSourceControls ? sourceLeft + (sourceWidth - 4) / 2 + 4 : sourceLeft + 182);
         stageCondition.setY(lineCondition.getY());
         stageCondition.setWidth(compactSourceControls ? (sourceWidth - 4) / 2 : 98);
         int findY = top + ClientFunctionSourceState.ScreenLayout.findInset(compactSourceControls);
@@ -281,6 +283,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         functionHits.clear();
         scrollbars.beginFrame();
         rebuildEntries();
+        refresh.visible = refresh.active = !drawerMode || drawerOpen;
         reread.visible = reread.active = !drawerOpen && sources.selected() != null && sources.sourceStatus() != ClientFunctionSourceState.Status.LOADING;
         drawerButton.visible = drawerButton.active = drawerMode;
         backButton.visible = backButton.active = !drawerOpen && sources.canGoBack();
@@ -298,8 +301,8 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         else graphics.fill(0, 0, width, height, DebuggerTheme.color(0x70000000));
         graphics.fill(left, top, left + panelWidth, top + panelHeight, WORKSPACE);
         graphics.outline(left, top, panelWidth, panelHeight, DIVIDER);
-        WatchUi.line(graphics, font, tr(drawerOpen ? "codon.source.functions" : "codon.source.title"),
-            left + 8, top + 9, Math.max(1, treeWidth - 20), TEXT);
+        if (!drawerMode) WatchUi.line(graphics, font, tr("codon.source.title"),
+            left + 8, top + 9, Math.max(1, treeWidth - 102), TEXT);
         if (!drawerMode || drawerOpen) {
             if (!drawerMode) {
                 boolean hovered = splitterContains(mouseX, mouseY);
@@ -429,7 +432,6 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             }
             if (inspected && !inspectedStage) {
                 if (!stopped) graphics.fill(codeLeft, y, codeRight(), y + ROW_HEIGHT - 1, DebuggerTheme.color(TEAL_SURFACE));
-                graphics.outline(codeLeft, y, codeWidth, ROW_HEIGHT - 1, DebuggerTheme.color(TEAL));
             }
             graphics.text(font, SourceCodeLine.plain(number), codeLeft - 6 - font.width(SourceCodeLine.plain(number)),
                 y + 5, DebuggerTheme.color(stopped ? AMBER : MUTED), false);

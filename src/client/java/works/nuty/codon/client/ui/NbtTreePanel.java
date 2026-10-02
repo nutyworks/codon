@@ -240,7 +240,8 @@ public final class NbtTreePanel {
         Component pinLabel = Component.translatable(present ? "codon.nbt.unpin" : "codon.nbt.pin", executor.name());
         DebuggerButton pin = controls.button(idPrefix + "pin-" + nodeId, pinBounds, pinLabel, active, present,
             () -> togglePin(pauseId, executor.uuid(), node.path())).withInputBlocked(!current);
-        pin.withIcon(DebuggerIcon.PIN).withSecondaryAction(() -> toggleAllPins(pauseId, executor.uuid(), node.path()));
+        pin.withoutChrome().withStatusColor(present ? TEAL : MUTED, TEAL_SURFACE)
+            .withIcon(DebuggerIcon.PIN).withSecondaryAction(() -> toggleAllPins(pauseId, executor.uuid(), node.path()));
         Component pinTooltip;
         if (spec == null) pinTooltip = Component.translatable("codon.nbt.path_unavailable");
         else {

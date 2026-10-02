@@ -2,6 +2,11 @@
 
 ## User path and expected result
 
+Deleting from the condition modal closes that layer back to its existing parent
+(including Source), without opening a new Breakpoints list. If the parent already
+is the list, its deletion Undo record is retained. The send/pending/error permissions
+are unchanged. Parent focus restoration still needs native manual verification.
+
 Use the [shared setup](../README.md#prepare-and-launch). In a disposable Creative
 world, obtain a command block with `/give @s minecraft:command_block`, place it,
 enter `say codon breakpoint check`, save with Done, and attach a button.

@@ -342,10 +342,8 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
             sendFailed = true;
             return;
         }
-        BreakpointListScreen list = parent instanceof BreakpointListScreen existing ? existing
-            : new BreakpointListScreen(parent, state);
-        list.recordDeleted(original);
-        Minecraft.getInstance().gui.setScreen(list);
+        if (parent instanceof BreakpointListScreen list) list.recordDeleted(original);
+        onClose();
     }
 
     private String hint() {

@@ -285,7 +285,7 @@ public final class CommandPanel {
         java.util.function.IntUnaryOperator minimumWidth = index -> {
                 int stage = displayed.get(index).stageIndex();
                 return stage == -2 ? client.font.width(displayed.get(index).text())
-                    : stage < 0 ? client.font.width(observationText(displayed.get(index))) + 10
+                    : stage < 0 ? 10
                         + (displayed.get(index).targetStageIndex() >= 0 && editableSource ? 15 : 0)
                     : client.font.width(counts(flow.stages().get(stage))) + DebuggerIcon.SIZE + 14
                         + (hasWarning(flow.stages().get(stage)) ? 17 : 0) + (editableSource ? 15 : 0);
@@ -423,7 +423,7 @@ public final class CommandPanel {
                 if (stageIndex == -2) drawText(graphics, cell.text(), x, y + 4, cell.width(), MUTED);
                 else drawText(graphics, cell.text(), x + 5, y + 4, cell.width() - 10, flow == null ? TEXT : MUTED);
                 if (flow != null && stageIndex == -1 && cell.first() && rowHeight >= 30) {
-                    drawText(graphics, observationText(part), x + 4, y + 20, cell.width() - 5, MUTED);
+                    drawText(graphics, observationLabel(part), x + 4, y + 20, cell.width() - 5, MUTED);
                 }
             }
         }
@@ -479,7 +479,7 @@ public final class CommandPanel {
                 && state.stagePreviews().get(flow.location()) == preview
                 && state.selectedUnobservedStageIndex() == part.targetStageIndex() && !state.breakpoints().pending(target)) openCondition(target);
         });
-        if (cell.first() && rowHeight >= 30) drawText(graphics, observationText(part), x + 4, y + 20, cell.width() - 5, MUTED);
+        if (cell.first() && rowHeight >= 30) drawText(graphics, observationLabel(part), x + 4, y + 20, cell.width() - 5, MUTED);
     }
 
     private static String unobservedKey(String control, ExecutionFlowTrace flow, Part part) {
@@ -491,6 +491,14 @@ public final class CommandPanel {
             case NOT_EXECUTED -> "codon.ui.not_executed";
             case FILTERED_OUT -> "codon.ui.filtered_out";
             case RECORDED, UNAVAILABLE -> "codon.ui.stage_unavailable";
+        });
+    }
+
+    private static String observationLabel(Part part) {
+        return tr(switch (part.observation()) {
+            case NOT_EXECUTED -> "codon.ui.not_executed.short";
+            case FILTERED_OUT -> "codon.ui.filtered_out.short";
+            case RECORDED, UNAVAILABLE -> "codon.ui.stage_unavailable.short";
         });
     }
 

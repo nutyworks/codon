@@ -63,10 +63,15 @@ be checked. The viewer lists functions actually loaded by the current server.
 3. Close the viewer and execute `/function <namespace:path>`. Check the breakpoint
    stops at the selected location. Reopen Source at the pause and distinguish the
    actual stopped line from a manually inspected line/record. A live pause has an
-   arrow and amber row; whole-line selection has an outlined row. After Continue, the retained
+   arrow and amber row; whole-line selection has a teal background without an outline.
+   When selection coincides with the actual stop, amber takes priority. After Continue, the retained
    location is labelled as a recorded line and has no live-pause arrow.
-4. With execution resumed, change/reload the scratch datapack. Use Refresh to
-   update the function list and Reload to reread the selected source. Removed
+4. With execution resumed, change/reload the scratch datapack. Use **Refresh list**
+   in the Functions header to update the server's loaded function list and **Reread file**
+   above the code to reread the selected source from active server resources.
+   The English/Korean tooltips identify their targets; neither action runs `/reload`.
+   In drawer mode, list refresh appears with the open drawer and file reread with the code.
+   Removed
    functions and stale stage targets must be represented explicitly. Hover a changed,
    unselected line after reload: a READY preview for the old command must refresh
    once; LOADING retains its in-flight request. An obsolete enabled fingerprint or

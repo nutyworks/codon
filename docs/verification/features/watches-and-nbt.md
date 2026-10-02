@@ -4,13 +4,28 @@
 
 The UI scaffold gives regular Watches up to 360 logical pixels (previously 332),
 bounded by the same free area above Flow. Neutral headings and removal of the dot
-leaders leave more room for names/values. Narrow stacked rows and all Add, grouping,
-pin, copy, edit, delete and Undo controls keep their existing layout rules and focus
-targets. Native clipping/keyboard/appearance checks remain manual acceptance work.
+leaders leave more room for names/values. Groups have an arrow, item count and
+neutral header background, with spacing between groups. Click anywhere on the
+header or focus it and press Enter/Space to collapse or expand it. Collapsed children
+are excluded from rendering, hitboxes and keyboard navigation; explicit watch reveals
+expand their group. This is local display state only. Narrow stacked rows and all
+Add, grouping, pin, copy, edit, delete and Undo controls retain their action targets.
+Watch row hover uses a subtle neutral fill; keyboard focus uses a stronger neutral
+fill, and an explicitly revealed watch retains its temporary teal fill. No row
+outline is drawn. Native clipping/keyboard/appearance checks remain manual acceptance work.
 The nested NBT section uses only a top divider; value rows, pin controls and Retry
-share flat chrome instead of a box around every item. Pinned controls keep teal
-selection, keyboard focus keeps its light outline, and the scrollbar is neutral.
+share flat chrome instead of a box around every item. NBT and Watch pin icons are
+teal when pinned and muted when unpinned; hover never changes that state color.
+Pin keyboard focus keeps its light outline, and the scrollbar is neutral.
 Expansion, pin/right-click actions, disabled states and hit bounds are unchanged.
+
+Screenshot-feedback scaffold validation: `JAVA_HOME=<JDK 25> ./gradlew
+compileClientJava --console=plain` completed successfully (client Java output was
+up-to-date; resources were processed). Evidence: `../ui-feedback-compile.log`
+beside the isolated `ui-scaffold` checkout. No tests were written or run for this
+feedback batch. The seven supplied screenshots were inspected before editing;
+post-change rendering, collapse/focus interaction and modal return remain unverified
+because game/GUI execution is paused.
 
 Use the [shared setup](../README.md#prepare-and-launch). Before pausing, prepare a
 score and a storage value in the scratch world:

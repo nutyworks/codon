@@ -230,7 +230,7 @@ public class DebuggerButton extends AbstractButton {
             || mouseX < revealX || mouseX >= revealX + revealWidth
             || mouseY < revealY || mouseY >= revealY + revealHeight)) return;
         if (hitSurface) {
-            if (keyboardFocus || isHovered()) graphics.outline(getX(), getY(), getWidth(), getHeight(), paintColor(DebuggerTheme.TEAL));
+            // The owner paints hover/focus backgrounds before its row text.
             return;
         }
         int background = selected && active ? selectedSurface
