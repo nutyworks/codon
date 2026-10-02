@@ -71,6 +71,21 @@ fail. Omitting the property restores all entries from the
 ./gradlew runClientGameTest
 ```
 
+CI partitions that same manifest across four isolated runners with
+`-PclientGameTestShard=1/4` through `4/4`. Entries are assigned by their position
+modulo the shard count, preserving their order within each runner. Every registered
+class runs once, including newly added classes. Sharding and `clientGameTest` cannot
+be combined; malformed, out-of-range or empty shard requests fail. Omitting both
+properties restores the full suite. Use separate checkouts for concurrent runs;
+the generated manifest and cleared run directory belong to one runner.
+
+The five-minute goal concerns the full CI critical path, including setup,
+compilation, client startup and evidence upload. Queue time is reported separately.
+Four runners reduce elapsed native execution but increase total runner time.
+Measure the slowest shard and the final status check; passing a focused subset or
+an estimated division of a prior run does not establish this goal. Gradle profiles
+in the evidence artifacts distinguish task execution from preparation.
+
 Choose a focused run locally. Ask before a broad/repeated local test campaign.
 Only one client GameTest process may use this checkout at a time: each run clears
 `build/run/clientGameTest`. This is separate from the manual client's `run/`
@@ -100,11 +115,13 @@ Keep screenshots/logs out of commits.
 
 ## CI
 
-[build.yml](../../.github/workflows/build.yml) runs independent `build` and
-`client-game-test` jobs on pushes and pull requests. The latter runs the complete
-registered client suite with JDK 25, Xvfb/Mesa software rendering, and a PulseAudio
-null sink for OpenAL channel tests. It uses the same `runClientGameTest` task as
-local development, with no selection property.
+[build.yml](../../.github/workflows/build.yml) runs `build` alongside four
+`client-game-test-shard` jobs on pushes and pull requests. Together the shards run
+the complete registered client suite with JDK 25, Xvfb/Mesa software rendering,
+and a PulseAudio null sink for OpenAL channel tests. Each uses the same
+`runClientGameTest` task as local development. Shards continue after another shard
+fails, retaining independent failure evidence. The final `client-game-test` check
+passes only when every shard succeeds, retaining the existing required-check name.
 
 Minecraft 26.3 creates its OpenGL windows through SDL. Under Xvfb the job installs
 Mesa EGL and sets [`SDL_VIDEO_FORCE_EGL=1`](https://wiki.libsdl.org/SDL3/SDL_HINT_VIDEO_FORCE_EGL)
@@ -113,7 +130,7 @@ so SDL uses EGL instead of GLX. Without this, client startup can fail with
 fallback error does not establish a Codon test failure.
 
 Artifacts are uploaded even after a failed test step and retained for 14 days:
-`unit-test-results` contains JVM reports; `client-game-test-evidence` contains the
+`unit-test-results` contains JVM reports; `client-game-test-evidence-1` through `-4` contain the
 Gradle console log plus client logs, screenshots and crash reports. A setup failure
 may produce no files. The client test step has a 15-minute timeout within the
 45-minute job limit, leaving time to upload evidence after a stuck client is
