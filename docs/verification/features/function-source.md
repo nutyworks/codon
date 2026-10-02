@@ -37,9 +37,12 @@ be checked. The viewer lists functions actually loaded by the current server.
    marker. Leaving a stage removes its temporary slot and restores original glyph
    advances; enabled markers keep their necessary slot. No separate stage row or
    panel is shown. Hover the gutter marker for the enabled stage count.
-   A selected stage has cyan rules above and below its text, in the row's vertical
-   padding. It has no side stroke through glyphs or at horizontal clipping edges;
-   selection retains the original text advances and stage/marker hitboxes.
+   A selected stage has a subtle teal background behind its text, without a border.
+   The actual stopped stage has a stronger amber background, using the top live
+   pause frame's stage index only when its location and command match the source.
+   Selecting another stage/frame does not move that pause highlight. Unknown
+   stage identity, changed commands and completed execution do not imply a live
+   stage stop. Selection retains original text advances and stage/marker hitboxes.
 3. Close the viewer and execute `/function <namespace:path>`. Check the breakpoint
    stops at the selected location. Reopen Source at the pause and distinguish the
    actual stopped line from a manually inspected line/record. A live pause has an
@@ -138,13 +141,17 @@ Example: `./gradlew runClientGameTest -PclientGameTest=FunctionSourceScreenGameT
 `FunctionSourceStageHighlightGameTest` compares native source-row pixels before and
 after selecting adjacent stages in five representative scenarios: minimum 1.00×,
 fractional 1.25×/2.25× clipping, and maximum 4.50× compact/tail views in a
-1920×1080 viewport. Selection must leave the entire glyph band, including syntax
-colors, neighboring stages and the first/last viewport pixels, identical while
-adding a visible highlight in the vertical padding. Native clicks at both ends of each visible text hitbox preserve
+1920×1080 viewport. The native pixel comparison preserves every foreground glyph
+and syntax color, including the first/last viewport pixels, and allows only a
+uniform dark background within the selected stage. Neighboring stages stay
+identical. Native clicks at both ends of each visible text hitbox preserve
 the original stage target, enabled breakpoint and condition. Scrolled captures cut
 through a stage at each edge and reach the long line's tail. A one-pixel mutation
-at either clipped edge must fail the same pixel comparator. The five scenarios
-retain 16 screenshots rather than the prior 135-capture scale/viewport matrix. Inspect
+over glyphs or background at either clipped edge must fail the same comparator.
+Six additional fractional-scale captures verify unknown/live stage identity,
+stronger amber pause highlighting alongside manual selection, inspection of another
+frame, stale commands and resume. The five selection scenarios and pause checks
+retain 22 screenshots rather than the prior 135-capture scale/viewport matrix. Inspect
 `*codon-stage-highlight-*.png`. The injected document/parse spans establish client
 presentation and interaction; real server source discovery and stage breakpoints
 remain separate checks.

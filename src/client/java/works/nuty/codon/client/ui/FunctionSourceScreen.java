@@ -421,7 +421,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                 graphics.fill(codeLeft, y, codeRight(), y + ROW_HEIGHT - 1, DebuggerTheme.color(AMBER_SURFACE));
                 graphics.text(font, ">", sourceLeft + 3, y + 5, DebuggerTheme.color(AMBER), false);
             }
-            if (inspected) {
+            if (inspected && selectedStageIndex < 0) {
                 if (!stopped) graphics.fill(codeLeft, y, codeRight(), y + ROW_HEIGHT - 1, DebuggerTheme.color(TEAL_SURFACE));
                 graphics.outline(codeLeft, y, codeWidth, ROW_HEIGHT - 1, DebuggerTheme.color(TEAL));
             }
@@ -447,6 +447,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             expandedWidth = Math.max(expandedWidth, layout.width());
             if (inspected) inlineLayout = layout;
             graphics.enableScissor(codeLeft, y, codeRight(), y + ROW_HEIGHT);
+            renderStageBackgrounds(graphics, stages, layout, line, codeLeft, y, codeWidth);
             renderSourceText(graphics, code, layout, line, codeLeft, y, codeWidth);
             renderInlineMarkers(graphics, stages, layout, line, rowHoveredStage, codeLeft, y, codeWidth, mouseX, mouseY);
             graphics.disableScissor();
@@ -564,6 +565,29 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             .map(InlineStage::start).toList(), code::x);
     }
 
+    private void renderStageBackgrounds(GuiGraphicsExtractor graphics, List<InlineStage> stages, SourceLineLayout layout,
+                                        int line, int x, int y, int width) {
+        for (InlineStage stage : stages) {
+            boolean stopped = isActualStageStop(stage, line);
+            if (!stopped && (selectedLine != line || selectedStageIndex != stage.index())) continue;
+            int start = x + layout.x(stage.start()) - horizontalOffset;
+            int end = x + layout.before(stage.end()) - horizontalOffset;
+            int tint = ((stopped ? AMBER : TEAL) & 0xffffff) | (stopped ? 0x30000000 : 0x18000000);
+            if (end > x && start < x + width)
+                // Tint behind text, with stronger amber reserved for the authoritative pause.
+                graphics.fill(Math.max(x, start), y + 3, Math.min(x + width, end), y + 15,
+                    DebuggerTheme.color(tint));
+        }
+    }
+
+    private boolean isActualStageStop(InlineStage stage, int line) {
+        ClientDebuggerState state = CodonClientMod.state();
+        if (!isActualStop(sources.selected(), line) || state.snapshot().callStack().isEmpty()) return false;
+        var frame = state.snapshot().callStack().getFirst();
+        return frame.location().equals(stage.target().location()) && frame.flowStageIndex() == stage.index()
+            && frame.command().text().equals(codeLines.get(line - 1).source().trim());
+    }
+
     private void renderInlineMarkers(GuiGraphicsExtractor graphics, List<InlineStage> stages, SourceLineLayout layout,
                                      int line, int hover, int x, int y, int width, int mouseX, int mouseY) {
         ClientDebuggerState state = CodonClientMod.state();
@@ -574,13 +598,6 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             int end = x + layout.before(stage.end()) - horizontalOffset;
             BreakpointDefinition definition = state.breakpoints().get(stage.target());
             boolean enabled = definition != null && definition.enabled(), hovered = hover == stage.index();
-            if (selectedLine == line && selectedStageIndex == stage.index() && end > x && start < x + width) {
-                // Keep the selection in the row's clear vertical padding. Side borders at
-                // stage/viewport edges cover glyphs; widening them can cover adjacent stages.
-                int from = Math.max(x, start), to = Math.min(x + width, end);
-                graphics.fill(from, y + 2, to, y + 3, DebuggerTheme.color(TEAL));
-                graphics.fill(from, y + 15, to, y + 16, DebuggerTheme.color(TEAL));
-            }
             if (SourceInteraction.markerVisible(enabled, hovered,
                 BreakpointUi.editingMarker(this, stage.target(), codeLines.get(line - 1).source().trim()))) {
                 DebuggerIcon icon = BreakpointUi.icon(definition);

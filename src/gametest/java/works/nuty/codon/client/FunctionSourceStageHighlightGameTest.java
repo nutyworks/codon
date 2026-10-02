@@ -66,7 +66,7 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
                 preferences.setCustomUiScale(scenario.scale);
                 context.getInput().setCursorPos(0, 0);
                 context.runOnClient(client -> {
-                    sources.rememberBrowseView(0, 0, 2, -1, 0, 0);
+                    sources.rememberBrowseView(0, 0, -1, -1, 0, 0);
                     client.setScreenAndShow(new FunctionSourceScreen(new ScaledCodonScreen(Component.empty(), preferences) { }, sources));
                 });
                 context.waitTicks(2);
@@ -82,6 +82,17 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
                 }
                 checkSelection(context, scenario.name + "-" + scenario.scale, scenario.stages);
             }
+            preferences.setCustomUiScale(5);
+            context.runOnClient(client -> {
+                sources.rememberBrowseView(0, 0, -1, -1, 0, 0);
+                client.setScreenAndShow(new FunctionSourceScreen(new ScaledCodonScreen(Component.empty(), preferences) { }, sources));
+            });
+            context.waitTicks(2);
+            context.runOnClient(client -> {
+                var screen = client.gui.screen();
+                screen.mouseScrolled(invoke(screen, "codeRight") - 10, invoke(screen, "sourceLineTop") + 27, 10, 0);
+            });
+            checkPauseStates(context);
         } finally {
             context.runOnClient(client -> {
                 client.setScreenAndShow(null);
@@ -92,14 +103,13 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
         }
     }
 
-    private static void checkSelection(ClientGameTestContext context, String label, List<Integer> stages) {
-        // Opening a screen can restore the pointer inside Find even if it was moved before init.
+    private static void prepareReference(ClientGameTestContext context) {
+        // Screen init can restore the pointer inside Find; its tooltip must not cover code.
         context.getInput().setCursorPos(0, 0);
         context.runOnClient(client -> {
-            // New compact screens may focus Find and display its tooltip over the code.
-            // Compare the same unfocused-code state that native stage clicks leave behind.
             client.setLastInputType(InputType.MOUSE);
             client.gui.screen().setFocused(null);
+            set(client.gui.screen(), "selectedLine", -1);
             set(client.gui.screen(), "selectedStageIndex", -1);
         });
         context.waitTicks(2);
@@ -107,57 +117,137 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
             var find = (AbstractWidget) field(client.gui.screen(), "sourceSearch");
             require(!find.isHovered() && !find.isFocused(), "reference Find has neither pointer nor keyboard focus");
         });
+    }
+
+    private static void checkSelection(ClientGameTestContext context, String label, List<Integer> stages) {
+        prepareReference(context);
         List<Hit> before = context.computeOnClient(client -> hits(client.gui.screen()));
         require(before.stream().anyMatch(value -> !value.control && stages.contains(value.target.stageIndex())), label + " viewport contains a tested stage");
         BufferedImage reference = capture(context, label + "-reference");
         for (int stage : stages) {
             Hit hit = before.stream().filter(value -> !value.control && value.target.stageIndex() == stage).findFirst().orElse(null);
             if (hit == null) continue; // A stage fully outside this viewport has no clickable region.
-            for (boolean farEdge : new boolean[]{false, true}) {
-                double[] point = context.computeOnClient(client -> {
-                    var screen = (ScaledCodonScreen) client.gui.screen();
-                    var window = client.getWindow();
-                    return new double[]{screen.uiScale().toGame(hit.x + (farEdge ? hit.width - .25 : .25))
-                        * window.getScreenWidth() / window.getGuiScaledWidth(),
-                        screen.uiScale().toGame(hit.y + hit.height / 2.0) * window.getScreenHeight() / window.getGuiScaledHeight()};
-                });
-                context.getInput().setCursorPos(point[0], point[1]);
-                context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_LEFT);
-                context.getInput().setCursorPos(0, 0);
-                context.waitTicks(2);
-                context.runOnClient(client -> {
-                    require(integer(client.gui.screen(), "selectedStageIndex") == stage, "native click selects original stage " + stage);
-                    require(hits(client.gui.screen()).equals(before), "selection preserves every stage/marker hitbox");
-                    var definition = CodonClientMod.state().breakpoints().get(hit.target);
-                    require(definition != null && definition.enabled()
-                        && definition.condition().equals(BreakpointCondition.event(BreakpointCondition.Kind.CREATED))
-                        && !CodonClientMod.state().breakpoints().pending(hit.target), "text selection preserves breakpoint identity and condition");
-                });
-            }
+            selectStage(context, hit, before);
             BufferedImage selected = capture(context, label + "-stage-" + stage);
-            double scale = context.computeOnClient(client -> ((ScaledCodonScreen) client.gui.screen()).uiScale().effective());
-            int[] viewport = context.computeOnClient(client -> new int[]{invoke(client.gui.screen(), "sourceLeft") + invoke(client.gui.screen(), "gutterWidth"),
-                invoke(client.gui.screen(), "codeRight")});
-            int fromX = (int) Math.floor(viewport[0] * scale), toX = (int) Math.ceil(viewport[1] * scale);
-            int fromY = (int) Math.floor((hit.y + 4) * scale), toY = (int) Math.floor((hit.y + 15) * scale);
-            int ink = 0;
-            // Includes antialiasing room, syntax colors, adjacent text and both clipped edges.
-            for (int y = fromY; y < toY; y++)
-                for (int x = fromX; x < toX; x++) {
-                    int pixel = reference.getRGB(x, y);
-                    if ((pixel & 0xffffff) > 0x606060) ink++;
-                }
-            int changed = changedPixels(reference, selected, fromX, toX, fromY, toY);
-            require(ink > 20, "reference contains visible source glyphs");
-            require(changed == 0, label + " stage " + stage + " selection altered " + changed + " native glyph-band pixels");
-            int highlight = 0;
-            for (int row : new int[]{2, 15})
-                for (int y = (int) Math.ceil((hit.y + row) * scale); y < (int) Math.ceil((hit.y + row + 1) * scale); y++)
-                    for (int x = (int) Math.ceil((hit.x + 1) * scale); x < (int) Math.floor((hit.x + hit.width - 1) * scale); x++)
-                        if (reference.getRGB(x, y) != selected.getRGB(x, y)) highlight++;
-            require(highlight > 0, "selected stage retains a visible highlight outside the glyph band");
-            require(sourcesText(context).equals(COMMAND), "source text and original offsets remain unchanged");
+            assertBackground(context, reference, selected, hit, label + " stage " + stage);
+            int background = backgroundPixel(context, selected, hit);
+            require((background >> 8 & 255) > (background >> 16 & 255), "manual selection has a subtle teal background");
         }
+    }
+
+    private static void selectStage(ClientGameTestContext context, Hit hit, List<Hit> before) {
+        for (boolean farEdge : new boolean[]{false, true}) {
+            double[] point = context.computeOnClient(client -> {
+                var screen = (ScaledCodonScreen) client.gui.screen();
+                var window = client.getWindow();
+                return new double[]{screen.uiScale().toGame(hit.x + (farEdge ? hit.width - .25 : .25))
+                    * window.getScreenWidth() / window.getGuiScaledWidth(),
+                    screen.uiScale().toGame(hit.y + hit.height / 2.0) * window.getScreenHeight() / window.getGuiScaledHeight()};
+            });
+            context.getInput().setCursorPos(point[0], point[1]);
+            context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_LEFT);
+            context.getInput().setCursorPos(0, 0);
+            context.waitTicks(2);
+            context.runOnClient(client -> {
+                require(integer(client.gui.screen(), "selectedStageIndex") == hit.target.stageIndex(), "native click selects original stage " + hit.target.stageIndex());
+                require(hits(client.gui.screen()).equals(before), "selection preserves every stage/marker hitbox");
+                var definition = CodonClientMod.state().breakpoints().get(hit.target);
+                require(definition != null && definition.enabled()
+                    && definition.condition().equals(BreakpointCondition.event(BreakpointCondition.Kind.CREATED))
+                    && !CodonClientMod.state().breakpoints().pending(hit.target), "text selection preserves breakpoint identity and condition");
+            });
+        }
+    }
+
+    private static int assertBackground(ClientGameTestContext context, BufferedImage reference, BufferedImage selected, Hit hit, String label) {
+        double scale = scale(context);
+        int[] viewport = context.computeOnClient(client -> new int[]{invoke(client.gui.screen(), "sourceLeft") + invoke(client.gui.screen(), "gutterWidth"),
+            invoke(client.gui.screen(), "codeRight")});
+        int fromX = (int) Math.floor(viewport[0] * scale), toX = (int) Math.ceil(viewport[1] * scale);
+        int fromY = (int) Math.floor((hit.y + 4) * scale), toY = (int) Math.floor((hit.y + 15) * scale);
+        int background = backgroundPixel(context, selected, hit);
+        int ink = 0;
+        for (int y = fromY; y < toY; y++)
+            for (int x = fromX; x < toX; x++)
+                if (isInk(reference.getRGB(x, y))) ink++;
+        int unexpected = unexpectedPixels(reference, selected, fromX, toX, fromY, toY,
+            hit.x * scale, (hit.x + hit.width) * scale, background);
+        require(ink > 20, "reference contains visible source glyphs");
+        require(unexpected == 0, label + " altered " + unexpected + " glyph, neighboring or clipped-edge pixels");
+        require(!isInk(background), "background remains darker than source glyphs");
+        int contrast = colorDistance(backgroundPixel(context, reference, hit), background);
+        require(contrast > 0 && contrast < 120, "stage has a visible subtle background, without a border");
+        require(sourcesText(context).equals(COMMAND), "source text and original offsets remain unchanged");
+        return contrast;
+    }
+
+    private static void checkPauseStates(ClientGameTestContext context) {
+        context.runOnClient(client -> CodonClientMod.state().applyPause(pause(-1, COMMAND)));
+        prepareReference(context);
+        List<Hit> before = context.computeOnClient(client -> hits(client.gui.screen()));
+        Hit stopped = before.stream().filter(hit -> !hit.control && hit.target.stageIndex() == 2).findFirst().orElseThrow();
+        Hit inspected = before.stream().filter(hit -> !hit.control && hit.target.stageIndex() == 3).findFirst().orElseThrow();
+        BufferedImage unknown = capture(context, "pause-unknown-stage-reference");
+        require(backgroundPixel(context, unknown, stopped) == rowPaddingPixel(context, unknown, stopped),
+            "a pause without an authoritative stage does not guess a stopped stage");
+        selectStage(context, inspected, before);
+        BufferedImage selected = capture(context, "pause-unknown-stage-selected-3");
+        int selectedContrast = assertBackground(context, unknown, selected, inspected, "paused manual selection");
+        context.runOnClient(client -> CodonClientMod.state().applyPause(pause(2, COMMAND)));
+        context.waitTicks(2);
+        BufferedImage actual = capture(context, "pause-actual-stage-2-selected-3");
+        int pausedContrast = assertBackground(context, selected, actual, stopped, "authoritative stopped stage");
+        int background = backgroundPixel(context, actual, stopped);
+        require((background >> 16 & 255) > (background >> 8 & 255), "actual stop retains amber semantics");
+        require(pausedContrast > selectedContrast, "actual stopped stage is stronger than manual selection");
+        context.runOnClient(client -> CodonClientMod.state().selectFrame(1));
+        context.waitTicks(2);
+        BufferedImage historical = capture(context, "pause-actual-stage-2-other-frame-selected-3");
+        requireSameRow(context, actual, historical, stopped, "inspecting another frame leaves the actual stopped stage unchanged");
+        context.runOnClient(client -> CodonClientMod.state().applyPause(pause(2, COMMAND + " changed")));
+        context.waitTicks(2);
+        BufferedImage stale = capture(context, "pause-stale-command-selected-3");
+        requireSameRow(context, selected, stale, stopped, "a stale command cannot highlight a current source stage");
+        context.runOnClient(client -> CodonClientMod.state().applyResume());
+        context.waitTicks(2);
+        BufferedImage resumed = capture(context, "resumed-selected-3");
+        require(backgroundPixel(context, resumed, stopped) == rowPaddingPixel(context, resumed, stopped),
+            "resume clears actual stopped stage highlighting while retaining manual selection");
+        require(hitsFromContext(context).equals(before), "pause, frame inspection and resume preserve stage hitboxes");
+    }
+
+    private static PauseSnapshot pause(int stage, String command) {
+        var snippet = CommandSnippet.plain(command);
+        return new PauseSnapshot(LOCATION, snippet, 0, List.of(new CallFrame(0, LOCATION, snippet, 41, stage),
+            new CallFrame(1, LOCATION, snippet, 42, 3)), List.of(), PauseReason.BREAKPOINT);
+    }
+
+    private static List<Hit> hitsFromContext(ClientGameTestContext context) {
+        return context.computeOnClient(client -> hits(client.gui.screen()));
+    }
+    private static double scale(ClientGameTestContext context) {
+        return context.computeOnClient(client -> ((ScaledCodonScreen) client.gui.screen()).uiScale().effective());
+    }
+    private static int backgroundPixel(ClientGameTestContext context, BufferedImage image, Hit hit) {
+        double scale = scale(context);
+        return image.getRGB((int) ((hit.x + hit.width / 2.0) * scale), (int) Math.floor((hit.y + 3) * scale) + 1);
+    }
+    private static int rowPaddingPixel(ClientGameTestContext context, BufferedImage image, Hit hit) {
+        double scale = scale(context);
+        return image.getRGB((int) ((hit.x + hit.width / 2.0) * scale), (int) Math.floor((hit.y + 1) * scale));
+    }
+    private static int colorDistance(int first, int second) {
+        return Math.abs((first >> 16 & 255) - (second >> 16 & 255))
+            + Math.abs((first >> 8 & 255) - (second >> 8 & 255)) + Math.abs((first & 255) - (second & 255));
+    }
+    private static boolean isInk(int pixel) { return (pixel & 0xffffff) > 0x606060; }
+
+    private static void requireSameRow(ClientGameTestContext context, BufferedImage reference, BufferedImage selected, Hit hit, String message) {
+        double scale = scale(context);
+        int[] viewport = context.computeOnClient(client -> new int[]{invoke(client.gui.screen(), "sourceLeft") + invoke(client.gui.screen(), "gutterWidth"),
+            invoke(client.gui.screen(), "codeRight")});
+        require(changedPixels(reference, selected, (int) Math.floor(viewport[0] * scale), (int) Math.ceil(viewport[1] * scale),
+            (int) Math.floor((hit.y + 4) * scale), (int) Math.floor((hit.y + 15) * scale)) == 0, message);
     }
 
     private static int changedPixels(BufferedImage reference, BufferedImage selected, int fromX, int toX, int fromY, int toY) {
@@ -168,17 +258,42 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
         return changed;
     }
 
+    private static int unexpectedPixels(BufferedImage reference, BufferedImage selected, int fromX, int toX, int fromY, int toY,
+                                        double backgroundFrom, double backgroundTo, int background) {
+        int unexpected = 0;
+        for (int y = fromY; y < toY; y++)
+            for (int x = fromX; x < toX; x++) {
+                int original = reference.getRGB(x, y), actual = selected.getRGB(x, y);
+                if (isInk(original) || x < Math.floor(backgroundFrom) || x >= Math.ceil(backgroundTo)) {
+                    if (original != actual) unexpected++;
+                } else if (actual != background && !(original == actual
+                    && (x < Math.ceil(backgroundFrom) || x >= Math.floor(backgroundTo)))) unexpected++;
+            }
+        return unexpected;
+    }
+
     private static void checkEdgeCoverage() {
-        // A one-pixel side stroke at either clipping edge must fail this same comparator.
+        // The allowed dark fill must never hide a one-pixel stroke over clipped glyphs or background.
         for (double scale : new double[]{1, 1.25, 2.25, 4.5}) {
-            int from = (int) Math.floor(3 * scale), to = (int) Math.ceil(11 * scale);
+            double start = 3 * scale, end = 11 * scale;
+            int from = (int) Math.floor(start), to = (int) Math.ceil(end), background = 0xff283333;
             var reference = new BufferedImage(64, 4, BufferedImage.TYPE_INT_ARGB);
             var selected = new BufferedImage(64, 4, BufferedImage.TYPE_INT_ARGB);
-            require(changedPixels(reference, selected, from, to, 0, 4) == 0, "identical edge pixels pass");
+            for (int y = 0; y < 4; y++) for (int x = from; x < to; x++) {
+                reference.setRGB(x, y, 0xff172126);
+                selected.setRGB(x, y, background);
+            }
             for (int edge : new int[]{from, to - 1}) {
-                selected.setRGB(edge, 1, 0xff75dfd6);
-                require(changedPixels(reference, selected, from, to, 0, 4) == 1, "clipped edge pixel mutation is detected at " + scale);
-                selected.setRGB(edge, 1, 0);
+                reference.setRGB(edge, 1, 0xffc7a0ff);
+                selected.setRGB(edge, 1, 0xffc7a0ff);
+            }
+            require(unexpectedPixels(reference, selected, from, to, 0, 4, start, end, background) == 0, "background with intact edge glyphs passes");
+            for (int edge : new int[]{from, to - 1}) for (int y : new int[]{1, 2}) {
+                int original = selected.getRGB(edge, y);
+                selected.setRGB(edge, y, 0xff75dfd6);
+                require(unexpectedPixels(reference, selected, from, to, 0, 4, start, end, background) == 1,
+                    "clipped glyph/background edge mutation is detected at " + scale);
+                selected.setRGB(edge, y, original);
             }
         }
     }
