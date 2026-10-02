@@ -73,7 +73,7 @@ jobs:
         run: chmod +x ./gradlew
       - name: run client game tests
         # Leave room for the native suite on software-rendered CI runners.
-        timeout-minutes: 20
+        timeout-minutes: 15
         shell: bash
         run: |
           mkdir -p build/ci

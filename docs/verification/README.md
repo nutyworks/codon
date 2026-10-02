@@ -115,7 +115,7 @@ fallback error does not establish a Codon test failure.
 Artifacts are uploaded even after a failed test step and retained for 14 days:
 `unit-test-results` contains JVM reports; `client-game-test-evidence` contains the
 Gradle console log plus client logs, screenshots and crash reports. A setup failure
-may produce no files. The client test step has a 20-minute timeout within the
+may produce no files. The client test step has a 15-minute timeout within the
 45-minute job limit, leaving time to upload evidence after a stuck client is
 stopped. Neither limit suppresses test failures. Existing JAR artifacts remain
 available from the build job.
