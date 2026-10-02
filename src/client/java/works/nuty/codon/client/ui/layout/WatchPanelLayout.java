@@ -67,7 +67,7 @@ public final class WatchPanelLayout {
     public static Bounds available(DebuggerLayout layout, int guiWidth) {
         int margin = layout.header().x();
         int right = Math.max(margin, guiWidth - margin);
-        int width = Math.max(0, Math.min(332, layout.world().width() - 4));
+        int width = Math.max(0, Math.min(360, layout.world().width() - 4));
         int x = Math.max(layout.world().x(), right - width);
         int headerRight = layout.header().x() + Math.max(layout.header().width(), layout.controls().width());
         int y = x >= headerRight + 4 ? layout.header().y() : layout.world().y();

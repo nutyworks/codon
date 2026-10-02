@@ -157,9 +157,8 @@ public final class WatchPanel {
             Math.max(0, panelHeight - bodyStart - BOTTOM_PADDING));
         graphics.fill(bounds.x(), bounds.y(), bounds.x() + bounds.width(), bounds.y() + bounds.height(), DebuggerTheme.color(PANEL));
         graphics.outline(bounds.x(), bounds.y(), bounds.width(), bounds.height(), DebuggerTheme.color(BORDER));
-        graphics.fill(bounds.x(), bounds.y(), bounds.x() + 2, bounds.y() + HEADER, DebuggerTheme.color(TEAL));
         WatchUi.line(graphics, font, text("title").getString(),
-            bounds.x() + 7, bounds.y() + (HEADER - font.lineHeight) / 2 + 1, Math.max(0, bounds.width() - 74), TEAL);
+            bounds.x() + 7, bounds.y() + (HEADER - font.lineHeight) / 2 + 1, Math.max(0, bounds.width() - 74), TEXT);
         button("watch-add", new Bounds(bounds.x() + bounds.width() - 23, bounds.y() + 3, 18, 17), Component.literal("+"),
             true, false, () -> client.gui.setScreen(new WatchScreen(input, state, overlay)), navigation, -4, 3)
             .withIcon(DebuggerIcon.WATCHES).withIconOffsetY(2).withSingleLineTooltip(text("keep"));
@@ -234,7 +233,7 @@ public final class WatchPanel {
                 int dividerY = y - topMargin + DIVIDER_TOP_MARGIN;
                 graphics.fill(bounds.x() + 5, dividerY, bounds.x() + bounds.width() - 5, dividerY + 1, DebuggerTheme.color(BORDER));
                 int headingY = y + (rowHeight - font.lineHeight) / 2 + 1;
-                int headingColor = row.muted() ? MUTED : TEAL;
+                int headingColor = row.muted() ? MUTED : TEXT;
                 int inset = row.icon() == null ? 0 : KIND_ICON_INSET;
                 if (row.icon() != null) row.icon().drawSmall(graphics, bounds.x() + 7, headingY, DebuggerTheme.color(headingColor));
                 WatchUi.line(graphics, font, row.heading().getString(), bounds.x() + 7 + inset,
@@ -322,7 +321,7 @@ public final class WatchPanel {
             int x = bounds.x() + bounds.width() - 4;
             graphics.fill(x, scrollBounds.y(), x + 2, scrollBounds.y() + h, DebuggerTheme.color(BORDER));
             int y = scrollBounds.y() + (h - thumb) * offset / maximum;
-            graphics.fill(x, y, x + 2, y + thumb, DebuggerTheme.color(TEAL));
+            graphics.fill(x, y, x + 2, y + thumb, DebuggerTheme.color(SCROLLBAR));
             scrollbars.add("watch", false, x, scrollBounds.y(), h, 2, thumb, offset, maximum, value -> offset = value);
         }
         if (interactive && System.nanoTime() < noticeUntil && mouseX >= bounds.x()

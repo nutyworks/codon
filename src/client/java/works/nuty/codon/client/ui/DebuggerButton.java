@@ -24,6 +24,7 @@ public class DebuggerButton extends AbstractButton {
     private boolean leftAligned;
     private boolean subdued;
     private boolean borderless;
+    private boolean flatChrome;
     private boolean hitSurface;
     private boolean leadingIcon;
     private boolean iconWithText;
@@ -69,6 +70,7 @@ public class DebuggerButton extends AbstractButton {
         this.leftAligned = leftAligned;
         this.subdued = subdued;
         this.borderless = false;
+        this.flatChrome = false;
         this.hitSurface = false;
         this.leadingIcon = false;
         this.iconWithText = false;
@@ -119,6 +121,12 @@ public class DebuggerButton extends AbstractButton {
 
     public DebuggerButton withoutChrome() {
         this.borderless = true;
+        return this;
+    }
+
+    /** Quiet idle rows/actions; selection and keyboard focus remain separate visible states. */
+    public DebuggerButton withFlatChrome() {
+        this.flatChrome = true;
         return this;
     }
 
@@ -234,6 +242,13 @@ public class DebuggerButton extends AbstractButton {
             if (active && (isHovered() || keyboardFocus)) foreground = accentColor;
             if (active && keyboardFocus) graphics.outline(getX(), getY(), getWidth(), getHeight(),
                 paintColor(DebuggerTheme.TEXT));
+        } else if (flatChrome) {
+            if (active && (selected || isHovered() || keyboardFocus))
+                graphics.fill(getX(), getY(), getRight(), getBottom(), paintColor(background));
+            if (active && selected)
+                graphics.fill(getX(), getBottom() - 1, getRight(), getBottom(), paintColor(accentColor));
+            if (active && keyboardFocus)
+                graphics.outline(getX(), getY(), getWidth(), getHeight(), paintColor(DebuggerTheme.TEXT));
         } else {
             graphics.fill(getX(), getY(), getRight(), getBottom(), paintColor(background));
             graphics.fill(getX(), getY(), getRight(), getY() + 1, outline);

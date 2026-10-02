@@ -2,6 +2,12 @@
 
 ## User path and expected result
 
+The UI scaffold gives regular Watches up to 360 logical pixels (previously 332),
+bounded by the same free area above Flow. Neutral headings and removal of the dot
+leaders leave more room for names/values. Narrow stacked rows and all Add, grouping,
+pin, copy, edit, delete and Undo controls keep their existing layout rules and focus
+targets. Native clipping/keyboard/appearance checks remain manual acceptance work.
+
 Use the [shared setup](../README.md#prepare-and-launch). Before pausing, prepare a
 score and a storage value in the scratch world:
 

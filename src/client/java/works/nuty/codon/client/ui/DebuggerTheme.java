@@ -2,20 +2,19 @@ package works.nuty.codon.client.ui;
 
 /** Adjustable panel colors over a transparent world; hue conveys meaning, never source identity. */
 public final class DebuggerTheme {
-    /** Neutral workspace chrome, initially adopted by Source. These surfaces stay opaque
-     * so another debugger panel cannot bleed through a foreground reading surface. */
+    /** Neutral workspace chrome. Foreground reading surfaces use these without HUD opacity. */
     public static final int WORKSPACE = 0xFF202124;
     public static final int EDITOR = 0xFF18191C;
     public static final int DIVIDER = 0xFF3B3E44;
     public static final int ROW_HOVER = 0xFF2C2E33;
     public static final int SCROLLBAR = 0xFF747980;
 
-    public static final int PANEL = 0xF2182228;
-    public static final int SURFACE = 0xFF172126;
-    public static final int RAISED = 0xFF273A42;
-    public static final int BORDER = 0xFF415660;
-    public static final int TEXT = 0xFFE2EDEF;
-    public static final int MUTED = 0xFFA3B9C2;
+    public static final int PANEL = (WORKSPACE & 0x00FFFFFF) | 0xF2000000;
+    public static final int SURFACE = EDITOR;
+    public static final int RAISED = ROW_HOVER;
+    public static final int BORDER = DIVIDER;
+    public static final int TEXT = 0xFFE6E6E8;
+    public static final int MUTED = 0xFFA9ADB5;
     public static final int TEAL = 0xFF75DFD6;
     public static final int TEAL_SURFACE = 0xFF203E3E;
     public static final int AMBER = 0xFFF3C171;

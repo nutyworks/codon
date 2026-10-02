@@ -248,7 +248,6 @@ public final class DebuggerOverlay {
         opacitySlider.position(header.x() + header.width() - 39, header.y() + 1, 34);
         controls.add(opacitySlider);
         navigation.bind("background-opacity", DebuggerNavigation.Group.TOOLBAR, opacitySlider);
-        graphics.fill(header.x(), header.y(), header.x() + 2, header.y() + headerPanel.height(), TEAL);
         var headerText = DebuggerHeaderLayout.create(header, prefixWidth, client.font.width(status), menuKeyWidth, menuKeyGap);
         text(graphics, prefix, header.x() + 7, header.y() + 5, headerText.prefixWidth(), TEXT, true);
         text(graphics, status, headerText.statusX(), header.y() + 5, headerText.statusWidth(),
@@ -268,11 +267,13 @@ public final class DebuggerOverlay {
                 case INTO -> DebuggerIcon.STEP_INTO;
                 case OUT -> DebuggerIcon.STEP_OUT;
             };
-            iconButton("control-" + action,
+            DebuggerButton control = iconButton("control-" + action,
                 new Bounds(x, toolbar.y() + 2, width, DebuggerLayout.ICON_BUTTON_SIZE),
                 component(action.translationKey()).copy().append(" ").append(keybind(input.keyLabel(action))),
                 icon, snapshot != null && state.isPaused() && !state.controlPending(),
                 () -> input.control(action));
+            if (action == InputManager.Control.RESUME) control.withStatusColor(AMBER, AMBER_SURFACE);
+            else control.withFlatChrome();
 
             x += width + gap;
         }
@@ -542,7 +543,7 @@ public final class DebuggerOverlay {
                         state.selectSource(index);
                         state.preferences().setInspectorTab(InspectorTab.SOURCES);
                     }
-                }), index).setTooltip(Tooltip.create(tooltip));
+                }).withFlatChrome(), index).setTooltip(Tooltip.create(tooltip));
         }
         if (rows > 0 && indices.size() > rows) {
             if (area.height() - (21 + rows * 19) >= 9) {
@@ -694,7 +695,10 @@ public final class DebuggerOverlay {
         DebuggerButton button = buttonCache.computeIfAbsent(id, ignored -> new DebuggerButton());
         button.configure(bounds.x(), bounds.y(), bounds.width(), bounds.height(), label, active,
             selected, leftAligned, subdued, action);
-        if (navigationGroup == DebuggerNavigation.Group.TOOLBAR) button.withOpaqueColors();
+        if (navigationGroup == DebuggerNavigation.Group.TOOLBAR) {
+            button.withOpaqueColors();
+            if (!id.startsWith("control-")) button.withFlatChrome();
+        }
         usedButtons.add(id);
         controls.add(button);
         navigation.bind(id, navigationGroup, button);
@@ -773,7 +777,7 @@ public final class DebuggerOverlay {
         int thumb = Math.min(height, Math.max(6, height * rows / total));
         scrollbars.add(id, false, x, y, height, 2, thumb, offset, maxOffset, setter);
         int top = y + (height - thumb) * offset / maxOffset;
-        graphics.fill(x, top, x + 2, top + thumb, DebuggerTheme.color(TEAL));
+        graphics.fill(x, top, x + 2, top + thumb, DebuggerTheme.color(SCROLLBAR));
     }
 
     private String dimension() {

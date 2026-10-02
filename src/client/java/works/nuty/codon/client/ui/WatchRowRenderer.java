@@ -4,7 +4,7 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import works.nuty.codon.client.state.ClientWatchState;
 
-/** Shared name/dot-leader/value layout for the HUD and Watch editor. */
+/** Shared name/value layout for the HUD and Watch editor. */
 public final class WatchRowRenderer {
     private WatchRowRenderer() { }
 
@@ -26,16 +26,8 @@ public final class WatchRowRenderer {
         if (!badge.isEmpty()) label += (label.isEmpty() ? "" : " · ") + badge;
         String value = fitValue(font, entry, paused, label.isEmpty() ? width : width / 2);
         int valueX = x + width - font.width(value);
-        int dotWidth = Math.max(1, font.width("."));
-        label = fit(font, label, Math.max(0, valueX - x - 8 - 3 * dotWidth));
-        int leaderX = x + font.width(label) + 4;
-        int dots = label.isEmpty() ? 0 : Math.max(0, (valueX - 4 - leaderX) / dotWidth);
+        label = fit(font, label, Math.max(0, valueX - x - 8));
         graphics.text(font, label, x, y, DebuggerTheme.color(labelColor), false);
-        int leaderY = y + (font.lineHeight - 2) / 2;
-        for (int dot = 0; dot < dots; dot++) {
-            int dotX = leaderX + dot * dotWidth;
-            graphics.fill(dotX, leaderY, dotX + 1, leaderY + 1, DebuggerTheme.color(DebuggerTheme.MUTED));
-        }
         graphics.text(font, value, valueX, y, DebuggerTheme.color(valueColor), false);
     }
 

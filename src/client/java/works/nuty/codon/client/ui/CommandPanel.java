@@ -188,7 +188,7 @@ public final class CommandPanel {
                 value -> stackOffset = value);
             int thumbX = left + (available - thumb) * stackOffset / maxStackOffset;
             graphics.fill(left, area.y() + 16, left + available, area.y() + 17, DebuggerTheme.color(BORDER));
-            graphics.fill(thumbX, area.y() + 16, thumbX + thumb, area.y() + 17, DebuggerTheme.color(TEAL));
+            graphics.fill(thumbX, area.y() + 16, thumbX + thumb, area.y() + 17, DebuggerTheme.color(SCROLLBAR));
         }
     }
 
@@ -713,6 +713,7 @@ public final class CommandPanel {
         PauseSnapshot expected = renderedSnapshot;
         button.configure(bounds.x(), bounds.y(), Math.max(1, bounds.width()), bounds.height(), label,
             active, selected, true, false, () -> { if (state.snapshot() == expected) action.run(); });
+        button.withFlatChrome();
         used.add(id);
         buttons.add(button);
         navigation.bind(id, navigationGroup, button);
@@ -739,7 +740,7 @@ public final class CommandPanel {
         int thumb = Math.min(height, Math.max(5, height * rows / (rows + max)));
         scrollbars.add("command", false, x, y, height, 2, thumb, offset, max, value -> commandOffset = value);
         int top = y + (height - thumb) * offset / max;
-        graphics.fill(x, top, x + 2, top + thumb, DebuggerTheme.color(TEAL));
+        graphics.fill(x, top, x + 2, top + thumb, DebuggerTheme.color(SCROLLBAR));
     }
 
     private String frameLabel(PauseSnapshot snapshot, int index) {

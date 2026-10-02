@@ -25,8 +25,9 @@ be checked. The viewer lists functions actually loaded by the current server.
    and scrollbars no longer use teal as decoration. Selected stages and live stops
    retain their distinct teal/amber treatment.
    This is a presentation scaffold: shared tokens and header geometry are extension
-   points. Flow, Contexts, Watches, general buttons, fonts and docking are not
-   redesigned. Before visual acceptance, check opacity, narrow/wide layouts,
+   points. Flow, Contexts, Watches and the execution toolbar also use neutral chrome
+   and quieter rows/actions; fonts and docking are not redesigned.
+   Before visual acceptance, check opacity, narrow/wide layouts,
    truncation warnings and selected/live stage contrast in the native client.
    The code pane uses the default Minecraft font and measures its actual glyph
    advances; Unicode comments retain their glyphs. Commands, `execute` keywords, strings, values,

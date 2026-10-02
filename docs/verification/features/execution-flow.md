@@ -2,6 +2,13 @@
 
 ## User path and expected result
 
+The UI scaffold uses shared neutral surfaces and flat Contexts, call-path and Flow
+buttons: idle rows have no repeated frame, hover has a neutral fill, selection keeps
+its semantic fill and underline, and keyboard focus has a light outline. Live amber,
+selected teal, context-change colors, breakpoint icons and counts retain their roles.
+Stage targets, secondary actions, wrapping, clipping and navigation are unchanged.
+These appearance changes still need manual viewing in the native client.
+
 Use the [shared setup](../README.md#prepare-and-launch). In a fresh scratch world,
 summon two tagged armor stands before pausing:
 
