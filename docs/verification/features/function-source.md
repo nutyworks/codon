@@ -37,10 +37,20 @@ be checked. The viewer lists functions actually loaded by the current server.
    marker. Leaving a stage removes its temporary slot and restores original glyph
    advances; enabled markers keep their necessary slot. No separate stage row or
    panel is shown. Hover the gutter marker for the enabled stage count.
+   A selected stage has a distinct teal background behind its text, without a border
+   (31% tint at full panel opacity). The actual stopped stage has a stronger amber
+   background (44% tint), using the top live
+   pause frame's stage index only when its location and command match the source.
+   A live stopped row requests its stage preview without requiring selection,
+   hover or an enabled stage breakpoint.
+   Selecting another stage/frame does not move that pause highlight. Unknown
+   stage identity, changed commands and completed execution do not imply a live
+   stage stop. If reload removes the selected stage, the row retains its selection
+   indication. Selection retains original text advances and stage/marker hitboxes.
 3. Close the viewer and execute `/function <namespace:path>`. Check the breakpoint
    stops at the selected location. Reopen Source at the pause and distinguish the
    actual stopped line from a manually inspected line/record. A live pause has an
-   arrow and amber row; selection has an outlined row. After Continue, the retained
+   arrow and amber row; whole-line selection has an outlined row. After Continue, the retained
    location is labelled as a recorded line and has no live-pause arrow.
 4. With execution resumed, change/reload the scratch datapack. Use Refresh to
    update the function list and Reload to reread the selected source. Removed
@@ -125,11 +135,36 @@ scroll settings. Synthetic callback input does not verify a physical trackpad.
 | Network payloads | `test`: `FunctionSourcePayloadTest`, `BreakpointStagePreviewPayloadTest` |
 | Line gutter, one-stage suppression, EN/KO/custom scale and hit boxes | `FunctionLineBreakpointGameTest` |
 | Real rendering, selection, resize and inline stage markers | `FunctionSourceScreenGameTest`, `FunctionSourceInteractionGameTest`, `FunctionSourceReviewGameTest` |
+| Active stage readability, adjacent stages, horizontal clipping and representative scales | `FunctionSourceStageHighlightGameTest` |
 | Source toolbar icon, state styling, scale readability and native activation | `DebuggerSourceIconGameTest` |
 | F3/Shift+F3 press/repeat/release ownership and vanilla behavior outside Source | `FunctionSourceKeyboardGameTest` |
 | Focused Find/function-list Search key press before character input, bound/unbound/remapped cursor-mode keys, parent shortcuts and focus navigation | `FunctionSourceTextInputGameTest` |
 
 Example: `./gradlew runClientGameTest -PclientGameTest=FunctionSourceScreenGameTest`.
+
+`FunctionSourceStageHighlightGameTest` compares native source-row pixels before and
+after selecting adjacent stages in five representative scenarios: minimum 1.00×,
+fractional 1.25×/2.25× clipping, and maximum 4.50× compact/tail views in a
+1920×1080 viewport. The native pixel comparison preserves glyph colors and coverage,
+including the first/last viewport pixels, and allows only a uniform background
+within the selected stage, with the expected teal/amber hue and opacity. Partially
+transparent font texels must retain the same syntax color and alpha coverage over
+both backgrounds, within 8-bit blend rounding.
+Minecraft's rounded scissor bounds constrain the fill; the comparison still includes
+the full logical viewport and requires pixels outside that native clip to stay identical.
+Neighboring stages stay identical. Native clicks at both ends of each visible text hitbox preserve
+the original stage target, enabled breakpoint and condition. Scrolled captures cut
+through a stage at each edge and reach the long line's tail. A one-pixel mutation
+over glyphs or background at either clipped edge must fail the same comparator.
+The pause checks first verify preview loading without hover, selection or enabled
+breakpoints. Six additional fractional-scale captures verify unknown/live stage identity,
+stronger amber pause highlighting alongside manual/other-frame selection, stale
+commands, execution completion and resume. One reload capture checks the row
+selection fallback when its stage disappears. The five selection scenarios and state checks
+retain 22 screenshots rather than the prior 135-capture scale/viewport matrix. Inspect
+`*codon-stage-highlight-*.png`. The injected document/parse spans establish client
+presentation and interaction; real server source discovery and stage breakpoints
+remain separate checks.
 
 `FunctionSourceTextInputGameTest` uses a real docked `CodonScreen` parent and sends
 press/repeat/release and character callbacks through Minecraft's `KeyboardHandler`.
