@@ -15,7 +15,19 @@ be checked. The viewer lists functions actually loaded by the current server.
    selecting a row or scrolling Source. Search, folder collapse and resizing
    clamp its position and remove the track when all rows fit.
    The header shows the datapack-relative
-   `data/<namespace>/function/<path>.mcfunction` path (hover for the full path).
+   `data/<namespace>/function/<path>.mcfunction` path (hover for the full path,
+   provider and revision). Source is the first consumer of shared neutral workspace
+   colors in `DebuggerTheme`: its panel and code surface are opaque even when HUD
+   background opacity is reduced. The compact header starts code at 79 logical
+   pixels, or 101 with a second row of condition controls (previously 100/118).
+   Execution status and a truncated-source warning remain visible. Functions rows
+   use a flat neutral hover and a teal selection rail; ordinary folders, dividers
+   and scrollbars no longer use teal as decoration. Selected stages and live stops
+   retain their distinct teal/amber treatment.
+   This is a presentation scaffold: shared tokens and header geometry are extension
+   points. Flow, Contexts, Watches, general buttons, fonts and docking are not
+   redesigned. Before visual acceptance, check opacity, narrow/wide layouts,
+   truncation warnings and selected/live stage contrast in the native client.
    The code pane uses the default Minecraft font and measures its actual glyph
    advances; Unicode comments retain their glyphs. Commands, `execute` keywords, strings, values,
    resource IDs and comments receive display-only lexical highlighting.

@@ -160,7 +160,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         drawerButton.visible = drawerButton.active = drawerMode;
         backButton.visible = backButton.active = !drawerOpen && sources.canGoBack();
         search.visible = search.active = !drawerMode || drawerOpen;
-        int findY = top + (compactSourceControls ? 92 : 75);
+        int findY = top + ClientFunctionSourceState.ScreenLayout.findInset(compactSourceControls);
         sourceSearch = addRenderableWidget(new DebuggerEditBox(font, sourceLeft + 5, findY,
             Math.max(1, sourceWidth - 117), 20, Component.translatable("codon.source.find")));
         sourceSearch.setHint(Component.translatable("codon.source.find"));
@@ -229,7 +229,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         stageCondition.setX(compactSourceControls ? sourceLeft + (sourceWidth - 4) / 2 + 4 : sourceLeft + 210);
         stageCondition.setY(lineCondition.getY());
         stageCondition.setWidth(compactSourceControls ? (sourceWidth - 4) / 2 : 98);
-        int findY = top + (compactSourceControls ? 92 : 75);
+        int findY = top + ClientFunctionSourceState.ScreenLayout.findInset(compactSourceControls);
         sourceSearch.setX(sourceLeft + 5); sourceSearch.setY(findY); sourceSearch.setWidth(Math.max(1, sourceWidth - 117));
         previousMatch.setX(sourceLeft + sourceWidth - 41); previousMatch.setY(findY);
         nextMatch.setX(sourceLeft + sourceWidth - 21); nextMatch.setY(findY);
@@ -296,16 +296,15 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             parent.extractRenderState(graphics, covered ? -1 : mouseX, covered ? -1 : mouseY, partialTick);
         }
         else graphics.fill(0, 0, width, height, DebuggerTheme.color(0x70000000));
-        graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.color(PANEL));
-        graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.color(BORDER));
-        graphics.fill(left, top, left + 2, top + 24, DebuggerTheme.color(TEAL));
+        graphics.fill(left, top, left + panelWidth, top + panelHeight, WORKSPACE);
+        graphics.outline(left, top, panelWidth, panelHeight, DIVIDER);
         WatchUi.line(graphics, font, tr(drawerOpen ? "codon.source.functions" : "codon.source.title"),
             left + 8, top + 9, Math.max(1, treeWidth - 20), TEXT);
         if (!drawerMode || drawerOpen) {
             if (!drawerMode) {
                 boolean hovered = splitterContains(mouseX, mouseY);
-                graphics.fill(left + treeWidth - 1, top + 25, left + treeWidth + 2, top + panelHeight - 8,
-                    DebuggerTheme.color(hovered || resizingTree ? TEAL : BORDER));
+                graphics.fill(left + treeWidth, top + 25, left + treeWidth + 1, top + panelHeight - 8,
+                    hovered || resizingTree ? TEAL : DIVIDER);
                 if (hovered) {
                     graphics.requestCursor(CursorTypes.RESIZE_EW);
                     graphics.setTooltipForNextFrame(font, Component.translatable("codon.source.resize_tree"), mouseX, mouseY);
@@ -330,12 +329,13 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             boolean selected = entry instanceof Entry.Function function && function.id().equals(sources.selected());
             boolean hovered = mouseX >= left + 5 && mouseX < rowRight && mouseY >= y && mouseY < y + ROW_HEIGHT;
             if (selected || hovered) graphics.fill(left + 5, y, rowRight, y + ROW_HEIGHT - 1,
-                DebuggerTheme.color(selected ? TEAL_SURFACE : RAISED));
+                selected ? TEAL_SURFACE : ROW_HOVER);
+            if (selected) graphics.fill(left + 5, y, left + 7, y + ROW_HEIGHT - 1, TEAL);
             switch (entry) {
                 case Entry.Group group -> {
                     boolean open = expanded(group.key(), search.getValue());
                     WatchUi.line(graphics, font, (open ? "− " : "+ ") + group.label(), left + 9 + group.depth() * 10,
-                        y + 5, treeWidth - 16 - reserved - group.depth() * 10, open ? TEAL : MUTED);
+                        y + 5, treeWidth - 16 - reserved - group.depth() * 10, open ? TEXT : MUTED);
                 }
                 case Entry.Function function -> WatchUi.line(graphics, font, function.label(),
                     left + 18 + function.depth() * 10, y + 5, treeWidth - 26 - reserved - function.depth() * 10, TEXT);
@@ -366,26 +366,27 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             return;
         }
         String path = "data/" + selected.namespace() + "/function/" + selected.path() + ".mcfunction";
-        WatchUi.line(graphics, font, path, sourceLeft + 6, compactSourceControls ? top + 53 : top + 31,
-            sourceWidth - 12, TEAL);
-        int pathY = compactSourceControls ? top + 53 : top + 31;
-        if (mouseX >= sourceLeft + 6 && mouseX < sourceLeft + sourceWidth - 6 && mouseY >= pathY && mouseY < pathY + 10)
-            graphics.setTooltipForNextFrame(font, Component.literal(path), mouseX, mouseY);
         FunctionSourceDocument document = sources.document();
+        int pathY = top + ClientFunctionSourceState.ScreenLayout.pathInset(compactSourceControls);
+        int statusY = top + ClientFunctionSourceState.ScreenLayout.statusInset(compactSourceControls);
+        WatchUi.line(graphics, font, path, sourceLeft + 6, pathY, sourceWidth - 12, TEXT);
+        if (mouseX >= sourceLeft + 6 && mouseX < sourceLeft + sourceWidth - 6 && mouseY >= pathY && mouseY < pathY + 10) {
+            String details = path;
+            if (document != null) details += "\n" + (document.provider().isEmpty() ? "" : document.provider() + " · ")
+                + document.revision().substring(0, Math.min(12, document.revision().length()));
+            graphics.setTooltipForNextFrame(font, font.split(Component.literal(details), Math.min(360, width - 24)), mouseX, mouseY);
+        }
         if (document == null) {
-            WatchUi.line(graphics, font, sourceStatus(), sourceLeft + 6, compactSourceControls ? top + 65 : top + 52, sourceWidth - 12,
+            WatchUi.line(graphics, font, sourceStatus(), sourceLeft + 6, statusY, sourceWidth - 12,
                 sources.sourceStatus() == ClientFunctionSourceState.Status.ERROR ? AMBER : MUTED);
             return;
         }
-        String metadata = (document.provider().isEmpty() ? "" : document.provider() + " · ")
-            + document.revision().substring(0, Math.min(12, document.revision().length()));
-        if (document.truncated()) metadata += " · " + tr("codon.source.truncated");
-        WatchUi.line(graphics, font, metadata, sourceLeft + 6, compactSourceControls ? top + 65 : top + 48,
-            sourceWidth - 12, MUTED);
-        WatchUi.line(graphics, font, executionStatus(selected), sourceLeft + 6,
-            compactSourceControls ? top + 77 : top + 60, sourceWidth - 12, MUTED);
+        // Keep incomplete-source warnings visible even though revision details are secondary.
+        String status = (document.truncated() ? tr("codon.source.truncated") + " · " : "") + executionStatus(selected);
+        WatchUi.line(graphics, font, status, sourceLeft + 6, statusY, sourceWidth - 12,
+            document.truncated() ? AMBER : MUTED);
         int countX = sourceLeft + sourceWidth - 110;
-        int countY = top + (compactSourceControls ? 98 : 81);
+        int countY = sourceSearch.getY() + 6;
         WatchUi.line(graphics, font, matches.isEmpty() ? "0/0"
             : (matchIndex + 1) + "/" + matches.size() + (matchesLimited ? "+" : ""), countX, countY, 66, MUTED);
         if (matchesLimited && mouseX >= countX && mouseX < countX + 66 && mouseY >= countY && mouseY < countY + 10)
@@ -405,7 +406,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         Map<Integer, StageCounts> stageCounts = stageBreakpointCounts(selected, debugger);
         int nextHoveredLine = -1, nextHoveredStage = -1;
         expandedWidth = widestLine;
-        graphics.fill(sourceLeft + 3, lineTop, codeRight(), lineBottom, DebuggerTheme.color(SURFACE));
+        graphics.fill(sourceLeft + 3, lineTop, codeRight(), lineBottom, EDITOR);
         graphics.enableScissor(sourceLeft + 3, lineTop, codeRight(), lineBottom);
         for (int index = lineOffset, y = lineTop; index < document.lines().size() && y < lineBottom; index++, y += ROW_HEIGHT) {
             int line = index + 1;
@@ -741,8 +742,8 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         int maximum = maxHorizontalOffset();
         int thumb = Math.min(width, Math.max(18, width * width / Math.max(width, displayedWidth())));
         int offset = maximum == 0 ? 0 : horizontalOffset * (width - thumb) / maximum;
-        graphics.fill(x, y, x + width, y + 6, DebuggerTheme.color(RAISED));
-        graphics.fill(x + offset, y, x + offset + thumb, y + 6, DebuggerTheme.color(maximum == 0 ? BORDER : TEAL));
+        graphics.fill(x, y, x + width, y + 6, ROW_HOVER);
+        graphics.fill(x + offset, y, x + offset + thumb, y + 6, maximum == 0 ? DIVIDER : SCROLLBAR);
         scrollbars.add("horizontal", true, x, y, width, 6, thumb, horizontalOffset, maximum,
             value -> { horizontalOffset = value; horizontalRemainder = 0; clearSourceHits(); rememberView(); });
     }
@@ -751,8 +752,8 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                                          int offset, int maximum, int rows, java.util.function.IntConsumer setter) {
         int thumb = Math.min(height, Math.max(12, height * rows / Math.max(rows, rows + maximum)));
         int at = maximum == 0 ? 0 : offset * (height - thumb) / maximum;
-        graphics.fill(x, y, x + 4, y + height, DebuggerTheme.color(RAISED));
-        graphics.fill(x, y + at, x + 4, y + at + thumb, DebuggerTheme.color(maximum == 0 ? BORDER : TEAL));
+        graphics.fill(x, y, x + 4, y + height, ROW_HOVER);
+        graphics.fill(x, y + at, x + 4, y + at + thumb, maximum == 0 ? DIVIDER : SCROLLBAR);
         scrollbars.add(id, false, x, y, height, 4, thumb, offset, maximum, setter);
     }
 
