@@ -7,6 +7,7 @@ import java.util.List;
 import javax.imageio.ImageIO;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
+import net.minecraft.client.InputType;
 import net.minecraft.network.chat.Component;
 import works.nuty.codon.client.state.ClientFunctionSourceState;
 import works.nuty.codon.client.state.ClientStagePreviewState;
@@ -91,7 +92,13 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
     }
 
     private static void checkSelection(ClientGameTestContext context, String label, List<Integer> stages) {
-        context.runOnClient(client -> set(client.gui.screen(), "selectedStageIndex", -1));
+        context.runOnClient(client -> {
+            // New compact screens may focus Find and display its tooltip over the code.
+            // Compare the same unfocused-code state that native stage clicks leave behind.
+            client.setLastInputType(InputType.MOUSE);
+            client.gui.screen().setFocused(null);
+            set(client.gui.screen(), "selectedStageIndex", -1);
+        });
         context.waitTicks(2);
         List<Hit> before = context.computeOnClient(client -> hits(client.gui.screen()));
         require(before.stream().anyMatch(value -> !value.control && stages.contains(value.target.stageIndex())), label + " viewport contains a tested stage");
