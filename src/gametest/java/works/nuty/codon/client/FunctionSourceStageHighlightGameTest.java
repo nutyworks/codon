@@ -14,16 +14,19 @@ import works.nuty.codon.client.state.ClientFunctionSourceState;
 import works.nuty.codon.client.state.ClientStagePreviewState;
 import works.nuty.codon.client.state.DebuggerPreferences;
 import works.nuty.codon.client.ui.FunctionSourceScreen;
+import works.nuty.codon.client.ui.DebuggerTheme;
 import works.nuty.codon.client.ui.ScaledCodonScreen;
 import works.nuty.codon.core.model.*;
 
-/** Selection must leave native source glyph pixels and original stage hit targets intact. */
+/** Background highlighting must preserve source glyph colors and original stage hit targets. */
 @SuppressWarnings("UnstableApiUsage")
 public final class FunctionSourceStageHighlightGameTest implements FabricClientGameTest {
     private static final FunctionId FUNCTION = new FunctionId("codon_test", "stage_highlight");
     private static final String COMMAND = "execute as @s at @s if score @s charge matches 40.. run say \""
         + "readable_adjacent_stage_".repeat(15) + "\"";
     private static final SourceLocation.Function LOCATION = new SourceLocation.Function(new FunctionLocation(FUNCTION, 2));
+    private static final int[] SOURCE_COLORS = {DebuggerTheme.TEXT, DebuggerTheme.TEAL, DebuggerTheme.PURPLE,
+        DebuggerTheme.GREEN, DebuggerTheme.AMBER, DebuggerTheme.MUTED, 0xffb3d5ff};
     private record Hit(int x, int y, int width, int height, BreakpointTarget target, boolean control) { }
     private record Scenario(int scale, int scroll, String name, List<Integer> stages) { }
 
@@ -47,18 +50,10 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
                 client.setScreenAndShow(new FunctionSourceScreen(new ScaledCodonScreen(Component.empty(), preferences) { }, sources));
             });
             context.waitTicks(2); // Let the absent fixture's initial source-preview reply settle.
-            context.runOnClient(client -> {
-                var previews = CodonClientMod.state().stagePreviews();
-                int run = COMMAND.indexOf("run say");
-                require(previews.accept(previews.begin(LOCATION), LOCATION, ClientStagePreviewState.Status.READY, COMMAND,
-                    List.of(new ClientStagePreviewState.StageSpan(0, 0, 13, false),
-                        new ClientStagePreviewState.StageSpan(1, 14, 19, false),
-                        new ClientStagePreviewState.StageSpan(2, 20, run - 1, true),
-                        new ClientStagePreviewState.StageSpan(3, run, COMMAND.length(), false))), "fixture spans accepted");
-            });
+            context.runOnClient(client -> installPreview());
             // Representative minimum/maximum and fractional cases, without a Cartesian matrix.
             for (Scenario scenario : List.of(
-                new Scenario(4, 0, "minimum-adjacent", List.of(0, 1, 2)),
+                new Scenario(4, 0, "minimum-adjacent", List.of(0, 1)),
                 new Scenario(5, 10, "fractional-left-right-clipped", List.of(2, 3)),
                 new Scenario(9, 10, "fractional-left-right-clipped", List.of(2, 3)),
                 new Scenario(18, 0, "maximum-adjacent", List.of(0, 1, 2)),
@@ -93,6 +88,7 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
                 screen.mouseScrolled(invoke(screen, "codeRight") - 10, invoke(screen, "sourceLineTop") + 27, 10, 0);
             });
             checkPauseStates(context);
+            checkReloadSelection(context, sources);
         } finally {
             context.runOnClient(client -> {
                 client.setScreenAndShow(null);
@@ -125,8 +121,8 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
         require(before.stream().anyMatch(value -> !value.control && stages.contains(value.target.stageIndex())), label + " viewport contains a tested stage");
         BufferedImage reference = capture(context, label + "-reference");
         for (int stage : stages) {
-            Hit hit = before.stream().filter(value -> !value.control && value.target.stageIndex() == stage).findFirst().orElse(null);
-            if (hit == null) continue; // A stage fully outside this viewport has no clickable region.
+            Hit hit = before.stream().filter(value -> !value.control && value.target.stageIndex() == stage).findFirst()
+                .orElseThrow(() -> new AssertionError(label + " is missing expected visible stage " + stage));
             selectStage(context, hit, before);
             BufferedImage selected = capture(context, label + "-stage-" + stage);
             assertBackground(context, reference, selected, hit, label + " stage " + stage);
@@ -166,24 +162,40 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
         int fromX = (int) Math.floor(viewport[0] * scale), toX = (int) Math.ceil(viewport[1] * scale);
         int fromY = (int) Math.floor((hit.y + 4) * scale), toY = (int) Math.floor((hit.y + 15) * scale);
         int background = backgroundPixel(context, selected, hit);
+        int referenceBackground = backgroundPixel(context, reference, hit);
         int ink = 0;
         for (int y = fromY; y < toY; y++)
             for (int x = fromX; x < toX; x++)
                 if (isInk(reference.getRGB(x, y))) ink++;
         int unexpected = unexpectedPixels(reference, selected, fromX, toX, fromY, toY,
-            hit.x * scale, (hit.x + hit.width) * scale, background);
+            hit.x * scale, (hit.x + hit.width) * scale, referenceBackground, background);
         require(ink > 20, "reference contains visible source glyphs");
         require(unexpected == 0, label + " altered " + unexpected + " glyph, neighboring or clipped-edge pixels");
         require(!isInk(background), "background remains darker than source glyphs");
-        int contrast = colorDistance(backgroundPixel(context, reference, hit), background);
+        int contrast = colorDistance(referenceBackground, background);
         require(contrast > 0 && contrast < 120, "stage has a visible subtle background, without a border");
         require(sourcesText(context).equals(COMMAND), "source text and original offsets remain unchanged");
         return contrast;
     }
 
     private static void checkPauseStates(ClientGameTestContext context) {
-        context.runOnClient(client -> CodonClientMod.state().applyPause(pause(-1, COMMAND)));
+        var definitions = context.computeOnClient(client -> CodonClientMod.state().breakpoints().definitions());
+        context.runOnClient(client -> {
+            var state = CodonClientMod.state();
+            state.breakpoints().reset();
+            state.stagePreviews().reset();
+            state.applyPause(pause(2, COMMAND));
+        });
         prepareReference(context);
+        context.runOnClient(client -> {
+            var state = CodonClientMod.state();
+            require(state.stagePreviews().get(LOCATION) != null,
+                "an unselected live stop requests its preview without hover or enabled breakpoints");
+            require(state.breakpoints().acceptPage(1, 0, true, definitions), "restore acknowledged stage definitions");
+            installPreview();
+            state.applyPause(pause(-1, COMMAND));
+        });
+        context.waitTicks(2);
         List<Hit> before = context.computeOnClient(client -> hits(client.gui.screen()));
         Hit stopped = before.stream().filter(hit -> !hit.control && hit.target.stageIndex() == 2).findFirst().orElseThrow();
         Hit inspected = before.stream().filter(hit -> !hit.control && hit.target.stageIndex() == 3).findFirst().orElseThrow();
@@ -193,21 +205,26 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
         selectStage(context, inspected, before);
         BufferedImage selected = capture(context, "pause-unknown-stage-selected-3");
         int selectedContrast = assertBackground(context, unknown, selected, inspected, "paused manual selection");
-        context.runOnClient(client -> CodonClientMod.state().applyPause(pause(2, COMMAND)));
+        context.runOnClient(client -> {
+            var state = CodonClientMod.state();
+            state.applyPause(pause(2, COMMAND));
+            state.selectFrame(1);
+            require(state.selectedFrameIndex() == 1, "fixture inspects another frame while the top frame remains paused");
+        });
         context.waitTicks(2);
-        BufferedImage actual = capture(context, "pause-actual-stage-2-selected-3");
+        BufferedImage actual = capture(context, "pause-actual-stage-2-other-frame-selected-3");
         int pausedContrast = assertBackground(context, selected, actual, stopped, "authoritative stopped stage");
         int background = backgroundPixel(context, actual, stopped);
         require((background >> 16 & 255) > (background >> 8 & 255), "actual stop retains amber semantics");
         require(pausedContrast > selectedContrast, "actual stopped stage is stronger than manual selection");
-        context.runOnClient(client -> CodonClientMod.state().selectFrame(1));
-        context.waitTicks(2);
-        BufferedImage historical = capture(context, "pause-actual-stage-2-other-frame-selected-3");
-        requireSameRow(context, actual, historical, stopped, "inspecting another frame leaves the actual stopped stage unchanged");
         context.runOnClient(client -> CodonClientMod.state().applyPause(pause(2, COMMAND + " changed")));
         context.waitTicks(2);
         BufferedImage stale = capture(context, "pause-stale-command-selected-3");
         requireSameRow(context, selected, stale, stopped, "a stale command cannot highlight a current source stage");
+        context.runOnClient(client -> CodonClientMod.state().applyPause(pause(2, COMMAND, PauseReason.EXECUTION_COMPLETE)));
+        context.waitTicks(2);
+        BufferedImage complete = capture(context, "execution-complete-selected-3");
+        requireSameRow(context, selected, complete, stopped, "execution completion does not highlight the retained final stage as live");
         context.runOnClient(client -> CodonClientMod.state().applyResume());
         context.waitTicks(2);
         BufferedImage resumed = capture(context, "resumed-selected-3");
@@ -217,9 +234,47 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
     }
 
     private static PauseSnapshot pause(int stage, String command) {
+        return pause(stage, command, PauseReason.BREAKPOINT);
+    }
+
+    private static PauseSnapshot pause(int stage, String command, PauseReason reason) {
         var snippet = CommandSnippet.plain(command);
         return new PauseSnapshot(LOCATION, snippet, 0, List.of(new CallFrame(0, LOCATION, snippet, 41, stage),
-            new CallFrame(1, LOCATION, snippet, 42, 3)), List.of(), PauseReason.BREAKPOINT);
+            new CallFrame(1, LOCATION, snippet, 42, 3)), List.of(), reason);
+    }
+
+    private static void checkReloadSelection(ClientGameTestContext context, ClientFunctionSourceState sources) {
+        context.runOnClient(client -> {
+            sources.drainRequests();
+            sources.select(FUNCTION);
+            long request = sources.drainRequests().getFirst().requestId();
+            sources.accept(new ClientFunctionSourceState.SourcePage(request, ClientFunctionSourceState.Status.READY,
+                FUNCTION, "gametest", "reloaded-single-stage", false, 0, true,
+                List.of("# reloaded", "say reloaded", "say below")));
+        });
+        context.waitTicks(2);
+        BufferedImage reloaded = capture(context, "reload-single-stage-selection");
+        double scale = scale(context);
+        context.runOnClient(client -> {
+            var screen = client.gui.screen();
+            require(integer(screen, "selectedLine") == 2 && integer(screen, "selectedStageIndex") == 3,
+                "reload fixture preserves the now-unresolved selected stage");
+            require(hits(screen).isEmpty(), "single-stage replacement has no inline stage targets");
+            int x = invoke(screen, "sourceLeft") + invoke(screen, "gutterWidth") + 2;
+            int y = invoke(screen, "sourceLineTop") + 18 + 2;
+            require(reloaded.getRGB((int) Math.ceil(x * scale), (int) Math.ceil(y * scale)) == DebuggerTheme.TEAL_SURFACE,
+                "an unresolved stage selection falls back to the visible selected row");
+        });
+    }
+
+    private static void installPreview() {
+        var previews = CodonClientMod.state().stagePreviews();
+        int run = COMMAND.indexOf("run say");
+        require(previews.accept(previews.begin(LOCATION), LOCATION, ClientStagePreviewState.Status.READY, COMMAND,
+            List.of(new ClientStagePreviewState.StageSpan(0, 0, 13, false),
+                new ClientStagePreviewState.StageSpan(1, 14, 19, false),
+                new ClientStagePreviewState.StageSpan(2, 20, run - 1, true),
+                new ClientStagePreviewState.StageSpan(3, run, COMMAND.length(), false))), "fixture spans accepted");
     }
 
     private static List<Hit> hitsFromContext(ClientGameTestContext context) {
@@ -259,39 +314,62 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
     }
 
     private static int unexpectedPixels(BufferedImage reference, BufferedImage selected, int fromX, int toX, int fromY, int toY,
-                                        double backgroundFrom, double backgroundTo, int background) {
+                                        double backgroundFrom, double backgroundTo, int referenceBackground, int background) {
         int unexpected = 0;
         for (int y = fromY; y < toY; y++)
             for (int x = fromX; x < toX; x++) {
                 int original = reference.getRGB(x, y), actual = selected.getRGB(x, y);
-                if (isInk(original) || x < Math.floor(backgroundFrom) || x >= Math.ceil(backgroundTo)) {
+                if (x < Math.floor(backgroundFrom) || x >= Math.ceil(backgroundTo)) {
                     if (original != actual) unexpected++;
-                } else if (actual != background && !(original == actual
-                    && (x < Math.ceil(backgroundFrom) || x >= Math.floor(backgroundTo)))) unexpected++;
+                } else if (original == actual && (x < Math.ceil(backgroundFrom) || x >= Math.floor(backgroundTo))) {
+                    // A partially clipped framebuffer pixel may lie outside the rasterized fill.
+                } else if (original == referenceBackground) {
+                    if (actual != background) unexpected++;
+                } else if (original != actual && !sameGlyphBlend(original, actual, referenceBackground, background)) unexpected++;
             }
         return unexpected;
+    }
+
+    private static boolean sameGlyphBlend(int original, int actual, int before, int after) {
+        // Font atlas edge texels can have partial alpha. Preserve the same syntax color
+        // and coverage over both backgrounds, allowing only 8-bit blend rounding.
+        for (int foreground : SOURCE_COLORS)
+            for (int alpha = 254; alpha > 0; alpha--)
+                if (matchesBlend(original, foreground, before, alpha) && matchesBlend(actual, foreground, after, alpha)) return true;
+        return false;
+    }
+
+    private static boolean matchesBlend(int pixel, int foreground, int background, int alpha) {
+        for (int shift = 16; shift >= 0; shift -= 8) {
+            double expected = ((foreground >> shift & 255) * alpha + (background >> shift & 255) * (255 - alpha)) / 255.0;
+            if (Math.abs((pixel >> shift & 255) - expected) > 1) return false;
+        }
+        return true;
     }
 
     private static void checkEdgeCoverage() {
         // The allowed dark fill must never hide a one-pixel stroke over clipped glyphs or background.
         for (double scale : new double[]{1, 1.25, 2.25, 4.5}) {
             double start = 3 * scale, end = 11 * scale;
-            int from = (int) Math.floor(start), to = (int) Math.ceil(end), background = 0xff283333;
+            int from = (int) Math.floor(start), to = (int) Math.ceil(end), before = 0xff172126, background = 0xff203336;
             var reference = new BufferedImage(64, 4, BufferedImage.TYPE_INT_ARGB);
             var selected = new BufferedImage(64, 4, BufferedImage.TYPE_INT_ARGB);
             for (int y = 0; y < 4; y++) for (int x = from; x < to; x++) {
-                reference.setRGB(x, y, 0xff172126);
+                reference.setRGB(x, y, before);
                 selected.setRGB(x, y, background);
             }
             for (int edge : new int[]{from, to - 1}) {
                 reference.setRGB(edge, 1, 0xffc7a0ff);
                 selected.setRGB(edge, 1, 0xffc7a0ff);
             }
-            require(unexpectedPixels(reference, selected, from, to, 0, 4, start, end, background) == 0, "background with intact edge glyphs passes");
+            reference.setRGB(from + 1, 0, 0xffc59efc);
+            selected.setRGB(from + 1, 0, 0xffc59ffd);
+            require(unexpectedPixels(reference, selected, from, to, 0, 4, start, end, before, background) == 0,
+                "background with intact opaque and partial-alpha glyphs passes");
             for (int edge : new int[]{from, to - 1}) for (int y : new int[]{1, 2}) {
                 int original = selected.getRGB(edge, y);
                 selected.setRGB(edge, y, 0xff75dfd6);
-                require(unexpectedPixels(reference, selected, from, to, 0, 4, start, end, background) == 1,
+                require(unexpectedPixels(reference, selected, from, to, 0, 4, start, end, before, background) == 1,
                     "clipped glyph/background edge mutation is detected at " + scale);
                 selected.setRGB(edge, y, original);
             }

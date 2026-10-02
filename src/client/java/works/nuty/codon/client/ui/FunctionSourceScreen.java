@@ -37,6 +37,7 @@ import works.nuty.codon.core.model.BreakpointTarget;
 import works.nuty.codon.core.model.FunctionId;
 import works.nuty.codon.core.model.FunctionLocation;
 import works.nuty.codon.core.model.FunctionSourceDocument;
+import works.nuty.codon.core.model.PauseReason;
 import works.nuty.codon.core.model.SourceLocation;
 
 import static works.nuty.codon.client.ui.DebuggerTheme.*;
@@ -417,19 +418,20 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             boolean hovered = ScreenLayers.get(this) == null && mouseX >= sourceLeft + 3 && mouseX < codeRight()
                 && mouseY >= y && mouseY < y + ROW_HEIGHT;
             boolean stopped = isActualStop(selected, line), inspected = selectedLine == line;
+            SourceCodeLine code = codeLines.get(index);
+            StageCounts counts = stageCounts.getOrDefault(line, new StageCounts(0, 0));
+            List<InlineStage> stages = stagesForLine(line, stopped || hovered || counts.enabled() > 0);
+            boolean inspectedStage = inspected && stages.stream().anyMatch(stage -> stage.index() == selectedStageIndex);
             if (stopped) {
                 graphics.fill(codeLeft, y, codeRight(), y + ROW_HEIGHT - 1, DebuggerTheme.color(AMBER_SURFACE));
                 graphics.text(font, ">", sourceLeft + 3, y + 5, DebuggerTheme.color(AMBER), false);
             }
-            if (inspected && selectedStageIndex < 0) {
+            if (inspected && !inspectedStage) {
                 if (!stopped) graphics.fill(codeLeft, y, codeRight(), y + ROW_HEIGHT - 1, DebuggerTheme.color(TEAL_SURFACE));
                 graphics.outline(codeLeft, y, codeWidth, ROW_HEIGHT - 1, DebuggerTheme.color(TEAL));
             }
             graphics.text(font, SourceCodeLine.plain(number), codeLeft - 6 - font.width(SourceCodeLine.plain(number)),
                 y + 5, DebuggerTheme.color(stopped ? AMBER : MUTED), false);
-            SourceCodeLine code = codeLines.get(index);
-            StageCounts counts = stageCounts.getOrDefault(line, new StageCounts(0, 0));
-            List<InlineStage> stages = stagesForLine(line, hovered || counts.enabled() > 0);
             SourceLineLayout layout = visibleLayout(code, stages, hovered && hoveredLine == line ? hoveredStage : -1);
             int rowHoveredStage = -1;
             if (hovered && mouseX >= codeLeft) {
@@ -582,7 +584,8 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
 
     private boolean isActualStageStop(InlineStage stage, int line) {
         ClientDebuggerState state = CodonClientMod.state();
-        if (!isActualStop(sources.selected(), line) || state.snapshot().callStack().isEmpty()) return false;
+        if (!isActualStop(sources.selected(), line) || state.snapshot().reason() == PauseReason.EXECUTION_COMPLETE
+            || state.snapshot().callStack().isEmpty()) return false;
         var frame = state.snapshot().callStack().getFirst();
         return frame.location().equals(stage.target().location()) && frame.flowStageIndex() == stage.index()
             && frame.command().text().equals(codeLines.get(line - 1).source().trim());
