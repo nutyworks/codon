@@ -1,6 +1,7 @@
 package works.nuty.codon.network;
 
 import io.netty.buffer.Unpooled;
+import io.netty.handler.codec.DecoderException;
 import net.minecraft.network.FriendlyByteBuf;
 import org.junit.jupiter.api.Test;
 import works.nuty.codon.core.model.BlockLocation;
@@ -19,6 +20,7 @@ import works.nuty.codon.core.model.Vec3d;
 import works.nuty.codon.core.service.ExecutionFlowHistory;
 
 import java.util.List;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -143,21 +145,37 @@ class NetworkCodecsTest {
     }
 
     @Test
-    void decoderRejectsAnExecutionTraceListAboveTheProtocolLimit() {
+    void pauseDecoderAcceptsTheTraceLimitAndRejectsOneExtraCompleteTrace() {
         SourceLocation location = new SourceLocation.Block(
             new BlockLocation(0, 64, 0, "minecraft:overworld"));
-        FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
-        try {
-            NetworkCodecs.writeSourceLocation(buffer, location);
-            NetworkCodecs.writeCommandSnippet(buffer, CommandSnippet.plain("say hi"));
-            buffer.writeVarInt(0);
-            buffer.writeVarInt(0);
-            buffer.writeVarInt(0);
-            buffer.writeVarInt(ExecutionFlowHistory.MAX_TRACES + 1);
+        CommandSnippet command = CommandSnippet.plain("say hi");
+        for (int count : new int[]{ExecutionFlowHistory.MAX_TRACES, ExecutionFlowHistory.MAX_TRACES + 1}) {
+            List<ExecutionFlowTrace> flows = IntStream.range(0, count)
+                .mapToObj(index -> new ExecutionFlowTrace(index, location, List.of(), false)).toList();
+            PauseSnapshot expected = new PauseSnapshot(location, command, 0, List.of(), List.of(), flows,
+                PauseReason.STEP, 43);
+            FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
+            try {
+                NetworkCodecs.writeSourceLocation(buffer, location);
+                NetworkCodecs.writeCommandSnippet(buffer, command);
+                buffer.writeVarInt(0); // depth
+                buffer.writeVarInt(0); // call stack
+                buffer.writeVarInt(0); // pause sources
+                // Bypass the encoder's list bound while retaining every trace and trailing snapshot field.
+                buffer.writeVarInt(flows.size());
+                for (ExecutionFlowTrace flow : flows) NetworkCodecs.writeFlowTrace(buffer, flow);
+                buffer.writeEnum(expected.reason());
+                buffer.writeVarLong(expected.pauseId());
 
-            assertThrows(RuntimeException.class, () -> NetworkCodecs.readSnapshot(buffer));
-        } finally {
-            buffer.release();
+                if (count == ExecutionFlowHistory.MAX_TRACES) {
+                    assertEquals(expected, PauseSyncPayload.CODEC.decode(buffer).snapshot());
+                    assertEquals(0, buffer.readableBytes());
+                } else {
+                    assertThrows(DecoderException.class, () -> PauseSyncPayload.CODEC.decode(buffer));
+                }
+            } finally {
+                buffer.release();
+            }
         }
     }
 
