@@ -189,7 +189,7 @@ the repaired values and establish a complete baseline.
 - [ClientWatchState](../../../src/client/java/works/nuty/codon/client/state/ClientWatchState.java), [ClientNbtState](../../../src/client/java/works/nuty/codon/client/state/ClientNbtState.java): requests, values and selected target.
 - [WatchPanel](../../../src/client/java/works/nuty/codon/client/ui/WatchPanel.java), [WatchScreen](../../../src/client/java/works/nuty/codon/client/ui/WatchScreen.java), [NbtTreePanel](../../../src/client/java/works/nuty/codon/client/ui/NbtTreePanel.java): user interaction.
 - [WatchFormLayout](../../../src/client/java/works/nuty/codon/client/ui/layout/WatchFormLayout.java): shared form columns and vertical slots.
-- [WatchContextMenu](../../../src/client/java/works/nuty/codon/client/ui/WatchContextMenu.java): row-scoped modal dropdown hosted by ScreenLayers, with guarded actions and keyboard/pointer handling.
+- [DebuggerContextMenu](../../../src/client/java/works/nuty/codon/client/ui/DebuggerContextMenu.java): shared modal dropdown hosted by ScreenLayers; Watch retains its existing guarded actions, row switching and keyboard/pointer handling.
 - [WatchPickerScreen](../../../src/client/java/works/nuty/codon/client/ui/WatchPickerScreen.java), [WatchPickerLayout](../../../src/client/java/works/nuty/codon/client/ui/layout/WatchPickerLayout.java): Browse dialog drawing, controls and hit bounds.
 - [WatchDetailsScreen](../../../src/client/java/works/nuty/codon/client/ui/WatchDetailsScreen.java), [WatchDetailsLayout](../../../src/client/java/works/nuty/codon/client/ui/layout/WatchDetailsLayout.java): full-value viewport and responsive footer.
 

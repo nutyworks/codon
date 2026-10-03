@@ -133,6 +133,7 @@ public final class CodonScreen extends ScaledCodonScreen {
     }
 
     void cancelPanelResize() { overlay.panelResizing().cancel(); }
+    void revealSelectedFlow(String focusId) { overlay.revealSelectedFlow(focusId); }
 
     @Override
     public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
@@ -148,7 +149,8 @@ public final class CodonScreen extends ScaledCodonScreen {
     public boolean keyPressed(KeyEvent event) {
         if (event.key() == InputConstants.KEY_ESCAPE && overlay.panelResizing().cancel()) return true;
         if (!input.isUiHidden() && event.key() == InputConstants.KEY_F10 && event.hasShiftDown()
-            && overlay.watchPanel().openContextMenu(getFocused(), input, overlay)) {
+            && (overlay.watchPanel().openContextMenu(getFocused(), input, overlay)
+                || overlay.openFlowContextMenu(getFocused()))) {
             while (input.breakpointKey.consumeClick()) { }
             return true;
         }

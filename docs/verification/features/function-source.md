@@ -39,8 +39,15 @@ be checked. The viewer lists functions actually loaded by the current server.
 2. Select an executable line. Toggle its gutter marker to the **left of the line number**.
    The line number itself only selects the row. A line with exactly one server-parsed stage
    has only the line control: no inline stage marker, stage hit box, or Stage condition button.
-   For multiple-stage lines, select a parsed stage and toggle its marker. Use **Line condition…** or **Stage condition…** to edit
-   conditions. Breakpoints refer to original file line numbers and saved stage
+   For multiple-stage lines, toggle the parsed stage's marker. Right-click a line
+   for its line condition, or a stage for that exact stage condition. The marker
+   before the line number always owns the line target; a stage-prefix marker always
+   owns its exact stage target. No line-versus-stage chooser is shown.
+   The two header buttons are removed, including their extra 22-pixel compact row.
+   Shift+F10 opens the same menu for the selected source line/stage when the code
+   owns focus. Menus support arrows, Tab, Enter/Space, Escape and outside dismissal.
+   Right-click does not change the inspected line/stage. Breakpoints refer to original
+   file line numbers and saved stage
    offsets, not wrapped display rows. Stage markers are inserted at the server-confirmed boundaries inside the
    original row, following the command-block editor. Visual marker slots do not
    change source characters, whitespace or server offsets. Each visible stage marker
@@ -50,21 +57,21 @@ be checked. The viewer lists functions actually loaded by the current server.
    marker. Leaving a stage removes its temporary slot and restores original glyph
    advances; enabled markers keep their necessary slot. No separate stage row or
    panel is shown. Hover the gutter marker for the enabled stage count.
-   A selected stage has a distinct teal background behind its text, without a border
-   (31% tint at full panel opacity). The actual stopped stage has a stronger amber
-   background (44% tint), using the top live
+   Clicking a line/stage no longer adds a condition-edit selection tint. A brighter
+   neutral line number retains the keyboard navigation position. The actual stopped
+   stage keeps its amber background (44% tint), using the top live
    pause frame's stage index only when its location and command match the source.
    A live stopped row requests its stage preview without requiring selection,
    hover or an enabled stage breakpoint.
    Selecting another stage/frame does not move that pause highlight. Unknown
    stage identity, changed commands and completed execution do not imply a live
    stage stop. If reload removes the selected stage, the row retains its selection
-   indication. Selection retains original text advances and stage/marker hitboxes.
+   line-number cue. Selection retains original text advances and stage/marker hitboxes.
 3. Close the viewer and execute `/function <namespace:path>`. Check the breakpoint
    stops at the selected location. Reopen Source at the pause and distinguish the
    actual stopped line from a manually inspected line/record. A live pause has an
-   arrow and amber row; whole-line selection has a teal background without an outline.
-   When selection coincides with the actual stop, amber takes priority. After Continue, the retained
+   arrow and amber row; ordinary line selection uses a neutral line-number cue.
+   Actual pause highlighting remains independent of that navigation position. After Continue, the retained
    location is labelled as a recorded line and has no live-pause arrow.
 4. With execution resumed, change/reload the scratch datapack. Use **Refresh list**
    in the Functions header to update the server's loaded function list and **Reread file**
@@ -285,32 +292,30 @@ condition chain retain their links. Unit checks also cover literal `run` slot an
 predicate tokens, unsupported target kinds and incomplete arguments. The lexical
 viewer does not validate item/slot registry entries or execute these conditions.
 
-Opening/cancelling a single-stage legacy editor retains its exact target, fingerprint,
-condition and enabled flag. Save enables that same target with the chosen condition.
-The single line control includes matching saved stage-zero definitions without rewriting the
-world file. A click disables every active matching definition; when all are disabled it restores
-all saved definitions. A sole legacy definition is toggled/edited in place, so a new duplicate
-line definition is not created. When line and legacy definitions coexist, right-click or
-Line condition opens their filtered management list, including disabled definitions. Each
-condition can be edited/deleted separately and Undo restores its exact original definition.
-Obsolete fingerprints remain review warnings and are never silently attached to new text.
-`/codon breakpoint clear` explicitly removes all definitions, including disabled legacy saves.
-
-While the matching stage count is unresolved (missing/LOADING preview or old READY text after
-reload), a matching saved stage-zero definition makes the line action ambiguous. Source and
-the native editor defer its toggle and condition editor until the current preview resolves;
-they never create a second plain line target in that window. Ordinary whole-line actions remain
-available without a matching legacy definition once the saved-breakpoint snapshot is ready.
-READY single-stage previews restore the in-place legacy action; READY multi-stage previews keep
-line and stage actions separate. `BreakpointTargetPolicyTest`, `FunctionLineBreakpointGameTest`
-and `SingleStageBreakpointGameTest` cover these transitions and condition Save identities.
+Source gutter markers now read, toggle and edit only the exact whole-line target.
+They do not alias a saved legacy stage-zero target into the line control. A stage
+marker edits its own stage index/fingerprint, and the condition editor retains that
+target through Save/Delete/Cancel. Existing saved definitions are not migrated or
+deleted by display/navigation. Legacy alias expectations in `BreakpointTargetPolicyTest`,
+`FunctionLineBreakpointGameTest` and `SingleStageBreakpointGameTest` have not been
+updated or executed for this user-directed UI change.
 
 An inactive line/stage marker stays visible for the entire condition edit, including after
 the pointer leaves and while a selector menu is open. Only the edited marker is retained;
 unrelated inactive candidates remain hidden. Cancel removes that temporary marker/slot
 without enabling or creating a definition. Save enables the original target after server
-acknowledgement, including disabled legacy stage-zero saves. `BreakpointConditionVisibilityGameTest`
+acknowledgement. `BreakpointConditionVisibilityGameTest`
 checks native pixels, line/stage/legacy/new targets, menus, Cancel and real server Save edits
 in English and Korean at a fractional custom scale. A controlled pending request also verifies
 that Stage condition disables until acknowledgement. Its source page is a presentation fixture
 matching the loaded `codon_test:condition_visibility` test function; it does not claim a native pause.
+
+Context/navigation follow-up: menus and editors close when their source document,
+function/world or confirmed stage identity becomes obsolete. They consume outside
+clicks and restore parent focus. A breakpoint-list destination opens the original
+function line and horizontally reveals an exact matching stage after its preview
+arrives; stale fingerprints retain the line without selecting a different stage.
+Compile/resources passed (`../breakpoint-context-navigation-compile.log`). No tests
+were written/run and no game/GUI was launched. Existing header-button, selected-tint,
+compact-inset and management-list test expectations require an authorized update;
+native keyboard/focus, clipping, source reload and navigation remain unverified.

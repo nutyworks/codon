@@ -39,6 +39,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     private final BreakpointDefinition original;
     private final BreakpointTarget markerTarget;
     private final Anchor anchor;
+    private java.util.function.BooleanSupplier contextCurrent = () -> true;
     private BreakpointCondition.Kind kind;
     private BreakpointCondition.Comparison comparison;
     private String thresholdText;
@@ -84,6 +85,19 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
         this.comparison = definition.condition().comparison();
         this.thresholdText = Integer.toString(definition.condition().threshold());
     }
+
+    BreakpointConditionScreen withContextGuard(java.util.function.BooleanSupplier current) {
+        contextCurrent = current;
+        return this;
+    }
+
+    private boolean validContext() {
+        if (contextCurrent.getAsBoolean()) return true;
+        onClose();
+        return false;
+    }
+
+    @Override public void tick() { validContext(); }
 
     public boolean editsMarker(BreakpointTarget target, String command) {
         return BreakpointTargetPolicy.editedMarker(target, markerTarget, markerDefinition(), command);
@@ -331,6 +345,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     }
 
     private void save() {
+        if (!validContext()) return;
         if (!validCount() || !supportedCondition() || state.breakpoints().pending(original.target())) return;
         deleting = false;
         BreakpointDefinition current = state.breakpoints().get(original.target());
@@ -341,6 +356,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     }
 
     private void delete() {
+        if (!validContext()) return;
         if (state.breakpoints().pending(original.target())) return;
         saving = false;
         deleting = ClientNetworking.sendBreakpointEdit(state, ClientBreakpointState.Action.DELETE, original);
@@ -373,12 +389,12 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     }
 
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+        if (!validContext()) return;
         refreshControls();
         updateMenuHover(mouseX, mouseY);
         if (deleting && state.breakpoints().ready() && !state.breakpoints().pending(original.target())
             && state.breakpoints().error(original.target()) == null && state.breakpoints().get(original.target()) == null) {
             onClose();
-            if (parent instanceof BreakpointListScreen list) list.recordDeleted(original);
             return;
         }
         if (saving && validCount() && !state.breakpoints().pending(original.target())
@@ -427,6 +443,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     }
 
     @Override public boolean keyPressed(KeyEvent event) {
+        if (!validContext()) return true;
         if (menu != Menu.NONE) {
             if (event.key() == InputConstants.KEY_ESCAPE) { closeMenu(); return true; }
             if (event.key() == InputConstants.KEY_UP || event.key() == InputConstants.KEY_DOWN) {
@@ -460,6 +477,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     }
 
     @Override public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        if (!validContext()) return true;
         if (menu != Menu.NONE) {
             if (overMenu(event.x(), event.y())) {
                 for (var option : options()) if (option.visible && option.mouseClicked(event, doubleClick)) return true;

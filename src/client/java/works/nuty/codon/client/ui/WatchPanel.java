@@ -354,7 +354,7 @@ public final class WatchPanel {
         closeGroupingMenu();
         overlay.scrollbars().release();
         overlay.panelResizing().cancel();
-        var menu = new WatchContextMenu(parent, anchor, WatchFormatting.specification(entry.spec()),
+        var menu = new DebuggerContextMenu(parent, anchor, WatchFormatting.specification(entry.spec()),
             () -> menuItems(id, generation, input, overlay), event -> {
                 // A docked Source panel owns its covered pixels even while this layer is open.
                 if (parent instanceof FunctionSourceScreen source && source.containsPanel(event.x(), event.y())) return false;
@@ -373,14 +373,14 @@ public final class WatchPanel {
         return true;
     }
 
-    private List<WatchContextMenu.Item> menuItems(long id, long generation, InputManager input, DebuggerOverlay overlay) {
+    private List<DebuggerContextMenu.Item> menuItems(long id, long generation, InputManager input, DebuggerOverlay overlay) {
         if (generation != state.watches().generation()) return List.of();
         var entry = entry(id);
         if (entry == null) return List.of();
-        List<WatchContextMenu.Item> items = new ArrayList<>();
-        items.add(new WatchContextMenu.Item(text("details.copy_value"), DebuggerIcon.COPY_UUID, true, null, () -> copyValue(entry)));
+        List<DebuggerContextMenu.Item> items = new ArrayList<>();
+        items.add(new DebuggerContextMenu.Item(text("details.copy_value"), DebuggerIcon.COPY_UUID, true, null, () -> copyValue(entry)));
         if (entry.automatic()) {
-            items.add(new WatchContextMenu.Item(text("menu.add_watch"), DebuggerIcon.WATCHES, true, text("keep"), () -> {
+            items.add(new DebuggerContextMenu.Item(text("menu.add_watch"), DebuggerIcon.WATCHES, true, text("keep"), () -> {
                 if (state.watches().pinChange(id)) notice(text("feedback.added", WatchFormatting.specification(entry.spec()).getString()));
                 else notice(text("feedback.duplicate"));
             }));
@@ -389,13 +389,13 @@ public final class WatchPanel {
                 boolean pinned = entry.spec().isPinned();
                 EntityRef target = executor(entry);
                 String targetLabel = target == null ? "" : target.name() + " #" + target.uuid().toString().substring(0, 8);
-                items.add(new WatchContextMenu.Item(text(pinned ? "unpin" : "pin"), DebuggerIcon.PIN,
+                items.add(new DebuggerContextMenu.Item(text(pinned ? "unpin" : "pin"), DebuggerIcon.PIN,
                     pinned || target != null, pinned ? text("tooltip.unpin")
                         : target == null ? text("pin_unavailable") : text("tooltip.pin_context", targetLabel), () -> togglePin(id)));
             }
-            items.add(new WatchContextMenu.Item(text("edit"), DebuggerIcon.EDIT, true, null,
+            items.add(new DebuggerContextMenu.Item(text("edit"), DebuggerIcon.EDIT, true, null,
                 () -> Minecraft.getInstance().gui.setScreen(WatchScreen.edit(input, state, overlay, id))));
-            items.add(new WatchContextMenu.Item(text("menu.delete"), DebuggerIcon.DELETE, true, null, () -> {
+            items.add(new DebuggerContextMenu.Item(text("menu.delete"), DebuggerIcon.DELETE, true, null, () -> {
                 removedWatch = state.watches().removeForUndo(id);
                 undoUntil = System.nanoTime() + 8_000_000_000L;
                 notice(text("feedback.removed", WatchFormatting.specification(entry.spec()).getString()));

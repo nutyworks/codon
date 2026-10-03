@@ -39,7 +39,7 @@ public final class ClientFunctionSourceState {
     /** Minecraft-free source browser geometry for direct GUI-scale regression tests. */
     public record ScreenLayout(int panelWidth, int panelHeight, int treeWidth, boolean drawerMode) {
         // One path line, one execution-status line, then Find. Metadata lives in the path tooltip.
-        public static int pathInset(boolean compact) { return compact ? 53 : 31; }
+        public static int pathInset(boolean compact) { return 31; }
         public static int statusInset(boolean compact) { return pathInset(compact) + 12; }
         public static int findInset(boolean compact) { return statusInset(compact) + 12; }
         public static int sourceInset(boolean compact) { return findInset(compact) + 24; }

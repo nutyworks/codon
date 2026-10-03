@@ -17,7 +17,7 @@ import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds;
 import static works.nuty.codon.client.ui.DebuggerTheme.*;
 
 /** A modal dropdown hosted over the current screen; pointer events never reach rows below it. */
-final class WatchContextMenu extends ScaledCodonScreen {
+final class DebuggerContextMenu extends ScaledCodonScreen {
     record Item(Component label, DebuggerIcon icon, boolean enabled, @Nullable Component hint, Runnable action) { }
 
     private final Screen parent;
@@ -32,11 +32,21 @@ final class WatchContextMenu extends ScaledCodonScreen {
     private int offset, visibleRows, rowHeight, headerHeight;
     private boolean dismissed;
 
-    WatchContextMenu(Screen parent, Bounds anchor, Component expression, Supplier<List<Item>> source,
+    DebuggerContextMenu(Screen parent, Bounds anchor, Component expression, Supplier<List<Item>> source,
                      Predicate<MouseButtonEvent> switchRow, Runnable restoreFocus) {
-        super(WatchUi.text("menu.title"), preferencesFor(parent));
+        this(parent, WatchUi.text("menu.title"), anchor, expression, source, switchRow, restoreFocus);
+    }
+
+    DebuggerContextMenu(Screen parent, Component title, Bounds anchor, Component expression, Supplier<List<Item>> source,
+                        Predicate<MouseButtonEvent> switchRow, Runnable restoreFocus) {
+        super(title, preferencesFor(parent));
         this.parent = parent;
-        this.anchor = anchor;
+        if (parent instanceof ScaledCodonScreen) this.anchor = anchor;
+        else {
+            var scale = uiScale();
+            this.anchor = new Bounds((int) scale.toLocal(anchor.x()), (int) scale.toLocal(anchor.y()),
+                Math.max(1, (int) scale.toLocal(anchor.width())), Math.max(1, (int) scale.toLocal(anchor.height())));
+        }
         this.expression = expression;
         this.source = source;
         this.switchRow = switchRow;
@@ -86,7 +96,7 @@ final class WatchContextMenu extends ScaledCodonScreen {
     }
 
     private void activate(int index) {
-        // Refresh eligibility and world/Watch identity before executing, then dismiss first.
+        // Refresh eligibility and context identity before executing, then dismiss first.
         if (ScreenLayers.get(parent) != this || !refresh() || index >= items.size()) return;
         Item item = items.get(index);
         if (!item.enabled()) return;

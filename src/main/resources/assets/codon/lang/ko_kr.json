@@ -2,6 +2,8 @@
   "codon.ui.background_opacity.usage": "왼쪽·오른쪽 방향키로 패널 불투명도를 조절하세요.",
   "codon.ui.background_opacity": "패널 불투명도: %s%%",
   "codon.ui.resize_panel": "드래그하여 패널 너비 조절 · Esc로 취소",
+  "codon.breakpoint.go_to_location": "브레이크포인트 위치로 이동 · 해당 위치에서 우클릭 또는 Shift+F10으로 조건 편집",
+  "codon.breakpoint.flow_unavailable": "현재 일시정지 기록에 이 브레이크포인트로 이동할 Flow가 없습니다.",
   "codon.ui.move_to_source": "컨텍스트로 카메라 이동",
   "codon.ui.move_to_source.ready": "프리캠 시점을 선택한 실행 기준 위치와 방향에 맞춥니다. 카메라만 이동하며, 일시 정지 중에는 로드되지 않은 지형이 보이지 않을 수 있습니다.",
   "codon.ui.move_to_source.pending": "진행 중인 디버거 조작이 끝날 때까지 기다리세요.",

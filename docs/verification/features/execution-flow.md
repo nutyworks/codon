@@ -118,8 +118,8 @@ execute as @e[type=minecraft:armor_stand,tag=codon_verify] at @s if entity @s[ta
    Only the first fragment reserves breakpoint/pause/warning icon and count-label
    space. Continuation rows use the full text width with normal text padding.
    Flow also requests the saved command's parse-only server preview. Statically
-   known stages that have not been observed remain selectable: hover their first
-   fragment to reveal a marker, left-click the marker to toggle its breakpoint,
+   known stages that have not been observed remain selectable: their first fragment
+   keeps its marker visible; left-click the marker to toggle its breakpoint,
    or right-click the clause to edit its condition. Continue must stop on the
    stage's first occurrence. Selecting a static stage shows no recorded contexts
    or measured counts or a captured call path; Current restores the actual stop.
@@ -167,3 +167,22 @@ Example: `./gradlew runClientGameTest -PclientGameTest=DebuggerExecutionFlowGame
 The conditional-function test concerns Minecraft function conditions; conditional
 breakpoint coverage is listed in [Breakpoints](breakpoints.md). Keep native-flow
 assertions separate from screenshots produced by synthetic presentation fixtures.
+
+Condition/navigation follow-up: Flow's footer condition button is removed. Right-
+click a clause or breakpoint marker (or Shift+F10 on its keyboard target) for that marker
+or clause's exact condition target, without a line-versus-stage chooser. The selected detail band has the same
+menu, retaining keyboard access after list navigation. Right-clicking a future
+stage does not select it or alter displayed contexts. Saved disabled breakpoints and unset breakpoint-capable stages
+stay visible as neutral hollow circles/diamonds, including run and terminal function
+stages. No definition is created until the existing marker action is activated.
+Only the first fragment of each exact parsed/recorded stage owns its marker; wrapped
+continuations do not invent additional targets. Unparsed suffixes do not invent stage targets. A separate whole-command marker
+now precedes the command root/execute prefix when the command has multiple stages;
+a one-stage command has only its line marker. Parsed stage count, not a literal
+execute check, decides this mapping. The actual pixels in the supplied Library screenshot
+`Screenshot 2026-10-03 at 15.59.01.png` were inspected before this change. Actual pause amber and functionally necessary inspection
+selection remain distinct. The Active breakpoint list selects an exact matching
+Flow/stage and reveals it without sending breakpoint edits; unavailable destinations
+remain listed with an explanation. Compilation/resources passed, with evidence in
+`../breakpoint-context-navigation-compile.log`. No tests or game/GUI were run; native
+menu/focus/scroll behavior and appearance remain unverified.

@@ -2,6 +2,8 @@
   "codon.ui.background_opacity.usage": "Use Left and Right to adjust panel opacity.",
   "codon.ui.background_opacity": "Panel opacity: %s%%",
   "codon.ui.resize_panel": "Drag to resize panel width · Esc cancels",
+  "codon.breakpoint.go_to_location": "Go to breakpoint location · Edit conditions there with right-click or Shift+F10.",
+  "codon.breakpoint.flow_unavailable": "No recorded Flow for this breakpoint is available at the current pause.",
   "codon.ui.move_to_source": "Move camera to context",
   "codon.ui.move_to_source.ready": "Move the freecam eye to the selected recorded execution anchor and use its facing. Only the camera moves; unloaded terrain may not be visible while paused.",
   "codon.ui.move_to_source.pending": "Wait for the pending debugger control to finish.",

@@ -101,6 +101,16 @@ public final class DebuggerOverlay {
 
     public DebuggerNavigation navigation() { return navigation; }
     public WatchPanel watchPanel() { return watchPanel; }
+    void revealSelectedFlow(String focusId) {
+        preferences().setCommandVisible(true);
+        commandPanel.revealSelection();
+        navigation.requestFocus(focusId);
+    }
+    boolean openFlowContextMenu(net.minecraft.client.gui.components.events.GuiEventListener focused) {
+        boolean opened = commandPanel.openContextMenu(focused);
+        if (opened) panelResizing.cancel();
+        return opened;
+    }
 
     boolean viewMenuOpen() { return viewMenuOpen; }
     boolean viewTriggerContains(double x, double y) { return viewTriggerBounds.contains(x, y); }

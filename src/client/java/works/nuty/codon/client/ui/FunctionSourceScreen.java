@@ -28,6 +28,7 @@ import works.nuty.codon.client.state.ClientDebuggerState;
 import works.nuty.codon.client.state.ClientStagePreviewState;
 import works.nuty.codon.client.state.BreakpointTargetPolicy;
 import works.nuty.codon.client.ui.layout.CommandFlowLayout;
+import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds;
 import works.nuty.codon.client.ui.layout.SourceSyntax;
 import works.nuty.codon.client.ui.layout.SourceLineLayout;
 import works.nuty.codon.client.ui.layout.SourceInteraction;
@@ -55,6 +56,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
     private boolean drawerOpen;
     private boolean docked;
     private boolean forwardingParentDrag;
+    private boolean parentOwnsContextKeys;
     private int listOffset, lineOffset, horizontalOffset;
     private final ScrollbarInput scrollbars = new ScrollbarInput();
     private boolean resizingTree;
@@ -69,12 +71,13 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
     private int widestLine;
     private int selectedLine = -1;
     private int selectedStageIndex = -1;
+    private @org.jspecify.annotations.Nullable BreakpointTarget revealTarget;
     private final List<StageHit> stageHits = new ArrayList<>();
     private final List<LineHit> lineHits = new ArrayList<>();
     private final List<FunctionHit> functionHits = new ArrayList<>();
     private EditBox search, sourceSearch;
     private DebuggerButton previousMatch, nextMatch;
-    private DebuggerButton refresh, close, reread, stageCondition, lineCondition, drawerButton, backButton;
+    private DebuggerButton refresh, close, reread, drawerButton, backButton;
 
 
     private sealed interface Entry permits Entry.Group, Entry.Function {
@@ -104,6 +107,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
     }
 
     @Override protected void init() {
+        parentOwnsContextKeys = false;
         if (parent instanceof CodonScreen codon) codon.cancelPanelResize();
         String searchValue = search == null ? "" : search.getValue();
         String sourceSearchValue = sourceSearch == null ? "" : sourceSearch.getValue();
@@ -147,12 +151,6 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                         new FunctionLocation(sources.selected(), selectedLine)));
             }));
         reread.setTooltip(Tooltip.create(Component.translatable("codon.source.reload_hint")));
-        lineCondition = addRenderableWidget(WatchUi.button(compactSourceControls ? sourceLeft : sourceLeft + 88,
-            compactSourceControls ? top + 29 : top + 5, compactSourceControls ? (sourceWidth - 4) / 2 : 92, 18,
-            Component.translatable("codon.source.line_condition"), this::editLineCondition));
-        stageCondition = addRenderableWidget(WatchUi.button(compactSourceControls ? sourceLeft + (sourceWidth - 4) / 2 + 4 : sourceLeft + 182,
-            compactSourceControls ? top + 29 : top + 5, compactSourceControls ? (sourceWidth - 4) / 2 : 98, 18,
-            Component.translatable("codon.source.stage_condition"), this::editStageCondition));
         close = addRenderableWidget(WatchUi.button(left + panelWidth - 58, top + 5, 50, 18,
             Component.translatable("codon.breakpoint.close"), this::onClose));
         drawerButton = addRenderableWidget(WatchUi.button(left + 8, top + 5, 64, 18,
@@ -177,7 +175,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             Component.literal(">"), () -> nextMatch(1)));
         previousMatch.setTooltip(Tooltip.create(Component.translatable("codon.source.previous_match")));
         nextMatch.setTooltip(Tooltip.create(Component.translatable("codon.source.next_match")));
-        setFocused(search.visible ? search : null);
+        setFocused(revealTarget != null ? null : search.visible ? search : null);
         ClientFunctionSourceState.BrowseView view = sources.browseView();
         listOffset = view.treeOffset();
         lineOffset = view.lineOffset();
@@ -196,6 +194,43 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             }
         }
         rebuildEntries();
+    }
+
+    Screen parentScreen() { return parent; }
+
+    FunctionSourceScreen revealBreakpoint(BreakpointTarget target) {
+        revealTarget = target;
+        return this;
+    }
+
+    private void revealBreakpoint() {
+        if (revealTarget == null || sources.document() == null) return;
+        BreakpointTarget target = revealTarget;
+        if (!(target.location() instanceof SourceLocation.Function location)
+            || !Objects.equals(sources.selected(), location.location().function())) { revealTarget = null; return; }
+        int line = location.location().line();
+        if (line < 1 || line > codeLines.size()) { revealTarget = null; return; }
+        selectedLine = line;
+        selectedStageIndex = -1;
+        lineOffset = Math.clamp(line - 1, 0, maximumLineOffset());
+        if (!target.wholeCommand()) {
+            SourceCodeLine code = codeLines.get(line - 1);
+            String command = code.source().trim();
+            if (!target.commandFingerprint().equals(BreakpointTarget.fingerprint(command))) { revealTarget = null; return; }
+            List<InlineStage> stages = stagesForLine(line, true);
+            var debugger = CodonClientMod.state();
+            if (debugger == null) { revealTarget = null; return; }
+            var preview = debugger.stagePreviews().get(target.location());
+            if (preview == null || preview.status() == ClientStagePreviewState.Status.LOADING) return;
+            for (InlineStage stage : stages) if (stage.target().equals(target)) {
+                selectedStageIndex = stage.index();
+                inlineLayout = visibleLayout(code, stages, -1);
+                horizontalOffset = Math.clamp(inlineLayout.x(stage.start()) - 24, 0, maxHorizontalOffset());
+                break;
+            }
+        }
+        revealTarget = null;
+        rememberView();
     }
 
     private void clearSourceHits() {
@@ -226,12 +261,6 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         compactSourceControls = sourceWidth < 450;
         search.setWidth(treeWidth - 16);
         refresh.setX(left + treeWidth - 86); reread.setX(sourceLeft);
-        lineCondition.setX(compactSourceControls ? sourceLeft : sourceLeft + 88);
-        lineCondition.setY(top + (compactSourceControls ? 29 : 5));
-        lineCondition.setWidth(compactSourceControls ? (sourceWidth - 4) / 2 : 92);
-        stageCondition.setX(compactSourceControls ? sourceLeft + (sourceWidth - 4) / 2 + 4 : sourceLeft + 182);
-        stageCondition.setY(lineCondition.getY());
-        stageCondition.setWidth(compactSourceControls ? (sourceWidth - 4) / 2 : 98);
         int findY = top + ClientFunctionSourceState.ScreenLayout.findInset(compactSourceControls);
         sourceSearch.setX(sourceLeft + 5); sourceSearch.setY(findY); sourceSearch.setWidth(Math.max(1, sourceWidth - 117));
         previousMatch.setX(sourceLeft + sourceWidth - 41); previousMatch.setY(findY);
@@ -290,11 +319,11 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         backButton.visible = backButton.active = !drawerOpen && sources.canGoBack();
         search.visible = search.active = !drawerMode || drawerOpen;
         updateCodeCache();
+        revealBreakpoint();
         updateInlineLayout();
         sourceSearch.visible = sourceSearch.active = !drawerOpen && sources.document() != null;
         previousMatch.visible = nextMatch.visible = sourceSearch.visible;
         previousMatch.active = nextMatch.active = !matches.isEmpty();
-        updateConditionControls();
         if (docked) {
             boolean covered = containsPanel(mouseX, mouseY) || ScreenLayers.get(this) != null;
             parent.extractRenderState(graphics, covered ? -1 : mouseX, covered ? -1 : mouseY, partialTick);
@@ -426,16 +455,12 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             SourceCodeLine code = codeLines.get(index);
             StageCounts counts = stageCounts.getOrDefault(line, new StageCounts(0, 0));
             List<InlineStage> stages = stagesForLine(line, stopped || hovered || counts.enabled() > 0);
-            boolean inspectedStage = inspected && stages.stream().anyMatch(stage -> stage.index() == selectedStageIndex);
             if (stopped) {
                 graphics.fill(codeLeft, y, codeRight(), y + ROW_HEIGHT - 1, DebuggerTheme.color(AMBER_SURFACE));
                 graphics.text(font, ">", sourceLeft + 3, y + 5, DebuggerTheme.foreground(AMBER), false);
             }
-            if (inspected && !inspectedStage) {
-                if (!stopped) graphics.fill(codeLeft, y, codeRight(), y + ROW_HEIGHT - 1, DebuggerTheme.color(TEAL_SURFACE));
-            }
             graphics.text(font, SourceCodeLine.plain(number), codeLeft - 6 - font.width(SourceCodeLine.plain(number)),
-                y + 5, DebuggerTheme.foreground(stopped ? AMBER : MUTED), false);
+                y + 5, DebuggerTheme.foreground(stopped ? AMBER : inspected ? TEXT : MUTED), false);
             SourceLineLayout layout = visibleLayout(code, stages, hovered && hoveredLine == line ? hoveredStage : -1);
             int rowHoveredStage = -1;
             if (hovered && mouseX >= codeLeft) {
@@ -472,16 +497,8 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                 if (hovered && mouseX >= sourceLeft + 21 && mouseX < sourceLeft + 26)
                     graphics.setTooltipForNextFrame(font, Component.translatable("codon.breakpoint.error.stale_source"), mouseX, mouseY);
             }
-            if (hovered && mouseX >= lineMarkerX() - 2 && mouseX < lineMarkerX() + 10) {
-                int count = BreakpointTargetPolicy.stageCount(code.source().trim(), debugger.stagePreviews().get(location), null);
-                var saved = BreakpointUi.lineDefinitions(debugger, location, code.source().trim(), count);
-                if (BreakpointUi.waitingForPreview(debugger, BreakpointTarget.whole(location), code.source().trim(), count))
-                    graphics.setTooltipForNextFrame(font, Component.translatable("codon.breakpoint.preview_required"), mouseX, mouseY);
-                else if (count == 1 && saved.stream().anyMatch(value -> !value.target().wholeCommand()))
-                    graphics.setTooltipForNextFrame(font, Component.translatable("codon.breakpoint.saved_line_definitions", saved.size()), mouseX, mouseY);
-                else if (counts.enabled() > 0)
-                    graphics.setTooltipForNextFrame(font, Component.translatable("codon.source.stage_breakpoints", counts.enabled()), mouseX, mouseY);
-            }
+            if (hovered && mouseX >= lineMarkerX() - 2 && mouseX < lineMarkerX() + 10 && counts.enabled() > 0)
+                graphics.setTooltipForNextFrame(font, Component.translatable("codon.source.stage_breakpoints", counts.enabled()), mouseX, mouseY);
             lineHits.add(new LineHit(y, ROW_HEIGHT, line));
         }
         hoveredLine = nextHoveredLine; hoveredStage = nextHoveredStage;
@@ -575,12 +592,12 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                                         int line, int x, int y, int width) {
         for (InlineStage stage : stages) {
             boolean stopped = isActualStageStop(stage, line);
-            if (!stopped && (selectedLine != line || selectedStageIndex != stage.index())) continue;
+            if (!stopped) continue;
             int start = x + layout.x(stage.start()) - horizontalOffset;
             int end = x + layout.before(stage.end()) - horizontalOffset;
-            int tint = ((stopped ? AMBER : TEAL) & 0xffffff) | (stopped ? 0x70000000 : 0x50000000);
+            int tint = (AMBER & 0xffffff) | 0x70000000;
             if (end > x && start < x + width)
-                // Tint behind text, with stronger amber reserved for the authoritative pause.
+                // Only the authoritative pause adds a stage background.
                 graphics.fill(Math.max(x, start), y + 3, Math.min(x + width, end), y + 15,
                     DebuggerTheme.color(tint));
         }
@@ -763,9 +780,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
     private BreakpointDefinition breakpoint(SourceLocation.Function location) {
         ClientDebuggerState state = CodonClientMod.state();
         if (state == null) return null;
-        String command = codeLines.get(location.location().line() - 1).source().trim();
-        return BreakpointUi.lineDefinition(BreakpointUi.lineDefinitions(state, location, command,
-            BreakpointTargetPolicy.stageCount(command, state.stagePreviews().get(location), null)));
+        return state.breakpoints().get(BreakpointTarget.whole(location));
     }
 
     private String sourceStatus() {
@@ -827,40 +842,33 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         return BreakpointTarget.whole(new SourceLocation.Function(new FunctionLocation(sources.selected(), selectedLine)));
     }
 
-    private void updateConditionControls() {
-        BreakpointTarget line = selectedLineTarget();
-        BreakpointTarget stage = selectedStageTarget();
-        lineCondition.visible = lineCondition.active = !drawerOpen && line != null;
-        stageCondition.visible = stageCondition.active = !drawerOpen && stage != null;
-        if (line != null) {
-            lineCondition.setMessage(Component.translatable("codon.source.line_condition"));
-            var state = CodonClientMod.state();
-            String command = codeLines.get(selectedLine - 1).source().trim();
-            int count = state == null ? 0 : BreakpointTargetPolicy.stageCount(command, state.stagePreviews().get(line.location()), null);
-            lineCondition.active &= state != null && !BreakpointUi.pending(state, line, command, count);
-            lineCondition.setTooltip(state != null && BreakpointUi.waitingForPreview(state, line, command, count)
-                ? net.minecraft.client.gui.components.Tooltip.create(Component.translatable("codon.breakpoint.preview_required")) : null);
-        }
-        if (stage != null) {
-            stageCondition.setMessage(Component.translatable("codon.source.stage_condition"));
-            var state = CodonClientMod.state();
-            stageCondition.active &= state != null && !state.breakpoints().pending(stage);
-        }
+    private void openConditionMenu(BreakpointTarget target, Bounds anchor) {
+        ClientDebuggerState debugger = CodonClientMod.state();
+        FunctionSourceDocument document = sources.document();
+        if (debugger == null || document == null || !(target.location() instanceof SourceLocation.Function location)) return;
+        int line = location.location().line();
+        if (!wholeEligible(document, line)) return;
+        String command = document.lines().get(line - 1).trim();
+        stagesForLine(line, true);
+        var level = minecraft.level;
+        scrollbars.release();
+        resizingTree = forwardingParentDrag = false;
+        if (parent instanceof CodonScreen codon) codon.cancelPanelResize();
+        BreakpointContextMenu.open(this, debugger, target, anchor,
+            () -> minecraft.level == level && sources.document() == document
+                && sources.sourceStatus() != ClientFunctionSourceState.Status.LOADING
+                && Objects.equals(sources.selected(), location.location().function())
+                && (target.wholeCommand() || matchingStageContext(debugger, document, line, target)), () -> { });
     }
 
-    private void editLineCondition() { editCondition(selectedLineTarget()); }
-    private void editStageCondition() { editCondition(selectedStageTarget()); }
-
-    private void editCondition(@org.jspecify.annotations.Nullable BreakpointTarget target) {
-        ClientDebuggerState debugger = CodonClientMod.state();
-        if (debugger == null || target == null) return;
-        DebuggerButton trigger = target.wholeCommand() ? lineCondition : stageCondition;
-        BreakpointConditionScreen.Anchor anchor = trigger == null ? null
-            : new BreakpointConditionScreen.Anchor(trigger.getX(), trigger.getY(),
-                trigger.getWidth(), trigger.getHeight());
-        String command = codeLines.get(selectedLine - 1).source().trim();
-        BreakpointUi.openCondition(this, debugger, target, command,
-            BreakpointTargetPolicy.stageCount(command, debugger.stagePreviews().get(target.location()), null), anchor);
+    private boolean matchingStageContext(ClientDebuggerState debugger, FunctionSourceDocument document,
+                                         int line, BreakpointTarget target) {
+        var preview = debugger.stagePreviews().get(target.location());
+        // The condition editor may refresh its own parse preview. Keep the exact document
+        // target during that request; dismiss if the acknowledged command/stage changed.
+        return preview != null && (preview.status() == ClientStagePreviewState.Status.LOADING
+            || previewMatchesLine(document, line, preview) && preview.spans().stream()
+                .anyMatch(span -> span.index() == target.stageIndex()));
     }
 
     private void rememberView() {
@@ -893,8 +901,10 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         if (!containsPanel(event.x(), event.y())) {
             if (!docked) return false;
             forwardingParentDrag = parent.mouseClicked(event, doubleClick);
+            if (forwardingParentDrag) { parentOwnsContextKeys = true; setFocused(null); }
             return forwardingParentDrag;
         }
+        parentOwnsContextKeys = false;
         if (event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
             if (splitterContains(event.x(), event.y())) {
                 resizingTree = true;
@@ -915,6 +925,10 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         }
         for (StageHit hit : stageHits) {
             if (!hit.contains(event.x(), event.y()) || debugger == null) continue;
+            if (event.button() == InputConstants.MOUSE_BUTTON_RIGHT) {
+                openConditionMenu(hit.target(), new Bounds(hit.x(), hit.y(), hit.width(), hit.height()));
+                return true;
+            }
             BreakpointDefinition definition = debugger.breakpoints().get(hit.target());
             selectedStageIndex = hit.target().stageIndex();
             selectedLine = ((SourceLocation.Function) hit.target().location()).location().line();
@@ -923,8 +937,6 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && hit.control() && !debugger.breakpoints().pending(hit.target())) {
                 ClientNetworking.sendBreakpointEdit(debugger, ClientBreakpointState.Action.TOGGLE,
                     definition == null ? BreakpointDefinition.plain(hit.target()) : definition);
-            } else if (event.button() == InputConstants.MOUSE_BUTTON_RIGHT) {
-                editCondition(hit.target());
             }
             return true;
         }
@@ -938,16 +950,20 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                     .findFirst().orElse(-1);
                 if (line >= 1 && line <= document.lines().size() && sources.selected() != null) {
                     SourceLocation.Function location = new SourceLocation.Function(new FunctionLocation(sources.selected(), line));
+                    if (event.button() == InputConstants.MOUSE_BUTTON_RIGHT) {
+                        if (wholeEligible(document, line)) openConditionMenu(BreakpointTarget.whole(location),
+                            new Bounds((int) event.x(), (int) event.y(), 1, 1));
+                        return true;
+                    }
                     if (event.x() >= lineMarkerX() - 2 && event.x() < lineMarkerX() + 10
                         && debugger != null && wholeEligible(document, line)) {
                         selectedLine = line;
                         selectedStageIndex = -1;
                         BreakpointTarget target = BreakpointTarget.whole(location);
-                        if (event.button() == InputConstants.MOUSE_BUTTON_RIGHT) editCondition(target);
-                        else {
-                            String command = document.lines().get(line - 1).trim();
-                            BreakpointUi.toggle(debugger, target, command,
-                                BreakpointTargetPolicy.stageCount(command, debugger.stagePreviews().get(location), null));
+                        if (debugger.breakpoints().ready() && !debugger.breakpoints().pending(target)) {
+                            var existing = debugger.breakpoints().get(target);
+                            ClientNetworking.sendBreakpointEdit(debugger, ClientBreakpointState.Action.TOGGLE,
+                                existing == null ? BreakpointDefinition.plain(target) : existing);
                         }
                         rememberView();
                     } else selectLine(line);
@@ -1006,6 +1022,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
     }
 
     private void selectLine(int line) {
+        revealTarget = null;
         FunctionSourceDocument document = sources.document();
         if (document == null || document.lines().isEmpty() || sources.selected() == null) return;
         int nextLine = Math.clamp(line, 1, document.lines().size());
@@ -1023,6 +1040,22 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
 
     @Override public boolean keyPressed(KeyEvent event) {
         if (ScreenLayers.get(this) != null) return true;
+        if (event.key() == InputConstants.KEY_F10 && event.hasShiftDown() && parentOwnsContextKeys && docked)
+            return parent.keyPressed(event);
+        if (event.key() == InputConstants.KEY_F10 && event.hasShiftDown() && getFocused() == null && !drawerOpen) {
+            BreakpointTarget target = selectedStageTarget();
+            if (target == null) target = selectedLineTarget();
+            if (target != null) {
+                var input = CodonClientMod.input();
+                if (input != null) while (input.breakpointKey.consumeClick()) { }
+                StageHit stage = null;
+                for (StageHit hit : stageHits) if (hit.target().equals(target)) { stage = hit; break; }
+                int y = sourceLineTop() + Math.clamp(selectedLine - lineOffset - 1, 0, sourceRows() - 1) * ROW_HEIGHT;
+                openConditionMenu(target, stage == null ? new Bounds((sourceLeft() + gutterWidth()), y, Math.max(1, codeRight() - (sourceLeft() + gutterWidth())), ROW_HEIGHT)
+                    : new Bounds(stage.x(), stage.y(), stage.width(), stage.height()));
+                return true;
+            }
+        }
         if (event.key() == InputConstants.KEY_F && event.hasControlDownWithQuirk() && sourceSearch.visible) {
             setFocused(sourceSearch);
             sourceSearch.setHighlightPos(0);
