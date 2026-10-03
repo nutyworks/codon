@@ -145,3 +145,62 @@ OS pointer interaction was used.
 This completes the local client suite. Manual physical keyboard/trackpad input,
 broad visual aesthetic review, panel-edge dragging/cancellation, full menu
 reload/invalidation acceptance and dedicated-server behavior remain unverified.
+
+## PR #56 focus review follow-up
+
+Both approved review reports were reproduced against `86aa4d2` before production
+changes. The [Source report](https://github.com/nutyworks/codon/pull/56#discussion_r4173343239)
+failed the native post-Cancel pixel check: the exact keyboard target remained set
+but the gutter marker had zero outline pixels (`pr56-review-source-red.log`).
+The [Flow report](https://github.com/nutyworks/codon/pull/56#discussion_r4173343246)
+failed focus on the first render after navigating to another invocation's wrapped,
+off-screen stage (`pr56-review-flow-red.log`).
+
+Source now includes the exact retained breakpoint in gutter visibility, inline
+slot layout and inline marker rendering. Native checks cover absent/disabled
+whole-line and stage targets, Cancel, Escape, acknowledged server Delete, Shift+F10
+reopen, navigation clearing and unrelated inactive markers. English and Korean
+fractional-scale pixel checks remain in place.
+The existing `FunctionSourceScreenGameTest` matrix now checks both the clicked
+pending marker after pointer leave and the hidden inactive slot after Tab clears
+focus. Its manual text-selection, enabled-state and target-identity checks remain.
+
+Flow list navigation uses a separate request limited to the next render; ordinary
+focus requests retain their existing behavior. It resolves after logical target
+registration and before viewport reveal/widget binding. The request is guarded
+by screen, world, snapshot, flow and selected stage/frame identity, and expires
+when absent from that render. New keyboard, pointer or scroll navigation cancels
+it; activation cannot reach the previous control while it waits.
+`DebuggerNavigationTest` checks reveal timing, expiry, changed context and newer
+input. The native Flow fixture checks different invocations, hidden Flow, long
+wrapped/off-screen destinations, exact-editor keyboard access and navigation
+interrupted by another selection. Its observations are injected; Source Save/Delete
+checks separately use actual server acknowledgements.
+
+Source before/after and hidden-Flow screenshots were visually inspected. They are
+preserved beside the checkout in `pr56-review-evidence/`; no manual game or OS
+pointer interaction was used.
+
+Review-fix validation completed on JDK 25:
+
+- **54 selected JVM tests passed**: 40 `clientTest`, 14 `test`; zero failures,
+  errors or skips in the XML reports. This includes eight navigation tests.
+- **All 56 registered native classes passed together**, without a selection or
+  shard filter, in **8m 26s**. `compileClientJava` and `processResources` completed
+  in the same successful invocation. The focused Source/Flow run passed in 37s.
+- `git diff --check` passed. No dependency, protocol or execution changes were made.
+
+```sh
+./gradlew runClientGameTest \
+  -PclientGameTest=FunctionSourceScreenGameTest,FlowBreakpointInteractionGameTest \
+  compileClientJava processResources --console=plain
+./gradlew runClientGameTest compileClientJava processResources --console=plain
+```
+
+The selected JVM filters are the same as in Commands above. Passing native logs:
+`pr56-review-source-flow-final.log` and `pr56-review-full-native-final.log`.
+`pr56-review-full-native.log` contains the passing JVM reports followed by the old
+Source pointer-leave expectation; it is not a passing native run. The final full
+log, runtime log, 56-class entrypoint manifest and selected native screenshots are
+preserved in `pr56-review-evidence/final/` beside the checkout. Manual physical
+input and the other acceptance limits above remain outside this automated run.

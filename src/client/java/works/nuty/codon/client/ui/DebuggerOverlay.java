@@ -102,10 +102,19 @@ public final class DebuggerOverlay {
 
     public DebuggerNavigation navigation() { return navigation; }
     public WatchPanel watchPanel() { return watchPanel; }
-    void revealSelectedFlow(String focusId) {
+    void revealSelectedFlow(CodonScreen screen, String focusId) {
         preferences().setCommandVisible(true);
         commandPanel.revealSelection();
-        navigation.requestFocus(focusId);
+        var level = client.level;
+        var snapshot = state.snapshot();
+        var flow = state.selectedExecutionFlow();
+        int stage = state.selectedFlowStageIndex(), unobserved = state.selectedUnobservedStageIndex();
+        int frame = state.selectedFrameIndex(), callFrame = state.selectedCallFrameIndex();
+        navigation.requestFocusOnNextFrame(focusId, () -> client.level == level && client.gui.screen() == screen
+            && ScreenLayers.get(screen) == null && preferences().commandVisible() && state.snapshot() == snapshot
+            && state.selectedExecutionFlow() == flow && state.selectedFlowStageIndex() == stage
+            && state.selectedUnobservedStageIndex() == unobserved && state.selectedFrameIndex() == frame
+            && state.selectedCallFrameIndex() == callFrame);
     }
     boolean openFlowContextMenu(net.minecraft.client.gui.components.events.GuiEventListener focused) {
         boolean opened = commandPanel.openContextMenu(focused);

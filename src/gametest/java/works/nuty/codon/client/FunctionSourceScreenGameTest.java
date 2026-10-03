@@ -547,7 +547,20 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
                 });
                 context.getInput().setCursorPos(0, 0);
                 context.waitTicks(2);
-                assertStageMarkerPixels(context, geometry, -1, "codon-function-source-hover-" + row + "-leave-" + stage);
+                assertStageMarkerPixels(context, geometry, paused ? stage : -1, "codon-function-source-hover-" + row + "-leave-" + stage);
+                if (paused) {
+                    context.runOnClient(client -> {
+                        Screen screen = client.gui.screen();
+                        require(BreakpointTarget.stage(location, targetStage, command).equals(
+                            FunctionLineBreakpointGameTest.field(screen, "focusedBreakpoint")),
+                            "Clicked pending marker retains the exact keyboard target after the pointer leaves");
+                        screen.keyPressed(new KeyEvent(InputConstants.KEY_TAB, 0, 0));
+                        require(FunctionLineBreakpointGameTest.field(screen, "focusedBreakpoint") == null,
+                            "Explicit Tab clears the marker target while the edit is pending");
+                    });
+                    context.waitTicks(2);
+                    assertStageMarkerPixels(context, geometry, -1, "codon-function-source-hover-" + row + "-navigated-" + stage);
+                }
             }
         }
         context.runOnClient(client -> CodonClientMod.state().applyResume());
@@ -567,7 +580,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
                          y < (int) Math.floor((geometry[5] + 14) * scaleY); y++)
                         visible |= (image.getRGB(x, y) & 0xFFFFFF) == color;
                 }
-                require(visible == (stage == 0 || stage == hovered), name + ": enabled stages remain visible; inactive stages require hover, stage=" + stage);
+                require(visible == (stage == 0 || stage == hovered), name + ": enabled stages remain visible; inactive stages require hover or retained focus, stage=" + stage);
             }
         } catch (java.io.IOException error) {
             throw new AssertionError("Cannot inspect stage marker capture", error);

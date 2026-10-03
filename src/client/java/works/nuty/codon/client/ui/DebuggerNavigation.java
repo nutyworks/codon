@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.function.BooleanSupplier;
 
 /** Logical focus order, including controls outside a scrolling panel's viewport. */
 public final class DebuggerNavigation {
@@ -30,12 +31,14 @@ public final class DebuggerNavigation {
     private List<Target> ordered = List.of();
     private @Nullable Target cursor;
     private @Nullable String pending;
+    private record DeferredFocus(String id, BooleanSupplier current) { }
+    private @Nullable DeferredFocus deferred;
     private boolean mouseNavigation;
     private boolean awaitingScrollRender;
     private boolean keyboard;
 
     public void rememberFocus(@Nullable GuiEventListener focused) {
-        if (pending != null || focused == null) return;
+        if (deferred != null || pending != null || focused == null) return;
         visible.forEach((id, button) -> {
             if (button == focused && targets.containsKey(id)) remember(targets.get(id));
         });
@@ -43,12 +46,20 @@ public final class DebuggerNavigation {
 
     public void beginFrame(boolean keyboard) {
         this.keyboard = keyboard;
+        if (deferred != null && !deferred.current().getAsBoolean()) deferred = null;
         targets.clear();
         visible.clear();
     }
 
     /** Apply the current layout's reveal callback after its selection/resize scroll adjustment. */
     public void revealFocus(Group group) {
+        if (deferred != null) {
+            Target destination = targets.get(deferred.id());
+            if (destination != null && destination.group() == group) {
+                if (deferred.current().getAsBoolean()) requestFocus(destination.id());
+                deferred = null;
+            }
+        }
         if (cursor == null || cursor.group() != group || pending == null && (!keyboard || mouseNavigation)) return;
         Target target = targets.get(cursor.id());
         if (target != null) target.reveal().run();
@@ -71,6 +82,14 @@ public final class DebuggerNavigation {
         pending = id;
     }
 
+    /** One destination render only; ordinary focus requests still require a registered target. */
+    public void requestFocusOnNextFrame(String id, BooleanSupplier current) {
+        deferred = new DeferredFocus(id, current);
+        pending = null;
+    }
+
+    public void cancelDeferredFocus() { deferred = null; }
+
     public void bind(String id, Group group, AbstractWidget button) {
         Target target = targets.get(id);
         if (!button.visible || !button.active && (target == null || !target.retainWhenInactive())) {
@@ -84,6 +103,8 @@ public final class DebuggerNavigation {
     }
 
     public void endFrame() {
+        // A missing destination must not capture focus if it appears in a later context.
+        deferred = null;
         ordered = targets.values().stream().filter(Target::active).sorted(ORDER).toList();
         for (int i = 0; i < ordered.size(); i++) {
             AbstractWidget button = visible.get(ordered.get(i).id());
@@ -93,6 +114,7 @@ public final class DebuggerNavigation {
 
     /** Mouse scrolling must never silently arm a different button for Enter. */
     public void mouseScrolled() {
+        cancelDeferredFocus();
         mouseNavigation = true;
         awaitingScrollRender = true;
     }
@@ -128,6 +150,7 @@ public final class DebuggerNavigation {
 
     public boolean keyPressed(KeyEvent event, @Nullable GuiEventListener focused,
                               Consumer<@Nullable GuiEventListener> focus) {
+        if (event.key() == InputConstants.KEY_TAB || isArrow(event.key())) cancelDeferredFocus();
         rememberFocus(focused);
         int key = event.key();
         if (key == InputConstants.KEY_TAB || isArrow(key)) mouseNavigation = false;
@@ -202,7 +225,7 @@ public final class DebuggerNavigation {
         }
         // A reveal is completed during rendering. Do not activate the previous, now hidden control.
         return pending != null && isArrow(key)
-            || (pending != null || awaitingScrollRender) && (key == InputConstants.KEY_RETURN
+            || (deferred != null || pending != null || awaitingScrollRender) && (key == InputConstants.KEY_RETURN
                 || key == InputConstants.KEY_SPACE || key == InputConstants.KEY_NUMPADENTER);
     }
 

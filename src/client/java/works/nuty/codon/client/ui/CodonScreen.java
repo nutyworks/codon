@@ -62,6 +62,7 @@ public final class CodonScreen extends ScaledCodonScreen {
             return true;
         }
         if (input.isUiHidden()) return true;
+        overlay.navigation().cancelDeferredFocus();
         if (overlay.viewMenuOpen()) {
             DebuggerButton choice = overlay.viewMenuButtonAt(event.x(), event.y());
             if (choice != null) {
@@ -118,6 +119,7 @@ public final class CodonScreen extends ScaledCodonScreen {
 
     @Override
     public void removed() {
+        overlay.navigation().cancelDeferredFocus();
         input.resetUiVisibility();
         suspendPointerInteraction();
         overlay.closeViewMenu();
@@ -133,11 +135,12 @@ public final class CodonScreen extends ScaledCodonScreen {
     }
 
     void cancelPanelResize() { overlay.panelResizing().cancel(); }
-    void revealSelectedFlow(String focusId) { overlay.revealSelectedFlow(focusId); }
+    void revealSelectedFlow(String focusId) { overlay.revealSelectedFlow(this, focusId); }
 
     @Override
     public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
         if (input.isUiHidden()) return true;
+        overlay.navigation().cancelDeferredFocus();
         if (overlay.scroll(x, y, scrollX, scrollY)) {
             overlay.navigation().mouseScrolled();
             return true;
@@ -147,6 +150,7 @@ public final class CodonScreen extends ScaledCodonScreen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
+        if (event.key() == InputConstants.KEY_ESCAPE) overlay.navigation().cancelDeferredFocus();
         if (event.key() == InputConstants.KEY_ESCAPE && overlay.panelResizing().cancel()) return true;
         if (!input.isUiHidden() && event.key() == InputConstants.KEY_F10 && event.hasShiftDown()
             && (overlay.watchPanel().openContextMenu(getFocused(), input, overlay)

@@ -197,6 +197,11 @@ navigation supersedes it without a later focus-stealing acknowledgement.
 `DebuggerNavigationTest` checks widget replacement and late acknowledgements;
 `FlowBreakpointInteractionGameTest` covers native screen events for exact targets,
 pending focus, direct editor return and navigation-only destinations.
+Cross-Flow list navigation resolves its exact marker during the first destination
+render, before viewport reveal and visible-widget binding. It also opens hidden Flow
+and reaches markers after long wrapped clauses. The request expires after that frame;
+world, screen, pause or selection changes and newer keyboard/pointer/scroll navigation
+cancel it. Missing or obsolete destinations cannot capture focus in a later frame.
 See the [UI validation record](../ui-polish-validation.md) for passing checks and
 the boundary between presentation fixtures and real server edits/execution.
 

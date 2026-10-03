@@ -55,6 +55,7 @@ public final class BreakpointConditionVisibilityGameTest implements FabricClient
                     return preview != null && preview.status() == ClientStagePreviewState.Status.READY;
                 }), 200);
             verify(context, world, 5, false, "line", true);
+            verify(context, world, 6, true, "unset-stage", false, true);
             verify(context, world, 6, true, "stage", true);
             verify(context, world, 7, true, "legacy-line", true);
             verify(context, world, 8, false, "new-line", true);
@@ -82,6 +83,11 @@ public final class BreakpointConditionVisibilityGameTest implements FabricClient
 
     private static void verify(ClientGameTestContext context, TestSingleplayerContext world,
                                int line, boolean savedStage, String name, boolean save) {
+        verify(context, world, line, savedStage, name, save, line == 8);
+    }
+
+    private static void verify(ClientGameTestContext context, TestSingleplayerContext world,
+                               int line, boolean savedStage, String name, boolean save, boolean absent) {
         var savedTarget = savedStage ? BreakpointTarget.stage(location(line), 0, LINES.get(line - 1))
             : BreakpointTarget.whole(location(line));
         var target = line == 7 ? BreakpointTarget.whole(location(line)) : savedTarget;
@@ -89,7 +95,7 @@ public final class BreakpointConditionVisibilityGameTest implements FabricClient
         if (line == 6) definition = definition.withCondition(BreakpointCondition.count(
             BreakpointCondition.Kind.INPUT_COUNT, BreakpointCondition.Comparison.EQ, 1));
         var savedDefinition = definition;
-        if (line != 8) {
+        if (!absent) {
             world.getServer().runOnServer(server -> {
                 if (!target.equals(savedTarget)) CodonMod.engine().deleteBreakpoint(target);
                 CodonMod.engine().saveBreakpoint(savedDefinition);
@@ -154,11 +160,12 @@ public final class BreakpointConditionVisibilityGameTest implements FabricClient
             layer.keyPressed(new KeyEvent(InputConstants.KEY_ESCAPE, 0, 0));
             require(ScreenLayers.get(screen) == null, "Cancel closes only the editor");
             var current = CodonClientMod.state().breakpoints().get(savedTarget);
-            require(line == 8 ? current == null : savedDefinition.equals(current), "Cancel preserves disabled/absent state for " + name);
+            require(absent ? current == null : savedDefinition.equals(current), "Cancel preserves disabled/absent state for " + name);
             require(!CodonClientMod.state().breakpoints().pending(target), "Cancel sends no edit for " + name);
         });
         context.waitTicks(2);
-        assertInk(context, point, name + "-cancelled", false);
+        assertRetainedFocus(context, point, target, line, name + "-cancelled");
+        clearMarkerFocus(context, point, name + "-navigated");
         if (line == 6) {
             // Presentation-only pending edit; no server mutation is inferred from this fixture.
             long pending = context.computeOnClient(client -> CodonClientMod.state().breakpoints()
@@ -210,6 +217,51 @@ public final class BreakpointConditionVisibilityGameTest implements FabricClient
                 "Saving the Source gutter target leaves the separate legacy stage-zero definition unchanged");
         });
         context.takeScreenshot("codon-condition-" + name + "-saved-enabled");
+        if (line == 5 || line == 6) {
+            context.getInput().setCursorPos(0, 0);
+            context.runOnClient(client -> {
+                var screen = client.gui.screen();
+                screen.keyPressed(new KeyEvent(InputConstants.KEY_F10, 0, InputConstants.MOD_SHIFT));
+                var layer = ScreenLayers.get(screen);
+                require(layer instanceof BreakpointConditionScreen editor && editor.editsMarker(target, LINES.get(line - 1)),
+                    "Delete opens the retained exact marker");
+                layer.setFocused((AbstractWidget) FunctionLineBreakpointGameTest.field(layer, "deleteButton"));
+                layer.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
+            });
+            context.waitFor(client -> !CodonClientMod.state().breakpoints().pending(target)
+                && CodonClientMod.state().breakpoints().get(target) == null && ScreenLayers.get(client.gui.screen()) == null, 200);
+            assertRetainedFocus(context, point, target, line, name + "-deleted");
+            clearMarkerFocus(context, point, name + "-deleted-navigated");
+        }
+    }
+
+    private static void assertRetainedFocus(ClientGameTestContext context, int[] point, BreakpointTarget target, int line, String name) {
+        context.waitTicks(2);
+        context.runOnClient(client -> require(target.equals(FunctionLineBreakpointGameTest.field(client.gui.screen(), "focusedBreakpoint")),
+            "Retained Source focus is the exact line/stage/fingerprint for " + name));
+        assertInk(context, point, name, true);
+        context.runOnClient(client -> {
+            var screen = client.gui.screen();
+            screen.keyPressed(new KeyEvent(InputConstants.KEY_F10, 0, InputConstants.MOD_SHIFT));
+            var layer = ScreenLayers.get(screen);
+            require(layer instanceof BreakpointConditionScreen editor && editor.editsMarker(target, LINES.get(line - 1)),
+                "Shift+F10 reopens the visible retained marker for " + name);
+            layer.keyPressed(new KeyEvent(InputConstants.KEY_ESCAPE, 0, 0));
+            require(ScreenLayers.get(screen) == null, "Escape closes the reopened exact editor");
+        });
+        context.waitTicks(2);
+        assertInk(context, point, name + "-escape", true);
+    }
+
+    private static void clearMarkerFocus(ClientGameTestContext context, int[] point, String name) {
+        context.runOnClient(client -> {
+            var screen = client.gui.screen();
+            screen.keyPressed(new KeyEvent(InputConstants.KEY_TAB, 0, 0));
+            require(FunctionLineBreakpointGameTest.field(screen, "focusedBreakpoint") == null,
+                "Explicit navigation clears retained marker focus");
+        });
+        context.waitTicks(2);
+        assertInk(context, point, name, false);
     }
 
     private static void assertInk(ClientGameTestContext context, int[] point, String name, boolean expected) {

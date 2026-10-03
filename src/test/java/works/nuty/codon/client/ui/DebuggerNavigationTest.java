@@ -70,6 +70,65 @@ class DebuggerNavigationTest {
         assertEquals("previous", ((DebuggerButton) focus.get()).getMessage().getString());
     }
 
+    @Test void destinationIsRevealedBeforeItsFirstVisibleWidgetIsBound() {
+        focus.set(frame().marker());
+        navigation.requestFocusOnNextFrame("new-flow-marker", () -> true);
+        assertTrue(navigation.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0), focus.get(), focus::set),
+            "Before the destination renders, Enter cannot activate the previous control");
+        var destination = destinationFrame();
+        assertSame(destination, focus.get(), "A new flow's exact marker receives focus in its first render");
+    }
+
+    @Test void aMissingDestinationExpiresInsteadOfStealingFocusFromALaterFrame() {
+        focus.set(frame().marker());
+        navigation.requestFocusOnNextFrame("new-flow-marker", () -> true);
+        frame(); // The requested ID is absent from this complete destination render.
+        assertNotSame(destinationFrame(), focus.get());
+    }
+
+    @Test void aChangedNavigationContextDiscardsTheDeferredDestination() {
+        focus.set(frame().marker());
+        var current = new java.util.concurrent.atomic.AtomicBoolean(true);
+        navigation.requestFocusOnNextFrame("new-flow-marker", current::get);
+        current.set(false);
+        assertNotSame(destinationFrame(), focus.get());
+        current.set(true);
+        assertNotSame(destinationFrame(), focus.get(), "An obsolete request cannot revive when its old context returns");
+    }
+
+    @Test void newerKeyboardPointerAndScrollNavigationCancelDeferredDestination() {
+        for (String action : java.util.List.of("tab", "click", "scroll")) {
+            var widgets = frame();
+            focus.set(widgets.marker());
+            navigation.requestFocusOnNextFrame("new-flow-marker", () -> true);
+            switch (action) {
+                case "tab" -> tab(false);
+                case "click" -> {
+                    navigation.cancelDeferredFocus();
+                    focus.set(widgets.clause());
+                    navigation.rememberFocus(focus.get());
+                }
+                case "scroll" -> navigation.mouseScrolled();
+            }
+            assertNotSame(destinationFrame(), focus.get(), action + " supersedes the unresolved list destination");
+        }
+    }
+
+    /** The destination begins outside the viewport; only reveal can make it bindable. */
+    private DebuggerButton destinationFrame() {
+        var previous = focus.get();
+        navigation.rememberFocus(previous);
+        navigation.beginFrame(false);
+        var marker = button("new-flow-marker", true);
+        var revealed = new java.util.concurrent.atomic.AtomicBoolean();
+        navigation.addRetained("new-flow-marker", FLOW, 20, 0, true, () -> revealed.set(true));
+        navigation.revealFocus(FLOW);
+        if (revealed.get()) navigation.bind("new-flow-marker", FLOW, marker);
+        navigation.endFrame();
+        focus.set(navigation.restoreFocus(previous, false));
+        return marker;
+    }
+
     private record Widgets(DebuggerButton previous, DebuggerButton marker, DebuggerButton clause) { }
 
     private Widgets frame() {

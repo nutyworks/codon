@@ -485,7 +485,8 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             renderInlineMarkers(graphics, stages, layout, line, rowHoveredStage, codeLeft, y, codeWidth, mouseX, mouseY);
             graphics.disableScissor();
             boolean enabled = definition != null && definition.enabled();
-            if (SourceInteraction.markerVisible(enabled, hovered && wholeEligible(document, line), editingLine)) {
+            if (SourceInteraction.markerVisible(enabled, hovered && wholeEligible(document, line),
+                editingLine || BreakpointTarget.whole(location).equals(focusedBreakpoint))) {
                 BreakpointUi.icon(definition).drawSmall(graphics, lineMarkerX(), y + 5,
                     DebuggerTheme.foreground(enabled ? RED : MUTED));
             } else if (counts.enabled() > 0 && stages.isEmpty()) {
@@ -591,7 +592,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
     private SourceLineLayout visibleLayout(SourceCodeLine code, List<InlineStage> stages, int hover) {
         return new SourceLineLayout(code.source().length(), stages.stream()
             .filter(stage -> SourceInteraction.markerVisible(stageEnabled(stage), stage.index() == hover,
-                BreakpointUi.editingMarker(this, stage.target(), code.source().trim())))
+                stage.target().equals(focusedBreakpoint) || BreakpointUi.editingMarker(this, stage.target(), code.source().trim())))
             .map(InlineStage::start).toList(), code::x);
     }
 
@@ -630,7 +631,8 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             BreakpointDefinition definition = state.breakpoints().get(stage.target());
             boolean enabled = definition != null && definition.enabled(), hovered = hover == stage.index();
             if (SourceInteraction.markerVisible(enabled, hovered,
-                BreakpointUi.editingMarker(this, stage.target(), codeLines.get(line - 1).source().trim()))) {
+                stage.target().equals(focusedBreakpoint)
+                    || BreakpointUi.editingMarker(this, stage.target(), codeLines.get(line - 1).source().trim()))) {
                 DebuggerIcon icon = BreakpointUi.icon(definition);
                 icon.drawSmall(graphics, markerX + (SourceLineLayout.MARKER_WIDTH - icon.smallSize()) / 2,
                     y + 5, DebuggerTheme.foreground(enabled ? RED : MUTED));

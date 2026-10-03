@@ -53,6 +53,7 @@ public final class FlowBreakpointInteractionGameTest implements FabricClientGame
             checkNavigationList(context, screen, state);
             checkWrappedTraversal(context, screen, state);
             checkSingleStage(context, screen, state);
+            checkCrossFlowNavigation(context, screen, state);
             checkSourceStageEditors(context, screen);
         } finally {
             context.runOnClient(client -> {
@@ -218,6 +219,90 @@ public final class FlowBreakpointInteractionGameTest implements FabricClientGame
         }
     }
 
+    private static void checkCrossFlowNavigation(ClientGameTestContext context, CodonScreen screen, ClientDebuggerState state) {
+        var destination = new SourceLocation.Block(new BlockLocation(2, 64, 2, "minecraft:overworld"));
+        String command = "execute as @e[tag=" + "wrapped_value_".repeat(80) + "] at @s run function test:leaf";
+        int at = command.indexOf("at @s"), run = command.indexOf("run function"), terminal = command.indexOf("function test:leaf");
+        var spans = List.of(new ClientStagePreviewState.StageSpan(0, 8, at - 1, false),
+            new ClientStagePreviewState.StageSpan(1, at, run - 1, false),
+            new ClientStagePreviewState.StageSpan(2, run, terminal - 1, false),
+            new ClientStagePreviewState.StageSpan(3, terminal, command.length(), true));
+        var oldFlow = snapshot(COMMAND, SPANS, SPANS.size()).executionFlows().getFirst();
+        var stages = snapshot(command, spans, spans.size()).executionFlows().getFirst().stages();
+        var newFlow = new ExecutionFlowTrace(88, destination, stages, false);
+        var pause = new PauseSnapshot(LOCATION, oldFlow.stages().getFirst().command(), 0, List.of(), List.of(),
+            List.of(oldFlow, newFlow), PauseReason.BREAKPOINT);
+        var target = BreakpointTarget.stage(destination, 3, command);
+        for (boolean hidden : new boolean[]{false, true}) {
+            context.runOnClient(client -> {
+                state.applyPause(pause);
+                state.selectExecutionFlow(0);
+                state.selectExecutionFlowStage(0);
+                state.preferences().setCommandVisible(!hidden);
+                state.breakpoints().acceptPage(hidden ? 6 : 5, 0, true, List.of(BreakpointDefinition.plain(target).withEnabled(false)));
+                long request = state.stagePreviews().begin(destination);
+                state.stagePreviews().accept(request, destination, ClientStagePreviewState.Status.READY, command, spans);
+            });
+            context.waitTicks(2);
+            context.runOnClient(client -> client.setScreenAndShow(new BreakpointListScreen(screen, state)));
+            context.waitTicks(2);
+            context.runOnClient(client -> {
+                var list = client.gui.screen();
+                var row = buttons(list).stream().filter(button -> button.getMessage().getString().contains(BreakpointUi.target(target)))
+                    .findFirst().orElseThrow();
+                client.setLastInputType(InputType.MOUSE);
+                click(list, row, InputConstants.MOUSE_BUTTON_LEFT);
+                require(client.gui.screen() == screen && state.selectedExecutionFlow() == newFlow
+                    && state.selectedFlowStageIndex() == 3, "List selects the exact destination flow and stage before rendering");
+            });
+            context.waitTicks(1);
+            context.runOnClient(client -> {
+                var marker = exactFlowMarker(screen, "flow-breakpoint-88-" + target);
+                require(marker != null && screen.children().contains(marker) && screen.getFocused() == marker,
+                    "First destination render reveals and focuses the off-screen exact marker; initially hidden=" + hidden);
+                require(state.preferences().commandVisible() && !state.breakpoints().get(target).enabled()
+                    && !state.breakpoints().pending(target), "Navigation reveals Flow without changing the disabled definition");
+                press(screen, InputConstants.KEY_F10, true);
+                require(ScreenLayers.get(screen) instanceof BreakpointConditionScreen editor && editor.editsMarker(target, command),
+                    "The destination's keyboard focus opens its exact condition editor");
+                ScreenLayers.get(screen).onClose();
+            });
+            context.waitTicks(2);
+            context.takeScreenshot("codon-flow-cross-navigation-" + (hidden ? "hidden" : "visible"));
+        }
+        // A changed selection before the first destination render invalidates the queued request.
+        context.runOnClient(client -> {
+            state.selectExecutionFlow(0);
+            state.selectExecutionFlowStage(0);
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> client.setScreenAndShow(new BreakpointListScreen(screen, state)));
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            var list = client.gui.screen();
+            click(list, buttons(list).stream().filter(button -> button.getMessage().getString().contains(BreakpointUi.target(target)))
+                .findFirst().orElseThrow(), InputConstants.MOUSE_BUTTON_LEFT);
+            state.selectExecutionFlow(0);
+            state.selectExecutionFlowStage(0);
+            screen.setFocused(null);
+            client.setLastInputType(InputType.MOUSE);
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            require(screen.getFocused() == null, "Changed context discards unresolved destination focus");
+            state.selectExecutionFlow(1);
+            state.selectExecutionFlowStage(3);
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> require(screen.getFocused() == null,
+            "Returning to a former destination cannot revive a cancelled focus request"));
+    }
+
+    private static DebuggerButton exactFlowMarker(CodonScreen screen, String id) {
+        var overlay = (DebuggerOverlay) FunctionLineBreakpointGameTest.field(screen, "overlay");
+        return (DebuggerButton) ((java.util.Map<?, ?>) FunctionLineBreakpointGameTest.field(overlay.navigation(), "visible")).get(id);
+    }
+
     private static void checkSourceStageEditors(ClientGameTestContext context, CodonScreen parent) {
         var function = new FunctionId("test", "ui_source");
         var location = new SourceLocation.Function(new FunctionLocation(function, 1));
@@ -268,6 +353,16 @@ public final class FlowBreakpointInteractionGameTest implements FabricClientGame
                 ScreenLayers.get(source).onClose();
                 require(CodonClientMod.state().breakpoints().definitions().isEmpty()
                     && !CodonClientMod.state().breakpoints().pending(target), "Source open/cancel never creates a BP");
+            });
+            // Changing retained focus adds/removes an inline slot. Read the next stage's
+            // coordinates only after the actual destination layout has been rendered.
+            context.getInput().setCursorPos(0, 0);
+            context.waitTicks(2);
+            context.runOnClient(client -> {
+                var controls = ((List<?>) FunctionLineBreakpointGameTest.field(source, "stageHits")).stream()
+                    .filter(hit -> (boolean) FunctionLineBreakpointGameTest.field(hit, "control")).toList();
+                require(controls.size() == 1 && target.equals(FunctionLineBreakpointGameTest.field(controls.getFirst(), "target")),
+                    "After Cancel without hover, only the exact focused inline marker retains its hit slot");
             });
         }
     }

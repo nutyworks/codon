@@ -235,19 +235,22 @@ The same pane geometry is unit-checked at 320×180 logical size. The
 The `nested-function-links` capture checks nested return and schedule references.
 The `hover-browsed-*` and `hover-paused-*` captures use pixel assertions for
 enabled, disabled and missing stage markers before hover, during hover and after
-pointer leave. Enabled markers stay visible; the selected disabled stage still
-requires hover. Clicking the enabled stage also covers selected enabled and
+pointer leave. Enabled markers stay visible; selecting a disabled stage's text
+does not retain its marker. Clicking the enabled stage also covers selected enabled and
 unselected disabled states. The `matrix-enabled-*-selected-*` captures additionally
 assert the complete enabled × hover × selection matrix for both line/stage icons,
-and verify that pointer leave restores every original advance except enabled slots. Hover preserves acknowledged state; clicking each hovered slot
-requests its original stage target, including a missing breakpoint.
+and verify that pointer leave restores every original advance except enabled slots
+when no marker owns keyboard focus. Hover preserves acknowledged state; clicking
+each hovered slot requests its original stage target, including a missing breakpoint.
+The clicked pending marker remains visible after pointer leave; Tab clears that
+exact focus, after which inactive slots disappear without changing acknowledged state.
 The `inline-second-line` capture verifies stage targeting after horizontal scroll
 on an indented original line. The following source line stays directly below it
 and can be selected without an expanded stage row intercepting the click.
 
 Inspect `*codon-function-source-*.png`, including 320×240, 480×270 and 640×360 GUI
 layouts. The disabled-hover capture shows a disabled line and conditional stage
-revealed by hover; inactive controls stay hidden elsewhere while enabled markers
+revealed by hover; inactive controls without keyboard focus stay hidden elsewhere while enabled markers
 remain visible. This GameTest injects a source document, breakpoint definitions and stage spans: its function is
 not installed in the server's datapack. It proves presentation/interaction, not
 server source discovery, permission enforcement or native function breakpoints.
@@ -308,10 +311,13 @@ target mapping while retaining separate legacy definitions.
 
 An inactive line/stage marker stays visible for the entire condition edit, including after
 the pointer leaves and while a selector menu is open. Only the edited marker is retained;
-unrelated inactive candidates remain hidden. Cancel removes that temporary marker/slot
-without enabling or creating a definition. Save enables the exact marker target after server
+unrelated inactive candidates remain hidden. Cancel, Escape and Delete retain the exact
+marker/slot while it remains the Shift+F10 keyboard target; explicit navigation clears
+that focus and hides an inactive marker again. This does not enable or create a definition.
+Save enables the exact marker target after server
 acknowledgement; saving a gutter line does not rewrite a separate legacy stage-zero definition. `BreakpointConditionVisibilityGameTest`
-checks native pixels, line/stage/legacy/new targets, menus, Cancel and real server Save edits
+checks native pixels, line/stage/legacy/new targets, menus, retained focus after Cancel/Escape,
+explicit navigation clearing, and real server Save/Delete edits
 in English and Korean at a fractional custom scale. A controlled pending request also verifies
 that condition-editor access is blocked until acknowledgement, without restoring removed header buttons. Its source page is a presentation fixture
 matching the loaded `codon_test:condition_visibility` test function; it does not claim a native pause.
