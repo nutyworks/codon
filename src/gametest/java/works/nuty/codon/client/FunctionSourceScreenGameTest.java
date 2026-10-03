@@ -123,8 +123,8 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             context.waitTicks(1);
             context.runOnClient(client -> {
                 require(screen.children().stream().filter(AbstractButton.class::isInstance).map(AbstractButton.class::cast)
-                    .anyMatch(button -> button.visible && button.active && button.getMessage().getString().equals("Stage condition…")),
-                    "selected server-provided stage retains its condition control");
+                    .noneMatch(button -> button.visible && button.getMessage().equals(Component.translatable("codon.source.stage_condition"))),
+                    "stage selection does not recreate the removed condition header button");
             });
             context.waitTicks(1);
             context.takeScreenshot("codon-function-source-stage-selected");

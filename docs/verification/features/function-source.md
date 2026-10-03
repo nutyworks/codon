@@ -166,6 +166,7 @@ scroll settings. Synthetic callback input does not verify a physical trackpad.
 | Active stage readability, adjacent stages, horizontal clipping and representative scales | `FunctionSourceStageHighlightGameTest` |
 | Source toolbar icon, state styling, scale readability and native activation | `DebuggerSourceIconGameTest` |
 | F3/Shift+F3 press/repeat/release ownership and vanilla behavior outside Source | `FunctionSourceKeyboardGameTest` |
+| Exact gutter target with missing/loading/stale previews, direct marker editor/cancel, parsed as/at/run/function marker targets | `FunctionLineBreakpointGameTest`, `FlowBreakpointInteractionGameTest` |
 | Focused Find/function-list Search key press before character input, bound/unbound/remapped cursor-mode keys, parent shortcuts and focus navigation | `FunctionSourceTextInputGameTest` |
 
 Example: `./gradlew runClientGameTest -PclientGameTest=FunctionSourceScreenGameTest`.

@@ -90,11 +90,11 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
             + scenario.gameScale() + "-custom-" + scenario.customScale();
         context.runOnClient(client -> checkWatchGeometry(client, fixture));
         capture(context, name);
-        click(context, "codon.watch.details.copy_value");
+        watchAction(context, SCORE, "codon.watch.details.copy_value");
         context.runOnClient(client -> require(client.keyboardHandler.getClipboard().equals("-2147483648"), "Copy hitbox reaches the current value"));
-        click(context, "codon.watch.pin");
+        watchAction(context, SCORE, "codon.watch.pin");
         context.runOnClient(client -> require(fixture.state().watches().definitions().getFirst().isPinned(), "Pin hitbox remains accessible"));
-        click(context, "codon.watch.unpin");
+        watchAction(context, SCORE, "codon.watch.unpin");
         context.runOnClient(client -> require(!fixture.state().watches().definitions().getFirst().isPinned(), "Unpin uses its own target"));
 
         // Scroll the real panel, then return to its first row without changing definitions.
@@ -110,7 +110,7 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
         capture(context, name + "-overflow");
         context.runOnClient(client -> fixture.overlay().watchPanel().select(fixture.state().watches().findId(SCORE)));
         context.waitTicks(3);
-        click(context, "codon.watch.edit");
+        watchAction(context, SCORE, "codon.watch.edit");
         context.runOnClient(client -> require(screen(client) instanceof WatchScreen, "Edit hitbox opens the editor"));
         click(context, "codon.watch.close");
         if (!openDetailsFromValueRightEdge(context, fixture, name))
@@ -152,7 +152,7 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
         click(context, "codon.watch.details.retry");
         context.runOnClient(client -> require(fixture.state().watches().drainQueries().stream().anyMatch(query -> query.spec().equals(NBT)), "Retry hitbox starts the same read-only query"));
         click(context, "codon.watch.close");
-        click(context, "codon.watch.remove");
+        watchAction(context, SCORE, "codon.watch.menu.delete");
         context.runOnClient(client -> require(fixture.state().watches().findId(SCORE) < 0, "Delete hitbox removes its own row"));
         click(context, "codon.watch.undo_deleted");
         context.runOnClient(client -> require(fixture.state().watches().findId(SCORE) >= 0, "Undo restores the removed row"));
@@ -209,10 +209,10 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
                 for (var other : buttons(screen)) if (widget != other) require(!overlaps(widget, other), "Watch hitboxes do not overlap other controls");
             }
         }
-        if (WatchPanelLayout.stackedValues(panel.width())) {
-            require(client.font.width("-2147483648") <= WatchPanelLayout.valueWidth(panel.width()), "The entire primary score fits the compact value line");
-            require(client.font.width(text("codon.watch.short.error")) <= WatchPanelLayout.valueWidth(panel.width()), "Localized error stays distinguishable from a value");
-        }
+        require(!WatchPanelLayout.stackedValues(panel.width()), "Compact Watches keep keys left and values right");
+        require(buttons(screen).stream().noneMatch(widget -> List.of(text("codon.watch.edit"), text("codon.watch.pin"),
+            text("codon.watch.unpin"), text("codon.watch.menu.delete")).contains(widget.getMessage().getString())),
+            "Row management does not recreate inline action buttons");
         require(button(screen, text("codon.ui.control.resume") + " " + fixture.input().keyLabel(InputManager.Control.RESUME).getString()).active,
             "Execution control remains accessible under an acknowledged pause");
     }
@@ -232,7 +232,6 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
     }
 
     private static boolean openDetailsFromValueRightEdge(ClientGameTestContext context, Fixture fixture, String name) {
-        if (!context.computeOnClient(client -> WatchPanelLayout.stackedValues(fixture.overlay().watchPanel().bounds().width()))) return false;
         var value = context.computeOnClient(client -> {
             String label = Component.translatable("codon.watch.inspect", WatchFormatting.specification(NBT).getString()).getString();
             return buttons(screen(client)).stream().filter(widget -> widget.getMessage().getString().equals(label))
@@ -240,7 +239,7 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
         });
         double[] point = context.computeOnClient(client -> {
             var panel = fixture.overlay().watchPanel().bounds();
-            double x = panel.x() + 7 + WatchPanelLayout.valueWidth(panel.width()) - 1;
+            double x = value.getRight() - 1;
             double y = value.getY() + value.getHeight() / 2.0;
             require(value.isMouseOver(x, y), "The last visible value pixel belongs to the inspection surface");
             Tooltip hint = tooltip(value);
@@ -278,16 +277,28 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
     private static DebuggerButton button(Screen screen, String label) { return buttons(screen).stream().filter(button -> button.getMessage().getString().equals(label)
         || button.getMessage().getString().endsWith(" " + label)).findFirst().orElseThrow(() -> new AssertionError("Visible button: " + label)); }
     private static void click(ClientGameTestContext context, String key) { clickLabel(context, context.computeOnClient(client -> text(key))); }
+    private static void watchAction(ClientGameTestContext context, WatchSpec spec, String action) {
+        String inspect = context.computeOnClient(client -> Component.translatable("codon.watch.inspect", WatchFormatting.specification(spec).getString()).getString());
+        clickLabel(context, inspect, InputConstants.MOUSE_BUTTON_RIGHT);
+        context.runOnClient(client -> require(ScreenLayers.get(screen(client)) != null,
+            "Row right-click opens its management menu"));
+        click(context, action);
+    }
     private static void clickLabel(ClientGameTestContext context, String label) {
+        clickLabel(context, label, InputConstants.MOUSE_BUTTON_LEFT);
+    }
+    private static void clickLabel(ClientGameTestContext context, String label, int mouseButton) {
         double[] point = context.computeOnClient(client -> {
-            var widget = button(screen(client), label);
-            var scale = ((ScaledCodonScreen) screen(client)).uiScale();
+            Screen layer = ScreenLayers.get(screen(client));
+            Screen host = layer == null ? screen(client) : layer;
+            var widget = button(host, label);
+            var scale = ((ScaledCodonScreen) host).uiScale();
             var window = client.getWindow();
             return new double[]{scale.toGame(widget.getX() + widget.getWidth() / 2.0) * window.getScreenWidth() / window.getGuiScaledWidth(),
                 scale.toGame(widget.getY() + widget.getHeight() / 2.0) * window.getScreenHeight() / window.getGuiScaledHeight()};
         });
         context.getInput().setCursorPos(point[0], point[1]);
-        context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_LEFT);
+        context.getInput().pressMouse(mouseButton);
         context.waitTicks(3);
     }
     private static void capture(ClientGameTestContext context, String name) { context.getInput().setCursorPos(3, 3); context.waitTicks(3); context.takeScreenshot(name); }

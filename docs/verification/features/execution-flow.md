@@ -157,6 +157,7 @@ similar UUIDs/positions or replay a command to reconstruct its effects.
 | Recorded inputs/outputs/lineage | `coreTest`: `ExecutionFlowRecorderTest` |
 | Trace adapter | `test`: `CommandTraceTest` |
 | Recorded navigation/layout | `clientTest`: `ClientExecutionFlowTimelineTest`, `ClientCommandSelectionTest`, `CommandFlowLayoutTest` |
+| BP/stage Tab order, wrapped reveal, pending-toggle focus, direct exact condition editors, navigation-only breakpoint list | `FlowBreakpointInteractionGameTest`; `test`: `DebuggerNavigationTest` |
 | Native branching/filtering and stage stops | `DebuggerExecutionFlowGameTest` |
 | Native `if function` / `unless function` chronology | `DebuggerConditionalFunctionFlowGameTest` |
 | Flow options/markers for never-observed stages, rejection feedback, recovered previews, then first-occurrence terminal and conditional stops | `DebuggerUnobservedFlowBreakpointGameTest`; `clientTest`: `ClientUnobservedFlowSelectionTest`, `ClientFlowPreviewRequestsTest`, `CommandFlowLayoutTest` |
@@ -213,3 +214,11 @@ The direct condition editor returns focus to its opening marker only while its
 source/flow context remains current. Opening or cancelling does not save a
 breakpoint. Validation: client compilation/resources only, log
 `../breakpoint-focus-direct-editor-compile.log`; no tests or game/GUI runs.
+
+Regression follow-up: `FlowBreakpointInteractionGameTest` exercises actual screen
+events with synthetic observations, including unset/disabled run and function
+markers, Tab/Shift+Tab through wrapped rows, Enter/Space pending/acknowledgement
+focus, direct marker editors and cancel/no-creation, and exact navigation-list
+destinations. `DebuggerNavigationTest` separately replaces widget instances while
+an edit is pending and verifies that explicit keyboard or pointer navigation wins
+over a later acknowledgement. These fixtures do not establish server execution.

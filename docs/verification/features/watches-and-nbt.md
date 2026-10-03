@@ -1,5 +1,11 @@
 # Watches and NBT
 
+The compact Watch regression uses row context menus for Copy, Pin, Edit and
+Delete. It checks a single full-row inspection target, including the value's right
+edge, with no inline management controls. `WatchPanelLayoutTest` covers the same
+name/value layout at narrow and wide widths; `DebuggerCompactWatchGameTest`
+exercises the actual screen events and Details actions.
+
 ## User path and expected result
 
 Regular Watches default to 280 logical pixels (previously 360), bounded by the same

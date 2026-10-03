@@ -186,7 +186,7 @@ public final class DebuggerUnobservedFlowBreakpointGameTest implements FabricCli
         });
         context.waitFor(client -> !state().breakpoints().pending(target) && !state().breakpoints().get(target).enabled(), 200);
         context.runOnClient(client -> {
-            click(client.gui.screen(), clause(client.gui.screen(), fragment), InputConstants.MOUSE_BUTTON_RIGHT);
+            click(client.gui.screen(), marker(client.gui.screen(), clause(client.gui.screen(), fragment)), InputConstants.MOUSE_BUTTON_RIGHT);
             require(ScreenLayers.get(client.gui.screen()) instanceof BreakpointConditionScreen,
                 "Flow right-click opens breakpoint options for an unobserved stage");
         });

@@ -86,11 +86,11 @@ class CommandFlowLayoutTest {
         assertEquals(List.of("ab 😀", "cd e", "f"),
             CommandFlowLayout.wrapCharacters(command, 4, CommandFlowLayoutTest::codePoints));
         var layout = CommandFlowLayout.layout(List.of(new CommandFlowLayout.Part(command, 2)),
-            14, CommandFlowLayoutTest::codePoints, ignored -> 0);
+            10, CommandFlowLayoutTest::codePoints, ignored -> 0);
         assertEquals(List.of("ab 😀", "cd e", "f"), layout.cells().stream().map(CommandFlowLayout.Cell::text).toList());
         assertEquals(command, joinCells(layout));
         assertEquals(1, layout.cells().stream().filter(CommandFlowLayout.Cell::first).count());
-        assertGeometry(layout, 14);
+        assertGeometry(layout, 10);
     }
 
     @Test
@@ -102,7 +102,7 @@ class CommandFlowLayoutTest {
 
         assertEquals(command, joinCells(layout));
         assertTrue(layout.rows() > 1);
-        assertTrue(layout.cells().stream().allMatch(cell -> codePoints(cell.text()) + (cell.first() ? 24 : 10) <= cell.width()));
+        assertTrue(layout.cells().stream().allMatch(cell -> codePoints(cell.text()) + (cell.first() ? 20 : 6) <= cell.width()));
         assertGeometry(layout, 40);
     }
 
@@ -111,10 +111,19 @@ class CommandFlowLayoutTest {
         String text = "x".repeat(60);
         var layout = CommandFlowLayout.layout(List.of(new CommandFlowLayout.Part(text, 0)),
             40, CommandFlowLayoutTest::codePoints, ignored -> 32, ignored -> 14);
-        assertEquals(List.of(16, 30, 14), layout.cells().stream().map(cell -> codePoints(cell.text())).toList());
-        assertEquals(List.of(40, 40, 24), layout.cells().stream().map(CommandFlowLayout.Cell::width).toList());
+        assertEquals(List.of(20, 34, 6), layout.cells().stream().map(cell -> codePoints(cell.text())).toList());
+        assertEquals(List.of(40, 40, 12), layout.cells().stream().map(CommandFlowLayout.Cell::width).toList());
         assertEquals(text, joinCells(layout));
         assertGeometry(layout, 40);
+    }
+
+    @Test void shortStagesShareANarrowRowWithoutExcessPadding() {
+        var layout = CommandFlowLayout.layout(List.of(new CommandFlowLayout.Part("a", 0),
+            new CommandFlowLayout.Part("b", 1)), 20, CommandFlowLayoutTest::codePoints, ignored -> 0);
+        assertEquals(1, layout.rows(), "Two short stages fit without a needless wrapped row");
+        assertEquals(2, layout.cells().get(1).x() - layout.cells().getFirst().width());
+        assertEquals("ab", joinCells(layout));
+        assertGeometry(layout, 20);
     }
 
     @Test
