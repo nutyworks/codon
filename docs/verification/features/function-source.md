@@ -39,6 +39,8 @@ be checked. The viewer lists functions actually loaded by the current server.
 2. Select an executable line. Toggle its gutter marker to the **left of the line number**.
    The line number itself only selects the row. A line with exactly one server-parsed stage
    has only the line control: no inline stage marker, stage hit box, or Stage condition button.
+   Gutter hover describes the exact whole-line condition and its two mouse actions.
+   A separate stage count remains visible without aliasing a saved legacy stage into the line target.
    For multiple-stage lines, toggle the parsed stage's marker. Right-click a marker
    to open its exact condition editor directly. Right-click line/stage text to keep
    using its condition menu. The marker

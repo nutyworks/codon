@@ -499,8 +499,13 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                 if (hovered && mouseX >= sourceLeft + 21 && mouseX < sourceLeft + 26)
                     graphics.setTooltipForNextFrame(font, Component.translatable("codon.breakpoint.error.stale_source"), mouseX, mouseY);
             }
-            if (hovered && mouseX >= lineMarkerX() - 2 && mouseX < lineMarkerX() + 10 && counts.enabled() > 0)
-                graphics.setTooltipForNextFrame(font, Component.translatable("codon.source.stage_breakpoints", counts.enabled()), mouseX, mouseY);
+            if (hovered && mouseX >= lineMarkerX() - 2 && mouseX < lineMarkerX() + 10 && wholeEligible(document, line)) {
+                var hint = Component.translatable("codon.source.line_breakpoint_hint",
+                    definition == null ? tr("codon.source.no_breakpoint") : BreakpointUi.condition(definition.condition()));
+                if (counts.enabled() > 0)
+                    hint.append("\n").append(Component.translatable("codon.source.stage_breakpoints", counts.enabled()));
+                graphics.setTooltipForNextFrame(font, hint, mouseX, mouseY);
+            }
             lineHits.add(new LineHit(y, ROW_HEIGHT, line));
         }
         hoveredLine = nextHoveredLine; hoveredStage = nextHoveredStage;

@@ -66,7 +66,7 @@ condition editor returns to the same parent input and cursor; the exact marker c
 then recreate the breakpoint with its default Always condition.
 
 Function-line and stage targets use the [Source viewer](function-source.md).
-Saved line hover shows its count, click toggle and right-click condition hints
+Saved line hover shows its exact condition, click toggle and right-click condition hints
 on separate localized lines; see [tooltip coverage](tooltips.md) for wrapping,
 viewport placement and the rendering checks.
 The command alternatives are `/codon breakpoint block <x> <y> <z>` and
@@ -91,7 +91,7 @@ They toggle whole-command targets; use the UI for stage/condition editing.
 | Native editor input, modal details without screen replacement, server edits, wrapping and narrow layouts | `DebuggerBreakpointUiGameTest` |
 | Single-stage editor/Flow target, legacy toggle/clear and native first-occurrence stop | `SingleStageBreakpointGameTest` |
 | Inactive condition marker retention, menus/Cancel and server-acknowledged Save enabling | `BreakpointConditionVisibilityGameTest`, `DebuggerBreakpointUiGameTest` |
-| Flow legacy condition labels, rejected toggle feedback, terminal condition attribution and pending action gating (presentation fixture) | `FlowLegacyConditionGameTest` |
+| Flow legacy/line isolation, exact condition attribution, rejected toggle feedback and pending action gating (presentation fixture) | `FlowLegacyConditionGameTest` |
 | Native execution and measured-zero result breakpoints | `DebuggerBreakpointResultGameTest` |
 
 Example: `./gradlew runClientGameTest -PclientGameTest=DebuggerBreakpointUiGameTest`.

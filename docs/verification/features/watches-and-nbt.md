@@ -214,3 +214,5 @@ query timing; use the pause/transport scenario for that boundary.
 At a 320x240 GUI viewport, Details initially folds into the View menu. Open
 `View → Details` before inspecting NBT. `DebuggerNbtTreeGameTest` exercises that
 route and then verifies that both the selected source and NBT data remain visible.
+In short inspector viewports, a compact Contexts caption and one selected-source
+row leave room for the NBT heading plus data, even with the Flow detail band open.

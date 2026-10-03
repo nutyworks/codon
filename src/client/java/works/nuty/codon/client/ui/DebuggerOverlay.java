@@ -44,6 +44,7 @@ public final class DebuggerOverlay {
     private static final Bounds EMPTY = new Bounds(0, 0, 0, 0);
     private static final int MAX_WORLD_LABELS = 20;
     private static final int SOURCE_LIST_MIN_HEIGHT = 62;
+    private static final int SOURCE_COMPACT_MIN_HEIGHT = 40;
     private static final int SOURCE_LIST_MAX_HEIGHT = 109;
     private static final int SOURCE_ROWS_TOP = 43;
     private static final int SOURCE_DETAILS_VIEWPORT_HEIGHT = 102;
@@ -501,6 +502,10 @@ public final class DebuggerOverlay {
         boolean hasNbt = nbtPanel.hasSelectedSource();
         int listHeight = Math.min(body.height(),
             Math.max(SOURCE_LIST_MIN_HEIGHT, Math.min(SOURCE_LIST_MAX_HEIGHT, body.height() / 3)));
+        // The compact caption and one source row need 40 pixels. Reserve the rest
+        // for actual NBT rows when the taller Flow detail band leaves a short inspector.
+        if (hasNbt) listHeight = Math.min(listHeight,
+            Math.max(SOURCE_COMPACT_MIN_HEIGHT, body.height() - NBT_MIN_VIEWPORT_HEIGHT));
         int remainingHeight = body.height() - listHeight;
         if (hasNbt && remainingHeight < NBT_HEADER_VIEWPORT_HEIGHT) {
             listHeight = body.height();

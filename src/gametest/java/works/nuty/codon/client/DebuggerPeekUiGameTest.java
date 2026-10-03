@@ -20,6 +20,7 @@ import works.nuty.codon.client.state.ClientDebuggerState;
 import works.nuty.codon.client.ui.CodonScreen;
 import works.nuty.codon.client.ui.DebuggerButton;
 import works.nuty.codon.client.ui.DebuggerOverlay;
+import works.nuty.codon.client.ui.ScreenLayers;
 import works.nuty.codon.core.model.PauseSnapshot;
 
 /**
@@ -77,9 +78,11 @@ public final class DebuggerPeekUiGameTest implements FabricClientGameTest {
                 checkMouseFocusRecovery(context, fixture);
                 checkFocusReset(context, fixture);
                 context.getInput().holdKey(options -> fixture.input().hideUiKey);
+                context.runOnClient(client -> require(fixture.input().isUiHidden(), "menu-close check starts with a held hide gesture"));
                 context.getInput().pressKey(options -> fixture.input().menuKey);
                 context.runOnClient(client -> {
-                    require(client.gui.screen() == null, "menu closes cursor mode while held");
+                    require(client.gui.screen() == null, "menu closes cursor mode while held; screen="
+                        + client.gui.screen() + "; layer=" + ScreenLayers.get(client.gui.screen()));
                     require(!fixture.input().isUiHidden(), "screen transition safely resets visibility");
                     preserved(fixture, "menu close while held");
                 });
@@ -128,6 +131,9 @@ public final class DebuggerPeekUiGameTest implements FabricClientGameTest {
     }
 
     private static void checkMouseFocusRecovery(ClientGameTestContext context, Fixture fixture) {
+        // This guard injects a focused EditBox without adding a hit target. Keep the
+        // native right-click away from Flow/Watch rows left under an earlier test's cursor.
+        context.getInput().setCursorPos(0, 0);
         MouseButtonInfo right = new MouseButtonInfo(InputConstants.MOUSE_BUTTON_RIGHT, 0);
         try {
             context.runOnClient(client -> {
@@ -163,6 +169,7 @@ public final class DebuggerPeekUiGameTest implements FabricClientGameTest {
                 require(!fixture.input().isUiHidden(), "mouse recovery does not bypass a focused text field");
                 client.mouseHandler.onButton(client.getWindow().handle(), right, InputConstants.RELEASE);
                 require(!fixture.input().isUiHidden(), "mouse release in a text field cannot toggle");
+                require(ScreenLayers.get(fixture.screen()) == null, "text-focus guard does not open an unrelated row menu");
             });
         } finally {
             context.runOnClient(client -> {

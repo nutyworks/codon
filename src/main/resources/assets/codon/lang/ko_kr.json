@@ -179,6 +179,7 @@
   "codon.breakpoint.saved_definitions_header": "저장된 중단점: %s개",
   "codon.breakpoint.saved_line_definitions": "저장된 줄 중단점: %s개\n클릭: 저장된 중단점 켜기/끄기\n우클릭: 조건 편집",
   "codon.source.stage_breakpoints": "단계 중단점 %s개",
+  "codon.source.line_breakpoint_hint": "줄 중단점: %s\n클릭: 줄 중단점 켜기/끄기\n우클릭: 줄 중단점 조건 편집",
   "codon.source.select_command_or_stage": "명령 또는 단계를 선택하세요",
   "codon.source.no_stage_here": "이 위치에는 단계 중단점을 설정할 수 없습니다",
   "codon.watch.title": "감시 항목",

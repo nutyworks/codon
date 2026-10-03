@@ -179,6 +179,7 @@
   "codon.breakpoint.saved_definitions_header": "Saved breakpoints: %s",
   "codon.breakpoint.saved_line_definitions": "Saved line breakpoints: %s\nClick: toggle saved breakpoints\nRight-click: edit conditions",
   "codon.source.stage_breakpoints": "%s stage breakpoints",
+  "codon.source.line_breakpoint_hint": "Line breakpoint: %s\nClick: toggle line breakpoint\nRight-click: edit line condition",
   "codon.source.select_command_or_stage": "Select a command or stage",
   "codon.source.no_stage_here": "No stage breakpoint can be placed here",
   "codon.watch.title": "Watches",

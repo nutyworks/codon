@@ -134,7 +134,7 @@ public final class DebuggerTooltipGameTest implements FabricClientGameTest {
             var state = CodonClientMod.state();
             var location = new SourceLocation.Function(new FunctionLocation(FUNCTION, 1));
             state.breakpoints().reset();
-            state.breakpoints().acceptPage(1, 0, true, List.of(BreakpointDefinition.plain(BreakpointTarget.stage(location, 0, COMMAND))));
+            state.breakpoints().acceptPage(1, 0, true, List.of(BreakpointDefinition.plain(BreakpointTarget.whole(location))));
             state.stagePreviews().reset();
             long preview = state.stagePreviews().begin(location);
             state.stagePreviews().accept(preview, location, ClientStagePreviewState.Status.READY, COMMAND,
@@ -150,7 +150,8 @@ public final class DebuggerTooltipGameTest implements FabricClientGameTest {
         context.runOnClient(client -> capture = null);
         context.waitTicks(3);
         assertCapture("Source saved line " + name);
-        require(capture.rows() >= 3, "saved count and both mouse hints are separate lines");
+        require(capture.rows() >= 3 && capture.text().contains(BreakpointUi.condition(works.nuty.codon.core.model.BreakpointCondition.ALWAYS)),
+            "Exact line condition and both mouse hints are visible on separate lines");
         context.takeScreenshot("codon-tooltip-source-" + name);
         context.runOnClient(client -> {
             var state = CodonClientMod.state();
@@ -165,6 +166,17 @@ public final class DebuggerTooltipGameTest implements FabricClientGameTest {
         context.runOnClient(client -> { ScreenLayers.close(ScreenLayers.get(screen)); capture = null; });
         context.waitTicks(3);
         assertCapture("disabled saved line recovers after modal closes " + name);
+        context.runOnClient(client -> {
+            var location = new SourceLocation.Function(new FunctionLocation(FUNCTION, 1));
+            CodonClientMod.state().breakpoints().acceptPage(3, 0, true,
+                List.of(BreakpointDefinition.plain(BreakpointTarget.stage(location, 0, COMMAND))));
+            capture = null;
+        });
+        context.waitTicks(3);
+        assertCapture("legacy stage stays separate from the gutter line " + name);
+        require(capture.text().contains(Component.translatable("codon.source.no_breakpoint").getString())
+            && capture.text().contains(Component.translatable("codon.source.stage_breakpoints", 1).getString()),
+            "Legacy stage count remains visible without claiming a saved whole-line breakpoint");
     }
 
     private static void checkText(Font font, String language) {

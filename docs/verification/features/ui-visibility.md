@@ -46,6 +46,9 @@ pause for visual coverage; the freecam resume fixture executes real command bloc
 The focus check sets the window's focused flag because Fabric cancels native focus
 callbacks. The mouse regression omits the outside-window release callback and
 checks the first fresh press, continued-hold suppression and text-field guard.
+The injected text-field guard places the cursor in a blank corner and requires
+no row menu to open, so a prior test's pointer cannot change which screen receives
+the following menu-close gesture. See the [UI polish validation record](../ui-polish-validation.md).
 Manual window switching remains necessary to observe platform-specific lost releases.
 Use real short taps and sustained holds when judging the 250 ms threshold; automated
 boundary assertions establish classification, not a user's timing preference.
