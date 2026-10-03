@@ -3,6 +3,8 @@ package works.nuty.codon.client.ui;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.components.events.GuiEventListener;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import org.jspecify.annotations.Nullable;
 import works.nuty.codon.client.input.InputManager;
@@ -19,6 +21,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 
@@ -30,7 +33,7 @@ public final class WatchPanel {
     private static final Bounds EMPTY = new Bounds(0, 0, 0, 0);
     private static final int HEADER = 23;
     private static final int BOTTOM_PADDING = 3;
-    private static final int ACTION_SIZE = 16;
+    private static final int LABEL_HEIGHT = 16;
     private static final int KIND_ICON_INSET = 11;
     private static final int DIVIDER_MARGIN = 2;
     private static final int DIVIDER_TOP_MARGIN = 1;
@@ -46,7 +49,8 @@ public final class WatchPanel {
     private final Set<String> used = new HashSet<>();
     private Bounds bounds = EMPTY;
     private Bounds scrollBounds = EMPTY;
-    private Bounds actionReveal = EMPTY;
+    private final Map<Long, Bounds> rowBounds = new LinkedHashMap<>();
+    private long contextMenuId;
     private int offset;
     private int maximum;
     private long selectedId;
@@ -74,6 +78,7 @@ public final class WatchPanel {
     public void clearBounds() {
         bounds = scrollBounds = groupingTriggerBounds = groupingMenuBounds = EMPTY;
         groupingChoices.clear();
+        rowBounds.clear();
     }
     public boolean groupingMenuOpen() { return groupingMenuOpen && groupingMenuBounds.width() > 0; }
     public boolean groupingTriggerContains(double x, double y) { return groupingTriggerBounds.contains(x, y); }
@@ -220,17 +225,6 @@ public final class WatchPanel {
             navigation.add("watch-row-" + entry.id(), DebuggerNavigation.Group.WATCH, index, 0, reveal);
             if (stackedValues)
                 navigation.add("watch-value-" + entry.id(), DebuggerNavigation.Group.WATCH, index, 0, reveal);
-            if (entry.automatic()) {
-                navigation.add("watch-copy-" + entry.id(), DebuggerNavigation.Group.WATCH, index, 3, reveal);
-                navigation.add("watch-keep-" + entry.id(), DebuggerNavigation.Group.WATCH, index, 4, reveal);
-            }
-            else {
-                if (entry.spec().kind() != WatchSpec.Kind.STORAGE_NBT && (entry.spec().isPinned() || executor(entry) != null))
-                    navigation.add("watch-pin-" + entry.id(), DebuggerNavigation.Group.WATCH, index, 1, reveal);
-                navigation.add("watch-copy-" + entry.id(), DebuggerNavigation.Group.WATCH, index, 2, reveal);
-                navigation.add("watch-edit-" + entry.id(), DebuggerNavigation.Group.WATCH, index, 3, reveal);
-                navigation.add("watch-remove-" + entry.id(), DebuggerNavigation.Group.WATCH, index, 4, reveal);
-            }
         }
         if (rows.isEmpty()) WatchUi.line(graphics, font, text("empty").getString(), bounds.x() + 7, bounds.y() + bodyStart + 7, bounds.width() - 14, MUTED);
         for (int index = 0; index < displayed; index++) {
@@ -266,8 +260,11 @@ public final class WatchPanel {
                 continue;
             }
             var entry = row.entry();
-            int rowWidth = Math.max(1, bounds.width() - 86);
-            boolean highlighted = entry.id() == selectedId && System.nanoTime() < highlightedUntil;
+            int rowWidth = Math.max(1, bounds.width() - 14);
+            Bounds rowArea = new Bounds(bounds.x() + 4, y, bounds.width() - 10, rowHeight - 1);
+            rowBounds.put(entry.id(), rowArea);
+            boolean highlighted = entry.id() == contextMenuId
+                || entry.id() == selectedId && System.nanoTime() < highlightedUntil;
             boolean focused = keyboardFocused("watch-row-" + entry.id(), interactive)
                 || keyboardFocused("watch-value-" + entry.id(), interactive);
             var inspectionBounds = WatchPanelLayout.inspectionBounds(bounds, y, rowHeight);
@@ -284,7 +281,7 @@ public final class WatchPanel {
             int lineSpacing = font.lineHeight + 3;
             int textHeight = font.lineHeight + (row.showScope() ? lineSpacing : 0);
             // Match button text centering, including the font's baseline adjustment.
-            int textY = stackedValues ? y + 1 + (ACTION_SIZE - font.lineHeight) / 2 + 1
+            int textY = stackedValues ? y + 1 + (LABEL_HEIGHT - font.lineHeight) / 2 + 1
                 : y + (rowHeight - textHeight) / 2 + 1;
             int labelColor = row.muted() ? MUTED : TEXT;
             int kindInset = row.icon() == null ? 0 : KIND_ICON_INSET;
@@ -302,7 +299,7 @@ public final class WatchPanel {
             Component inspectionLabel = text("inspect", WatchFormatting.specification(entry.spec()).getString());
             Tooltip inspectionTooltip = Tooltip.create(text("section." + entry.spec().kind().name().toLowerCase(java.util.Locale.ROOT))
                 .copy().append(" · ").append(text("inspect", WatchFormatting.specification(entry.spec()).getString()))
-                .append("\n").append(scope(entry)));
+                .append("\n").append(scope(entry)).append("\n").append(text("menu.hint")));
             for (int line = 0; line < inspectionBounds.size(); line++) {
                 button((line == 0 ? "watch-row-" : "watch-value-") + entry.id(), inspectionBounds.get(line),
                     inspectionLabel, true, entry.id() == selectedId,
@@ -311,48 +308,9 @@ public final class WatchPanel {
                         navigation.requestFocus("watch-row-" + entry.id());
                         client.gui.setScreen(new WatchDetailsScreen(input, state, overlay, entry.id()));
                     },
-                    navigation, offset + index, 0).asHitSurface().setTooltip(inspectionTooltip);
-            }
-            actionReveal = new Bounds(bounds.x() + 3, y, bounds.width() - 6, rowHeight - 1);
-            int actionX = bounds.x() + bounds.width() - 76;
-            int actionY = stackedValues ? y + 1 : y + (rowHeight - ACTION_SIZE) / 2;
-            if (entry.automatic()) {
-                button("watch-copy-" + entry.id(), new Bounds(actionX + 34, actionY, ACTION_SIZE, ACTION_SIZE), text("details.copy_value"), true, false,
-                    () -> copyValue(entry), navigation, offset + index, 3)
-                    .withSmallIcon(DebuggerIcon.COPY_UUID).withSingleLineTooltip(text("details.copy_value"));
-                button("watch-keep-" + entry.id(), new Bounds(actionX + 51, actionY, ACTION_SIZE, ACTION_SIZE), text("keep"), true, false,
-                    () -> {
-                        if (state.watches().pinChange(entry.id())) notice(text("feedback.added", WatchFormatting.specification(entry.spec()).getString()));
-                    }, navigation, offset + index, 4).withIcon(DebuggerIcon.WATCHES)
-                    .withSingleLineTooltip(text("keep"));
-            } else {
-                if (entry.spec().kind() != WatchSpec.Kind.STORAGE_NBT) {
-                    boolean pinned = entry.spec().isPinned();
-                    EntityRef target = executor(entry);
-                    String targetLabel = target == null ? text("status.no_executor").getString()
-                        : target.name() + " #" + target.uuid().toString().substring(0, 8);
-                    button("watch-pin-" + entry.id(), new Bounds(actionX, actionY, ACTION_SIZE, ACTION_SIZE), text(pinned ? "unpin" : "pin"),
-                        pinned || executor(entry) != null, pinned, () -> togglePin(entry.id()), navigation, offset + index, 1)
-                        .withSmallIcon(DebuggerIcon.PIN).withStatusColor(pinned ? TEAL : MUTED, TEAL_SURFACE)
-                        .withSingleLineTooltip(pinned ? text("unpin")
-                            : target == null ? text("pin_unavailable") : text("tooltip.pin_context", targetLabel));
-                }
-                button("watch-copy-" + entry.id(), new Bounds(actionX + 17, actionY, ACTION_SIZE, ACTION_SIZE), text("details.copy_value"), true, false,
-                    () -> copyValue(entry), navigation, offset + index, 2)
-                    .withSmallIcon(DebuggerIcon.COPY_UUID).withSingleLineTooltip(text("details.copy_value"));
-                button("watch-edit-" + entry.id(), new Bounds(actionX + 34, actionY, ACTION_SIZE, ACTION_SIZE), text("edit"), true, false,
-                    () -> {
-                        navigation.requestFocus("watch-edit-" + entry.id());
-                        client.gui.setScreen(WatchScreen.edit(input, state, overlay, entry.id()));
-                    },
-                    navigation, offset + index, 3).withSmallIcon(DebuggerIcon.EDIT).withSingleLineTooltip(text("edit"));
-                button("watch-remove-" + entry.id(), new Bounds(actionX + 51, actionY, ACTION_SIZE, ACTION_SIZE), text("remove"), true, false,
-                    () -> {
-                        removedWatch = state.watches().removeForUndo(entry.id());
-                        undoUntil = System.nanoTime() + 8_000_000_000L;
-                        notice(text("feedback.removed", WatchFormatting.specification(entry.spec()).getString()));
-                    },
-                    navigation, offset + index, 4).withSmallIcon(DebuggerIcon.REMOVE).withSingleLineTooltip(text("remove"));
+                    navigation, offset + index, 0).asHitSurface()
+                    .withSecondaryAction(() -> openContextMenu(entry.id(), rowArea, input, overlay))
+                    .setTooltip(inspectionTooltip);
             }
         }
         if (focusRequested) navigation.requestFocus("watch-row-" + selectedId);
@@ -369,6 +327,80 @@ public final class WatchPanel {
             graphics.setTooltipForNextFrame(font, notice, mouseX, mouseY);
         buttons.keySet().retainAll(used);
         return List.copyOf(controls);
+    }
+
+    /** Keyboard entry uses only the currently focused Watch row, never a remembered selection elsewhere. */
+    public boolean openContextMenu(@Nullable GuiEventListener focused, InputManager input, DebuggerOverlay overlay) {
+        if (focused == null) return false;
+        for (var row : rowBounds.entrySet()) {
+            long id = row.getKey();
+            if (buttons.get("watch-row-" + id) == focused || buttons.get("watch-value-" + id) == focused)
+                return openContextMenu(id, row.getValue(), input, overlay);
+        }
+        return false;
+    }
+
+    private ClientWatchState.@Nullable Entry entry(long id) {
+        return state.watches().displayedEntries().stream().filter(candidate -> candidate.id() == id).findFirst().orElse(null);
+    }
+
+    private boolean openContextMenu(long id, Bounds anchor, InputManager input, DebuggerOverlay overlay) {
+        Screen parent = Minecraft.getInstance().gui.screen();
+        var entry = entry(id);
+        if (parent == null || entry == null) return false;
+        long generation = state.watches().generation();
+        selectedId = id;
+        overlay.closeViewMenu();
+        closeGroupingMenu();
+        overlay.scrollbars().release();
+        var menu = new WatchContextMenu(parent, anchor, WatchFormatting.specification(entry.spec()),
+            () -> menuItems(id, generation, input, overlay), event -> {
+                // A docked Source panel owns its covered pixels even while this layer is open.
+                if (parent instanceof FunctionSourceScreen source && source.containsPanel(event.x(), event.y())) return false;
+                for (var row : rowBounds.entrySet()) {
+                    if (row.getValue().contains(event.x(), event.y()))
+                        return openContextMenu(row.getKey(), row.getValue(), input, overlay);
+                }
+                return false;
+            }, () -> {
+                contextMenuId = 0;
+                overlay.navigation().requestFocus(entry(id) == null ? "watch-add" : "watch-row-" + id);
+            });
+        if (parent instanceof FunctionSourceScreen) parent.setFocused(null);
+        ScreenLayers.open(parent, menu);
+        contextMenuId = id;
+        return true;
+    }
+
+    private List<WatchContextMenu.Item> menuItems(long id, long generation, InputManager input, DebuggerOverlay overlay) {
+        if (generation != state.watches().generation()) return List.of();
+        var entry = entry(id);
+        if (entry == null) return List.of();
+        List<WatchContextMenu.Item> items = new ArrayList<>();
+        items.add(new WatchContextMenu.Item(text("details.copy_value"), DebuggerIcon.COPY_UUID, true, null, () -> copyValue(entry)));
+        if (entry.automatic()) {
+            items.add(new WatchContextMenu.Item(text("menu.add_watch"), DebuggerIcon.WATCHES, true, text("keep"), () -> {
+                if (state.watches().pinChange(id)) notice(text("feedback.added", WatchFormatting.specification(entry.spec()).getString()));
+                else notice(text("feedback.duplicate"));
+            }));
+        } else {
+            if (entry.spec().kind() != WatchSpec.Kind.STORAGE_NBT) {
+                boolean pinned = entry.spec().isPinned();
+                EntityRef target = executor(entry);
+                String targetLabel = target == null ? "" : target.name() + " #" + target.uuid().toString().substring(0, 8);
+                items.add(new WatchContextMenu.Item(text(pinned ? "unpin" : "pin"), DebuggerIcon.PIN,
+                    pinned || target != null, pinned ? text("tooltip.unpin")
+                        : target == null ? text("pin_unavailable") : text("tooltip.pin_context", targetLabel), () -> togglePin(id)));
+            }
+            items.add(new WatchContextMenu.Item(text("edit"), DebuggerIcon.EDIT, true, null,
+                () -> Minecraft.getInstance().gui.setScreen(WatchScreen.edit(input, state, overlay, id))));
+            items.add(new WatchContextMenu.Item(text("menu.delete"), DebuggerIcon.DELETE, true, null, () -> {
+                removedWatch = state.watches().removeForUndo(id);
+                undoUntil = System.nanoTime() + 8_000_000_000L;
+                notice(text("feedback.removed", WatchFormatting.specification(entry.spec()).getString()));
+            }));
+        }
+        return items;
     }
 
     private List<Row> rows(List<ClientWatchState.Entry> entries) {
@@ -502,8 +534,6 @@ public final class WatchPanel {
         DebuggerButton button = buttons.computeIfAbsent(id, ignored -> new DebuggerButton());
         button.configure(b.x(), b.y(), b.width(), b.height(), label, active, selected, false, false, action);
         button.withoutChrome();
-        if (row >= 0 && column > 0 && !selected)
-            button.revealOnHover(actionReveal.x(), actionReveal.y(), actionReveal.width(), actionReveal.height());
         if (selected) button.withStatusColor(TEAL, TEAL_SURFACE);
         used.add(id); controls.add(button);
         // Logical rows were registered for hidden entries; bind only the controls in the viewport.

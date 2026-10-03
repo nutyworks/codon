@@ -8,15 +8,16 @@ leaders leave more room for names/values. Groups have an arrow, item count and
 neutral header background, with spacing between groups. Click anywhere on the
 header or focus it and press Enter/Space to collapse or expand it. Collapsed children
 are excluded from rendering, hitboxes and keyboard navigation; explicit watch reveals
-expand their group. This is local display state only. Narrow stacked rows and all
-Add, grouping, pin, copy, edit, delete and Undo controls retain their action targets.
+expand their group. This is local display state only. Add, grouping and Undo stay in the panel header.
+Row management uses a right-click menu; left-clicking the name or value still opens Details.
 Watch row hover uses a subtle neutral fill; keyboard focus uses a stronger neutral
 fill plus a small filled corner caret; an explicitly revealed watch retains its
 temporary teal fill. Group headers show Δ changed values and ! read issues
 (invalid paths, size limits, errors and unavailable reads), including while collapsed.
-Observation continues independently of collapse. Row action space is always reserved;
-unselected actions appear on row hover or their own keyboard focus. No row
-outline is drawn. Native clipping/keyboard/appearance checks remain manual acceptance work.
+Observation continues independently of collapse. Rows reclaim the 72 logical pixels
+formerly reserved for inline actions. Name/value hit surfaces use the available row
+width, including stacked name lines; hover does not change widths or cover values.
+No row outline is drawn. Native clipping/keyboard/appearance checks remain manual acceptance work.
 The nested NBT section uses only a top divider; value rows, pin controls and Retry
 share flat chrome instead of a box around every item. NBT and Watch pin icons are
 teal when present/fixed and muted otherwise; hover never changes that state color.
@@ -29,10 +30,19 @@ permits, the empty NBT area explains that no historical NBT was captured. A reco
 context which still maps to a live occurrence may show NBT, explicitly labeled as
 a current-pause read rather than a historical value. Query/occurrence matching is unchanged. Keyboard focus uses a filled corner
 caret, and the scrollbar is neutral. Foreground text/icons bypass panel opacity.
-Expansion, pin/right-click actions, disabled states and hit bounds are unchanged.
+NBT expansion, Watch-add/right-click actions, disabled states and hit bounds are unchanged.
 Watch forms and details return to the existing originating screen, retaining its
 selection/search/scroll and restoring semantic widget or HUD-row focus. Returning
 from Edit in details restores the same expanded view and text offset.
+
+Context-menu validation: `JAVA_HOME=<JDK 25> ./gradlew compileClientJava
+processResources --console=plain` passed; log: `../watch-context-menu-compile.log`.
+The supplied Library screenshot `Screenshot 2026-10-03 at 14.07.55.png` was
+materialized and visually inspected before editing. No post-change game/GUI run,
+automated test run, or test edit was performed. Native pointer/keyboard/focus,
+edge clipping and scaling acceptance remain unverified. The existing
+`WatchPanelLayoutTest` encodes the old inline-action reservation and requires
+adaptation in a separately authorized test-update stage.
 
 Research-follow-up validation: `JAVA_HOME=<JDK 25> ./gradlew compileClientJava
 processResources --console=plain` passed; evidence is `../ui-research-followup-compile.log`
@@ -94,14 +104,22 @@ data modify storage codon:verify counter set value 0
    strip scrolls the results; confirm normal field drag and keyboard selection.
    Click the scrollbar track, grab its thumb without a jump, drag outside the
    list and release. Capture must end on release, resize, page loss or closing.
-9. At 427x240, open View → Watches. Compact rows put name/actions above a value
+9. At 427x240, open View → Watches. Compact rows put a full-width name above a value
    line; scope moves into the row tooltip and full-text inspector. Inspect shortened
    names and long values, check numeric/error states, scroll past the visible rows,
    and use Add, pin/unpin, Copy, Edit, Delete and Undo. Compare a regular viewport
    in English/Korean, following game scale and using a custom Codon scale.
    Hover the far right of the compact value line: its tooltip must appear. Click
-   the same point to open Details, then check the name line's management buttons
-   still use their own targets.
+   the same point to open Details. Right-click either line to manage that Watch.
+   Focus the row and press Shift+F10, then use Up/Down, Tab and Enter/Space.
+   Check Copy/Edit/Delete, target fixing/following, disabled fixing without an
+   executor, and automatic-change Add to Watches. Storage rows have no executor
+   action. NBT Watch-add behavior is separate from fixing an existing Watch target.
+   The menu stays within the screen; small viewports scroll its items. Right-click
+   another visible row to retarget it. Escape and outside clicks close it and restore
+   row focus without clicking the row below. Menu actions dismiss before executing,
+   and a removed Watch/world change invalidates the menu. Repeat with Source docked
+   to check menu layering and that Source-covered pixels cannot retarget it.
    In Details at 320x240, the footer wraps to two rows clear of the scrollable text.
    Check Copy value/path, Retry, Edit and Close hitboxes. More/Less retains focus on
    the same toggle; Tab then reaches Edit when expanded and Retry when collapsed.
@@ -134,6 +152,7 @@ the repaired values and establish a complete baseline.
 - [ClientWatchState](../../../src/client/java/works/nuty/codon/client/state/ClientWatchState.java), [ClientNbtState](../../../src/client/java/works/nuty/codon/client/state/ClientNbtState.java): requests, values and selected target.
 - [WatchPanel](../../../src/client/java/works/nuty/codon/client/ui/WatchPanel.java), [WatchScreen](../../../src/client/java/works/nuty/codon/client/ui/WatchScreen.java), [NbtTreePanel](../../../src/client/java/works/nuty/codon/client/ui/NbtTreePanel.java): user interaction.
 - [WatchFormLayout](../../../src/client/java/works/nuty/codon/client/ui/layout/WatchFormLayout.java): shared form columns and vertical slots.
+- [WatchContextMenu](../../../src/client/java/works/nuty/codon/client/ui/WatchContextMenu.java): row-scoped modal dropdown hosted by ScreenLayers, with guarded actions and keyboard/pointer handling.
 - [WatchPickerScreen](../../../src/client/java/works/nuty/codon/client/ui/WatchPickerScreen.java), [WatchPickerLayout](../../../src/client/java/works/nuty/codon/client/ui/layout/WatchPickerLayout.java): Browse dialog drawing, controls and hit bounds.
 - [WatchDetailsScreen](../../../src/client/java/works/nuty/codon/client/ui/WatchDetailsScreen.java), [WatchDetailsLayout](../../../src/client/java/works/nuty/codon/client/ui/layout/WatchDetailsLayout.java): full-value viewport and responsive footer.
 

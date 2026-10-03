@@ -35,14 +35,16 @@ public final class CodonScreen extends ScaledCodonScreen {
         }
         GuiEventListener focused = getFocused();
         overlay.navigation().rememberFocus(focused);
-        List<DebuggerButton> buttons = overlay.render(graphics, mouseX, mouseY, partialTick, true, input);
+        boolean covered = ScreenLayers.get(minecraft.gui.screen()) != null;
+        if (covered) setFocused(null);
+        List<DebuggerButton> buttons = overlay.render(graphics, covered ? -1 : mouseX, covered ? -1 : mouseY, partialTick, true, input);
         if (!registered.equals(buttons)) {
             setFocused(null);
             clearWidgets();
             buttons.forEach(this::addWidget);
             registered = buttons;
         }
-        setFocused(overlay.navigation().restoreFocus(focused, minecraft.getLastInputType().isKeyboard()));
+        setFocused(covered ? null : overlay.navigation().restoreFocus(focused, minecraft.getLastInputType().isKeyboard()));
     }
 
     @Override
@@ -130,6 +132,11 @@ public final class CodonScreen extends ScaledCodonScreen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
+        if (!input.isUiHidden() && event.key() == InputConstants.KEY_F10 && event.hasShiftDown()
+            && overlay.watchPanel().openContextMenu(getFocused(), input, overlay)) {
+            while (input.breakpointKey.consumeClick()) { }
+            return true;
+        }
         if (input.handleHideKey(event, InputConstants.PRESS)) {
             suspendPointerInteraction();
             return true;

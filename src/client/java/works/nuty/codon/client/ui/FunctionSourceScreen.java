@@ -202,7 +202,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         hoveredLine = hoveredStage = -1;
     }
 
-    private boolean containsPanel(double x, double y) {
+    boolean containsPanel(double x, double y) {
         return x >= left && x < left + panelWidth && y >= top && y < top + panelHeight;
     }
 

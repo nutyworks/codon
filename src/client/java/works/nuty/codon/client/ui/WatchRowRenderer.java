@@ -8,7 +8,7 @@ import works.nuty.codon.client.state.ClientWatchState;
 public final class WatchRowRenderer {
     private WatchRowRenderer() { }
 
-    /** Compact HUD rows reserve the full lower line for the value, clear of management controls. */
+    /** Compact HUD rows use full-width name and value lines. */
     public static void renderStacked(GuiGraphicsExtractor graphics, Font font, ClientWatchState.Entry entry,
                                      boolean paused, String label, int x, int y, int labelWidth, int valueWidth,
                                      int kindInset, int labelColor, int valueColor) {

@@ -536,5 +536,9 @@
   "codon.ui.flow_detail.results": "Contexts %s · Runs %s · Successes %s",
   "codon.ui.flow_detail.contexts": "In %s → Out %s · Excluded %s",
   "codon.ui.flow_detail.count_hint": "0 is an observed count. ? means the count was not recorded; it does not mean zero.",
-  "codon.ui.flow_detail.trace_warning": "Trace: %s"
+  "codon.ui.flow_detail.trace_warning": "Trace: %s",
+  "codon.watch.menu.title": "Watch actions",
+  "codon.watch.menu.hint": "Right-click or Shift+F10: Watch actions",
+  "codon.watch.menu.add_watch": "Add to Watches",
+  "codon.watch.menu.delete": "Delete Watch"
 }
