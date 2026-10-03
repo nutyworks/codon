@@ -40,6 +40,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     private final BreakpointTarget markerTarget;
     private final Anchor anchor;
     private java.util.function.BooleanSupplier contextCurrent = () -> true;
+    private Runnable restoreFocus = () -> { };
     private BreakpointCondition.Kind kind;
     private BreakpointCondition.Comparison comparison;
     private String thresholdText;
@@ -88,6 +89,11 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
 
     BreakpointConditionScreen withContextGuard(java.util.function.BooleanSupplier current) {
         contextCurrent = current;
+        return this;
+    }
+
+    BreakpointConditionScreen withRestoreFocus(Runnable restoreFocus) {
+        this.restoreFocus = restoreFocus;
         return this;
     }
 
@@ -511,6 +517,11 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     }
 
     @Override public void onClose() { ScreenLayers.close(this); }
+
+    @Override public void removed() {
+        super.removed();
+        if (Minecraft.getInstance().gui.screen() == parent && contextCurrent.getAsBoolean()) restoreFocus.run();
+    }
     @Override public void extractBackground(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) { }
     @Override public boolean isPauseScreen() { return false; }
     @Override public boolean isInGameUi() { return true; }

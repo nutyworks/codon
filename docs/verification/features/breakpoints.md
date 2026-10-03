@@ -176,9 +176,10 @@ single-stage command stop, the Flow line target, disabled legacy condition acces
 on Continue, and the public Clear command. It also checks missing/LOADING preview actions,
 then READY condition Save and toggle against the same legacy target. Its server/world is disposable.
 
-Context-menu follow-up: Source line/stage and Flow clause/marker right-clicks open
-the shared bounded `DebuggerContextMenu`; Shift+F10 provides keyboard access. Flow's
-selected detail band supports the same action. The Source header's Line/Stage
+Condition access: Source and Flow breakpoint marker right-clicks open the exact
+condition editor directly, as does Shift+F10 on the current marker. Source text,
+Flow clauses and Flow's selected detail band retain the shared bounded
+`DebuggerContextMenu`; Watch menus are unchanged. The Source header's Line/Stage
 condition buttons and Flow's selected-condition footer button are removed. Opening
 a menu does not select an unobserved stage or enter a colored condition-edit mode.
 Actual pause amber, inspection teal in Flow, breakpoint shapes and enabled state
@@ -194,7 +195,12 @@ Validation: `JAVA_HOME=<JDK 25> ./gradlew compileClientJava processResources
 were edited/run and no game/GUI was launched. Existing list action/Undo, source
 condition-button, selected-color and compact-layout expectations are stale. Native
 menus, target navigation, focus return, modal invalidation and rendering remain
-unverified. Existing command-block-editor shortcut/hover behavior is unchanged.
+unverified. The focus-retention/direct-editor follow-up was also limited to client
+compilation/resources (`../breakpoint-focus-direct-editor-compile.log`), with no
+tests or game/GUI runs. Opening or cancelling an editor does not send a breakpoint
+edit. Flow's pending toggle disables activation while retaining the exact focused
+marker, and explicit navigation supersedes it without a later focus-stealing
+acknowledgement. Native pending/rebuild/menu-return interactions remain unverified.
 
 Authoritative Source/Flow marker mapping:
 

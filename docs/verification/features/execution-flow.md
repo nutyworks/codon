@@ -169,9 +169,9 @@ breakpoint coverage is listed in [Breakpoints](breakpoints.md). Keep native-flow
 assertions separate from screenshots produced by synthetic presentation fixtures.
 
 Condition/navigation follow-up: Flow's footer condition button is removed. Right-
-click a clause or breakpoint marker (or Shift+F10 on its keyboard target) for that marker
-or clause's exact condition target, without a line-versus-stage chooser. The selected detail band has the same
-menu, retaining keyboard access after list navigation. Right-clicking a future
+click a breakpoint marker (or Shift+F10 on that focused marker) to open its exact
+condition editor directly. Clauses and the selected detail band retain their
+condition menu, without a line-versus-stage chooser. Right-clicking a future
 stage does not select it or alter displayed contexts. Saved disabled breakpoints and unset breakpoint-capable stages
 stay visible as neutral hollow circles/diamonds, including run and terminal function
 stages. No definition is created until the existing marker action is activated.
@@ -193,7 +193,7 @@ and optional warning. Tab and Right follow this order through wrapped rows;
 Shift+Tab and Left reverse it. Up/Down move between visual rows. Tab leaves Flow at
 the last control, and Shift+Tab leaves at the first; entering Flow starts at the
 corresponding edge. Other debugger regions keep their existing Tab behavior.
-Off-screen controls reveal their row, pending/disabled markers are skipped, and
+Off-screen controls reveal their row, traversal skips pending/disabled markers, and
 wrapped continuations do not add breakpoint markers. Warning focus IDs use the
 recorded stage index so sparse recordings do not create phantom targets.
 Shift+F10 continues to use the focused control's exact condition target and return
@@ -201,3 +201,15 @@ focus to that control. Single-stage line mapping, Source, Watch and pause colors
 are unchanged. Validation is limited to client compilation and resources; no tests
 or game/GUI runs were performed. Native focus traversal and menu return remain
 unverified. Compile log: `../flow-focus-order-compile.log`.
+
+Toggling a focused breakpoint with Enter/Space keeps focus on that exact target
+while the request is pending and after its server update. Its disabled button and
+focus caret remain present; it cannot accept another toggle until ready. Focus
+identity includes the invocation and complete breakpoint target (location, stage
+and command fingerprint), rather than the recorded-stage list position or whether
+the stage has been observed. Explicit traversal or a different clicked control
+replaces that focus immediately; acknowledgements never restore an older target.
+The direct condition editor returns focus to its opening marker only while its
+source/flow context remains current. Opening or cancelling does not save a
+breakpoint. Validation: client compilation/resources only, log
+`../breakpoint-focus-direct-editor-compile.log`; no tests or game/GUI runs.

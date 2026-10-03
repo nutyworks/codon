@@ -134,11 +134,7 @@ public final class BreakpointListScreen extends ScaledCodonScreen {
         if (destination.unobserved()) state.selectUnobservedExecutionFlowStage(destination.stage());
         else state.selectExecutionFlowStage(destination.stage());
         var flow = state.selectedExecutionFlow();
-        String id = target.wholeCommand() && BreakpointTargetPolicy.stageCount(flow.stages().getFirst().command().text(),
-            state.stagePreviews().get(flow.location()), flow) > 1 ? "flow-line-" + flow.invocationId()
-            : destination.unobserved() ? "unobserved-breakpoint-" + flow.invocationId() + "-" + destination.stage()
-            : "breakpoint-" + flow.invocationId() + "-" + destination.stage();
-        screen.revealSelectedFlow(id);
+        screen.revealSelectedFlow(CommandPanel.breakpointFocusId(flow, target));
         Minecraft.getInstance().gui.setScreen(screen);
     }
 

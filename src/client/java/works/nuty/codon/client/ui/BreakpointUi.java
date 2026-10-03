@@ -132,7 +132,7 @@ public final class BreakpointUi {
         var definitions = target.wholeCommand() && stageCount == 1
             ? lineDefinitions(state, target.location(), command, stageCount) : List.<BreakpointDefinition>of();
         if (definitions.size() > 1) {
-            BreakpointContextMenu.open(parent, state, target,
+            BreakpointContextMenu.openEditor(parent, state, target,
                 anchor == null ? new works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds(parent.width / 2, parent.height / 2, 1, 1)
                     : new works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds(anchor.x(), anchor.y(), anchor.width(), anchor.height()),
                 current, () -> { });

@@ -231,7 +231,7 @@ public class DebuggerButton extends AbstractButton {
             || mouseY < revealY || mouseY >= revealY + revealHeight)) return;
         if (hitSurface) {
             // The owner paints hover/focus backgrounds before its row text.
-            if (active && keyboardFocus) DebuggerTheme.focusMark(graphics, getX() + 1, getY() + 1);
+            if (keyboardFocus) DebuggerTheme.focusMark(graphics, getX() + 1, getY() + 1);
             return;
         }
         int background = selected && active ? selectedSurface
@@ -261,7 +261,7 @@ public class DebuggerButton extends AbstractButton {
             else icon.draw(graphics, iconX, iconY, DebuggerTheme.foreground(foreground));
             graphics.disableScissor();
             if (!iconWithText) {
-                if (active && keyboardFocus) DebuggerTheme.focusMark(graphics, getX() + 1, getY() + 1);
+                if (keyboardFocus) DebuggerTheme.focusMark(graphics, getX() + 1, getY() + 1);
                 return;
             }
         }
@@ -276,7 +276,7 @@ public class DebuggerButton extends AbstractButton {
             : getX() - contentOffset + inset + (contentWidth - inset - font.width(text)) / 2,
             getY() + (height - font.lineHeight) / 2 + 1, DebuggerTheme.foreground(foreground), false);
         graphics.disableScissor();
-        if (active && keyboardFocus) DebuggerTheme.focusMark(graphics, getX() + 1, getY() + 1);
+        if (keyboardFocus) DebuggerTheme.focusMark(graphics, getX() + 1, getY() + 1);
     }
 
     private int paintColor(int color) { return opaqueColors ? color : DebuggerTheme.color(color); }

@@ -20,7 +20,8 @@ public final class DebuggerNavigation {
     public enum Group { TOOLBAR, VIEW_MENU, SOURCES, SOURCE_DETAILS, NBT, WATCH, WORLD, CALL_PATH, COMMAND, ACTIONS,
         WINDOW_HEADER, EDITOR, WATCH_LIST }
 
-    private record Target(String id, Group group, int row, int column, Runnable reveal) { }
+    private record Target(String id, Group group, int row, int column, Runnable reveal,
+                          boolean active, boolean retainWhenInactive) { }
     private static final Comparator<Target> ORDER = Comparator.comparing(Target::group)
         .thenComparingInt(Target::row).thenComparingInt(Target::column).thenComparing(Target::id);
     private final Map<String, Target> targets = new HashMap<>();
@@ -54,7 +55,12 @@ public final class DebuggerNavigation {
     }
 
     public void add(String id, Group group, int row, int column, Runnable reveal) {
-        targets.put(id, new Target(id, group, row, column, reveal));
+        targets.put(id, new Target(id, group, row, column, reveal, true, false));
+    }
+
+    /** Keep an existing focus while an asynchronous edit disables the control; traversal skips it. */
+    public void addRetained(String id, Group group, int row, int column, boolean active, Runnable reveal) {
+        targets.put(id, new Target(id, group, row, column, reveal, active, true));
     }
 
     /** Select the exact logical row after an explicit Add/Edit action, including off-screen rows. */
@@ -66,16 +72,19 @@ public final class DebuggerNavigation {
     }
 
     public void bind(String id, Group group, AbstractWidget button) {
-        if (!button.active || !button.visible) {
+        Target target = targets.get(id);
+        if (!button.visible || !button.active && (target == null || !target.retainWhenInactive())) {
             targets.remove(id);
             return;
         }
         visible.put(id, button);
-        targets.putIfAbsent(id, new Target(id, group, button.getY(), button.getX(), () -> { }));
+        targets.put(id, target == null
+            ? new Target(id, group, button.getY(), button.getX(), () -> { }, button.active, false)
+            : new Target(id, group, target.row(), target.column(), target.reveal(), button.active, target.retainWhenInactive()));
     }
 
     public void endFrame() {
-        ordered = targets.values().stream().sorted(ORDER).toList();
+        ordered = targets.values().stream().filter(Target::active).sorted(ORDER).toList();
         for (int i = 0; i < ordered.size(); i++) {
             AbstractWidget button = visible.get(ordered.get(i).id());
             if (button != null) button.setTabOrderGroup(i);

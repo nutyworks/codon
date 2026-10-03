@@ -22,15 +22,20 @@ final class BreakpointContextMenu {
                 var definition = state.breakpoints().get(target);
                 return List.of(new DebuggerContextMenu.Item(Component.translatable("codon.breakpoint.condition_action"),
                     BreakpointUi.icon(definition), state.breakpoints().ready() && !state.breakpoints().pending(target),
-                    definition == null ? null : Component.literal(BreakpointUi.condition(definition.condition())), () -> {
-                        if (!current.getAsBoolean() || !state.breakpoints().ready() || state.breakpoints().pending(target)) return;
-                        var latest = state.breakpoints().get(target);
-                        // Do not redirect a line marker to a legacy stage-zero definition.
-                        ScreenLayers.open(parent, new BreakpointConditionScreen(parent, state,
-                            latest == null ? BreakpointDefinition.plain(target) : latest, target,
-                            new BreakpointConditionScreen.Anchor(anchor.x(), anchor.y(), anchor.width(), anchor.height()))
-                                .withContextGuard(current));
-                    }));
+                    definition == null ? null : Component.literal(BreakpointUi.condition(definition.condition())),
+                    () -> openEditor(parent, state, target, anchor, current, restoreFocus)));
             }, ignored -> false, restoreFocus));
+    }
+
+    /** Markers open their exact editor directly, without creating a definition until Save. */
+    static void openEditor(Screen parent, ClientDebuggerState state, BreakpointTarget target, Bounds anchor,
+                           BooleanSupplier current, Runnable restoreFocus) {
+        if (!current.getAsBoolean() || !state.breakpoints().ready() || state.breakpoints().pending(target)) return;
+        var latest = state.breakpoints().get(target);
+        // Do not redirect a line marker to a legacy stage-zero definition.
+        ScreenLayers.open(parent, new BreakpointConditionScreen(parent, state,
+            latest == null ? BreakpointDefinition.plain(target) : latest, target,
+            new BreakpointConditionScreen.Anchor(anchor.x(), anchor.y(), anchor.width(), anchor.height()))
+                .withContextGuard(current).withRestoreFocus(restoreFocus));
     }
 }

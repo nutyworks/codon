@@ -39,13 +39,16 @@ be checked. The viewer lists functions actually loaded by the current server.
 2. Select an executable line. Toggle its gutter marker to the **left of the line number**.
    The line number itself only selects the row. A line with exactly one server-parsed stage
    has only the line control: no inline stage marker, stage hit box, or Stage condition button.
-   For multiple-stage lines, toggle the parsed stage's marker. Right-click a line
-   for its line condition, or a stage for that exact stage condition. The marker
+   For multiple-stage lines, toggle the parsed stage's marker. Right-click a marker
+   to open its exact condition editor directly. Right-click line/stage text to keep
+   using its condition menu. The marker
    before the line number always owns the line target; a stage-prefix marker always
    owns its exact stage target. No line-versus-stage chooser is shown.
    The two header buttons are removed, including their extra 22-pixel compact row.
-   Shift+F10 opens the same menu for the selected source line/stage when the code
-   owns focus. Menus support arrows, Tab, Enter/Space, Escape and outside dismissal.
+   Shift+F10 on the current marker opens its editor directly; other source code
+   focus retains its line/stage menu. Closing the editor retains the exact marker
+   target. Opening/cancelling does not create a breakpoint. Menus support arrows,
+   Tab, Enter/Space, Escape and outside dismissal.
    Right-click does not change the inspected line/stage. Breakpoints refer to original
    file line numbers and saved stage
    offsets, not wrapped display rows. Stage markers are inserted at the server-confirmed boundaries inside the
