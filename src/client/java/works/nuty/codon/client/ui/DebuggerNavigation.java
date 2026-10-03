@@ -125,6 +125,18 @@ public final class DebuggerNavigation {
         if (key == InputConstants.KEY_TAB) {
             if (ordered.isEmpty()) return false;
             int direction = event.hasShiftDown() ? -1 : 1;
+            // Flow exposes each marker immediately before its clause. Traverse those
+            // controls before leaving the region, including wrapped/off-screen cells.
+            if (cursor != null && cursor.group() == Group.COMMAND) {
+                Target current = targets.getOrDefault(cursor.id(), cursor);
+                for (Target candidate : direction > 0 ? ordered : ordered.reversed()) {
+                    if (candidate.group() == Group.COMMAND
+                        && Integer.signum(ORDER.compare(candidate, current)) == direction) {
+                        move(candidate, focus);
+                        return true;
+                    }
+                }
+            }
             List<Group> groups = ordered.stream().map(Target::group).distinct().toList();
             Group destination = null;
             for (Group group : direction > 0 ? groups : groups.reversed()) {
@@ -134,7 +146,9 @@ public final class DebuggerNavigation {
                 }
             }
             if (destination == null) destination = direction > 0 ? groups.getFirst() : groups.getLast();
-            Target remembered = targets.get(groupCursors.get(destination));
+            // Enter Flow at its reading-order edge so reversing Tab reverses the
+            // same path. Other regions retain their remembered-item navigation.
+            Target remembered = destination == Group.COMMAND ? null : targets.get(groupCursors.get(destination));
             Group chosenGroup = destination;
             List<Target> members = ordered.stream().filter(target -> target.group() == chosenGroup).toList();
             move(remembered != null ? remembered : direction > 0 ? members.getFirst() : members.getLast(), focus);

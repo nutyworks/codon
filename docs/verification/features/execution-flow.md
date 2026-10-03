@@ -186,3 +186,18 @@ Flow/stage and reveals it without sending breakpoint edits; unavailable destinat
 remain listed with an explanation. Compilation/resources passed, with evidence in
 `../breakpoint-context-navigation-compile.log`. No tests or game/GUI were run; native
 menu/focus/scroll behavior and appearance remain unverified.
+
+Flow keyboard traversal follows visual reading order: the whole-command marker
+comes first when present, then each stage's marker immediately precedes its clause
+and optional warning. Tab and Right follow this order through wrapped rows;
+Shift+Tab and Left reverse it. Up/Down move between visual rows. Tab leaves Flow at
+the last control, and Shift+Tab leaves at the first; entering Flow starts at the
+corresponding edge. Other debugger regions keep their existing Tab behavior.
+Off-screen controls reveal their row, pending/disabled markers are skipped, and
+wrapped continuations do not add breakpoint markers. Warning focus IDs use the
+recorded stage index so sparse recordings do not create phantom targets.
+Shift+F10 continues to use the focused control's exact condition target and return
+focus to that control. Single-stage line mapping, Source, Watch and pause colors
+are unchanged. Validation is limited to client compilation and resources; no tests
+or game/GUI runs were performed. Native focus traversal and menu return remain
+unverified. Compile log: `../flow-focus-order-compile.log`.

@@ -371,26 +371,35 @@ public final class CommandPanel {
         for (CommandFlowLayout.Cell cell : layout.cells()) {
             Part part = parts.get(cell.partIndex());
             int stageIndex = part.stageIndex();
-            if (commandMarker && cell.partIndex() == 0 && cell.first()) {
-                Runnable reveal = () -> commandOffset = DebuggerOverlay.revealRow(cell.row(), commandOffset, rows, maxCommandOffset);
-                navigation.add("flow-line-" + flow.invocationId(), navigationGroup, cell.row() * 3, cell.x(), reveal);
+            Runnable reveal = () -> commandOffset = DebuggerOverlay.revealRow(cell.row(), commandOffset, rows, maxCommandOffset);
+            // Keep each cell's marker, clause and warning together in visual reading order.
+            // Four slots also leave room for the first cell's whole-command marker.
+            int column = cell.x() * 4;
+            if (commandMarker && cell.partIndex() == 0 && cell.first()
+                && state.breakpoints().ready() && !state.breakpoints().pending(BreakpointTarget.whole(flow.location()))) {
+                navigation.add("flow-line-" + flow.invocationId(), navigationGroup, cell.row(), column++, reveal);
             }
             if (stageIndex >= 0) {
-                Runnable reveal = () -> commandOffset = DebuggerOverlay.revealRow(cell.row(), commandOffset, rows, maxCommandOffset);
-                if (cell.first() && editableSource) navigation.add("breakpoint-" + flow.invocationId() + "-" + stageIndex,
-                    navigationGroup, cell.row() * 3, cell.x(), reveal);
-                navigation.add("clause-" + flow.invocationId() + "-" + flow.stages().get(stageIndex).index() + "-" + cell.row(),
-                    navigationGroup, cell.row() * 3 + 1, cell.x(), reveal);
-                if (cell.first() && rowHeight >= 30 && hasWarning(flow.stages().get(stageIndex))) {
-                    navigation.add("warning-" + flow.invocationId() + "-" + stageIndex,
-                        navigationGroup, cell.row() * 3 + 2, cell.x(), reveal);
+                ExecutionFlowStage stage = flow.stages().get(stageIndex);
+                if (cell.first() && editableSource && state.breakpoints().ready()
+                    && !state.breakpoints().pending(breakpointTarget(flow, stage))) {
+                    navigation.add("breakpoint-" + flow.invocationId() + "-" + stageIndex,
+                        navigationGroup, cell.row(), column++, reveal);
+                }
+                navigation.add("clause-" + flow.invocationId() + "-" + stage.index() + "-" + cell.row(),
+                    navigationGroup, cell.row(), column++, reveal);
+                if (cell.first() && rowHeight >= 30 && hasWarning(stage)) {
+                    navigation.add("warning-" + flow.invocationId() + "-" + stage.index(),
+                        navigationGroup, cell.row(), column, reveal);
                 }
             } else if (part.targetStageIndex() >= 0) {
-                Runnable reveal = () -> commandOffset = DebuggerOverlay.revealRow(cell.row(), commandOffset, rows, maxCommandOffset);
-                if (cell.first() && editableSource) navigation.add(unobservedKey("breakpoint", flow, part),
-                    navigationGroup, cell.row() * 3, cell.x(), reveal);
+                BreakpointTarget target = stageCount(flow, snippet.text()) == 1 ? BreakpointTarget.whole(flow.location())
+                    : BreakpointTarget.stage(flow.location(), part.targetStageIndex(), snippet.text());
+                if (cell.first() && editableSource && !state.breakpoints().pending(target)) {
+                    navigation.add(unobservedKey("breakpoint", flow, part), navigationGroup, cell.row(), column++, reveal);
+                }
                 navigation.add(unobservedKey("clause", flow, part) + "-" + cell.row(),
-                    navigationGroup, cell.row() * 3 + 1, cell.x(), reveal);
+                    navigationGroup, cell.row(), column, reveal);
             }
         }
         navigation.revealFocus(DebuggerNavigation.Group.COMMAND);
