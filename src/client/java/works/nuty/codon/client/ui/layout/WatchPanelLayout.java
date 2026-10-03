@@ -8,7 +8,8 @@ import static works.nuty.codon.client.state.DebuggerPreferences.*;
 public final class WatchPanelLayout {
     private WatchPanelLayout() { }
 
-    public static boolean stackedValues(int panelWidth) { return panelWidth < 260; }
+    /** Keep keys left and values right even in the narrow drawer; Details exposes clipped text. */
+    public static boolean stackedValues(int panelWidth) { return false; }
     public static int valueWidth(int panelWidth) { return Math.max(0, panelWidth - 18); }
 
     /** Both name and value inspection use the full row; management lives in the context menu. */

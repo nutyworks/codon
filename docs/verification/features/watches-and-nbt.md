@@ -9,8 +9,10 @@ resize it. Both use the shared `PanelResizeInput`, a neutral edge highlight and
 horizontal resize cursor. Watch requests range from 220–640 pixels; Contexts from
 160–640, with its existing 190-pixel default. Screen bounds constrain the displayed
 widths and Contexts leaves room for a visible Watch's readable minimum. Watch
-names/values keep their existing full-row alignment and switch to stacked lines
-below 260 pixels. The narrow auxiliary drawer and Source's separate function-list
+names stay on the left and values stay right-aligned on the same line at every
+panel width, including below 260 pixels. Narrow rows clip each side to its available
+space; Details retains the full content. No blank action column is reserved.
+The narrow auxiliary drawer and Source's separate function-list
 splitter retain their existing behavior; Flow remains full-width below the panels.
 
 Release saves the selected width once in the existing `config/codon.json` settings
@@ -21,6 +23,14 @@ The captured drag/release is consumed without invoking row actions. Source retai
 its existing forwarding of drags that start on an exposed parent panel. Its init
 and removal only cancel a pending parent-panel preview, leaving its own splitter
 untouched. Width adjustment is scoped to these two HUD panels in the regular layout.
+
+The following alignment-only change disables the narrow stacked-row policy; it
+reuses the existing left-key/right-value renderer, 18/28-pixel row geometry and
+single full-row inspection surface. Right-click management, saved widths, resize
+capture and return focus remain unchanged. Compile/resources passed; evidence is
+`../leading-space-compile.log`. No tests or game/GUI were run. The old stacked-row
+expectations in `WatchPanelLayoutTest` remain stale, alongside its previously noted
+inline-action expectations, pending a separately authorized test-update stage.
 
 Panel-width validation: `JAVA_HOME=<JDK 25> ./gradlew compileClientJava
 processResources --console=plain` passed; evidence: `../panel-width-compile.log` beside the
@@ -43,7 +53,7 @@ temporary teal fill. Group headers show Δ changed values and ! read issues
 (invalid paths, size limits, errors and unavailable reads), including while collapsed.
 Observation continues independently of collapse. Rows reclaim the 72 logical pixels
 formerly reserved for inline actions. Name/value hit surfaces use the available row
-width, including stacked name lines; hover does not change widths or cover values.
+width; hover does not change widths or cover values.
 No row outline is drawn. Native clipping/keyboard/appearance checks remain manual acceptance work.
 The nested NBT section uses only a top divider; value rows, pin controls and Retry
 share flat chrome instead of a box around every item. NBT and Watch pin icons are

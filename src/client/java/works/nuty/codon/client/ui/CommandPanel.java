@@ -300,6 +300,10 @@ public final class CommandPanel {
             parts.addFirst(new Part(content.command(), -1));
         }
         List<Part> displayed = parts;
+        // Parsed clauses include the separator after the preceding stage. The cell
+        // gap/padding already separates them; keep the original text for targets/tooltips.
+        List<Part> layoutParts = parts.stream().map(part -> part.targetStageIndex() < 0 ? part
+            : new Part(part.text().stripLeading(), part.stageIndex(), part.targetStageIndex(), part.observation())).toList();
         boolean editableSource = !(flow.location() instanceof SourceLocation.Player)
             && stageCount(flow, snippet.text()) > 0;
         java.util.function.IntUnaryOperator minimumWidth = index -> {
@@ -318,10 +322,10 @@ public final class CommandPanel {
                 ? DebuggerButton.TEXT_ICON_INSET : 0;
             return iconInset + (displayed.get(index).targetStageIndex() >= 0 && editableSource ? 15 : 0);
         };
-        CommandFlowLayout.Layout layout = CommandFlowLayout.layout(parts, body.width() - 4,
+        CommandFlowLayout.Layout layout = CommandFlowLayout.layout(layoutParts, body.width() - 4,
             client.font::width, minimumWidth, leadingInset);
         if (layout.rows() > 1) {
-            layout = CommandFlowLayout.layout(parts, body.width() - 4 - DebuggerIcon.SIZE,
+            layout = CommandFlowLayout.layout(layoutParts, body.width() - 4 - DebuggerIcon.SIZE,
                 client.font::width, minimumWidth, leadingInset);
         }
         int rowHeight = body.height() < 30 ? 17 : 30;

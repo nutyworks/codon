@@ -21,6 +21,20 @@ targets, marker hitbox sizes, secondary actions and selection colors are unchang
 Character wrapping, row scrolling and call-path horizontal scrolling retain their
 existing behavior with the denser clause geometry.
 
+The follow-up crop `Screenshot 2026-10-03 at 15.27.53.png` shows the space before
+`at @s`, inside the clause after its breakpoint marker. Parsed stage text includes
+the leading command separator; the display-only layout now strips that separator
+before measuring/wrapping, so it no longer adds to the 3-pixel button inset. Full
+command text, stage ranges, tooltips, marker hitboxes and spacing inside a clause
+are preserved. Continuation fragments are not stripped. The 6-pixel total padding,
+2-pixel cell gap and hidden inline Unrun remain in place.
+
+Leading-space/Watch-alignment validation: the supplied Library image was
+materialized and its actual pixels inspected. `JAVA_HOME=<JDK 25> ./gradlew
+compileClientJava processResources --console=plain` passed as the only execution check;
+evidence: `../leading-space-compile.log`. No tests were edited or run and no game/GUI
+was launched. Post-change screenshots, wrapping and native input remain unverified.
+
 Flow-spacing validation: the supplied Library screenshot `Screenshot 2026-10-03 at
 15.12.15.png` was materialized and visually inspected. `JAVA_HOME=<JDK 25>
 ./gradlew compileClientJava processResources --console=plain` passed as the only
