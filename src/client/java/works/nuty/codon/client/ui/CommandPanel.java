@@ -308,7 +308,7 @@ public final class CommandPanel {
             && stageCount(flow, snippet.text()) > 0;
         java.util.function.IntUnaryOperator minimumWidth = index -> {
                 int stage = displayed.get(index).stageIndex();
-                // Counts occupy their own line. Breakpoint/pause icons belong only to
+                // Counts occupy their own line. Breakpoint/warning icons belong only to
                 // the command line and are already included by leadingInset below.
                 if (stage < 0 || body.height() < 30) return 0;
                 return client.font.width(counts(flow.stages().get(stage))) + CELL_HORIZONTAL_PADDING
@@ -316,9 +316,7 @@ public final class CommandPanel {
             };
         java.util.function.IntUnaryOperator leadingInset = index -> {
             int stage = displayed.get(index).stageIndex();
-            boolean stopped = state.selectedFlowIndex() == state.pausedFlowIndex()
-                && stage == state.pausedFlowStageIndex();
-            int iconInset = stage >= 0 && (stopped || (body.height() < 30 && hasWarning(flow.stages().get(stage))))
+            int iconInset = stage >= 0 && body.height() < 30 && hasWarning(flow.stages().get(stage))
                 ? DebuggerButton.TEXT_ICON_INSET : 0;
             return iconInset + (displayed.get(index).targetStageIndex() >= 0 && editableSource ? 15 : 0);
         };
@@ -391,7 +389,8 @@ public final class CommandPanel {
                     cellIndex + 1 < layout.cells().size() && layout.cells().get(cellIndex + 1).partIndex() == cell.partIndex());
             } else if (stageIndex >= 0 && flow != null) {
                 ExecutionFlowStage stage = flow.stages().get(stageIndex);
-                boolean stopped = state.selectedFlowIndex() == state.pausedFlowIndex() && stageIndex == state.pausedFlowStageIndex();
+                boolean stopped = state.isPaused() && state.selectedFlowIndex() == state.pausedFlowIndex()
+                    && stageIndex == state.pausedFlowStageIndex();
                 int clauseX = x;
                 int clauseWidth = cell.width();
                 if (cell.first() && editableSource) {
@@ -433,10 +432,11 @@ public final class CommandPanel {
                 if (stopped) clause.withStatusColor(AMBER, AMBER_SURFACE);
                 clause.withOpenEdges(!cell.first(), cellIndex + 1 < layout.cells().size()
                     && layout.cells().get(cellIndex + 1).partIndex() == cell.partIndex());
-                clause.setTooltip(Tooltip.create(Component.literal(part.text().strip() + "\n" + stageDetails(stage))));
+                clause.setTooltip(Tooltip.create(Component.literal(part.text().strip() + "\n"
+                    + (stopped ? tr("codon.ui.flow_detail.stop") + " · #" + (stage.index() + 1) + "\n" : "")
+                    + stageDetails(stage))));
                 if (editableSource) clause.withSecondaryAction(() -> openCondition(breakpointTarget(flow, stage)));
                 if (cell.first() && rowHeight < 30 && hasWarning(stage)) clause.withTextIcon(DebuggerIcon.WARNING);
-                if (stopped && cell.first()) clause.withTextIcon(DebuggerIcon.PAUSE);
                 if (cell.first() && rowHeight >= 30) {
                     String count = counts(stage);
                     drawText(graphics, count, x + CELL_HORIZONTAL_PADDING / 2, y + 20,

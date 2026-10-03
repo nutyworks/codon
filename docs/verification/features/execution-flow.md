@@ -13,13 +13,28 @@ a status minimum width; Unreached/Unknown/Error remain distinct inline informati
 Cell horizontal padding is 6 logical pixels (previously 10), with 2 pixels between
 cells (previously 4). Both drawing and button text use that padding. The count-line
 minimum is measured count width + 6, plus 17 only when a warning control is present;
-it previously added 26 and another 15 for an editable source. Breakpoint and pause
+it previously added 26 and another 15 for an editable source. Breakpoint and warning
 icons are reserved once, by the command line's leading inset. Compact rows with
 no count line reserve no count width. The shared count row remains when observed
 counts are shown; hidden Unrun labels do not produce a replacement badge. Stage
 targets, marker hitbox sizes, secondary actions and selection colors are unchanged.
 Character wrapping, row scrolling and call-path horizontal scrolling retain their
 existing behavior with the denser clause geometry.
+
+The actual paused Flow stage uses amber text/counts and its existing amber selected
+surface, without a pause glyph. The first clause fragment no longer reserves the
+14-pixel pause-icon inset; a compact warning still reserves its own icon space when
+needed. Amber is guarded by live paused state plus the actual flow/stage identity,
+so browsing a different recorded stage retains teal selection without moving the
+execution indicator. The stopped clause tooltip explicitly names Stop and the stage
+number; the selection detail band's textual Stop state and narration target remain.
+Breakpoint controls, toolbar controls and call-path markers are unchanged.
+
+Pause-icon follow-up validation: `JAVA_HOME=<JDK 25> ./gradlew compileClientJava
+processResources --console=plain` passed; evidence: `../flow-pause-color-compile.log` beside
+the checkout. No tests were edited or run, and no game/GUI was launched. Post-change
+rendering, native focus/narration, wrapping and live/history selection remain
+unverified. Existing stale layout-test expectations noted below remain untouched.
 
 The follow-up crop `Screenshot 2026-10-03 at 15.27.53.png` shows the space before
 `at @s`, inside the clause after its breakpoint marker. Parsed stage text includes
