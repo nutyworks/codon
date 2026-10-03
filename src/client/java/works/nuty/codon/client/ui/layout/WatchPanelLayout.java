@@ -2,6 +2,7 @@ package works.nuty.codon.client.ui.layout;
 
 import java.util.List;
 import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds;
+import static works.nuty.codon.client.state.DebuggerPreferences.*;
 
 /** Watches occupy the free upper-right area, down to the command panel, without covering controls. */
 public final class WatchPanelLayout {
@@ -65,9 +66,17 @@ public final class WatchPanelLayout {
     }
 
     public static Bounds available(DebuggerLayout layout, int guiWidth) {
+        return available(layout, guiWidth, DEFAULT_WATCH_WIDTH);
+    }
+
+    public static int maximumWidth(DebuggerLayout layout) {
+        return Math.max(0, Math.min(MAX_PANEL_WIDTH, layout.world().width() - 4));
+    }
+
+    public static Bounds available(DebuggerLayout layout, int guiWidth, int requestedWidth) {
         int margin = layout.header().x();
         int right = Math.max(margin, guiWidth - margin);
-        int width = Math.max(0, Math.min(360, layout.world().width() - 4));
+        int width = Math.min(Math.max(MIN_WATCH_WIDTH, requestedWidth), maximumWidth(layout));
         int x = Math.max(layout.world().x(), right - width);
         int headerRight = layout.header().x() + Math.max(layout.header().width(), layout.controls().width());
         int y = x >= headerRight + 4 ? layout.header().y() : layout.world().y();

@@ -82,6 +82,8 @@ public final class ClientSettingsStore {
                 throw new IOException("Invalid backgroundOpacity in Codon client settings", exception);
             }
         }
+        if (json.has("watchWidth")) preferences.setWatchWidth(panelWidth(json, "watchWidth", DebuggerPreferences.MIN_WATCH_WIDTH));
+        if (json.has("inspectorWidth")) preferences.setInspectorWidth(panelWidth(json, "inspectorWidth", DebuggerPreferences.MIN_INSPECTOR_WIDTH));
         if (json.has("gizmoMode")) {
             preferences.setGizmoMode(enumValue(json.get("gizmoMode"), ClientDebuggerState.GizmoMode.class, "gizmoMode"));
         }
@@ -128,6 +130,18 @@ public final class ClientSettingsStore {
         }
     }
 
+    private static int panelWidth(JsonObject json, String name, int minimum) throws IOException {
+        JsonElement value = json.get(name);
+        try {
+            if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber()) throw new NumberFormatException();
+            int width = new BigDecimal(value.getAsString()).intValueExact();
+            if (width < minimum || width > DebuggerPreferences.MAX_PANEL_WIDTH) throw new NumberFormatException();
+            return width;
+        } catch (ArithmeticException | NumberFormatException exception) {
+            throw new IOException("Invalid " + name + " in Codon client settings", exception);
+        }
+    }
+
     private static boolean isVersion(JsonElement value) {
         if (!value.isJsonPrimitive()) return false;
         JsonPrimitive primitive = value.getAsJsonPrimitive();
@@ -157,6 +171,8 @@ public final class ClientSettingsStore {
         // Absence means first use. Legacy files containing a request keep that value.
         if (preferences.customUiScaleInitialized()) json.addProperty("customUiScale", preferences.customUiScale());
         json.addProperty("backgroundOpacity", preferences.backgroundOpacity());
+        json.addProperty("watchWidth", preferences.watchWidth());
+        json.addProperty("inspectorWidth", preferences.inspectorWidth());
         json.addProperty("gizmoMode", preferences.gizmoMode().name());
         if (preferences.inspectorVisible() == null) {
             json.add("inspectorVisible", JsonNull.INSTANCE);

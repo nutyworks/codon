@@ -36,6 +36,7 @@ import java.util.Objects;
 import java.util.Set;
 
 import static works.nuty.codon.client.ui.DebuggerTheme.*;
+import static works.nuty.codon.client.state.DebuggerPreferences.*;
 
 /** Shared HUD/screen presentation. Only the menu screen registers the rendered controls. */
 public final class DebuggerOverlay {
@@ -53,6 +54,7 @@ public final class DebuggerOverlay {
     private final NbtTreePanel nbtPanel;
     private final CommandPanel commandPanel;
     private final ScrollbarInput scrollbars = new ScrollbarInput();
+    private final PanelResizeInput panelResizing = new PanelResizeInput();
     private final DebuggerNavigation navigation = new DebuggerNavigation();
     private DebuggerNavigation.Group navigationGroup = DebuggerNavigation.Group.TOOLBAR;
     private final Minecraft client = Minecraft.getInstance();
@@ -95,6 +97,7 @@ public final class DebuggerOverlay {
     void commitBackgroundOpacity() { opacitySlider.commitPreview(); }
 
     ScrollbarInput scrollbars() { return scrollbars; }
+    PanelResizeInput panelResizing() { return panelResizing; }
 
     public DebuggerNavigation navigation() { return navigation; }
     public WatchPanel watchPanel() { return watchPanel; }
@@ -118,6 +121,7 @@ public final class DebuggerOverlay {
                                        float partialTick, boolean interactive, InputManager input) {
         controls.clear();
         scrollbars.beginFrame();
+        panelResizing.beginFrame(graphics.guiWidth(), graphics.guiHeight());
         navigation.beginFrame(interactive && client.getLastInputType().isKeyboard());
         hoverX = interactive ? mouseX : -1;
         hoverY = interactive ? mouseY : -1;
@@ -133,6 +137,7 @@ public final class DebuggerOverlay {
             buttonCache.clear();
             navigation.endFrame();
             scrollbars.endFrame();
+            panelResizing.endFrame();
             return List.of();
         }
         // The live debugger panels must not present retained history after resume.
@@ -158,6 +163,7 @@ public final class DebuggerOverlay {
             buttonCache.clear();
             navigation.endFrame();
             scrollbars.endFrame();
+            panelResizing.endFrame();
             return List.of();
         }
 
@@ -174,9 +180,13 @@ public final class DebuggerOverlay {
         showWatches = compactAuxiliary ? auxiliaryPanel == AuxiliaryPanel.WATCHES
             : state.preferences().watchesVisible();
         boolean reserveSide = narrowAuxiliary ? false : showInspector || compactAuxiliary && showWatches;
+        int maximumInspectorWidth = DebuggerLayout.maximumInspectorWidth(graphics.guiWidth(), showWatches);
+        int inspectorWidth = Math.min(maximumInspectorWidth,
+            panelResizing.requestedWidth("inspector", preferences().inspectorWidth()));
         DebuggerLayout layout = DebuggerLayout.create(graphics.guiWidth(), graphics.guiHeight(), reserveSide,
             state.preferences().commandVisible()
-                ? commandPanel.preferredHeight(graphics.guiWidth(), graphics.guiHeight(), snapshot) : 0);
+                ? commandPanel.preferredHeight(graphics.guiWidth(), graphics.guiHeight(), snapshot) : 0,
+            inspectorWidth);
         Bounds auxiliaryBounds = narrowAuxiliary
             ? new Bounds(layout.world().x(), layout.world().y(),
                 Math.min(240, Math.max(0, layout.world().width() - 32)), layout.world().height())
@@ -188,7 +198,8 @@ public final class DebuggerOverlay {
         navigationGroup = DebuggerNavigation.Group.WATCH;
         if (showWatches) {
             Bounds available = compactAuxiliary ? auxiliaryBounds
-                : WatchPanelLayout.available(layout, graphics.guiWidth());
+                : WatchPanelLayout.available(layout, graphics.guiWidth(),
+                    panelResizing.requestedWidth("watch", preferences().watchWidth()));
             renderWatchSummary(graphics, available, hoverX, hoverY, interactive, input);
         }
         if (watchPanel.groupingMenuContains(mouseX, mouseY)) hoverX = hoverY = -1;
@@ -196,12 +207,19 @@ public final class DebuggerOverlay {
         if (!narrowAuxiliary || auxiliaryPanel == AuxiliaryPanel.NONE)
             renderWorldLabels(graphics, layout.world(), snapshot);
         if (showInspector) renderInspector(graphics, auxiliaryBounds, snapshot);
+        if (interactive && !compactAuxiliary) {
+            if (showInspector) panelResizing.add("inspector", auxiliaryBounds, false,
+                MIN_INSPECTOR_WIDTH, maximumInspectorWidth, preferences()::setInspectorWidth);
+            if (showWatches) panelResizing.add("watch", watchPanel.bounds(), true,
+                MIN_WATCH_WIDTH, WatchPanelLayout.maximumWidth(layout), preferences()::setWatchWidth);
+        }
         if (state.preferences().commandVisible()) {
             controls.addAll(commandPanel.render(graphics, layout.command(), snapshot, input, this, navigation));
         }
         buttonCache.keySet().retainAll(usedButtons);
         navigation.endFrame();
         scrollbars.endFrame();
+        panelResizing.endFrame();
         for (DebuggerButton button : controls) {
             if (viewMenuButtons.contains(button) || watchPanel.isGroupingChoice(button)) continue;
             if (!interactive) button.setFocused(false);
@@ -222,6 +240,8 @@ public final class DebuggerOverlay {
                 button.extractRenderState(graphics, interactive ? mouseX : -1, interactive ? mouseY : -1, partialTick);
             }
         }
+        if (interactive && !viewMenuOpen && !watchPanel.groupingMenuOpen())
+            panelResizing.paint(graphics, font, mouseX, mouseY);
         return List.copyOf(controls);
     }
 

@@ -2,8 +2,35 @@
 
 ## User path and expected result
 
-The UI scaffold gives regular Watches up to 360 logical pixels (previously 332),
-bounded by the same free area above Flow. Neutral headings and removal of the dot
+Regular Watches default to 280 logical pixels (previously 360), bounded by the same
+free area above Flow. In cursor mode at viewport widths of 600 logical pixels or
+more, drag the Watch panel's left edge or the Contexts inspector's right edge to
+resize it. Both use the shared `PanelResizeInput`, a neutral edge highlight and
+horizontal resize cursor. Watch requests range from 220–640 pixels; Contexts from
+160–640, with its existing 190-pixel default. Screen bounds constrain the displayed
+widths and Contexts leaves room for a visible Watch's readable minimum. Watch
+names/values keep their existing full-row alignment and switch to stacked lines
+below 260 pixels. The narrow auxiliary drawer and Source's separate function-list
+splitter retain their existing behavior; Flow remains full-width below the panels.
+
+Release saves the selected width once in the existing `config/codon.json` settings
+(`watchWidth` / `inspectorWidth`); missing fields use defaults. Viewport clamps do
+not overwrite a saved request, so enlarging the window restores it. Esc, UI hiding,
+modal opening, screen removal and viewport/scale resize cancel an active preview.
+The captured drag/release is consumed without invoking row actions. Source retains
+its existing forwarding of drags that start on an exposed parent panel. Its init
+and removal only cancel a pending parent-panel preview, leaving its own splitter
+untouched. Width adjustment is scoped to these two HUD panels in the regular layout.
+
+Panel-width validation: `JAVA_HOME=<JDK 25> ./gradlew compileClientJava
+processResources --console=plain` passed; evidence: `../panel-width-compile.log` beside the
+checkout. No tests were edited or run, and no game/GUI was launched. Native edge
+dragging, release outside the panel, cancellation, context-menu interaction,
+scaling and rendering remain unverified. The pre-existing `WatchPanelLayoutTest`
+still expects inline action slots removed by the preceding context-menu change;
+its stale assertions require a separately authorized test-update stage.
+
+Neutral headings and removal of the dot
 leaders leave more room for names/values. Groups have an arrow, item count and
 neutral header background, with spacing between groups. Click anywhere on the
 header or focus it and press Enter/Space to collapse or expand it. Collapsed children

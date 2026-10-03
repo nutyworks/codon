@@ -104,6 +104,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
     }
 
     @Override protected void init() {
+        if (parent instanceof CodonScreen codon) codon.cancelPanelResize();
         String searchValue = search == null ? "" : search.getValue();
         String sourceSearchValue = sourceSearch == null ? "" : sourceSearch.getValue();
         cachedDocument = null;
@@ -1089,6 +1090,11 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         if (!forwardingParentDrag) return super.mouseReleased(event);
         forwardingParentDrag = false;
         return parent.mouseReleased(event);
+    }
+
+    @Override public void removed() {
+        if (parent instanceof CodonScreen codon) codon.cancelPanelResize();
+        super.removed();
     }
 
     @Override public void onClose() { rememberView(); Minecraft.getInstance().gui.setScreen(parent); }

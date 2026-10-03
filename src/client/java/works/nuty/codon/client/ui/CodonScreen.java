@@ -25,7 +25,7 @@ public final class CodonScreen extends ScaledCodonScreen {
     }
 
     @Override
-    protected void init() { input.resetUiVisibility(); overlay.commitBackgroundOpacity(); registered = List.of(); overlay.scrollbars().release(); }
+    protected void init() { input.resetUiVisibility(); suspendPointerInteraction(); registered = List.of(); }
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
@@ -36,7 +36,10 @@ public final class CodonScreen extends ScaledCodonScreen {
         GuiEventListener focused = getFocused();
         overlay.navigation().rememberFocus(focused);
         boolean covered = ScreenLayers.get(minecraft.gui.screen()) != null;
-        if (covered) setFocused(null);
+        if (covered) {
+            setFocused(null);
+            cancelPanelResize();
+        }
         List<DebuggerButton> buttons = overlay.render(graphics, covered ? -1 : mouseX, covered ? -1 : mouseY, partialTick, true, input);
         if (!registered.equals(buttons)) {
             setFocused(null);
@@ -81,6 +84,12 @@ public final class CodonScreen extends ScaledCodonScreen {
                 if (overlay.watchPanel().groupingMenuContains(event.x(), event.y())) return true;
             }
         }
+        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && overlay.panelResizing().click(event.x(), event.y())) {
+            overlay.scrollbars().release();
+            setFocused(null);
+            setDragging(false);
+            return true;
+        }
         if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && overlay.scrollbars().click(event.x(), event.y())) {
             overlay.navigation().mouseScrolled();
             return true;
@@ -91,6 +100,7 @@ public final class CodonScreen extends ScaledCodonScreen {
     @Override
     public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
         if (input.isUiHidden()) return true;
+        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && overlay.panelResizing().drag(event.x())) return true;
         if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && overlay.scrollbars().drag(event.x(), event.y())) return true;
         return super.mouseDragged(event, dx, dy);
     }
@@ -101,6 +111,7 @@ public final class CodonScreen extends ScaledCodonScreen {
             return true;
         }
         if (input.isUiHidden()) return true;
+        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && overlay.panelResizing().release()) return true;
         if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && overlay.scrollbars().release()) return true;
         return super.mouseReleased(event);
     }
@@ -117,8 +128,11 @@ public final class CodonScreen extends ScaledCodonScreen {
     private void suspendPointerInteraction() {
         overlay.commitBackgroundOpacity();
         overlay.scrollbars().release();
+        cancelPanelResize();
         setDragging(false);
     }
+
+    void cancelPanelResize() { overlay.panelResizing().cancel(); }
 
     @Override
     public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
@@ -132,6 +146,7 @@ public final class CodonScreen extends ScaledCodonScreen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
+        if (event.key() == InputConstants.KEY_ESCAPE && overlay.panelResizing().cancel()) return true;
         if (!input.isUiHidden() && event.key() == InputConstants.KEY_F10 && event.hasShiftDown()
             && overlay.watchPanel().openContextMenu(getFocused(), input, overlay)) {
             while (input.breakpointKey.consumeClick()) { }

@@ -353,6 +353,7 @@ public final class WatchPanel {
         overlay.closeViewMenu();
         closeGroupingMenu();
         overlay.scrollbars().release();
+        overlay.panelResizing().cancel();
         var menu = new WatchContextMenu(parent, anchor, WatchFormatting.specification(entry.spec()),
             () -> menuItems(id, generation, input, overlay), event -> {
                 // A docked Source panel owns its covered pixels even while this layer is open.
