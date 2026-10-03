@@ -24,6 +24,7 @@ public class DebuggerButton extends AbstractButton {
     private boolean leftAligned;
     private boolean subdued;
     private boolean borderless;
+    private boolean flatChrome;
     private boolean hitSurface;
     private boolean leadingIcon;
     private boolean iconWithText;
@@ -69,6 +70,7 @@ public class DebuggerButton extends AbstractButton {
         this.leftAligned = leftAligned;
         this.subdued = subdued;
         this.borderless = false;
+        this.flatChrome = false;
         this.hitSurface = false;
         this.leadingIcon = false;
         this.iconWithText = false;
@@ -119,6 +121,12 @@ public class DebuggerButton extends AbstractButton {
 
     public DebuggerButton withoutChrome() {
         this.borderless = true;
+        return this;
+    }
+
+    /** Quiet idle rows/actions; selection and keyboard focus remain separate visible states. */
+    public DebuggerButton withFlatChrome() {
+        this.flatChrome = true;
         return this;
     }
 
@@ -222,18 +230,21 @@ public class DebuggerButton extends AbstractButton {
             || mouseX < revealX || mouseX >= revealX + revealWidth
             || mouseY < revealY || mouseY >= revealY + revealHeight)) return;
         if (hitSurface) {
-            if (keyboardFocus || isHovered()) graphics.outline(getX(), getY(), getWidth(), getHeight(), paintColor(DebuggerTheme.TEAL));
+            // The owner paints hover/focus backgrounds before its row text.
+            if (keyboardFocus) DebuggerTheme.focusMark(graphics, getX() + 1, getY() + 1);
             return;
         }
         int background = selected && active ? selectedSurface
             : (isHovered() || keyboardFocus) && active ? DebuggerTheme.RAISED : DebuggerTheme.SURFACE;
         int foreground = !active || subdued ? DebuggerTheme.MUTED : foregroundColor;
-        int outline = paintColor(active && keyboardFocus ? DebuggerTheme.TEXT
-            : active && (selected || isHovered()) ? accentColor : DebuggerTheme.BORDER);
+        int outline = paintColor(active && (selected || isHovered()) ? accentColor : DebuggerTheme.BORDER);
         if (borderless) {
             if (active && (isHovered() || keyboardFocus)) foreground = accentColor;
-            if (active && keyboardFocus) graphics.outline(getX(), getY(), getWidth(), getHeight(),
-                paintColor(DebuggerTheme.TEXT));
+        } else if (flatChrome) {
+            if (active && (selected || isHovered() || keyboardFocus))
+                graphics.fill(getX(), getY(), getRight(), getBottom(), paintColor(background));
+            if (active && selected)
+                graphics.fill(getX(), getBottom() - 1, getRight(), getBottom(), DebuggerTheme.foreground(accentColor));
         } else {
             graphics.fill(getX(), getY(), getRight(), getBottom(), paintColor(background));
             graphics.fill(getX(), getY(), getRight(), getY() + 1, outline);
@@ -246,10 +257,13 @@ public class DebuggerButton extends AbstractButton {
             int iconSize = smallIcon ? icon.smallSize() : DebuggerIcon.SIZE;
             int iconX = getX() - contentOffset + (iconWithText ? 3 : leadingIcon ? 1 : (contentWidth - iconSize) / 2);
             int iconY = getY() + (height - iconSize) / 2 + iconOffsetY;
-            if (smallIcon) icon.drawSmall(graphics, iconX, iconY, paintColor(foreground));
-            else icon.draw(graphics, iconX, iconY, paintColor(foreground));
+            if (smallIcon) icon.drawSmall(graphics, iconX, iconY, DebuggerTheme.foreground(foreground));
+            else icon.draw(graphics, iconX, iconY, DebuggerTheme.foreground(foreground));
             graphics.disableScissor();
-            if (!iconWithText) return;
+            if (!iconWithText) {
+                if (keyboardFocus) DebuggerTheme.focusMark(graphics, getX() + 1, getY() + 1);
+                return;
+            }
         }
         var font = client.font;
         String full = getMessage().getString();
@@ -260,8 +274,9 @@ public class DebuggerButton extends AbstractButton {
         graphics.enableScissor(getX() + 2, getY(), getRight() - 2, getBottom());
         graphics.text(font, text, leftAligned ? getX() - contentOffset + textPadding / 2 + inset
             : getX() - contentOffset + inset + (contentWidth - inset - font.width(text)) / 2,
-            getY() + (height - font.lineHeight) / 2 + 1, paintColor(foreground), false);
+            getY() + (height - font.lineHeight) / 2 + 1, DebuggerTheme.foreground(foreground), false);
         graphics.disableScissor();
+        if (keyboardFocus) DebuggerTheme.focusMark(graphics, getX() + 1, getY() + 1);
     }
 
     private int paintColor(int color) { return opaqueColors ? color : DebuggerTheme.color(color); }

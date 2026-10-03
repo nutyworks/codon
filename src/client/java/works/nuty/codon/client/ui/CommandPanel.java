@@ -34,10 +34,13 @@ import java.util.Map;
 import java.util.Set;
 
 import static works.nuty.codon.client.ui.DebuggerTheme.*;
+import static works.nuty.codon.client.ui.layout.CommandFlowLayout.CELL_HORIZONTAL_PADDING;
 
 /** A single command surface: its call path, recorded clauses, and the authoritative stop. */
 public final class CommandPanel {
     private static final Bounds EMPTY = new Bounds(0, 0, 0, 0);
+    private static final int DETAIL_HEIGHT = 26;
+    private record SelectionDetail(String title, String values, String explanation, int color) { }
     private final Minecraft client = Minecraft.getInstance();
     private final ClientDebuggerState state;
     private final Runnable selectionChanged;
@@ -51,7 +54,7 @@ public final class CommandPanel {
     private int maxStackOffset;
     private Bounds commandBounds = EMPTY;
     private Bounds stackBounds = EMPTY;
-    private Bounds conditionAnchor = EMPTY;
+    private final Map<DebuggerButton, Runnable> contextMenus = new HashMap<>();
     private @Nullable Selection lastSelection;
     private @Nullable StackSelection lastStackSelection;
     private @Nullable PauseSnapshot renderedSnapshot;
@@ -68,7 +71,7 @@ public final class CommandPanel {
     public int preferredHeight(int width, int height, @Nullable PauseSnapshot snapshot) {
         if (snapshot == null) return 36;
         // Selection and recording availability must not move the panel's controls.
-        int base = height < 240 ? 64 : 76;
+        int base = (height < 240 ? 64 : 76) + DETAIL_HEIGHT + 2;
         return expanded ? Math.max(120, height / 2) : base;
     }
 
@@ -81,7 +84,7 @@ public final class CommandPanel {
         buttons.clear();
         renderedSnapshot = snapshot;
         commandBounds = stackBounds = EMPTY;
-        conditionAnchor = EMPTY;
+        contextMenus.clear();
         if (area.width() < 20 || area.height() < 18) return finish();
         graphics.fill(area.x(), area.y(), area.x() + area.width(), area.y() + area.height(), DebuggerTheme.color(PANEL));
         graphics.outline(area.x(), area.y(), area.width(), area.height(), DebuggerTheme.color(BORDER));
@@ -104,8 +107,25 @@ public final class CommandPanel {
             int y = area.y() + 3;
             renderPath(graphics, new Bounds(area.x() + 4, y, area.width() - 8, 17), snapshot);
             y += 19;
-            Bounds body = new Bounds(area.x() + 5, y, area.width() - 12, Math.max(0, actionY - 4 - y));
+            // Fixed full-width detail band: selected state never changes clause widths or action positions.
+            int detailHeight = Math.min(DETAIL_HEIGHT, Math.max(0, actionY - y - 21));
+            int detailY = actionY - 4 - detailHeight;
+            Bounds body = new Bounds(area.x() + 5, y, area.width() - 12, Math.max(0, detailY - 2 - y));
             renderClauses(graphics, body, snapshot);
+            SelectionDetail detail = selectionDetail();
+            if (detailHeight >= client.font.lineHeight + 2) {
+                drawText(graphics, detail.title(), area.x() + 8, detailY + 2, area.width() - 16, detail.color());
+                if (detailHeight >= 2 * client.font.lineHeight + 5)
+                    drawText(graphics, detail.values(), area.x() + 8, detailY + 13, area.width() - 16, TEXT);
+                navigationGroup = DebuggerNavigation.Group.ACTIONS;
+                Component label = Component.literal(detail.title() + "\n" + detail.values() + "\n" + detail.explanation());
+                DebuggerButton details = button("selected-flow-details", new Bounds(area.x() + 5, detailY, area.width() - 10, detailHeight),
+                    label, true, false, () -> { }).asHitSurface();
+                details.setTooltip(Tooltip.create(label));
+                BreakpointTarget target = selectedBreakpoint();
+                if (target != null) conditionMenu(details, "selected-flow-details", flow, target,
+                    snippet.text(), state.selectedUnobservedStageIndex() >= 0);
+            }
             graphics.fill(area.x() + 1, actionY - 3, area.x() + area.width() - 1, actionY - 2, DebuggerTheme.color(BORDER));
             ExecutionFlowStage stage = state.selectedExecutionFlowStage();
             boolean warning = stage != null && hasFlowWarning();
@@ -115,7 +135,11 @@ public final class CommandPanel {
                 warningButton("flow-warning", new Bounds(summaryX, actionY, 16, 14), stage);
                 summaryX += 18;
             }
-            drawText(graphics, summary(), summaryX, actionY + 4, Math.max(0, actionLeft - summaryX - 6), MUTED);
+            String footer = stage == null ? "" : conditionSummary(stage);
+            if (hasFlowWarning()) footer = (footer.isEmpty() ? "" : footer + " · ")
+                + tr("codon.ui.flow_detail.trace_warning", warningSummary(state.selectedExecutionFlow()));
+            drawText(graphics, detailHeight < client.font.lineHeight + 2 ? detail.title() : footer,
+                summaryX, actionY + 4, Math.max(0, actionLeft - summaryX - 6), MUTED);
         }
         return finish();
     }
@@ -188,7 +212,7 @@ public final class CommandPanel {
                 value -> stackOffset = value);
             int thumbX = left + (available - thumb) * stackOffset / maxStackOffset;
             graphics.fill(left, area.y() + 16, left + available, area.y() + 17, DebuggerTheme.color(BORDER));
-            graphics.fill(thumbX, area.y() + 16, thumbX + thumb, area.y() + 17, DebuggerTheme.color(TEAL));
+            graphics.fill(thumbX, area.y() + 16, thumbX + thumb, area.y() + 17, DebuggerTheme.color(SCROLLBAR));
         }
     }
 
@@ -217,19 +241,6 @@ public final class CommandPanel {
                 .withIcon(DebuggerIcon.HISTORY_PREVIOUS);
             right -= 38;
         }
-        BreakpointTarget selectedBreakpoint = selectedBreakpoint();
-        if (selectedBreakpoint != null && right - area.x() >= 104) {
-            CommandSnippet command = state.selectedCommand();
-            int count = stageCount(state.selectedExecutionFlow(), command.text());
-            BreakpointDefinition definition = BreakpointUi.definition(state, selectedBreakpoint, command.text(), count);
-            String label = definition == null ? tr("codon.breakpoint.condition_action")
-                : BreakpointUi.condition(definition.condition());
-            conditionAnchor = new Bounds(right - 88, area.y(), 88, 16);
-            button("selected-condition", conditionAnchor, Component.literal(label),
-                !BreakpointUi.pending(state, selectedBreakpoint, command.text(), count), false,
-                () -> openCondition(selectedBreakpoint));
-            right -= 91;
-        }
         return right;
     }
 
@@ -238,7 +249,8 @@ public final class CommandPanel {
         ExecutionFlowStage stage = state.selectedExecutionFlowStage();
         if (flow == null || flow.location() instanceof SourceLocation.Player) return null;
         int unobserved = state.selectedUnobservedStageIndex();
-        if (unobserved >= 0) return BreakpointTarget.stage(flow.location(), unobserved, state.selectedCommand().text());
+        if (unobserved >= 0) return BreakpointTargetPolicy.target(flow.location(), unobserved,
+            state.selectedCommand().text(), stageCount(flow, state.selectedCommand().text()));
         if (stage == null) return null;
         return breakpointTarget(flow, stage);
     }
@@ -252,15 +264,44 @@ public final class CommandPanel {
             stageCount(flow, stage.command().text()));
     }
 
-    private void openCondition(BreakpointTarget target) {
-        if (client.gui.screen() == null) return;
-        BreakpointConditionScreen.Anchor anchor = conditionAnchor.width() <= 0 ? null
-            : new BreakpointConditionScreen.Anchor(conditionAnchor.x(), conditionAnchor.y(),
-                conditionAnchor.width(), conditionAnchor.height());
-        ExecutionFlowTrace flow = state.selectedExecutionFlow();
-        CommandSnippet command = state.selectedCommand();
-        if (flow == null || command == null) return;
-        BreakpointUi.openCondition(client.gui.screen(), state, target, command.text(), stageCount(flow, command.text()), anchor);
+    boolean openContextMenu(net.minecraft.client.gui.components.events.GuiEventListener focused) {
+        Runnable action = contextMenus.get(focused);
+        if (action == null) return false;
+        action.run();
+        return true;
+    }
+
+    void revealSelection() { lastSelection = null; }
+
+    private void conditionMenu(DebuggerButton button, String focusId, ExecutionFlowTrace flow,
+                               BreakpointTarget target, String command, boolean unobserved) {
+        conditionAction(button, focusId, flow, target, command, unobserved, false);
+    }
+
+    private void conditionAction(DebuggerButton button, String focusId, ExecutionFlowTrace flow,
+                                 BreakpointTarget target, String command, boolean unobserved, boolean direct) {
+        PauseSnapshot expected = renderedSnapshot;
+        Runnable open = () -> {
+            var parent = client.gui.screen();
+            if (parent == null) return;
+            scrollbars.release();
+            java.util.function.BooleanSupplier current = () -> state.snapshot() == expected
+                && state.selectedExecutionFlow() == flow && (!unobserved || currentPreviewTarget(flow, target, command));
+            Bounds anchor = new Bounds(button.getX(), button.getY(), button.getWidth(), button.getHeight());
+            Runnable restore = () -> navigation.requestFocus(focusId);
+            if (direct) BreakpointContextMenu.openEditor(parent, state, target, anchor, current, restore);
+            else BreakpointContextMenu.open(parent, state, target, anchor, current, restore);
+        };
+        button.withSecondaryAction(open);
+        contextMenus.put(button, open);
+    }
+
+    private boolean currentPreviewTarget(ExecutionFlowTrace flow, BreakpointTarget target, String command) {
+        var preview = state.stagePreviews().get(flow.location());
+        return preview != null && (preview.status() == works.nuty.codon.client.state.ClientStagePreviewState.Status.LOADING
+            || preview.status() == works.nuty.codon.client.state.ClientStagePreviewState.Status.READY
+                && preview.savedCommand().equals(command) && (target.wholeCommand() || preview.spans().stream()
+                    .anyMatch(span -> span.index() == target.stageIndex())));
     }
 
     private void renderClauses(GuiGraphicsExtractor graphics, Bounds body, PauseSnapshot snapshot) {
@@ -280,28 +321,34 @@ public final class CommandPanel {
             parts.addFirst(new Part(content.command(), -1));
         }
         List<Part> displayed = parts;
+        // Parsed clauses include the separator after the preceding stage. The cell
+        // gap/padding already separates them; keep the original text for targets/tooltips.
+        List<Part> layoutParts = parts.stream().map(part -> part.targetStageIndex() < 0 ? part
+            : new Part(part.text().stripLeading(), part.stageIndex(), part.targetStageIndex(), part.observation())).toList();
         boolean editableSource = !(flow.location() instanceof SourceLocation.Player)
             && stageCount(flow, snippet.text()) > 0;
+        // The parser (or conclusive recorded evidence) decides single versus multi-stage.
+        // A multi-stage command has a separate whole-command marker before its first part.
+        boolean commandMarker = editableSource && stageCount(flow, snippet.text()) > 1;
         java.util.function.IntUnaryOperator minimumWidth = index -> {
                 int stage = displayed.get(index).stageIndex();
-                return stage == -2 ? client.font.width(displayed.get(index).text())
-                    : stage < 0 ? client.font.width(observationText(displayed.get(index))) + 10
-                        + (displayed.get(index).targetStageIndex() >= 0 && editableSource ? 15 : 0)
-                    : client.font.width(counts(flow.stages().get(stage))) + DebuggerIcon.SIZE + 14
-                        + (hasWarning(flow.stages().get(stage)) ? 17 : 0) + (editableSource ? 15 : 0);
+                // Counts occupy their own line. Breakpoint/warning icons belong only to
+                // the command line and are already included by leadingInset below.
+                if (stage < 0 || body.height() < 30) return 0;
+                return client.font.width(counts(flow.stages().get(stage))) + CELL_HORIZONTAL_PADDING
+                    + (hasWarning(flow.stages().get(stage)) ? 17 : 0);
             };
         java.util.function.IntUnaryOperator leadingInset = index -> {
             int stage = displayed.get(index).stageIndex();
-            boolean stopped = state.selectedFlowIndex() == state.pausedFlowIndex()
-                && stage == state.pausedFlowStageIndex();
-            int iconInset = stage >= 0 && (stopped || (body.height() < 30 && hasWarning(flow.stages().get(stage))))
+            int iconInset = stage >= 0 && body.height() < 30 && hasWarning(flow.stages().get(stage))
                 ? DebuggerButton.TEXT_ICON_INSET : 0;
-            return iconInset + (displayed.get(index).targetStageIndex() >= 0 && editableSource ? 15 : 0);
+            return iconInset + (displayed.get(index).targetStageIndex() >= 0 && editableSource ? 15 : 0)
+                + (commandMarker && index == 0 ? 15 : 0);
         };
-        CommandFlowLayout.Layout layout = CommandFlowLayout.layout(parts, body.width() - 4,
+        CommandFlowLayout.Layout layout = CommandFlowLayout.layout(layoutParts, body.width() - 4,
             client.font::width, minimumWidth, leadingInset);
         if (layout.rows() > 1) {
-            layout = CommandFlowLayout.layout(parts, body.width() - 4 - DebuggerIcon.SIZE,
+            layout = CommandFlowLayout.layout(layoutParts, body.width() - 4 - DebuggerIcon.SIZE,
                 client.font::width, minimumWidth, leadingInset);
         }
         int rowHeight = body.height() < 30 ? 17 : 30;
@@ -330,22 +377,37 @@ public final class CommandPanel {
         for (CommandFlowLayout.Cell cell : layout.cells()) {
             Part part = parts.get(cell.partIndex());
             int stageIndex = part.stageIndex();
+            Runnable reveal = () -> commandOffset = DebuggerOverlay.revealRow(cell.row(), commandOffset, rows, maxCommandOffset);
+            // Keep each cell's marker, clause and warning together in visual reading order.
+            // Four slots also leave room for the first cell's whole-command marker.
+            int column = cell.x() * 4;
+            if (commandMarker && cell.partIndex() == 0 && cell.first()) {
+                BreakpointTarget target = BreakpointTarget.whole(flow.location());
+                navigation.addRetained(breakpointFocusId(flow, target), navigationGroup, cell.row(), column++,
+                    state.breakpoints().ready() && !state.breakpoints().pending(target), reveal);
+            }
             if (stageIndex >= 0) {
-                Runnable reveal = () -> commandOffset = DebuggerOverlay.revealRow(cell.row(), commandOffset, rows, maxCommandOffset);
-                if (cell.first() && editableSource) navigation.add("breakpoint-" + flow.invocationId() + "-" + stageIndex,
-                    navigationGroup, cell.row() * 3, cell.x(), reveal);
-                navigation.add("clause-" + flow.invocationId() + "-" + stageIndex + "-" + cell.row(),
-                    navigationGroup, cell.row() * 3 + 1, cell.x(), reveal);
-                if (cell.first() && rowHeight >= 30 && hasWarning(flow.stages().get(stageIndex))) {
-                    navigation.add("warning-" + flow.invocationId() + "-" + stageIndex,
-                        navigationGroup, cell.row() * 3 + 2, cell.x(), reveal);
+                ExecutionFlowStage stage = flow.stages().get(stageIndex);
+                if (cell.first() && editableSource) {
+                    BreakpointTarget target = breakpointTarget(flow, stage);
+                    navigation.addRetained(breakpointFocusId(flow, target), navigationGroup, cell.row(), column++,
+                        state.breakpoints().ready() && !state.breakpoints().pending(target), reveal);
+                }
+                navigation.add("clause-" + flow.invocationId() + "-" + stage.index() + "-" + cell.row(),
+                    navigationGroup, cell.row(), column++, reveal);
+                if (cell.first() && rowHeight >= 30 && hasWarning(stage)) {
+                    navigation.add("warning-" + flow.invocationId() + "-" + stage.index(),
+                        navigationGroup, cell.row(), column, reveal);
                 }
             } else if (part.targetStageIndex() >= 0) {
-                Runnable reveal = () -> commandOffset = DebuggerOverlay.revealRow(cell.row(), commandOffset, rows, maxCommandOffset);
-                if (cell.first() && editableSource) navigation.add(unobservedKey("breakpoint", flow, part),
-                    navigationGroup, cell.row() * 3, cell.x(), reveal);
+                BreakpointTarget target = stageCount(flow, snippet.text()) == 1 ? BreakpointTarget.whole(flow.location())
+                    : BreakpointTarget.stage(flow.location(), part.targetStageIndex(), snippet.text());
+                if (cell.first() && editableSource) {
+                    navigation.addRetained(breakpointFocusId(flow, target), navigationGroup, cell.row(), column++,
+                        !state.breakpoints().pending(target), reveal);
+                }
                 navigation.add(unobservedKey("clause", flow, part) + "-" + cell.row(),
-                    navigationGroup, cell.row() * 3 + 1, cell.x(), reveal);
+                    navigationGroup, cell.row(), column, reveal);
             }
         }
         navigation.revealFocus(DebuggerNavigation.Group.COMMAND);
@@ -360,35 +422,41 @@ public final class CommandPanel {
             if (cellIndex + 1 < layout.cells().size()
                     && layout.cells().get(cellIndex + 1).row() > cell.row()
                     && (content.inline() || layout.cells().get(cellIndex + 1).partIndex() == cell.partIndex())) {
-                DebuggerIcon.LINE_WRAP.draw(graphics, x + cell.width(), y + 2, DebuggerTheme.color(MUTED));
+                DebuggerIcon.LINE_WRAP.draw(graphics, x + cell.width(), y + 2, DebuggerTheme.foreground(MUTED));
+            }
+            if (commandMarker && cell.partIndex() == 0 && cell.first()) {
+                renderCommandMarker(flow, snippet.text(), x, y);
+                x += 15;
+                cell = new CommandFlowLayout.Cell(cell.partIndex(), cell.row(), cell.x() + 15,
+                    Math.max(1, cell.width() - 15), cell.text(), cell.first());
             }
             if (stageIndex < 0 && part.targetStageIndex() >= 0) {
                 renderUnobservedClause(graphics, flow, part, cell, x, y, rowHeight, editableSource,
                     cellIndex + 1 < layout.cells().size() && layout.cells().get(cellIndex + 1).partIndex() == cell.partIndex());
             } else if (stageIndex >= 0 && flow != null) {
                 ExecutionFlowStage stage = flow.stages().get(stageIndex);
-                boolean stopped = state.selectedFlowIndex() == state.pausedFlowIndex() && stageIndex == state.pausedFlowStageIndex();
+                boolean stopped = state.isPaused() && state.selectedFlowIndex() == state.pausedFlowIndex()
+                    && stageIndex == state.pausedFlowStageIndex();
                 int clauseX = x;
                 int clauseWidth = cell.width();
                 if (cell.first() && editableSource) {
                     BreakpointTarget target = breakpointTarget(flow, stage);
-                    int count = stageCount(flow, stage.command().text());
-                    BreakpointDefinition definition = BreakpointUi.definition(state, target, stage.command().text(), count);
-                    DebuggerButton breakpoint = button("breakpoint-" + flow.invocationId() + "-" + stageIndex,
+                    BreakpointDefinition definition = state.breakpoints().get(target);
+                    String focusId = breakpointFocusId(flow, target);
+                    DebuggerButton breakpoint = button(focusId,
                         new Bounds(x, y, 14, 16), Component.translatable("codon.breakpoint.toggle"),
-                        !BreakpointUi.pending(state, target, stage.command().text(), count), false, () -> {
+                        state.breakpoints().ready() && !state.breakpoints().pending(target), false, () -> {
                             if (state.selectedExecutionFlow() != flow) return;
-                            BreakpointUi.toggle(state, target, stage.command().text(), count);
+                            toggleExact(target);
                             state.selectExecutionFlowStage(stageIndex);
                             changed();
                         });
                     breakpoint.withoutChrome().withSmallIcon(BreakpointUi.icon(definition));
-                    if ((definition == null || !definition.enabled())
-                        && !BreakpointUi.editingMarker(client.gui.screen(), target, stage.command().text()))
-                        breakpoint.revealOnHover(x, y, cell.width(), 16);
+                    conditionAction(breakpoint, focusId,
+                        flow, target, stage.command().text(), false, true);
                     breakpoint.withStatusColor(definition != null && definition.enabled() ? RED : MUTED,
                         definition != null && definition.enabled() ? RED_SURFACE : SURFACE);
-                    var error = BreakpointUi.error(state, target, stage.command().text(), count);
+                    var error = state.breakpoints().error(target);
                     breakpoint.setTooltip(Tooltip.create(Component.literal(
                         (definition == null ? tr("codon.breakpoint.add")
                             : definition.enabled() ? tr("codon.breakpoint.disable") : tr("codon.breakpoint.enable"))
@@ -405,25 +473,31 @@ public final class CommandPanel {
                         state.selectExecutionFlowStage(stageIndex);
                         changed();
                     });
+                clause.withTextPadding(CELL_HORIZONTAL_PADDING);
                 if (stopped) clause.withStatusColor(AMBER, AMBER_SURFACE);
                 clause.withOpenEdges(!cell.first(), cellIndex + 1 < layout.cells().size()
                     && layout.cells().get(cellIndex + 1).partIndex() == cell.partIndex());
-                clause.setTooltip(Tooltip.create(Component.literal(part.text().strip() + "\n" + stageDetails(stage))));
-                if (editableSource) clause.withSecondaryAction(() -> openCondition(breakpointTarget(flow, stage)));
+                clause.setTooltip(Tooltip.create(Component.literal(part.text().strip() + "\n"
+                    + (stopped ? tr("codon.ui.flow_detail.stop") + " · #" + (stage.index() + 1) + "\n" : "")
+                    + stageDetails(stage))));
+                if (editableSource) conditionMenu(clause,
+                    "clause-" + flow.invocationId() + "-" + stage.index() + "-" + cell.row(),
+                    flow, breakpointTarget(flow, stage), stage.command().text(), false);
                 if (cell.first() && rowHeight < 30 && hasWarning(stage)) clause.withTextIcon(DebuggerIcon.WARNING);
-                if (stopped && cell.first()) clause.withTextIcon(DebuggerIcon.PAUSE);
                 if (cell.first() && rowHeight >= 30) {
                     String count = counts(stage);
-                    drawText(graphics, count, x + 4, y + 20,
-                        cell.width() - 5 - (hasWarning(stage) ? 17 : 0), stopped ? AMBER : MUTED);
+                    drawText(graphics, count, x + CELL_HORIZONTAL_PADDING / 2, y + 20,
+                        cell.width() - CELL_HORIZONTAL_PADDING - (hasWarning(stage) ? 17 : 0), stopped ? AMBER : MUTED);
                     if (hasWarning(stage)) warningButton("warning-" + flow.invocationId() + "-" + stage.index(),
                         new Bounds(x + cell.width() - 17, y + 16, 16, 14), stage);
                 }
             } else {
                 if (stageIndex == -2) drawText(graphics, cell.text(), x, y + 4, cell.width(), MUTED);
-                else drawText(graphics, cell.text(), x + 5, y + 4, cell.width() - 10, flow == null ? TEXT : MUTED);
+                else drawText(graphics, cell.text(), x + CELL_HORIZONTAL_PADDING / 2, y + 4,
+                    cell.width() - CELL_HORIZONTAL_PADDING, flow == null ? TEXT : MUTED);
                 if (flow != null && stageIndex == -1 && cell.first() && rowHeight >= 30) {
-                    drawText(graphics, observationText(part), x + 4, y + 20, cell.width() - 5, MUTED);
+                    drawText(graphics, observationLabel(part), x + CELL_HORIZONTAL_PADDING / 2,
+                        y + 20, cell.width() - CELL_HORIZONTAL_PADDING, MUTED);
                 }
             }
         }
@@ -433,7 +507,9 @@ public final class CommandPanel {
     private void renderUnobservedClause(GuiGraphicsExtractor graphics, ExecutionFlowTrace flow, Part part,
                                        CommandFlowLayout.Cell cell, int x, int y, int rowHeight,
                                        boolean editableSource, boolean continues) {
-        BreakpointTarget target = BreakpointTarget.stage(flow.location(), part.targetStageIndex(), state.selectedCommand().text());
+        String command = state.selectedCommand().text();
+        BreakpointTarget target = stageCount(flow, command) == 1 ? BreakpointTarget.whole(flow.location())
+            : BreakpointTarget.stage(flow.location(), part.targetStageIndex(), command);
         BreakpointDefinition definition = state.breakpoints().get(target);
         var preview = state.stagePreviews().get(flow.location());
         PauseSnapshot expected = renderedSnapshot;
@@ -445,7 +521,8 @@ public final class CommandPanel {
         };
         int inset = cell.first() && editableSource ? 15 : 0;
         if (inset > 0) {
-            DebuggerButton marker = button(unobservedKey("breakpoint", flow, part), new Bounds(x, y, 14, 16),
+            String focusId = breakpointFocusId(flow, target);
+            DebuggerButton marker = button(focusId, new Bounds(x, y, 14, 16),
                 Component.translatable("codon.breakpoint.toggle"), !state.breakpoints().pending(target), false, () -> {
                     if (state.snapshot() != expected || state.selectedExecutionFlow() != flow
                         || state.stagePreviews().get(flow.location()) != preview) return;
@@ -456,9 +533,8 @@ public final class CommandPanel {
                         current == null ? BreakpointDefinition.plain(target) : current);
                 });
             marker.withoutChrome().withSmallIcon(BreakpointUi.icon(definition));
-            if ((definition == null || !definition.enabled())
-                && !BreakpointUi.editingMarker(client.gui.screen(), target, state.selectedCommand().text()))
-                marker.revealOnHover(x, y, cell.width(), 16);
+            conditionAction(marker, focusId, flow, target,
+                state.selectedCommand().text(), true, true);
             marker.withStatusColor(definition != null && definition.enabled() ? RED : MUTED,
                 definition != null && definition.enabled() ? RED_SURFACE : SURFACE);
             var error = state.breakpoints().error(target);
@@ -471,27 +547,72 @@ public final class CommandPanel {
         DebuggerButton clause = button(unobservedKey("clause", flow, part) + "-" + cell.row(),
             new Bounds(x + inset, y, Math.max(1, cell.width() - inset), 16), Component.literal(cell.text()), true,
             state.selectedUnobservedStageIndex() == part.targetStageIndex(), select);
-        clause.withStatusColor(MUTED, SURFACE).withOpenEdges(!cell.first(), continues);
+        clause.withTextPadding(CELL_HORIZONTAL_PADDING).withStatusColor(MUTED, SURFACE).withOpenEdges(!cell.first(), continues);
         clause.setTooltip(Tooltip.create(Component.literal(part.text().strip() + "\n" + observationText(part))));
-        if (editableSource) clause.withSecondaryAction(() -> {
-            select.run();
-            if (state.snapshot() == expected && state.selectedExecutionFlow() == flow
-                && state.stagePreviews().get(flow.location()) == preview
-                && state.selectedUnobservedStageIndex() == part.targetStageIndex() && !state.breakpoints().pending(target)) openCondition(target);
-        });
-        if (cell.first() && rowHeight >= 30) drawText(graphics, observationText(part), x + 4, y + 20, cell.width() - 5, MUTED);
+        if (editableSource) conditionMenu(clause, unobservedKey("clause", flow, part) + "-" + cell.row(),
+            flow, target, state.selectedCommand().text(), true);
+        if (cell.first() && rowHeight >= 30) drawText(graphics, observationLabel(part),
+            x + CELL_HORIZONTAL_PADDING / 2, y + 20, cell.width() - CELL_HORIZONTAL_PADDING, MUTED);
+    }
+
+    private void toggleExact(BreakpointTarget target) {
+        if (!state.breakpoints().ready() || state.breakpoints().pending(target)) return;
+        var definition = state.breakpoints().get(target);
+        ClientNetworking.sendBreakpointEdit(state, ClientBreakpointState.Action.TOGGLE,
+            definition == null ? BreakpointDefinition.plain(target) : definition);
+    }
+
+    private void renderCommandMarker(ExecutionFlowTrace flow, String command, int x, int y) {
+        BreakpointTarget target = BreakpointTarget.whole(flow.location());
+        BreakpointDefinition definition = state.breakpoints().get(target);
+        String id = breakpointFocusId(flow, target);
+        DebuggerButton marker = button(id, new Bounds(x, y, 14, 16), Component.literal(BreakpointUi.target(target)),
+            state.breakpoints().ready() && !state.breakpoints().pending(target), false, () -> {
+                if (state.selectedExecutionFlow() == flow) toggleExact(target);
+            }).withoutChrome().withSmallIcon(BreakpointUi.icon(definition));
+        marker.withStatusColor(definition != null && definition.enabled() ? RED : MUTED,
+            definition != null && definition.enabled() ? RED_SURFACE : SURFACE);
+        marker.setTooltip(Tooltip.create(Component.literal(BreakpointUi.target(target) + "\n"
+            + tr(definition == null ? "codon.breakpoint.add" : definition.enabled()
+                ? "codon.breakpoint.disable" : "codon.breakpoint.enable")
+            + (definition == null ? "" : " · " + BreakpointUi.condition(definition.condition())))));
+        conditionAction(marker, id, flow, target, command, false, true);
     }
 
     private static String unobservedKey(String control, ExecutionFlowTrace flow, Part part) {
         return "unobserved-" + control + "-" + flow.invocationId() + "-" + part.targetStageIndex();
     }
 
-    private static String observationText(Part part) {
-        return tr(switch (part.observation()) {
-            case NOT_EXECUTED -> "codon.ui.not_executed";
-            case FILTERED_OUT -> "codon.ui.filtered_out";
-            case RECORDED, UNAVAILABLE -> "codon.ui.stage_unavailable";
-        });
+    /** Stable across definition updates and parsed-to-recorded stage transitions. */
+    static String breakpointFocusId(ExecutionFlowTrace flow, BreakpointTarget target) {
+        return "flow-breakpoint-" + flow.invocationId() + "-" + target;
+    }
+
+    private boolean executionError(int stageIndex) {
+        if (stageIndex < 0) return false;
+        return warningsForStage(state.selectedExecutionFlow(), stageIndex).stream()
+            .anyMatch(warning -> warning.reason() == ExecutionFlowWarning.Reason.EXECUTION_ERROR);
+    }
+
+    private String observationKey(Part part) {
+        if (executionError(part.targetStageIndex())) return "codon.ui.flow_detail.error";
+        if (part.observation() == CommandFlowLayout.Observation.FILTERED_OUT) return "codon.ui.filtered_out";
+        // An absent historical clause does not prove non-execution. Only the suffix beyond
+        // the actual pause in this same invocation has evidence that execution has not reached it.
+        if (part.observation() == CommandFlowLayout.Observation.NOT_EXECUTED && state.isPaused()
+            && state.selectedFlowIndex() == state.pausedFlowIndex() && state.pausedFlowStageIndex() >= 0) {
+            ExecutionFlowTrace flow = state.selectedExecutionFlow();
+            if (flow != null && part.targetStageIndex() > flow.stages().get(state.pausedFlowStageIndex()).index())
+                return "codon.ui.not_executed";
+        }
+        return "codon.ui.stage_unavailable";
+    }
+
+    private String observationText(Part part) { return tr(observationKey(part)); }
+    private String observationLabel(Part part) {
+        String key = observationKey(part);
+        // Future clauses need no repeated inline badge; detail/tooltip retain the evidence.
+        return key.equals("codon.ui.not_executed") ? "" : tr(key + ".short");
     }
 
     private void renderRawCommand(GuiGraphicsExtractor graphics, Bounds body, CommandSnippet command, PauseSnapshot snapshot) {
@@ -509,10 +630,10 @@ public final class CommandPanel {
         graphics.fill(body.x(), body.y(), body.x() + 2, body.y() + body.height(), DebuggerTheme.color(state.isViewingCurrentCommand() ? AMBER : MUTED));
         graphics.enableScissor(body.x() + 4, body.y(), body.x() + body.width() - 4, body.y() + body.height());
         for (int i = 0; i < rows && commandOffset + i < lines.size(); i++) {
-            graphics.text(client.font, lines.get(commandOffset + i), body.x() + 5, body.y() + i * 11, DebuggerTheme.color(TEXT), false);
+            graphics.text(client.font, lines.get(commandOffset + i), body.x() + 5, body.y() + i * 11, DebuggerTheme.foreground(TEXT), false);
             if (commandOffset + i + 1 < lines.size()) {
                 DebuggerIcon.LINE_WRAP.draw(graphics,
-                    body.x() + 5 + client.font.width(lines.get(commandOffset + i)), body.y() + i * 11 - 1, DebuggerTheme.color(MUTED));
+                    body.x() + 5 + client.font.width(lines.get(commandOffset + i)), body.y() + i * 11 - 1, DebuggerTheme.foreground(MUTED));
             }
         }
         graphics.disableScissor();
@@ -530,50 +651,53 @@ public final class CommandPanel {
         return lines;
     }
 
-    private String summary() {
+    private SelectionDetail selectionDetail() {
         ExecutionFlowStage stage = state.selectedExecutionFlowStage();
-        if (state.selectedUnobservedStageIndex() >= 0) {
+        int unobserved = state.selectedUnobservedStageIndex();
+        if (unobserved >= 0) {
             ExecutionFlowTrace flow = state.selectedExecutionFlow();
-            return CommandFlowLayout.content(state.selectedCommand(), flow, state.stagePreviews().get(flow.location())).parts().stream()
-                .filter(part -> part.targetStageIndex() == state.selectedUnobservedStageIndex()).findFirst()
-                .map(CommandPanel::observationText).orElse(tr("codon.ui.stage_unavailable"));
+            CommandSnippet command = state.selectedCommand();
+            Part part = flow == null || command == null ? null
+                : CommandFlowLayout.content(command, flow, state.stagePreviews().get(flow.location())).parts().stream()
+                    .filter(candidate -> candidate.targetStageIndex() == unobserved).findFirst().orElse(null);
+            String key = executionError(unobserved) ? "codon.ui.flow_detail.error"
+                : part == null ? "codon.ui.stage_unavailable" : observationKey(part);
+            String values = tr(key.equals("codon.ui.filtered_out") ? "codon.ui.flow_detail.unreached_counts"
+                : key.equals("codon.ui.not_executed") ? "codon.ui.flow_detail.future_counts"
+                : key.equals("codon.ui.stage_unavailable") ? "codon.ui.flow_detail.unknown_counts" : "codon.ui.flow_detail.no_counts");
+            return new SelectionDetail(tr("codon.ui.flow_detail.title", tr("codon.ui.flow_detail.selected"),
+                unobserved + 1, tr(key + ".short")), values, tr(key),
+                executionError(unobserved) ? RED : TEAL);
         }
-        if (stage == null) return withHistory(tr("codon.ui.no_flow"));
-        if (stage.terminal()) {
-            String terminal = Component.translatable("codon.ui.terminal_results",
-                measuredCount(stage.executionCount()), measuredCount(stage.successCount())).getString();
-            String condition = conditionSummary(stage);
-            if (!condition.isEmpty()) terminal += " · " + condition;
-            return withHistory(hasFlowWarning()
-                ? terminal + " · " + warningSummary(state.selectedExecutionFlow()) : terminal);
-        }
-        // Per-clause counts already describe input/output contexts. Keep this fixed row
-        // for additional information, rather than repeating those counts below them.
-        String condition = conditionSummary(stage);
-        if (hasFlowWarning()) condition = condition.isEmpty() ? warningSummary(state.selectedExecutionFlow())
-            : condition + " · " + warningSummary(state.selectedExecutionFlow());
-        return withHistory(condition);
+        if (stage == null) return new SelectionDetail(tr("codon.ui.no_flow"),
+            tr("codon.ui.flow_detail.no_counts"), tr("codon.ui.stage_unavailable"), MUTED);
+        boolean error = executionError(stage.index());
+        boolean incomplete = hasWarning(stage);
+        boolean resultMissing = stage.terminal() ? stage.executionCount() < 0 || stage.successCount() < 0
+            : !stage.complete() || stage.outputCount() < 0;
+        String status = error ? "error.short" : incomplete ? "capture_incomplete"
+            : resultMissing ? state.isViewingCurrentCommand() ? "awaiting_result" : "unknown_result" : "observed";
+        String scope = tr(state.isViewingCurrentCommand() ? "codon.ui.flow_detail.stop" : "codon.ui.flow_detail.history");
+        String title = tr("codon.ui.flow_detail.title", scope, stage.index() + 1, tr("codon.ui.flow_detail." + status));
+        String values = stage.terminal()
+            ? tr("codon.ui.flow_detail.results", detailCount(stage.inputCount()), detailCount(stage.executionCount()),
+                detailCount(stage.successCount()))
+            : tr("codon.ui.flow_detail.contexts", detailCount(stage.inputCount()),
+                detailCount(stage.complete() ? stage.outputCount() : ExecutionFlowStage.UNMEASURED),
+                detailCount(stage.complete() && stage.outputCount() >= 0 ? stage.droppedCount() : ExecutionFlowStage.UNMEASURED));
+        return new SelectionDetail(title, values, stageDetails(stage) + "\n" + tr("codon.ui.flow_detail.count_hint"),
+            error ? RED : incomplete ? AMBER : state.isViewingCurrentCommand() ? AMBER : TEAL);
     }
 
-    private String withHistory(String summary) {
-        if (state.isViewingCurrentCommand()) return summary;
-        String label = tr(commandBounds.width() < 400
-            ? "codon.ui.viewing_recording_short" : "codon.ui.viewing_recording");
-        return summary.isEmpty() ? label : label + " · " + summary;
-    }
+    private static String detailCount(int count) { return count < 0 ? "?" : Integer.toString(count); }
 
     private String conditionSummary(ExecutionFlowStage stage) {
         BreakpointTarget target = selectedBreakpoint();
         if (target == null) return "";
         ExecutionFlowTrace flow = state.selectedExecutionFlow();
-        // Result conditions apply to modifiers. Retain saved single-stage legacy
-        // conditions for inspection, without attributing a line condition to a terminal clause.
+        // Describe the exact selected target, without borrowing a different line/stage condition.
         if (stage.terminal() && stageCount(flow, stage.command().text()) != 1) return "";
-        BreakpointDefinition definition = BreakpointUi.definition(state, target, stage.command().text(),
-            stageCount(flow, stage.command().text()));
-        if (definition == null || !definition.enabled()) {
-            definition = state.breakpoints().get(BreakpointTarget.whole(target.location()));
-        }
+        BreakpointDefinition definition = state.breakpoints().get(target);
         if (definition == null || !definition.enabled()
             || definition.condition().kind() == BreakpointCondition.Kind.ALWAYS) return "";
         int actual = BreakpointConditionEvaluator.observedCount(definition.condition().kind(), stage);
@@ -713,6 +837,7 @@ public final class CommandPanel {
         PauseSnapshot expected = renderedSnapshot;
         button.configure(bounds.x(), bounds.y(), Math.max(1, bounds.width()), bounds.height(), label,
             active, selected, true, false, () -> { if (state.snapshot() == expected) action.run(); });
+        button.withFlatChrome();
         used.add(id);
         buttons.add(button);
         navigation.bind(id, navigationGroup, button);
@@ -729,7 +854,7 @@ public final class CommandPanel {
         String clipped = client.font.width(value) <= width ? value
             : client.font.plainSubstrByWidth(value, Math.max(0, width - client.font.width("…"))) + "…";
         graphics.enableScissor(x, y, x + width, y + client.font.lineHeight + 1);
-        graphics.text(client.font, clipped, x, y, DebuggerTheme.color(color), false);
+        graphics.text(client.font, clipped, x, y, DebuggerTheme.foreground(color), false);
         graphics.disableScissor();
     }
 
@@ -739,7 +864,7 @@ public final class CommandPanel {
         int thumb = Math.min(height, Math.max(5, height * rows / (rows + max)));
         scrollbars.add("command", false, x, y, height, 2, thumb, offset, max, value -> commandOffset = value);
         int top = y + (height - thumb) * offset / max;
-        graphics.fill(x, top, x + 2, top + thumb, DebuggerTheme.color(TEAL));
+        graphics.fill(x, top, x + 2, top + thumb, DebuggerTheme.color(SCROLLBAR));
     }
 
     private String frameLabel(PauseSnapshot snapshot, int index) {

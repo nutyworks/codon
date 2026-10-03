@@ -338,12 +338,10 @@ public final class DebuggerWatchGameTest implements FabricClientGameTest {
         });
         context.waitTicks(1);
         context.takeScreenshot("codon-watch-compact");
+        long id = context.computeOnClient(client -> CodonClientMod.state().watches().entries().getFirst().id());
+        WatchGameTestUi.perform(context, id, "codon.watch.edit");
         context.runOnClient(client -> {
-            Screen screen = client.gui.screen();
-            click(screen, screen.children().stream().filter(DebuggerButton.class::isInstance)
-                .map(DebuggerButton.class::cast)
-                .filter(button -> button.getMessage().getString().equals("Edit")).findFirst().orElseThrow());
-            require(client.gui.screen() instanceof WatchScreen, "Watch row opens its editor directly");
+            require(client.gui.screen() instanceof WatchScreen, "Watch row menu opens its editor");
             client.gui.screen().onClose();
         });
     }

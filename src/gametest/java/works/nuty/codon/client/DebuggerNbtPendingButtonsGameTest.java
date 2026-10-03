@@ -65,7 +65,7 @@ public final class DebuggerNbtPendingButtonsGameTest implements FabricClientGame
             context.waitTicks(1);
             Buttons before = context.computeOnClient(client -> capture(screen, state.selectedSource().entity().uuid()));
             ClientNbtQuery pendingRoot = context.computeOnClient(client -> {
-                require(before.compoundPin().getMessage().getString().equals(Component.translatable("codon.nbt.unpin").getString()),
+                require(before.compoundPin().getMessage().getString().equals(Component.translatable("codon.nbt.unpin", state.selectedSource().entity().name()).getString()),
                     "The selected NBT pin is visibly retained before refresh");
                 client.setLastInputType(InputType.KEYBOARD_TAB);
                 screen.setFocused(before.compound());
@@ -91,7 +91,7 @@ public final class DebuggerNbtPendingButtonsGameTest implements FabricClientGame
                 before.compound().onPress(new KeyEvent(InputConstants.KEY_RETURN, InputConstants.KEYCODE_RETURN, 0));
                 require(before.compound().getMessage().getString().equals(expanded),
                     "Blocked pointer and keyboard activation cannot collapse the retained compound");
-                require(before.compoundPin().getMessage().getString().equals(Component.translatable("codon.nbt.unpin").getString()),
+                require(before.compoundPin().getMessage().getString().equals(Component.translatable("codon.nbt.unpin", state.selectedSource().entity().name()).getString()),
                     "Blocked right-click cannot change retained pin selection");
             });
 
@@ -186,7 +186,7 @@ public final class DebuggerNbtPendingButtonsGameTest implements FabricClientGame
 
     private static DebuggerButton pinAt(CodonScreen screen, DebuggerButton node) {
         return screen.children().stream().filter(DebuggerButton.class::isInstance).map(DebuggerButton.class::cast)
-            .filter(button -> button.icon() == DebuggerIcon.PIN && button.getY() == node.getY()).findFirst()
+            .filter(button -> button.icon() == DebuggerIcon.WATCHES && button.getY() == node.getY()).findFirst()
             .orElseThrow(() -> new AssertionError("NBT node pin button is rendered"));
     }
 

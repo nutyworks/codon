@@ -34,7 +34,10 @@ public final class DebuggerWatchEditorGameTest implements FabricClientGameTest {
             ClientDebuggerState state = new ClientDebuggerState();
             DebuggerOverlay overlay = context.computeOnClient(client -> new DebuggerOverlay(state));
             InputManager input = context.computeOnClient(client -> {
-                state.applyPause(DebuggerPresentationGameTest.fixture(client));
+                var base = DebuggerPresentationGameTest.fixture(client);
+                // Pin requires an identified pause; this remains a client-only fixture.
+                state.applyPause(new works.nuty.codon.core.model.PauseSnapshot(base.location(), base.command(), base.depth(),
+                    base.callStack(), base.pauseSources(), base.executionFlows(), base.reason(), 101));
                 InputManager result = DebuggerPresentationGameTest.input(client, state);
                 client.setScreenAndShow(new WatchScreen(result, state, overlay));
                 return result;
@@ -173,18 +176,24 @@ public final class DebuggerWatchEditorGameTest implements FabricClientGameTest {
             client.setScreenAndShow(new CodonScreen(input, overlay));
         });
         context.waitTicks(3);
-        context.runOnClient(client -> {
-            CodonScreen hud = (CodonScreen) client.gui.screen();
-            DebuggerButton pin = button(hud, "Pin executor");
-            click(hud, pin);
-            require(state.watches().definitions().stream().anyMatch(WatchSpec::isPinned),
-                "the Watches HUD pins a following watch");
-            DebuggerButton remove = button(hud, "Remove");
-            int beforeRemove = state.watches().definitions().size();
-            click(hud, remove);
-            require(state.watches().definitions().size() == beforeRemove - 1,
-                "the Watches HUD removes a saved watch");
-        });
+        var following = context.computeOnClient(client -> state.watches().entries().stream()
+            .filter(entry -> entry.spec().equals(new WatchSpec(WatchSpec.Kind.SCORE, "follow_points", "")))
+            .findFirst().orElseThrow());
+        var pinnedSpec = context.computeOnClient(client -> following.spec().withExecutor(state.selectedSource().entity().uuid()));
+        context.runOnClient(client -> require(state.watches().findId(pinnedSpec) < 0,
+            "The menu pin fixture has no conflicting binding"));
+        var expected = context.computeOnClient(client -> new java.util.HashSet<>(state.watches().definitions()));
+        expected.remove(following.spec());
+        expected.add(pinnedSpec);
+        WatchGameTestUi.perform(context, following.id(), "codon.watch.pin");
+        context.runOnClient(client -> require(new java.util.HashSet<>(state.watches().definitions()).equals(expected),
+            "Pin changes only the exact following watch; expected " + expected + "; actual " + state.watches().definitions()));
+        long pinnedId = context.computeOnClient(client -> state.watches().findId(pinnedSpec));
+        int beforeRemove = context.computeOnClient(client -> state.watches().definitions().size());
+        WatchGameTestUi.perform(context, pinnedId, "codon.watch.menu.delete");
+        context.runOnClient(client -> require(state.watches().definitions().size() == beforeRemove - 1
+            && state.watches().entries().stream().noneMatch(entry -> entry.id() == pinnedId),
+            "the Watches row menu removes the exact saved watch"));
     }
 
     private static void checkFakePlayerEditor(ClientGameTestContext context, ClientDebuggerState state,

@@ -74,7 +74,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
                 require(screen.width == 320 && screen.height == 240,
                     "test uses 320x240 GUI coordinates, actual " + screen.width + "x" + screen.height);
                 client.setLastInputType(InputType.MOUSE);
-                MouseButtonEvent click = new MouseButtonEvent(100, 130,
+                MouseButtonEvent click = new MouseButtonEvent(100, FunctionLineBreakpointGameTest.value(screen, "sourceLineTop") + 8,
                     new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
                 require(screen.mouseClicked(click, false), "selects the long function source line");
                 screen.mouseReleased(click);
@@ -94,28 +94,29 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             context.waitTicks(1);
             context.takeScreenshot("codon-function-source-320x240-stage-first");
             int firstMarker = context.computeOnClient(client -> 56 + client.font.width(COMMAND.substring(0, 8)) + SourceLineLayout.MARKER_WIDTH / 2);
-            context.getInput().setCursorPos(firstMarker * 3, 133 * 3);
+            int firstY = context.computeOnClient(client -> FunctionLineBreakpointGameTest.value(screen, "sourceLineTop") + 8);
+            context.getInput().setCursorPos(firstMarker * 3, firstY * 3);
             context.waitTicks(2);
             context.takeScreenshot("codon-function-source-disabled-hover");
             context.runOnClient(client -> {
                 var debugger = require(CodonClientMod.state(), "debugger state exists");
                 var location = new SourceLocation.Function(new FunctionLocation(FUNCTION, 1));
                 BreakpointTarget target = BreakpointTarget.stage(location, 0, COMMAND);
-                MouseButtonEvent marker = new MouseButtonEvent(firstMarker, 133,
+                MouseButtonEvent marker = new MouseButtonEvent(firstMarker, firstY,
                     new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
                 screen.mouseClicked(marker, false);
                 screen.mouseReleased(marker);
                 require(debugger.breakpoints().pending(target), "inline marker uses the authoritative saved stage target");
                 require(debugger.breakpoints().get(target).condition().equals(BreakpointCondition.event(BreakpointCondition.Kind.CREATED)),
                     "toggling a disabled inline marker retains its saved condition");
-                screen.mouseScrolled(100, 130, 10, 0);
+                screen.mouseScrolled(100, firstY, 10, 0);
             });
             context.getInput().setCursorPos(0, 0);
             context.waitTicks(2);
             context.takeScreenshot("codon-function-source-320x240-inline-scrolled");
             context.runOnClient(client -> {
                 int secondText = 56 + client.font.width(COMMAND.substring(0, 66)) + SourceLineLayout.MARKER_WIDTH - 300 + 4;
-                MouseButtonEvent click = new MouseButtonEvent(secondText, 133,
+                MouseButtonEvent click = new MouseButtonEvent(secondText, firstY,
                     new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
                 require(screen.mouseClicked(click, false), "selects horizontally scrolled inline stage text without toggling its marker");
                 screen.mouseReleased(click);
@@ -123,8 +124,8 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             context.waitTicks(1);
             context.runOnClient(client -> {
                 require(screen.children().stream().filter(AbstractButton.class::isInstance).map(AbstractButton.class::cast)
-                    .anyMatch(button -> button.visible && button.active && button.getMessage().getString().equals("Stage condition…")),
-                    "selected server-provided stage retains its condition control");
+                    .noneMatch(button -> button.visible && button.getMessage().equals(Component.translatable("codon.source.stage_condition"))),
+                    "stage selection does not recreate the removed condition header button");
             });
             context.waitTicks(1);
             context.takeScreenshot("codon-function-source-stage-selected");
@@ -270,14 +271,14 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
         context.waitTicks(2);
         context.runOnClient(client -> {
             Screen screen = client.gui.screen();
-            screen.mouseScrolled(100, 148, 5, 0);
+            screen.mouseScrolled(100, sourceY(screen, 2), 5, 0);
         });
         context.waitTicks(1);
         context.runOnClient(client -> {
             Screen screen = client.gui.screen();
             int marker = 56 + client.font.width(original.substring(0, 2 + command.indexOf("run")))
                 - sources.browseView().horizontalOffset();
-            MouseButtonEvent click = new MouseButtonEvent(marker + SourceLineLayout.MARKER_WIDTH + 4, 151,
+            MouseButtonEvent click = new MouseButtonEvent(marker + SourceLineLayout.MARKER_WIDTH + 4, sourceY(screen, 2),
                 new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
             screen.mouseClicked(click, false);
             screen.mouseReleased(click);
@@ -326,7 +327,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
         context.waitTicks(2);
         context.runOnClient(client -> {
             Screen screen = client.gui.screen();
-            MouseButtonEvent click = new MouseButtonEvent(200, 169,
+            MouseButtonEvent click = new MouseButtonEvent(200, sourceY(screen, 3),
                 new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
             screen.mouseClicked(click, false);
             screen.mouseReleased(click);
@@ -352,7 +353,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
         context.waitTicks(2);
         context.runOnClient(client -> {
             Screen screen = client.gui.screen();
-            MouseButtonEvent click = new MouseButtonEvent(200, 187,
+            MouseButtonEvent click = new MouseButtonEvent(200, sourceY(screen, 8),
                 new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
             screen.mouseClicked(click, false);
             screen.mouseReleased(click);
@@ -370,12 +371,13 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
         });
         context.waitTicks(2);
         int eofMarker = context.computeOnClient(client -> 56 + client.font.width(COMMAND.substring(0, 8)) + SourceLineLayout.MARKER_WIDTH / 2);
-        context.getInput().setCursorPos(eofMarker * 3, 187 * 3);
+        int eofY = context.computeOnClient(client -> sourceY(client.gui.screen(), 8));
+        context.getInput().setCursorPos(eofMarker * 3, eofY * 3);
         context.waitTicks(2);
         context.runOnClient(client -> {
             Screen screen = client.gui.screen();
             int marker = eofMarker;
-            MouseButtonEvent click = new MouseButtonEvent(marker, 187,
+            MouseButtonEvent click = new MouseButtonEvent(marker, sourceY(screen, 8),
                 new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
             screen.mouseClicked(click, false);
             screen.mouseReleased(click);
@@ -545,7 +547,20 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
                 });
                 context.getInput().setCursorPos(0, 0);
                 context.waitTicks(2);
-                assertStageMarkerPixels(context, geometry, -1, "codon-function-source-hover-" + row + "-leave-" + stage);
+                assertStageMarkerPixels(context, geometry, paused ? stage : -1, "codon-function-source-hover-" + row + "-leave-" + stage);
+                if (paused) {
+                    context.runOnClient(client -> {
+                        Screen screen = client.gui.screen();
+                        require(BreakpointTarget.stage(location, targetStage, command).equals(
+                            FunctionLineBreakpointGameTest.field(screen, "focusedBreakpoint")),
+                            "Clicked pending marker retains the exact keyboard target after the pointer leaves");
+                        screen.keyPressed(new KeyEvent(InputConstants.KEY_TAB, 0, 0));
+                        require(FunctionLineBreakpointGameTest.field(screen, "focusedBreakpoint") == null,
+                            "Explicit Tab clears the marker target while the edit is pending");
+                    });
+                    context.waitTicks(2);
+                    assertStageMarkerPixels(context, geometry, -1, "codon-function-source-hover-" + row + "-navigated-" + stage);
+                }
             }
         }
         context.runOnClient(client -> CodonClientMod.state().applyResume());
@@ -565,7 +580,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
                          y < (int) Math.floor((geometry[5] + 14) * scaleY); y++)
                         visible |= (image.getRGB(x, y) & 0xFFFFFF) == color;
                 }
-                require(visible == (stage == 0 || stage == hovered), name + ": enabled stages remain visible; inactive stages require hover, stage=" + stage);
+                require(visible == (stage == 0 || stage == hovered), name + ": enabled stages remain visible; inactive stages require hover or retained focus, stage=" + stage);
             }
         } catch (java.io.IOException error) {
             throw new AssertionError("Cannot inspect stage marker capture", error);
@@ -893,6 +908,11 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
     private static <T> T require(T value, String message) {
         if (value == null) throw new AssertionError(message);
         return value;
+    }
+
+    private static int sourceY(Screen screen, int originalLine) {
+        return FunctionLineBreakpointGameTest.value(screen, "sourceLineTop")
+            + (originalLine - 1 - (int) FunctionLineBreakpointGameTest.field(screen, "lineOffset")) * 18 + 8;
     }
 
     private static void require(boolean condition, String message) {

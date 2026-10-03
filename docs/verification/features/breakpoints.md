@@ -2,6 +2,19 @@
 
 ## User path and expected result
 
+Deleting from the condition modal waits for server acknowledgement before closing
+back to its existing parent (including Source). Pending, rejected and unavailable
+requests remain visible in the same modal. The Active breakpoint list now only
+navigates: its row overflow, toggle, condition, delete and Undo actions are removed.
+Function entries open their original source line and matching stage; block entries
+open an exact matching recorded/static stage in the current pause's Flow. Matching
+uses location, stage identity and command fingerprint, never a guessed row index.
+Entries lacking an available Flow destination remain visible but disabled with an
+explanation; no world teleport or new block-source editor is implemented. Enabled
+and disabled saved entries remain listed. Activation sends no breakpoint edits.
+Source/Flow context menus provide condition editing at the destination. List focus
+and scroll are retained on return; native behavior still needs manual verification.
+
 Use the [shared setup](../README.md#prepare-and-launch). In a disposable Creative
 world, obtain a command block with `/give @s minecraft:command_block`, place it,
 enter `say codon breakpoint check`, save with Done, and attach a button.
@@ -31,26 +44,29 @@ Plain markers are circles and conditional markers are diamonds. All editor, sour
 flow and management-list markers use the same symmetric 9-pixel artwork, with
 solid enabled markers and hollow disabled/unused markers instead of font glyphs. Empty affordances
 appear on hover/focus; disabled markers also appear only on hover/focus, while
-enabled breakpoints remain visible. The management list, toolbar count and source
-stage summaries include only enabled breakpoints. Disabling preserves the saved
-condition; hover/focus its original marker to enable it again. The whole-command
+enabled breakpoints remain visible. Flow keeps both saved disabled markers and unset breakpoint-capable stage affordances
+visible as neutral hollow circles/diamonds, including run and terminal function stages.
+Rendering an unset affordance does not create a saved breakpoint. The
+list retains enabled and disabled definitions with an explicit state label. The toolbar count and source stage summaries
+still count enabled breakpoints. Disabling preserves the saved condition; use the
+list to navigate to its source, then hover/focus its original marker to enable it again. The whole-command
 marker at the front of the command-block editor is always visible, including when
 unused or disabled. Text selection in the
 wrapped editor must not toggle a marker, and soft wrapping must not change the
 stored command. Server acknowledgement determines the displayed breakpoint state.
 Check persistence by leaving/reopening the world after saving a definition.
 
-Management rows align their labels to the left and retain a teal selected
-surface so the target of the bottom action buttons is visible after the pointer
-moves away. Scrolling applies only over the list rows, not over the title,
+Navigation-list rows align their labels to the left with neutral hover and keyboard
+focus, without a persistent condition-edit selection color. Scrolling applies only over the list rows, not over the title,
 actions, or surrounding world. The condition editor repeats its command fragment
-in a tooltip only when the visible fragment is clipped. In
-`DebuggerBreakpointUiGameTest`, the `hover-close` capture should show no redundant
-label tooltip, while `hover-condition` retains the full clipped label after a
-short hover. The keyboard capture keeps immediate access to the same label.
+in a tooltip only when the visible fragment is clipped. The navigation-only list
+does not expose condition, delete or Undo controls. `DebuggerBreakpointUiGameTest`
+checks that unavailable destinations cannot mutate definitions. Deleting from a
+condition editor returns to the same parent input and cursor; the exact marker can
+then recreate the breakpoint with its default Always condition.
 
 Function-line and stage targets use the [Source viewer](function-source.md).
-Saved line hover shows its count, click toggle and right-click condition hints
+Saved line hover shows its exact condition, click toggle and right-click condition hints
 on separate localized lines; see [tooltip coverage](tooltips.md) for wrapping,
 viewport placement and the rendering checks.
 The command alternatives are `/codon breakpoint block <x> <y> <z>` and
@@ -75,7 +91,7 @@ They toggle whole-command targets; use the UI for stage/condition editing.
 | Native editor input, modal details without screen replacement, server edits, wrapping and narrow layouts | `DebuggerBreakpointUiGameTest` |
 | Single-stage editor/Flow target, legacy toggle/clear and native first-occurrence stop | `SingleStageBreakpointGameTest` |
 | Inactive condition marker retention, menus/Cancel and server-acknowledged Save enabling | `BreakpointConditionVisibilityGameTest`, `DebuggerBreakpointUiGameTest` |
-| Flow legacy condition labels, rejected toggle feedback, terminal condition attribution and pending action gating (presentation fixture) | `FlowLegacyConditionGameTest` |
+| Flow legacy/line isolation, exact condition attribution, rejected toggle feedback and pending action gating (presentation fixture) | `FlowLegacyConditionGameTest` |
 | Native execution and measured-zero result breakpoints | `DebuggerBreakpointResultGameTest` |
 
 Example: `./gradlew runClientGameTest -PclientGameTest=DebuggerBreakpointUiGameTest`.
@@ -86,14 +102,14 @@ file-adapter unit test.
 
 When chaining edits in a client GameTest, wait for both the server acknowledgement
 and the next control's enabled state. A received snapshot can precede the frame
-that enables Undo or an inline marker; sending input in that interval tests a
+that enables an inline marker; sending input in that interval tests a
 disabled control instead of the intended follow-up action.
 
 Disable a whole-command breakpoint and a conditional stage breakpoint, then
 reopen the command-block editor. The whole-command marker must remain visible;
 the stage marker must be hidden until hovered or keyboard-focused, then hide again
 when hover/focus leaves. Both definitions must
-also disappear from an already-open management list. The stage condition must
+remain visible as disabled entries in an already-open navigation list. The stage condition must
 remain intact when enabled again. `DebuggerBreakpointUiGameTest` covers the real
 server edit acknowledgements.
 
@@ -122,10 +138,10 @@ first, then the layer. Tab closes the menu and continues through the form.
 
 The exact edited marker remains visible while the layer or its menus are open. Opening
 and cancelling preserve its saved enabled state; Save always enables the exact definition
-with the chosen condition. A sole legacy stage-zero definition uses the line's marker
-without creating a second whole-line target. Flow's selected-condition action and summary
-use the same effective saved definition as its inline marker. Pending edits to a matching
-legacy definition disable the action and prevent opening another editor.
+with the chosen condition. Source/Flow marker menus now use the clicked target
+exactly: a line marker never opens an old stage-zero definition. Their pending state
+and Flow summary follow that same exact target. The native command-block editor's
+legacy alias handling remains separate from these Source/Flow rules.
 
 The menu opens above or below its trigger according to available space, with a
 scrollbar when the viewport cannot hold every row. Mouse wheel and Up/Down reach
@@ -153,8 +169,54 @@ Fabric's newly created per-screen events.
 A command with one server-parsed stage offers only its whole-command/line breakpoint in
 Source, Flow and the command-block editor. Multiple-stage commands retain separate stage
 controls. Existing single-stage saved definitions are kept; see the
-[legacy line-control rules](function-source.md) for condition collisions, disabling and Clear.
+[Source target rules](function-source.md) for the changed exact-target behavior.
+The legacy alias assertions described below predate this UI change and were not
+updated or run.
 `SingleStageBreakpointGameTest` checks actual acknowledged editor edits, a real vanilla
 single-stage command stop, the Flow line target, disabled legacy condition access, one execution
 on Continue, and the public Clear command. It also checks missing/LOADING preview actions,
 then READY condition Save and toggle against the same legacy target. Its server/world is disposable.
+
+Condition access: Source and Flow breakpoint marker right-clicks open the exact
+condition editor directly, as does Shift+F10 on the current marker. Source text,
+Flow clauses and Flow's selected detail band retain the shared bounded
+`DebuggerContextMenu`; Watch menus are unchanged. The Source header's Line/Stage
+condition buttons and Flow's selected-condition footer button are removed. Opening
+a menu does not select an unobserved stage or enter a colored condition-edit mode.
+Actual pause amber, inspection teal in Flow, breakpoint shapes and enabled state
+remain distinct. Source keyboard navigation keeps a neutral line-number cue.
+Menus refresh pending/preview eligibility before acting, consume dismissal clicks
+and restore focus; new condition editors inherit source/flow validity guards.
+Each precise marker opens one exact condition target; there is no line/stage chooser
+and no redirect from a Source/Flow line target to a legacy stage-zero definition.
+Saved definitions are not rewritten when the UI renders or navigates.
+
+Opening or cancelling an editor does not send a breakpoint edit. Flow's pending
+toggle disables activation while retaining the exact focused marker, and explicit
+navigation supersedes it without a later focus-stealing acknowledgement.
+`DebuggerNavigationTest` checks widget replacement and late acknowledgements;
+`FlowBreakpointInteractionGameTest` covers native screen events for exact targets,
+pending focus, direct editor return and navigation-only destinations.
+Cross-Flow list navigation resolves its exact marker during the first destination
+render, before viewport reveal and visible-widget binding. It also opens hidden Flow
+and reaches markers after long wrapped clauses. The request expires after that frame;
+world, screen, pause or selection changes and newer keyboard/pointer/scroll navigation
+cancel it. Missing or obsolete destinations cannot capture focus in a later frame.
+See the [UI validation record](../ui-polish-validation.md) for passing checks and
+the boundary between presentation fixtures and real server edits/execution.
+
+Authoritative Source/Flow marker mapping:
+
+| Surface | Marker target |
+| --- | --- |
+| Source, before the line number | Whole line |
+| Source, before a parsed stage | That exact stage |
+| Flow, one-stage command | Whole command/line |
+| Flow, multi-stage command root (including `execute`) | Whole command/line |
+| Flow, each individual stage in a multi-stage command | That exact stage |
+
+The matching server parse preview supplies the stage count; conclusive recorded
+evidence is the existing fallback. The code does not classify multi-stage commands
+by the literal `execute` name. A 14-pixel root marker and 15-pixel inset are added
+before the first displayed part of a multi-stage command. Its unset/disabled
+affordance remains visible, like the stage controls, without creating a definition.

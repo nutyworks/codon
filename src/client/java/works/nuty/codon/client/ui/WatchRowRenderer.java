@@ -4,11 +4,11 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import works.nuty.codon.client.state.ClientWatchState;
 
-/** Shared name/dot-leader/value layout for the HUD and Watch editor. */
+/** Shared name/value layout for the HUD and Watch editor. */
 public final class WatchRowRenderer {
     private WatchRowRenderer() { }
 
-    /** Compact HUD rows reserve the full lower line for the value, clear of management controls. */
+    /** Compact HUD rows use full-width name and value lines. */
     public static void renderStacked(GuiGraphicsExtractor graphics, Font font, ClientWatchState.Entry entry,
                                      boolean paused, String label, int x, int y, int labelWidth, int valueWidth,
                                      int kindInset, int labelColor, int valueColor) {
@@ -16,7 +16,7 @@ public final class WatchRowRenderer {
         if (!badge.isEmpty()) label += " · " + badge;
         WatchUi.line(graphics, font, label, x + kindInset, y, labelWidth - kindInset, labelColor);
         graphics.text(font, fitValue(font, entry, paused, valueWidth), x, y + 16,
-            DebuggerTheme.color(valueColor), false);
+            DebuggerTheme.foreground(valueColor), false);
     }
 
     public static void render(GuiGraphicsExtractor graphics, Font font, ClientWatchState.Entry entry,
@@ -26,17 +26,9 @@ public final class WatchRowRenderer {
         if (!badge.isEmpty()) label += (label.isEmpty() ? "" : " · ") + badge;
         String value = fitValue(font, entry, paused, label.isEmpty() ? width : width / 2);
         int valueX = x + width - font.width(value);
-        int dotWidth = Math.max(1, font.width("."));
-        label = fit(font, label, Math.max(0, valueX - x - 8 - 3 * dotWidth));
-        int leaderX = x + font.width(label) + 4;
-        int dots = label.isEmpty() ? 0 : Math.max(0, (valueX - 4 - leaderX) / dotWidth);
-        graphics.text(font, label, x, y, DebuggerTheme.color(labelColor), false);
-        int leaderY = y + (font.lineHeight - 2) / 2;
-        for (int dot = 0; dot < dots; dot++) {
-            int dotX = leaderX + dot * dotWidth;
-            graphics.fill(dotX, leaderY, dotX + 1, leaderY + 1, DebuggerTheme.color(DebuggerTheme.MUTED));
-        }
-        graphics.text(font, value, valueX, y, DebuggerTheme.color(valueColor), false);
+        label = fit(font, label, Math.max(0, valueX - x - 8));
+        graphics.text(font, label, x, y, DebuggerTheme.foreground(labelColor), false);
+        graphics.text(font, value, valueX, y, DebuggerTheme.foreground(valueColor), false);
     }
 
     private static String fitValue(Font font, ClientWatchState.Entry entry, boolean paused, int width) {

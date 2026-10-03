@@ -30,7 +30,7 @@ final class WatchUi {
     }
 
     static void line(GuiGraphicsExtractor graphics, Font font, String value, int x, int y, int width, int color) {
-        graphics.text(font, fit(font, value, width), x, y, DebuggerTheme.color(color), false);
+        graphics.text(font, fit(font, value, width), x, y, DebuggerTheme.foreground(color), false);
     }
 
     static DebuggerButton button(int x, int y, int width, int height, Component label, Runnable action) {

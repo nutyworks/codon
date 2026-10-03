@@ -31,7 +31,7 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
     private static final SourceLocation.Function LOCATION = new SourceLocation.Function(new FunctionLocation(FUNCTION, 2));
     private static final int[] SOURCE_COLORS = {DebuggerTheme.TEXT, DebuggerTheme.TEAL, DebuggerTheme.PURPLE,
         DebuggerTheme.GREEN, DebuggerTheme.AMBER, DebuggerTheme.MUTED, 0xffb3d5ff};
-    private static final int SELECTED_TINT = 0x5075dfd6, STOPPED_TINT = 0x70f3c171;
+    private static final int STOPPED_TINT = 0x70f3c171;
     private record Hit(int x, int y, int width, int height, BreakpointTarget target, boolean control) { }
     private record Scenario(int scale, int scroll, String name, List<Integer> stages) { }
 
@@ -140,9 +140,7 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
                 .orElseThrow(() -> new AssertionError(label + " is missing expected visible stage " + stage));
             selectStage(context, hit, before);
             BufferedImage selected = capture(context, label + "-stage-" + stage);
-            assertBackground(context, reference, selected, hit, SELECTED_TINT, label + " stage " + stage);
-            int background = backgroundPixel(context, selected, hit);
-            require((background >> 8 & 255) > (background >> 16 & 255), "manual selection has a distinct teal background");
+            requireSameRow(context, reference, selected, hit, "Source inspection keeps neutral code pixels: " + label + " stage " + stage);
         }
     }
 
@@ -231,7 +229,7 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
             "a pause without an authoritative stage does not guess a stopped stage");
         selectStage(context, inspected, before);
         BufferedImage selected = capture(context, "pause-unknown-stage-selected-3");
-        int selectedContrast = assertBackground(context, unknown, selected, inspected, SELECTED_TINT, "paused manual selection");
+        requireSameRow(context, unknown, selected, inspected, "Manual inspection does not add a condition-mode fill");
         context.runOnClient(client -> {
             var state = CodonClientMod.state();
             state.applyPause(pause(2, COMMAND));
@@ -243,7 +241,7 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
         int pausedContrast = assertBackground(context, selected, actual, stopped, STOPPED_TINT, "authoritative stopped stage");
         int background = backgroundPixel(context, actual, stopped);
         require((background >> 16 & 255) > (background >> 8 & 255), "actual stop retains amber semantics");
-        require(pausedContrast > selectedContrast, "actual stopped stage is stronger than manual selection");
+        require(pausedContrast > 0, "Actual stopped stage remains visible against neutral inspection");
         context.runOnClient(client -> CodonClientMod.state().applyPause(pause(2, COMMAND + " changed")));
         context.waitTicks(2);
         BufferedImage stale = capture(context, "pause-stale-command-selected-3");
@@ -289,8 +287,8 @@ public final class FunctionSourceStageHighlightGameTest implements FabricClientG
             require(hits(screen).isEmpty(), "single-stage replacement has no inline stage targets");
             int x = invoke(screen, "sourceLeft") + invoke(screen, "gutterWidth") + 2;
             int y = invoke(screen, "sourceLineTop") + 18 + 2;
-            require(reloaded.getRGB((int) Math.ceil(x * scale), (int) Math.ceil(y * scale)) == DebuggerTheme.TEAL_SURFACE,
-                "an unresolved stage selection falls back to the visible selected row");
+            require(reloaded.getRGB((int) Math.ceil(x * scale), (int) Math.ceil(y * scale)) == DebuggerTheme.EDITOR,
+                "an unresolved stage selection keeps the opaque neutral code surface");
         });
     }
 

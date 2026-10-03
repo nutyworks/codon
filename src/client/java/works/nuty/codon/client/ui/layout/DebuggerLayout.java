@@ -1,6 +1,7 @@
 package works.nuty.codon.client.ui.layout;
 
 import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds;
+import static works.nuty.codon.client.state.DebuggerPreferences.*;
 
 /** Layout in Minecraft GUI pixels (already scaled by the user's GUI scale setting). */
 public record DebuggerLayout(Bounds header, Bounds controls, Bounds world, Bounds inspector,
@@ -14,6 +15,16 @@ public record DebuggerLayout(Bounds header, Bounds controls, Bounds world, Bound
     }
 
     public static DebuggerLayout create(int width, int height, boolean showInspector, int requestedCommandHeight) {
+        return create(width, height, showInspector, requestedCommandHeight, DEFAULT_INSPECTOR_WIDTH);
+    }
+
+    public static int maximumInspectorWidth(int width, boolean showWatches) {
+        return Math.max(MIN_INSPECTOR_WIDTH, Math.min(MAX_PANEL_WIDTH,
+            width - 12 - (showWatches ? MIN_WATCH_WIDTH + 8 : 164)));
+    }
+
+    public static DebuggerLayout create(int width, int height, boolean showInspector, int requestedCommandHeight,
+                                        int requestedInspectorWidth) {
         int margin = width < 360 ? 3 : 6;
         int usableWidth = Math.max(1, width - margin * 2);
         int headerWidth = Math.min(240, usableWidth);
@@ -28,7 +39,8 @@ public record DebuggerLayout(Bounds header, Bounds controls, Bounds world, Bound
             Math.max(0, height - margin - footerHeight - worldY - minimumWorldHeight - 3));
         int commandY = Math.max(worldY, height - margin - footerHeight - commandHeight);
         int worldHeight = Math.max(0, commandY - worldY - 3);
-        int panelWidth = showInspector ? Math.min(190, Math.max(144, usableWidth / 3)) : 0;
+        int panelWidth = showInspector ? width < 600 ? Math.min(DEFAULT_INSPECTOR_WIDTH, Math.max(144, usableWidth / 3))
+            : Math.clamp(requestedInspectorWidth, MIN_INSPECTOR_WIDTH, maximumInspectorWidth(width, false)) : 0;
         // Extremely small windows use a full-width information drawer, never negative world space.
         panelWidth = Math.min(panelWidth, usableWidth);
         int inspectorSpace = panelWidth == 0 ? 0 : Math.min(usableWidth, panelWidth + 4);

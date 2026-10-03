@@ -63,10 +63,11 @@ public final class DebuggerSourceIconGameTest implements FabricClientGameTest {
                     else require(Arrays.equals(normal, mask), "All states retain the same code artwork at " + scale);
                 }
                 // Chrome continues to distinguish hover, keyboard focus and disabled controls.
-                checkColor(image, 20, 40, scale, DebuggerTheme.BORDER);
-                checkColor(image, 55, 40, scale, DebuggerTheme.TEAL);
-                checkColor(image, 90, 40, scale, DebuggerTheme.TEXT);
-                checkColor(image, 125, 40, scale, DebuggerTheme.BORDER);
+                checkColor(image, 20, 40, scale, 0xff101010);
+                checkColor(image, 55, 40, scale, DebuggerTheme.RAISED);
+                checkColor(image, 90, 40, scale, DebuggerTheme.RAISED);
+                checkColor(image, 91, 41, scale, DebuggerTheme.TEXT);
+                checkColor(image, 125, 40, scale, 0xff101010);
             }
             context.runOnClient(client -> client.setScreenAndShow(null));
             checkSourceAction(context);
@@ -205,7 +206,7 @@ public final class DebuggerSourceIconGameTest implements FabricClientGameTest {
                 var button = new DebuggerButton();
                 button.configure(20 + state * 35, 40, 20, 20, Component.translatable("codon.source.title"),
                     state != 3, false, false, false, () -> { });
-                buttons.add(addRenderableWidget(button.withIcon(DebuggerIcon.SOURCE_FILE).withOpaqueColors()));
+                buttons.add(addRenderableWidget(button.withIcon(DebuggerIcon.SOURCE_FILE).withFlatChrome().withOpaqueColors()));
             }
         }
         @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {

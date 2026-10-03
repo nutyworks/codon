@@ -2,6 +2,11 @@
 
 ## User path and expected result
 
+The UI scaffold keeps Continue framed with an amber icon; Step and auxiliary toolbar
+actions use flat neutral chrome. This establishes the execution-action hierarchy
+without moving targets or changing pending/disabled behavior. Selected toggles keep
+their accent fill/underline; keyboard focus keeps its light outline.
+
 Use the [shared setup](../README.md#prepare-and-launch) and place an impulse command
 block pointing into an unconditional, always-active chain command block. Give them
 `say first` and `say second`. Add a breakpoint to the first, then trigger it once.

@@ -15,7 +15,20 @@ be checked. The viewer lists functions actually loaded by the current server.
    selecting a row or scrolling Source. Search, folder collapse and resizing
    clamp its position and remove the track when all rows fit.
    The header shows the datapack-relative
-   `data/<namespace>/function/<path>.mcfunction` path (hover for the full path).
+   `data/<namespace>/function/<path>.mcfunction` path (hover for the full path,
+   provider and revision). Source is the first consumer of shared neutral workspace
+   colors in `DebuggerTheme`: its panel and code surface are opaque even when HUD
+   background opacity is reduced. The compact header starts code at 79 logical
+   pixels; removed condition controls no longer reserve a second row.
+   Execution status and a truncated-source warning remain visible. Functions rows
+   use a flat neutral hover and a teal selection rail; ordinary folders, dividers
+   and scrollbars no longer use teal as decoration. Code inspection keeps a neutral surface; live stops
+   retain their amber treatment.
+   This is a presentation scaffold: shared tokens and header geometry are extension
+   points. Flow, Contexts, Watches and the execution toolbar also use neutral chrome
+   and quieter rows/actions; fonts and docking are not redesigned.
+   Before visual acceptance, check opacity, narrow/wide layouts,
+   truncation warnings and selected/live stage contrast in the native client.
    The code pane uses the default Minecraft font and measures its actual glyph
    advances; Unicode comments retain their glyphs. Commands, `execute` keywords, strings, values,
    resource IDs and comments receive display-only lexical highlighting.
@@ -26,8 +39,20 @@ be checked. The viewer lists functions actually loaded by the current server.
 2. Select an executable line. Toggle its gutter marker to the **left of the line number**.
    The line number itself only selects the row. A line with exactly one server-parsed stage
    has only the line control: no inline stage marker, stage hit box, or Stage condition button.
-   For multiple-stage lines, select a parsed stage and toggle its marker. Use **Line condition…** or **Stage condition…** to edit
-   conditions. Breakpoints refer to original file line numbers and saved stage
+   Gutter hover describes the exact whole-line condition and its two mouse actions.
+   A separate stage count remains visible without aliasing a saved legacy stage into the line target.
+   For multiple-stage lines, toggle the parsed stage's marker. Right-click a marker
+   to open its exact condition editor directly. Right-click line/stage text to keep
+   using its condition menu. The marker
+   before the line number always owns the line target; a stage-prefix marker always
+   owns its exact stage target. No line-versus-stage chooser is shown.
+   The two header buttons are removed, including their extra 22-pixel compact row.
+   Shift+F10 on the current marker opens its editor directly; other source code
+   focus retains its line/stage menu. Closing the editor retains the exact marker
+   target. Opening/cancelling does not create a breakpoint. Menus support arrows,
+   Tab, Enter/Space, Escape and outside dismissal.
+   Right-click does not change the inspected line/stage. Breakpoints refer to original
+   file line numbers and saved stage
    offsets, not wrapped display rows. Stage markers are inserted at the server-confirmed boundaries inside the
    original row, following the command-block editor. Visual marker slots do not
    change source characters, whitespace or server offsets. Each visible stage marker
@@ -37,23 +62,28 @@ be checked. The viewer lists functions actually loaded by the current server.
    marker. Leaving a stage removes its temporary slot and restores original glyph
    advances; enabled markers keep their necessary slot. No separate stage row or
    panel is shown. Hover the gutter marker for the enabled stage count.
-   A selected stage has a distinct teal background behind its text, without a border
-   (31% tint at full panel opacity). The actual stopped stage has a stronger amber
-   background (44% tint), using the top live
+   Clicking a line/stage no longer adds a condition-edit selection tint. A brighter
+   neutral line number retains the keyboard navigation position. The actual stopped
+   stage keeps its amber background (44% tint), using the top live
    pause frame's stage index only when its location and command match the source.
    A live stopped row requests its stage preview without requiring selection,
    hover or an enabled stage breakpoint.
    Selecting another stage/frame does not move that pause highlight. Unknown
    stage identity, changed commands and completed execution do not imply a live
    stage stop. If reload removes the selected stage, the row retains its selection
-   indication. Selection retains original text advances and stage/marker hitboxes.
+   line-number cue. Selection retains original text advances and stage/marker hitboxes.
 3. Close the viewer and execute `/function <namespace:path>`. Check the breakpoint
    stops at the selected location. Reopen Source at the pause and distinguish the
    actual stopped line from a manually inspected line/record. A live pause has an
-   arrow and amber row; whole-line selection has an outlined row. After Continue, the retained
+   arrow and amber row; ordinary line selection uses a neutral line-number cue.
+   Actual pause highlighting remains independent of that navigation position. After Continue, the retained
    location is labelled as a recorded line and has no live-pause arrow.
-4. With execution resumed, change/reload the scratch datapack. Use Refresh to
-   update the function list and Reload to reread the selected source. Removed
+4. With execution resumed, change/reload the scratch datapack. Use **Refresh list**
+   in the Functions header to update the server's loaded function list and **Reread file**
+   above the code to reread the selected source from active server resources.
+   The English/Korean tooltips identify their targets; neither action runs `/reload`.
+   In drawer mode, list refresh appears with the open drawer and file reread with the code.
+   Removed
    functions and stale stage targets must be represented explicitly. Hover a changed,
    unselected line after reload: a READY preview for the old command must refresh
    once; LOADING retains its in-flight request. An obsolete enabled fingerprint or
@@ -138,6 +168,7 @@ scroll settings. Synthetic callback input does not verify a physical trackpad.
 | Active stage readability, adjacent stages, horizontal clipping and representative scales | `FunctionSourceStageHighlightGameTest` |
 | Source toolbar icon, state styling, scale readability and native activation | `DebuggerSourceIconGameTest` |
 | F3/Shift+F3 press/repeat/release ownership and vanilla behavior outside Source | `FunctionSourceKeyboardGameTest` |
+| Exact gutter target with missing/loading/stale previews, direct marker editor/cancel, parsed as/at/run/function marker targets | `FunctionLineBreakpointGameTest`, `FlowBreakpointInteractionGameTest` |
 | Focused Find/function-list Search key press before character input, bound/unbound/remapped cursor-mode keys, parent shortcuts and focus navigation | `FunctionSourceTextInputGameTest` |
 
 Example: `./gradlew runClientGameTest -PclientGameTest=FunctionSourceScreenGameTest`.
@@ -146,8 +177,8 @@ Example: `./gradlew runClientGameTest -PclientGameTest=FunctionSourceScreenGameT
 after selecting adjacent stages in five representative scenarios: minimum 1.00×,
 fractional 1.25×/2.25× clipping, and maximum 4.50× compact/tail views in a
 1920×1080 viewport. The native pixel comparison preserves glyph colors and coverage,
-including the first/last viewport pixels, and allows only a uniform background
-within the selected stage, with the expected teal/amber hue and opacity. Partially
+including the first/last viewport pixels. Manual selection must leave code pixels
+unchanged; only the authoritative stopped stage receives the expected amber fill. Partially
 transparent font texels must retain the same syntax color and alpha coverage over
 both backgrounds, within 8-bit blend rounding.
 Minecraft's rounded scissor bounds constrain the fill; the comparison still includes
@@ -204,19 +235,22 @@ The same pane geometry is unit-checked at 320×180 logical size. The
 The `nested-function-links` capture checks nested return and schedule references.
 The `hover-browsed-*` and `hover-paused-*` captures use pixel assertions for
 enabled, disabled and missing stage markers before hover, during hover and after
-pointer leave. Enabled markers stay visible; the selected disabled stage still
-requires hover. Clicking the enabled stage also covers selected enabled and
+pointer leave. Enabled markers stay visible; selecting a disabled stage's text
+does not retain its marker. Clicking the enabled stage also covers selected enabled and
 unselected disabled states. The `matrix-enabled-*-selected-*` captures additionally
 assert the complete enabled × hover × selection matrix for both line/stage icons,
-and verify that pointer leave restores every original advance except enabled slots. Hover preserves acknowledged state; clicking each hovered slot
-requests its original stage target, including a missing breakpoint.
+and verify that pointer leave restores every original advance except enabled slots
+when no marker owns keyboard focus. Hover preserves acknowledged state; clicking
+each hovered slot requests its original stage target, including a missing breakpoint.
+The clicked pending marker remains visible after pointer leave; Tab clears that
+exact focus, after which inactive slots disappear without changing acknowledged state.
 The `inline-second-line` capture verifies stage targeting after horizontal scroll
 on an indented original line. The following source line stays directly below it
 and can be selected without an expanded stage row intercepting the click.
 
 Inspect `*codon-function-source-*.png`, including 320×240, 480×270 and 640×360 GUI
 layouts. The disabled-hover capture shows a disabled line and conditional stage
-revealed by hover; inactive controls stay hidden elsewhere while enabled markers
+revealed by hover; inactive controls without keyboard focus stay hidden elsewhere while enabled markers
 remain visible. This GameTest injects a source document, breakpoint definitions and stage spans: its function is
 not installed in the server's datapack. It proves presentation/interaction, not
 server source discovery, permission enforcement or native function breakpoints.
@@ -267,32 +301,33 @@ condition chain retain their links. Unit checks also cover literal `run` slot an
 predicate tokens, unsupported target kinds and incomplete arguments. The lexical
 viewer does not validate item/slot registry entries or execute these conditions.
 
-Opening/cancelling a single-stage legacy editor retains its exact target, fingerprint,
-condition and enabled flag. Save enables that same target with the chosen condition.
-The single line control includes matching saved stage-zero definitions without rewriting the
-world file. A click disables every active matching definition; when all are disabled it restores
-all saved definitions. A sole legacy definition is toggled/edited in place, so a new duplicate
-line definition is not created. When line and legacy definitions coexist, right-click or
-Line condition opens their filtered management list, including disabled definitions. Each
-condition can be edited/deleted separately and Undo restores its exact original definition.
-Obsolete fingerprints remain review warnings and are never silently attached to new text.
-`/codon breakpoint clear` explicitly removes all definitions, including disabled legacy saves.
-
-While the matching stage count is unresolved (missing/LOADING preview or old READY text after
-reload), a matching saved stage-zero definition makes the line action ambiguous. Source and
-the native editor defer its toggle and condition editor until the current preview resolves;
-they never create a second plain line target in that window. Ordinary whole-line actions remain
-available without a matching legacy definition once the saved-breakpoint snapshot is ready.
-READY single-stage previews restore the in-place legacy action; READY multi-stage previews keep
-line and stage actions separate. `BreakpointTargetPolicyTest`, `FunctionLineBreakpointGameTest`
-and `SingleStageBreakpointGameTest` cover these transitions and condition Save identities.
+Source gutter markers now read, toggle and edit only the exact whole-line target.
+They do not alias a saved legacy stage-zero target into the line control. A stage
+marker edits its own stage index/fingerprint, and the condition editor retains that
+target through Save/Delete/Cancel. Existing saved definitions are not migrated or
+deleted by display/navigation. `BreakpointTargetPolicyTest`,
+`FunctionLineBreakpointGameTest` and `SingleStageBreakpointGameTest` check the exact
+target mapping while retaining separate legacy definitions.
 
 An inactive line/stage marker stays visible for the entire condition edit, including after
 the pointer leaves and while a selector menu is open. Only the edited marker is retained;
-unrelated inactive candidates remain hidden. Cancel removes that temporary marker/slot
-without enabling or creating a definition. Save enables the original target after server
-acknowledgement, including disabled legacy stage-zero saves. `BreakpointConditionVisibilityGameTest`
-checks native pixels, line/stage/legacy/new targets, menus, Cancel and real server Save edits
+unrelated inactive candidates remain hidden. Cancel, Escape and Delete retain the exact
+marker/slot while it remains the Shift+F10 keyboard target; explicit navigation clears
+that focus and hides an inactive marker again. This does not enable or create a definition.
+Save enables the exact marker target after server
+acknowledgement; saving a gutter line does not rewrite a separate legacy stage-zero definition. `BreakpointConditionVisibilityGameTest`
+checks native pixels, line/stage/legacy/new targets, menus, retained focus after Cancel/Escape,
+explicit navigation clearing, and real server Save/Delete edits
 in English and Korean at a fractional custom scale. A controlled pending request also verifies
-that Stage condition disables until acknowledgement. Its source page is a presentation fixture
+that condition-editor access is blocked until acknowledgement, without restoring removed header buttons. Its source page is a presentation fixture
 matching the loaded `codon_test:condition_visibility` test function; it does not claim a native pause.
+
+Context/navigation follow-up: menus and editors close when their source document,
+function/world or confirmed stage identity becomes obsolete. They consume outside
+clicks and restore parent focus. A breakpoint-list destination opens the original
+function line and horizontally reveals an exact matching stage after its preview
+arrives; stale fingerprints retain the line without selecting a different stage.
+The [UI validation record](../ui-polish-validation.md) records passing Source
+layout, native input, marker visibility and neutral/paused pixel checks. Manual
+physical input and the full reload/invalidation acceptance path remain separate
+from these selected regression scenarios.

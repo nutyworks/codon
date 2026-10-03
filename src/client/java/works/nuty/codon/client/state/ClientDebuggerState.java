@@ -367,6 +367,9 @@ public final class ClientDebuggerState {
         return paused && snapshot != null ? worldSourceStage() : selectedExecutionFlowStage();
     }
 
+    /** Exact recording used by displayedSources; it can precede the selected command stage. */
+    public @Nullable ExecutionFlowStage displayedSourceStage() { return sourceStage(); }
+
     public List<PauseSource> worldSources() {
         if (!paused || snapshot == null) return List.of();
         ExecutionFlowStage stage = worldSourceStage();
