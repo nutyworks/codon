@@ -7,11 +7,28 @@ buttons: idle rows have no repeated frame, hover has a neutral fill, selection k
 its semantic fill and underline, and keyboard focus has a filled corner caret.
 Foreground text and icons remain opaque when panel opacity is reduced. Live amber,
 selected teal, context-change colors, breakpoint icons and counts retain their roles.
-Unobserved stages use compact translated labels (Unrun/Unreached/Unknown/Error) and keep
-the full observation text in their clause tooltip and selection summary. Their cell
-width follows the command and marker padding, not the full status sentence. Recorded
-counts still reserve their required width. Stage targets, secondary actions,
-character wrapping and navigation are unchanged.
+Unobserved stages keep the full observation text in their clause tooltip and
+selection summary. Future stages no longer repeat an inline Unrun label or reserve
+a status minimum width; Unreached/Unknown/Error remain distinct inline information.
+Cell horizontal padding is 6 logical pixels (previously 10), with 2 pixels between
+cells (previously 4). Both drawing and button text use that padding. The count-line
+minimum is measured count width + 6, plus 17 only when a warning control is present;
+it previously added 26 and another 15 for an editable source. Breakpoint and pause
+icons are reserved once, by the command line's leading inset. Compact rows with
+no count line reserve no count width. The shared count row remains when observed
+counts are shown; hidden Unrun labels do not produce a replacement badge. Stage
+targets, marker hitbox sizes, secondary actions and selection colors are unchanged.
+Character wrapping, row scrolling and call-path horizontal scrolling retain their
+existing behavior with the denser clause geometry.
+
+Flow-spacing validation: the supplied Library screenshot `Screenshot 2026-10-03 at
+15.12.15.png` was materialized and visually inspected. `JAVA_HOME=<JDK 25>
+./gradlew compileClientJava processResources --console=plain` passed as the only
+execution check; evidence: `../flow-spacing-compile.log` beside the checkout. No tests were
+edited or run, and no game/GUI was launched. Post-change rendering, wrapping,
+native hitboxes/scrolling and selected/live emphasis remain unverified. Existing
+`CommandFlowLayoutTest` assertions encode the previous 10-pixel padding and exact
+fragment widths; updating them requires a separately authorized test-update stage.
 Contexts now labels the selected stop/recorded stage separately from the stage
 which supplies its displayed contexts. Complete modifier records show outputs plus
 excluded inputs; terminal, unfinished or incomplete-lineage records show inputs.

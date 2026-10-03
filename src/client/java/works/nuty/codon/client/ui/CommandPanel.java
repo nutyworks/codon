@@ -34,6 +34,7 @@ import java.util.Map;
 import java.util.Set;
 
 import static works.nuty.codon.client.ui.DebuggerTheme.*;
+import static works.nuty.codon.client.ui.layout.CommandFlowLayout.CELL_HORIZONTAL_PADDING;
 
 /** A single command surface: its call path, recorded clauses, and the authoritative stop. */
 public final class CommandPanel {
@@ -303,11 +304,11 @@ public final class CommandPanel {
             && stageCount(flow, snippet.text()) > 0;
         java.util.function.IntUnaryOperator minimumWidth = index -> {
                 int stage = displayed.get(index).stageIndex();
-                return stage == -2 ? client.font.width(displayed.get(index).text())
-                    : stage < 0 ? 10
-                        + (displayed.get(index).targetStageIndex() >= 0 && editableSource ? 15 : 0)
-                    : client.font.width(counts(flow.stages().get(stage))) + DebuggerIcon.SIZE + 14
-                        + (hasWarning(flow.stages().get(stage)) ? 17 : 0) + (editableSource ? 15 : 0);
+                // Counts occupy their own line. Breakpoint/pause icons belong only to
+                // the command line and are already included by leadingInset below.
+                if (stage < 0 || body.height() < 30) return 0;
+                return client.font.width(counts(flow.stages().get(stage))) + CELL_HORIZONTAL_PADDING
+                    + (hasWarning(flow.stages().get(stage)) ? 17 : 0);
             };
         java.util.function.IntUnaryOperator leadingInset = index -> {
             int stage = displayed.get(index).stageIndex();
@@ -424,6 +425,7 @@ public final class CommandPanel {
                         state.selectExecutionFlowStage(stageIndex);
                         changed();
                     });
+                clause.withTextPadding(CELL_HORIZONTAL_PADDING);
                 if (stopped) clause.withStatusColor(AMBER, AMBER_SURFACE);
                 clause.withOpenEdges(!cell.first(), cellIndex + 1 < layout.cells().size()
                     && layout.cells().get(cellIndex + 1).partIndex() == cell.partIndex());
@@ -433,16 +435,18 @@ public final class CommandPanel {
                 if (stopped && cell.first()) clause.withTextIcon(DebuggerIcon.PAUSE);
                 if (cell.first() && rowHeight >= 30) {
                     String count = counts(stage);
-                    drawText(graphics, count, x + 4, y + 20,
-                        cell.width() - 5 - (hasWarning(stage) ? 17 : 0), stopped ? AMBER : MUTED);
+                    drawText(graphics, count, x + CELL_HORIZONTAL_PADDING / 2, y + 20,
+                        cell.width() - CELL_HORIZONTAL_PADDING - (hasWarning(stage) ? 17 : 0), stopped ? AMBER : MUTED);
                     if (hasWarning(stage)) warningButton("warning-" + flow.invocationId() + "-" + stage.index(),
                         new Bounds(x + cell.width() - 17, y + 16, 16, 14), stage);
                 }
             } else {
                 if (stageIndex == -2) drawText(graphics, cell.text(), x, y + 4, cell.width(), MUTED);
-                else drawText(graphics, cell.text(), x + 5, y + 4, cell.width() - 10, flow == null ? TEXT : MUTED);
+                else drawText(graphics, cell.text(), x + CELL_HORIZONTAL_PADDING / 2, y + 4,
+                    cell.width() - CELL_HORIZONTAL_PADDING, flow == null ? TEXT : MUTED);
                 if (flow != null && stageIndex == -1 && cell.first() && rowHeight >= 30) {
-                    drawText(graphics, observationLabel(part), x + 4, y + 20, cell.width() - 5, MUTED);
+                    drawText(graphics, observationLabel(part), x + CELL_HORIZONTAL_PADDING / 2,
+                        y + 20, cell.width() - CELL_HORIZONTAL_PADDING, MUTED);
                 }
             }
         }
@@ -490,7 +494,7 @@ public final class CommandPanel {
         DebuggerButton clause = button(unobservedKey("clause", flow, part) + "-" + cell.row(),
             new Bounds(x + inset, y, Math.max(1, cell.width() - inset), 16), Component.literal(cell.text()), true,
             state.selectedUnobservedStageIndex() == part.targetStageIndex(), select);
-        clause.withStatusColor(MUTED, SURFACE).withOpenEdges(!cell.first(), continues);
+        clause.withTextPadding(CELL_HORIZONTAL_PADDING).withStatusColor(MUTED, SURFACE).withOpenEdges(!cell.first(), continues);
         clause.setTooltip(Tooltip.create(Component.literal(part.text().strip() + "\n" + observationText(part))));
         if (editableSource) clause.withSecondaryAction(() -> {
             select.run();
@@ -498,7 +502,8 @@ public final class CommandPanel {
                 && state.stagePreviews().get(flow.location()) == preview
                 && state.selectedUnobservedStageIndex() == part.targetStageIndex() && !state.breakpoints().pending(target)) openCondition(target);
         });
-        if (cell.first() && rowHeight >= 30) drawText(graphics, observationLabel(part), x + 4, y + 20, cell.width() - 5, MUTED);
+        if (cell.first() && rowHeight >= 30) drawText(graphics, observationLabel(part),
+            x + CELL_HORIZONTAL_PADDING / 2, y + 20, cell.width() - CELL_HORIZONTAL_PADDING, MUTED);
     }
 
     private static String unobservedKey(String control, ExecutionFlowTrace flow, Part part) {
@@ -526,7 +531,11 @@ public final class CommandPanel {
     }
 
     private String observationText(Part part) { return tr(observationKey(part)); }
-    private String observationLabel(Part part) { return tr(observationKey(part) + ".short"); }
+    private String observationLabel(Part part) {
+        String key = observationKey(part);
+        // Future clauses need no repeated inline badge; detail/tooltip retain the evidence.
+        return key.equals("codon.ui.not_executed") ? "" : tr(key + ".short");
+    }
 
     private void renderRawCommand(GuiGraphicsExtractor graphics, Bounds body, CommandSnippet command, PauseSnapshot snapshot) {
         var lines = rawCommandLines(command, Math.max(1, body.width() - 12));
