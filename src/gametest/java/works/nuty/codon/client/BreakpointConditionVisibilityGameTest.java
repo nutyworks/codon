@@ -82,15 +82,20 @@ public final class BreakpointConditionVisibilityGameTest implements FabricClient
 
     private static void verify(ClientGameTestContext context, TestSingleplayerContext world,
                                int line, boolean savedStage, String name, boolean save) {
-        var target = savedStage ? BreakpointTarget.stage(location(line), 0, LINES.get(line - 1))
+        var savedTarget = savedStage ? BreakpointTarget.stage(location(line), 0, LINES.get(line - 1))
             : BreakpointTarget.whole(location(line));
-        var definition = BreakpointDefinition.plain(target).withEnabled(false);
+        var target = line == 7 ? BreakpointTarget.whole(location(line)) : savedTarget;
+        var definition = BreakpointDefinition.plain(savedTarget).withEnabled(false);
         if (line == 6) definition = definition.withCondition(BreakpointCondition.count(
             BreakpointCondition.Kind.INPUT_COUNT, BreakpointCondition.Comparison.EQ, 1));
         var savedDefinition = definition;
         if (line != 8) {
-            world.getServer().runOnServer(server -> CodonMod.engine().saveBreakpoint(savedDefinition));
-            context.waitFor(client -> savedDefinition.equals(CodonClientMod.state().breakpoints().get(target)), 200);
+            world.getServer().runOnServer(server -> {
+                if (!target.equals(savedTarget)) CodonMod.engine().deleteBreakpoint(target);
+                CodonMod.engine().saveBreakpoint(savedDefinition);
+            });
+            context.waitFor(client -> savedDefinition.equals(CodonClientMod.state().breakpoints().get(savedTarget))
+                && (target.equals(savedTarget) || CodonClientMod.state().breakpoints().get(target) == null), 200);
         }
         context.getInput().setCursorPos(0, 0);
         context.waitTicks(2);
@@ -148,7 +153,7 @@ public final class BreakpointConditionVisibilityGameTest implements FabricClient
             require(ScreenLayers.get(screen) == layer, "Escape first closes the menu");
             layer.keyPressed(new KeyEvent(InputConstants.KEY_ESCAPE, 0, 0));
             require(ScreenLayers.get(screen) == null, "Cancel closes only the editor");
-            var current = CodonClientMod.state().breakpoints().get(target);
+            var current = CodonClientMod.state().breakpoints().get(savedTarget);
             require(line == 8 ? current == null : savedDefinition.equals(current), "Cancel preserves disabled/absent state for " + name);
             require(!CodonClientMod.state().breakpoints().pending(target), "Cancel sends no edit for " + name);
         });
@@ -162,21 +167,30 @@ public final class BreakpointConditionVisibilityGameTest implements FabricClient
             context.takeScreenshot("codon-condition-" + name + "-pending-stage-action");
             context.runOnClient(client -> {
                 var screen = client.gui.screen();
-                var action = (AbstractWidget) FunctionLineBreakpointGameTest.field(screen, "stageCondition");
-                require(action.visible && !action.active, "pending edit disables the visible Stage condition action");
+                require(screen.children().stream().filter(AbstractWidget.class::isInstance).map(AbstractWidget.class::cast)
+                    .noneMatch(widget -> widget.visible && widget.getMessage().equals(net.minecraft.network.chat.Component.translatable("codon.source.stage_condition"))),
+                    "Pending state does not recreate the removed Stage condition header action");
                 BreakpointUi.openCondition(screen, CodonClientMod.state(), target, LINES.get(line - 1), 2, null);
                 require(ScreenLayers.get(screen) == null, "pending stage cannot open a second condition editor");
                 CodonClientMod.state().breakpoints().finish(pending, ClientBreakpointState.Result.APPLIED);
             });
             context.waitTicks(2);
-            context.runOnClient(client -> require(((AbstractWidget) FunctionLineBreakpointGameTest
-                .field(client.gui.screen(), "stageCondition")).active, "acknowledgement restores the Stage condition action"));
+            context.runOnClient(client -> {
+                var screen = client.gui.screen();
+                BreakpointUi.openCondition(screen, CodonClientMod.state(), target, LINES.get(line - 1), 2, null);
+                require(ScreenLayers.get(screen) instanceof BreakpointConditionScreen, "Acknowledgement restores condition-editor access");
+                ScreenLayers.get(screen).onClose();
+            });
         }
         if (!save) return;
+        move(context, point[0] + 3, point[1] + 3);
+        context.waitTicks(2);
         context.runOnClient(client -> {
             var screen = client.gui.screen();
-            BreakpointUi.openCondition(screen, CodonClientMod.state(), line == 7 ? BreakpointTarget.whole(location(line)) : target,
-                LINES.get(line - 1), line == 6 ? 2 : 1, null);
+            var event = new MouseButtonEvent(point[0] + 3, point[1] + 3,
+                new MouseButtonInfo(InputConstants.MOUSE_BUTTON_RIGHT, 0));
+            require(screen.mouseClicked(event, false), "The exact Source marker reopens its editor for Save");
+            screen.mouseReleased(event);
         });
         context.waitTicks(2);
         context.runOnClient(client -> {
@@ -192,8 +206,8 @@ public final class BreakpointConditionVisibilityGameTest implements FabricClient
         context.runOnClient(client -> {
             require(CodonClientMod.state().breakpoints().get(target).condition().equals(savedDefinition.condition()),
                 "Save preserves the condition on the exact target");
-            if (line == 7) require(CodonClientMod.state().breakpoints().get(BreakpointTarget.whole(location(line))) == null,
-                "legacy Save enables in place without adding a whole-line definition");
+            if (line == 7) require(savedDefinition.equals(CodonClientMod.state().breakpoints().get(savedTarget)),
+                "Saving the Source gutter target leaves the separate legacy stage-zero definition unchanged");
         });
         context.takeScreenshot("codon-condition-" + name + "-saved-enabled");
     }
@@ -212,14 +226,22 @@ public final class BreakpointConditionVisibilityGameTest implements FabricClient
                     // The modal dims the parent. Both the ordinary muted outline
                     // and its dimmed strokes remain brighter than this blank gutter/slot.
                     {
-                        int rgb = image.getRGB(x, y), red = rgb >> 16 & 255, green = rgb >> 8 & 255, blue = rgb & 255;
-                        if (red >= 75 && green >= red + 8 && blue >= green && blue - red <= 45) ink++;
+                        int rgb = image.getRGB(x, y);
+                        if (mutedStroke(rgb, 1.0) || mutedStroke(rgb, 143.0 / 255.0)) ink++;
                     }
             // Fractional text/selection edges can contribute one or two matching
             // pixels after a slot disappears; a breakpoint outline contributes many strokes.
             System.out.println("Condition marker pixels " + name + ": " + ink);
             require((ink >= 6) == expected, "inactive marker pixel visibility " + name + ": ink=" + ink + " expected=" + expected);
         } catch (java.io.IOException error) { throw new AssertionError(error); }
+    }
+
+    private static boolean mutedStroke(int pixel, double brightness) {
+        for (int shift : new int[]{16, 8, 0}) {
+            double expected = (works.nuty.codon.client.ui.DebuggerTheme.MUTED >> shift & 255) * brightness;
+            if (Math.abs((pixel >> shift & 255) - expected) > 2) return false;
+        }
+        return true;
     }
 
     private static void move(ClientGameTestContext context, int x, int y) {

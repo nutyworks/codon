@@ -19,11 +19,11 @@ be checked. The viewer lists functions actually loaded by the current server.
    provider and revision). Source is the first consumer of shared neutral workspace
    colors in `DebuggerTheme`: its panel and code surface are opaque even when HUD
    background opacity is reduced. The compact header starts code at 79 logical
-   pixels, or 101 with a second row of condition controls (previously 100/118).
+   pixels; removed condition controls no longer reserve a second row.
    Execution status and a truncated-source warning remain visible. Functions rows
    use a flat neutral hover and a teal selection rail; ordinary folders, dividers
-   and scrollbars no longer use teal as decoration. Selected stages and live stops
-   retain their distinct teal/amber treatment.
+   and scrollbars no longer use teal as decoration. Code inspection keeps a neutral surface; live stops
+   retain their amber treatment.
    This is a presentation scaffold: shared tokens and header geometry are extension
    points. Flow, Contexts, Watches and the execution toolbar also use neutral chrome
    and quieter rows/actions; fonts and docking are not redesigned.
@@ -175,8 +175,8 @@ Example: `./gradlew runClientGameTest -PclientGameTest=FunctionSourceScreenGameT
 after selecting adjacent stages in five representative scenarios: minimum 1.00×,
 fractional 1.25×/2.25× clipping, and maximum 4.50× compact/tail views in a
 1920×1080 viewport. The native pixel comparison preserves glyph colors and coverage,
-including the first/last viewport pixels, and allows only a uniform background
-within the selected stage, with the expected teal/amber hue and opacity. Partially
+including the first/last viewport pixels. Manual selection must leave code pixels
+unchanged; only the authoritative stopped stage receives the expected amber fill. Partially
 transparent font texels must retain the same syntax color and alpha coverage over
 both backgrounds, within 8-bit blend rounding.
 Minecraft's rounded scissor bounds constrain the fill; the comparison still includes
@@ -300,18 +300,18 @@ Source gutter markers now read, toggle and edit only the exact whole-line target
 They do not alias a saved legacy stage-zero target into the line control. A stage
 marker edits its own stage index/fingerprint, and the condition editor retains that
 target through Save/Delete/Cancel. Existing saved definitions are not migrated or
-deleted by display/navigation. Legacy alias expectations in `BreakpointTargetPolicyTest`,
-`FunctionLineBreakpointGameTest` and `SingleStageBreakpointGameTest` have not been
-updated or executed for this user-directed UI change.
+deleted by display/navigation. `BreakpointTargetPolicyTest`,
+`FunctionLineBreakpointGameTest` and `SingleStageBreakpointGameTest` check the exact
+target mapping while retaining separate legacy definitions.
 
 An inactive line/stage marker stays visible for the entire condition edit, including after
 the pointer leaves and while a selector menu is open. Only the edited marker is retained;
 unrelated inactive candidates remain hidden. Cancel removes that temporary marker/slot
-without enabling or creating a definition. Save enables the original target after server
-acknowledgement. `BreakpointConditionVisibilityGameTest`
+without enabling or creating a definition. Save enables the exact marker target after server
+acknowledgement; saving a gutter line does not rewrite a separate legacy stage-zero definition. `BreakpointConditionVisibilityGameTest`
 checks native pixels, line/stage/legacy/new targets, menus, Cancel and real server Save edits
 in English and Korean at a fractional custom scale. A controlled pending request also verifies
-that Stage condition disables until acknowledgement. Its source page is a presentation fixture
+that condition-editor access is blocked until acknowledgement, without restoring removed header buttons. Its source page is a presentation fixture
 matching the loaded `codon_test:condition_visibility` test function; it does not claim a native pause.
 
 Context/navigation follow-up: menus and editors close when their source document,
@@ -319,7 +319,7 @@ function/world or confirmed stage identity becomes obsolete. They consume outsid
 clicks and restore parent focus. A breakpoint-list destination opens the original
 function line and horizontally reveals an exact matching stage after its preview
 arrives; stale fingerprints retain the line without selecting a different stage.
-Compile/resources passed (`../breakpoint-context-navigation-compile.log`). No tests
-were written/run and no game/GUI was launched. Existing header-button, selected-tint,
-compact-inset and management-list test expectations require an authorized update;
-native keyboard/focus, clipping, source reload and navigation remain unverified.
+The [UI validation record](../ui-polish-validation.md) records passing Source
+layout, native input, marker visibility and neutral/paused pixel checks. Manual
+physical input and the full reload/invalidation acceptance path remain separate
+from these selected regression scenarios.

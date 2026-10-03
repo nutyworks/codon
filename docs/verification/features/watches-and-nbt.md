@@ -33,18 +33,8 @@ untouched. Width adjustment is scoped to these two HUD panels in the regular lay
 The following alignment-only change disables the narrow stacked-row policy; it
 reuses the existing left-key/right-value renderer, 18/28-pixel row geometry and
 single full-row inspection surface. Right-click management, saved widths, resize
-capture and return focus remain unchanged. Compile/resources passed; evidence is
-`../leading-space-compile.log`. No tests or game/GUI were run. The old stacked-row
-expectations in `WatchPanelLayoutTest` remain stale, alongside its previously noted
-inline-action expectations, pending a separately authorized test-update stage.
-
-Panel-width validation: `JAVA_HOME=<JDK 25> ./gradlew compileClientJava
-processResources --console=plain` passed; evidence: `../panel-width-compile.log` beside the
-checkout. No tests were edited or run, and no game/GUI was launched. Native edge
-dragging, release outside the panel, cancellation, context-menu interaction,
-scaling and rendering remain unverified. The pre-existing `WatchPanelLayoutTest`
-still expects inline action slots removed by the preceding context-menu change;
-its stale assertions require a separately authorized test-update stage.
+capture and return focus remain unchanged. `WatchPanelLayoutTest` checks the
+left-key/right-value geometry and full-row inspection without inline action slots.
 
 Neutral headings and removal of the dot
 leaders leave more room for names/values. Groups have an arrow, item count and
@@ -77,28 +67,6 @@ NBT expansion, Watch-add/right-click actions, disabled states and hit bounds are
 Watch forms and details return to the existing originating screen, retaining its
 selection/search/scroll and restoring semantic widget or HUD-row focus. Returning
 from Edit in details restores the same expanded view and text offset.
-
-Context-menu validation: `JAVA_HOME=<JDK 25> ./gradlew compileClientJava
-processResources --console=plain` passed; log: `../watch-context-menu-compile.log`.
-The supplied Library screenshot `Screenshot 2026-10-03 at 14.07.55.png` was
-materialized and visually inspected before editing. No post-change game/GUI run,
-automated test run, or test edit was performed. Native pointer/keyboard/focus,
-edge clipping and scaling acceptance remain unverified. The existing
-`WatchPanelLayoutTest` encodes the old inline-action reservation and requires
-adaptation in a separately authorized test-update stage.
-
-Research-follow-up validation: `JAVA_HOME=<JDK 25> ./gradlew compileClientJava
-processResources --console=plain` passed; evidence is `../ui-research-followup-compile.log`
-beside the checkout. No automated tests or GUI runs were performed. Rendering,
-focus/cancel/back interactions and server rejection presentation remain unverified.
-
-Screenshot-feedback scaffold validation: `JAVA_HOME=<JDK 25> ./gradlew
-compileClientJava --console=plain` completed successfully (client Java output was
-up-to-date; resources were processed). Evidence: `../ui-feedback-compile.log`
-beside the isolated `ui-scaffold` checkout. No tests were written or run for this
-feedback batch. The seven supplied screenshots were inspected before editing;
-post-change rendering, collapse/focus interaction and modal return remain unverified
-because game/GUI execution is paused.
 
 Use the [shared setup](../README.md#prepare-and-launch). Before pausing, prepare a
 score and a storage value in the scratch world:
@@ -233,7 +201,10 @@ search/footer wheel report. `WatchFormLayoutTest` and
 native management and footer clicks, compact value right-edge click/tooltip hover,
 More/Less focus, row overflow and pending
 execution-control disabling, and captures `*codon-compact-watch-*.png` for visual
-inspection. Its injected observations establish UI behavior, not live server reads.
+inspection. This scenario and `WatchPanelLayoutTest` passed in the
+[UI validation run](../ui-polish-validation.md). Its injected observations establish
+UI behavior, not live server reads. Panel-edge dragging/cancellation and manual
+visual acceptance remain unverified by these selected checks.
 
 Example: `./gradlew runClientGameTest -PclientGameTest=DebuggerNbtTreeGameTest`.
 Choose the row for the changed behavior, not the whole table. Inspect the matching

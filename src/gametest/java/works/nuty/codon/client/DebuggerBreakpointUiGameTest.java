@@ -14,6 +14,7 @@ import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonInfo;
 import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.CommandBlockEntity;
 import net.minecraft.server.permissions.LevelBasedPermissionSet;
@@ -308,6 +309,10 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
                 && CodonClientMod.state().breakpoints().get(first).condition().equals(
                     BreakpointCondition.count(BreakpointCondition.Kind.OUTPUT_COUNT, BreakpointCondition.Comparison.GE, 2)), 200);
             verifyFeedbackBounds(context, first);
+            WrappedCommandEditBox deleteEditor = context.computeOnClient(client -> commandBox(parent));
+            int deleteCursor = context.computeOnClient(client -> deleteEditor.getCursorPosition());
+            var wholeBeforeDelete = context.computeOnClient(client -> CodonClientMod.state().breakpoints()
+                .get(BreakpointTarget.whole(location)));
             context.runOnClient(client -> openFirstCondition(client.gui.screen()));
             context.waitFor(client -> ScreenLayers.get(client.gui.screen()) instanceof BreakpointConditionScreen, 100);
             context.runOnClient(client -> {
@@ -324,22 +329,28 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             context.takeScreenshot("codon-breakpoint-condition-event-dropdown-320x240");
             context.runOnClient(client -> click(conditionLayer(client.gui.screen()),
                 button(conditionLayer(client.gui.screen()), "Delete")));
-            context.waitFor(client -> client.gui.screen() instanceof BreakpointListScreen, 100);
             context.waitFor(client -> {
                 var state = CodonClientMod.state();
-                // The snapshot can arrive before the next frame enables Undo.
-                return state != null && state.breakpoints().get(first) == null
-                    && !state.breakpoints().pending(first) && button(client.gui.screen(), "Undo").isActive();
+                return client.gui.screen() == parent && ScreenLayers.get(parent) == null
+                    && state != null && state.breakpoints().get(first) == null
+                    && !state.breakpoints().pending(first);
             }, 200);
             context.runOnClient(client -> {
-                Screen screen = require(client.gui.screen(), "breakpoint list open");
-                click(screen, button(screen, "Undo"));
+                require(commandBox(parent) == deleteEditor && COMMAND.equals(deleteEditor.getValue())
+                    && deleteEditor.getCursorPosition() == deleteCursor,
+                    "deleting closes only the condition layer and preserves the editor and cursor");
+                require(wholeBeforeDelete.equals(CodonClientMod.state().breakpoints().get(BreakpointTarget.whole(location))),
+                    "deleting the exact stage preserves the separate whole-command breakpoint");
             });
+            focusMarker(context, first);
+            context.getInput().pressKey(InputConstants.KEY_SPACE);
             context.waitFor(client -> {
                 var state = CodonClientMod.state();
-                return state != null && state.breakpoints().get(first) != null;
+                var recreated = state == null ? null : state.breakpoints().get(first);
+                return recreated != null && recreated.enabled() && recreated.condition().equals(BreakpointCondition.ALWAYS)
+                    && !state.breakpoints().pending(first) && focusedMarkerReady(parent, first);
             }, 200);
-            context.takeScreenshot("codon-breakpoint-restored");
+            context.takeScreenshot("codon-breakpoint-recreated");
             verifyKeyboardMarkers(context, position, location, first);
             verifyDisabledMarkersAfterReopen(context, position, location, first);
             context.runOnClient(client -> client.setScreenAndShow(null));
@@ -444,39 +455,26 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
         context.runOnClient(client -> client.setScreenAndShow(
             new BreakpointListScreen(client.gui.screen(), CodonClientMod.state())));
         context.waitTicks(2);
-        context.runOnClient(client -> require(controls(client.gui.screen()).stream()
-            .filter(control -> control.getTabOrderGroup() < 100).count() == 2,
-            "list initially shows both enabled breakpoints"));
         context.runOnClient(client -> {
             Screen list = client.gui.screen();
-            DebuggerButton row = controls(list).stream()
-                .filter(control -> control.getTabOrderGroup() < 100).findFirst().orElseThrow();
-            click(list, row);
-            require(button(list, "Delete").active, "selecting a row enables actions for that breakpoint");
-            require(!list.mouseScrolled(0, 0, 0, -1), "scrolling outside the list is not consumed");
-            DebuggerButton conditionButton = controls(list).stream()
-                .filter(control -> control.getMessage().getString().startsWith("Condition")).findFirst().orElseThrow();
-            client.setLastInputType(net.minecraft.client.InputType.KEYBOARD_TAB);
-            list.setFocused(conditionButton);
+            var rows = controls(list).stream().filter(control -> !control.getMessage().equals(
+                Component.translatable("codon.breakpoint.close"))).toList();
+            require(rows.size() == 2 && controls(list).size() == 3,
+                "Navigation-only list has two saved destinations and Close, without edit/delete/overflow actions");
+            require(rows.stream().noneMatch(control -> control.active),
+                "Command-block destinations without a recorded Flow remain listed and unavailable");
+            var before = CodonClientMod.state().breakpoints().definitions();
+            var row = rows.getFirst();
+            var event = new MouseButtonEvent(row.getX() + 2, row.getY() + 2,
+                new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
+            require(!list.mouseClicked(event, false), "Unavailable row cannot dispatch a hidden mutation");
+            require(CodonClientMod.state().breakpoints().definitions().equals(before)
+                && !CodonClientMod.state().breakpoints().pending(whole) && !CodonClientMod.state().breakpoints().pending(stage),
+                "Browsing the list leaves definitions and pending requests unchanged");
+            require(!list.mouseScrolled(0, 0, 0, -1), "Scrolling outside the list is not consumed");
+            list.setFocused(button(list, "Close"));
         });
-        context.waitTicks(2);
-        context.takeScreenshot("codon-breakpoint-selected-keyboard-tooltip");
-        for (String label : List.of("Close", "Condition")) {
-            double[] cursor = context.computeOnClient(client -> {
-                Screen list = client.gui.screen();
-                list.setFocused(null);
-                client.setLastInputType(net.minecraft.client.InputType.MOUSE);
-                DebuggerButton control = controls(list).stream()
-                    .filter(value -> value.getMessage().getString().startsWith(label)).findFirst().orElseThrow();
-                return new double[] {
-                    (control.getX() + control.getWidth() / 2.0) * client.getWindow().getScreenWidth() / list.width,
-                    (control.getY() + control.getHeight() / 2.0) * client.getWindow().getScreenHeight() / list.height
-                };
-            });
-            context.getInput().setCursorPos(cursor[0], cursor[1]);
-            context.waitTicks(10);
-            context.takeScreenshot("codon-breakpoint-hover-" + label.toLowerCase(java.util.Locale.ROOT));
-        }
+        context.takeScreenshot("codon-breakpoint-navigation-only-list");
         context.getInput().setCursorPos(0, 0);
         context.runOnClient(client -> {
             var state = CodonClientMod.state();
@@ -489,10 +487,11 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
         }), 200);
         context.waitTicks(2);
         context.runOnClient(client -> {
-            require(controls(client.gui.screen()).stream().noneMatch(control -> control.getTabOrderGroup() < 100),
-                "open list removes disabled breakpoints after acknowledgement");
+            require(controls(client.gui.screen()).stream().filter(control -> !control.getMessage().equals(
+                Component.translatable("codon.breakpoint.close"))).count() == 2,
+                "Open navigation list retains both disabled saved destinations after acknowledgement");
             require(CodonClientMod.state().breakpoints().definitions().size() == 2,
-                "hiding disabled breakpoints preserves their saved definitions");
+                "Navigation retains disabled definitions without rewriting them");
             require(CodonClientMod.state().blockBreakpoints().isEmpty(), "disabled block has no world marker");
         });
         context.takeScreenshot("codon-breakpoint-disabled-list");

@@ -30,12 +30,6 @@ execution indicator. The stopped clause tooltip explicitly names Stop and the st
 number; the selection detail band's textual Stop state and narration target remain.
 Breakpoint controls, toolbar controls and call-path markers are unchanged.
 
-Pause-icon follow-up validation: `JAVA_HOME=<JDK 25> ./gradlew compileClientJava
-processResources --console=plain` passed; evidence: `../flow-pause-color-compile.log` beside
-the checkout. No tests were edited or run, and no game/GUI was launched. Post-change
-rendering, native focus/narration, wrapping and live/history selection remain
-unverified. Existing stale layout-test expectations noted below remain untouched.
-
 The follow-up crop `Screenshot 2026-10-03 at 15.27.53.png` shows the space before
 `at @s`, inside the clause after its breakpoint marker. Parsed stage text includes
 the leading command separator; the display-only layout now strips that separator
@@ -44,20 +38,6 @@ command text, stage ranges, tooltips, marker hitboxes and spacing inside a claus
 are preserved. Continuation fragments are not stripped. The 6-pixel total padding,
 2-pixel cell gap and hidden inline Unrun remain in place.
 
-Leading-space/Watch-alignment validation: the supplied Library image was
-materialized and its actual pixels inspected. `JAVA_HOME=<JDK 25> ./gradlew
-compileClientJava processResources --console=plain` passed as the only execution check;
-evidence: `../leading-space-compile.log`. No tests were edited or run and no game/GUI
-was launched. Post-change screenshots, wrapping and native input remain unverified.
-
-Flow-spacing validation: the supplied Library screenshot `Screenshot 2026-10-03 at
-15.12.15.png` was materialized and visually inspected. `JAVA_HOME=<JDK 25>
-./gradlew compileClientJava processResources --console=plain` passed as the only
-execution check; evidence: `../flow-spacing-compile.log` beside the checkout. No tests were
-edited or run, and no game/GUI was launched. Post-change rendering, wrapping,
-native hitboxes/scrolling and selected/live emphasis remain unverified. Existing
-`CommandFlowLayoutTest` assertions encode the previous 10-pixel padding and exact
-fragment widths; updating them requires a separately authorized test-update stage.
 Contexts now labels the selected stop/recorded stage separately from the stage
 which supplies its displayed contexts. Complete modifier records show outputs plus
 excluded inputs; terminal, unfinished or incomplete-lineage records show inputs.
@@ -80,11 +60,6 @@ are inferred for unrecorded stages or warnings without a stage identity.
 The trace model does not carry an authoritative lifecycle state for every absent
 parsed stage. Distinguishing all other non-execution versus missing-capture cases
 would require additional server evidence; this patch does not extend the protocol.
-
-Validation for this follow-up: `JAVA_HOME=<JDK 25> ./gradlew compileClientJava
-processResources --console=plain` passed; evidence is `../ui-provenance-compile.log` beside
-the checkout. No tests or GUI runs. Native layout, clipping, keyboard narration and
-live/historical selection acceptance remain unverified.
 
 Use the [shared setup](../README.md#prepare-and-launch). In a fresh scratch world,
 summon two tagged armor stands before pausing:
@@ -184,9 +159,7 @@ execute check, decides this mapping. The actual pixels in the supplied Library s
 `Screenshot 2026-10-03 at 15.59.01.png` were inspected before this change. Actual pause amber and functionally necessary inspection
 selection remain distinct. The Active breakpoint list selects an exact matching
 Flow/stage and reveals it without sending breakpoint edits; unavailable destinations
-remain listed with an explanation. Compilation/resources passed, with evidence in
-`../breakpoint-context-navigation-compile.log`. No tests or game/GUI were run; native
-menu/focus/scroll behavior and appearance remain unverified.
+remain listed with an explanation.
 
 Flow keyboard traversal follows visual reading order: the whole-command marker
 comes first when present, then each stage's marker immediately precedes its clause
@@ -199,9 +172,7 @@ wrapped continuations do not add breakpoint markers. Warning focus IDs use the
 recorded stage index so sparse recordings do not create phantom targets.
 Shift+F10 continues to use the focused control's exact condition target and return
 focus to that control. Single-stage line mapping, Source, Watch and pause colors
-are unchanged. Validation is limited to client compilation and resources; no tests
-or game/GUI runs were performed. Native focus traversal and menu return remain
-unverified. Compile log: `../flow-focus-order-compile.log`.
+are unchanged.
 
 Toggling a focused breakpoint with Enter/Space keeps focus on that exact target
 while the request is pending and after its server update. Its disabled button and
@@ -212,8 +183,7 @@ the stage has been observed. Explicit traversal or a different clicked control
 replaces that focus immediately; acknowledgements never restore an older target.
 The direct condition editor returns focus to its opening marker only while its
 source/flow context remains current. Opening or cancelling does not save a
-breakpoint. Validation: client compilation/resources only, log
-`../breakpoint-focus-direct-editor-compile.log`; no tests or game/GUI runs.
+breakpoint.
 
 Regression follow-up: `FlowBreakpointInteractionGameTest` exercises actual screen
 events with synthetic observations, including unset/disabled run and function
@@ -221,4 +191,6 @@ markers, Tab/Shift+Tab through wrapped rows, Enter/Space pending/acknowledgement
 focus, direct marker editors and cancel/no-creation, and exact navigation-list
 destinations. `DebuggerNavigationTest` separately replaces widget instances while
 an edit is pending and verifies that explicit keyboard or pointer navigation wins
-over a later acknowledgement. These fixtures do not establish server execution.
+over a later acknowledgement. Both passed in the [UI validation run](../ui-polish-validation.md),
+along with the focused Flow layout and keyboard checks. These fixtures do not
+establish server execution; the validation record lists remaining acceptance work.

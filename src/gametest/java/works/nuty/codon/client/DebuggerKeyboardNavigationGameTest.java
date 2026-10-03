@@ -255,11 +255,11 @@ public final class DebuggerKeyboardNavigationGameTest implements FabricClientGam
         context.runOnClient(client -> {
             require(focusedLabel(screen).startsWith("▸ field11:"), "Down reveals hidden NBT rows in the same column");
             press(client, screen, InputConstants.KEY_RIGHT, InputConstants.KEYCODE_RIGHT, 0, InputType.KEYBOARD_ARROW);
-            require(focused(screen).icon() == DebuggerIcon.PIN, "Right visits the pin within the NBT container");
+            require(focused(screen).icon() == DebuggerIcon.WATCHES, "Right visits the NBT Watch action within the same container");
             press(client, screen, InputConstants.KEY_UP, InputConstants.KEYCODE_UP, 0, InputType.KEYBOARD_ARROW);
         });
         context.waitTicks(2);
-        context.runOnClient(client -> require(focused(screen).icon() == DebuggerIcon.PIN, "NBT Up preserves the pin column"));
+        context.runOnClient(client -> require(focused(screen).icon() == DebuggerIcon.WATCHES, "NBT Up preserves the Watch action column"));
         context.takeScreenshot("codon-keyboard-nbt-hidden-row");
     }
 

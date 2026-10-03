@@ -131,7 +131,10 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
         click(context, "codon.watch.edit");
         context.runOnClient(client -> require(screen(client) instanceof WatchScreen, "Expanded Details Edit hitbox opens the same Watch editor"));
         click(context, "codon.watch.close");
-        clickLabel(context, context.computeOnClient(client -> Component.translatable("codon.watch.inspect", WatchFormatting.specification(NBT).getString()).getString()));
+        context.runOnClient(client -> require(screen(client) instanceof WatchDetailsScreen
+            && button(screen(client), text("codon.watch.details.less")).visible,
+            "Edit cancellation returns to its original expanded Details screen"));
+        click(context, "codon.watch.details.less");
         click(context, "codon.watch.details.more");
         context.getInput().pressKey(InputConstants.KEY_END);
         capture(context, name + "-details-expanded-end");

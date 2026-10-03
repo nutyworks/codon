@@ -49,7 +49,7 @@ visible as neutral hollow circles/diamonds, including run and terminal function 
 Rendering an unset affordance does not create a saved breakpoint. The
 list retains enabled and disabled definitions with an explicit state label. The toolbar count and source stage summaries
 still count enabled breakpoints. Disabling preserves the saved condition; use the
-list or hover/focus its original marker to enable it again. The whole-command
+list to navigate to its source, then hover/focus its original marker to enable it again. The whole-command
 marker at the front of the command-block editor is always visible, including when
 unused or disabled. Text selection in the
 wrapped editor must not toggle a marker, and soft wrapping must not change the
@@ -59,10 +59,11 @@ Check persistence by leaving/reopening the world after saving a definition.
 Navigation-list rows align their labels to the left with neutral hover and keyboard
 focus, without a persistent condition-edit selection color. Scrolling applies only over the list rows, not over the title,
 actions, or surrounding world. The condition editor repeats its command fragment
-in a tooltip only when the visible fragment is clipped. In
-`DebuggerBreakpointUiGameTest`, the `hover-close` capture should show no redundant
-label tooltip, while `hover-condition` retains the full clipped label after a
-short hover. The keyboard capture keeps immediate access to the same label.
+in a tooltip only when the visible fragment is clipped. The navigation-only list
+does not expose condition, delete or Undo controls. `DebuggerBreakpointUiGameTest`
+checks that unavailable destinations cannot mutate definitions. Deleting from a
+condition editor returns to the same parent input and cursor; the exact marker can
+then recreate the breakpoint with its default Always condition.
 
 Function-line and stage targets use the [Source viewer](function-source.md).
 Saved line hover shows its count, click toggle and right-click condition hints
@@ -190,17 +191,14 @@ Each precise marker opens one exact condition target; there is no line/stage cho
 and no redirect from a Source/Flow line target to a legacy stage-zero definition.
 Saved definitions are not rewritten when the UI renders or navigates.
 
-Validation: `JAVA_HOME=<JDK 25> ./gradlew compileClientJava processResources
---console=plain` passed; log: `../breakpoint-context-navigation-compile.log`. No tests
-were edited/run and no game/GUI was launched. Existing list action/Undo, source
-condition-button, selected-color and compact-layout expectations are stale. Native
-menus, target navigation, focus return, modal invalidation and rendering remain
-unverified. The focus-retention/direct-editor follow-up was also limited to client
-compilation/resources (`../breakpoint-focus-direct-editor-compile.log`), with no
-tests or game/GUI runs. Opening or cancelling an editor does not send a breakpoint
-edit. Flow's pending toggle disables activation while retaining the exact focused
-marker, and explicit navigation supersedes it without a later focus-stealing
-acknowledgement. Native pending/rebuild/menu-return interactions remain unverified.
+Opening or cancelling an editor does not send a breakpoint edit. Flow's pending
+toggle disables activation while retaining the exact focused marker, and explicit
+navigation supersedes it without a later focus-stealing acknowledgement.
+`DebuggerNavigationTest` checks widget replacement and late acknowledgements;
+`FlowBreakpointInteractionGameTest` covers native screen events for exact targets,
+pending focus, direct editor return and navigation-only destinations.
+See the [UI validation record](../ui-polish-validation.md) for passing checks and
+the boundary between presentation fixtures and real server edits/execution.
 
 Authoritative Source/Flow marker mapping:
 
