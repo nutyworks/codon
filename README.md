@@ -5,7 +5,7 @@ Set command-block, function-line and command-stage breakpoints; step through
 execution; inspect recorded call paths, `execute` contexts, scoreboard values and
 NBT; and navigate the paused world with a detached camera.
 
-**0.1.0-alpha.1 is an alpha prerelease.** Use a disposable world or a backed-up
+**0.1.0-alpha.2 is an alpha prerelease.** Use a disposable world or a backed-up
 copy first. Pausing stops server simulation for every player. Read the limitations
 below before using it on a shared server. See the [alpha notes](CHANGELOG.md).
 
@@ -21,7 +21,7 @@ below before using it on a shared server. See the [alpha notes](CHANGELOG.md).
 
 1. Install a [Fabric Loader](https://fabricmc.net/use/) profile for Minecraft 26.3
    and configure the launcher to use Java 25 or newer.
-2. Download the runtime `codon-0.1.0-alpha.1.jar` from the
+2. Download the runtime `codon-0.1.0-alpha.2.jar` from the
    [GitHub prerelease](https://github.com/nutyworks/codon/releases), when available.
    Put it and the matching Fabric API JAR in that profile's `mods/` folder. A
    `-sources.jar` is for reading code and cannot be installed as the mod.
@@ -133,7 +133,7 @@ Review logs and screenshots for private data before attaching them.
 ## Development
 
 With JDK 25, run `./gradlew build`. The installable runtime artifact is produced
-by `:jar` at `build/libs/codon-0.1.0-alpha.1.jar`; this build has no `remapJar` task.
+by `:jar` at `build/libs/codon-0.1.0-alpha.2.jar`; this build has no `remapJar` task.
 The build compiles the mod and runs configured JVM tests; it does not launch
 Minecraft or establish in-game acceptance. See the
 [verification guide](docs/verification/README.md),

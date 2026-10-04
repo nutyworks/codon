@@ -1,9 +1,10 @@
 # Manual alpha preparation
 
-The intended first tag is `v0.1.0-alpha.1`, with `mod_version=0.1.0-alpha.1` and
-GitHub's **pre-release** flag enabled. Recheck tags/releases before assigning it. Release
-preparation does not authorize a stable release. There is no release workflow;
-tagging and publishing are manual after acceptance of the integrated candidate.
+The current alpha candidate uses `mod_version=0.1.0-alpha.2`. Its matching tag name
+is `v0.1.0-alpha.2`, with GitHub's **pre-release** flag enabled. Recheck tags/releases
+before assigning it. Release preparation does not authorize a stable release.
+There is no release workflow; tagging and publishing are manual after acceptance
+of the integrated candidate.
 
 ## Build the integrated candidate
 
@@ -12,15 +13,15 @@ tagging and publishing are manual after acceptance of the integrated candidate.
    confirm `git status --short` has no source changes. Keep unrelated work intact.
 2. Use JDK 25 and run `./gradlew --version`, then `./gradlew build`. Keep the
    build log and relevant `build/reports/tests/` reports with the candidate SHA.
-3. Take **only** `build/libs/codon-0.1.0-alpha.1.jar` from `:jar` as the installable
+3. Take **only** `build/libs/codon-0.1.0-alpha.2.jar` from `:jar` as the installable
    artifact. `-sources.jar` is not installable; this build has no `remapJar` task.
 4. Inspect that runtime archive: `fabric.mod.json` must contain version
-   `0.1.0-alpha.1`, the expected dependency requirements and production entrypoints.
+   `0.1.0-alpha.2`, the expected dependency requirements and production entrypoints.
    Confirm `LICENSE_codon`, core/server/client classes, mixin configurations and
    resources are present. It must not contain Minecraft classes, the
    `codon-ui-test` manifest, GameTest classes or test-only mixins/fixtures.
 5. Record its byte size and SHA-256 alongside the full candidate commit. On macOS,
-   `shasum -a 256 build/libs/codon-0.1.0-alpha.1.jar` produces the checksum; Linux
+   `shasum -a 256 build/libs/codon-0.1.0-alpha.2.jar` produces the checksum; Linux
    can use `sha256sum`. Keep this exact file for the acceptance run and upload.
 
 ## Accept and publish that file
