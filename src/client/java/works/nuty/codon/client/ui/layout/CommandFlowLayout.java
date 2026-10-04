@@ -13,8 +13,8 @@ import java.util.function.ToIntFunction;
 
 /** Minecraft-free command and execution-flow layout shared by the command panel renderer. */
 public final class CommandFlowLayout {
-    private static final int CELL_HORIZONTAL_PADDING = 10;
-    private static final int GAP = 4;
+    public static final int CELL_HORIZONTAL_PADDING = 6;
+    private static final int GAP = 2;
 
     private CommandFlowLayout() {
     }

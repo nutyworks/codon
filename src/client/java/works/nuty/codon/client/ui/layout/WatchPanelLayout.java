@@ -2,17 +2,19 @@ package works.nuty.codon.client.ui.layout;
 
 import java.util.List;
 import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds;
+import static works.nuty.codon.client.state.DebuggerPreferences.*;
 
 /** Watches occupy the free upper-right area, down to the command panel, without covering controls. */
 public final class WatchPanelLayout {
     private WatchPanelLayout() { }
 
-    public static boolean stackedValues(int panelWidth) { return panelWidth < 260; }
+    /** Keep keys left and values right even in the narrow drawer; Details exposes clipped text. */
+    public static boolean stackedValues(int panelWidth) { return false; }
     public static int valueWidth(int panelWidth) { return Math.max(0, panelWidth - 18); }
 
-    /** Compact value inspection starts below the management buttons' bottom edge. */
+    /** Both name and value inspection use the full row; management lives in the context menu. */
     public static List<Bounds> inspectionBounds(Bounds panel, int rowY, int rowHeight) {
-        int nameWidth = Math.max(1, panel.width() - 86) + 3;
+        int nameWidth = Math.max(1, panel.width() - 10);
         if (!stackedValues(panel.width()))
             return List.of(new Bounds(panel.x() + 4, rowY, nameWidth, rowHeight - 1));
         return List.of(new Bounds(panel.x() + 4, rowY, nameWidth, 17),
@@ -65,9 +67,17 @@ public final class WatchPanelLayout {
     }
 
     public static Bounds available(DebuggerLayout layout, int guiWidth) {
+        return available(layout, guiWidth, DEFAULT_WATCH_WIDTH);
+    }
+
+    public static int maximumWidth(DebuggerLayout layout) {
+        return Math.max(0, Math.min(MAX_PANEL_WIDTH, layout.world().width() - 4));
+    }
+
+    public static Bounds available(DebuggerLayout layout, int guiWidth, int requestedWidth) {
         int margin = layout.header().x();
         int right = Math.max(margin, guiWidth - margin);
-        int width = Math.max(0, Math.min(332, layout.world().width() - 4));
+        int width = Math.min(Math.max(MIN_WATCH_WIDTH, requestedWidth), maximumWidth(layout));
         int x = Math.max(layout.world().x(), right - width);
         int headerRight = layout.header().x() + Math.max(layout.header().width(), layout.controls().width());
         int y = x >= headerRight + 4 ? layout.header().y() : layout.world().y();

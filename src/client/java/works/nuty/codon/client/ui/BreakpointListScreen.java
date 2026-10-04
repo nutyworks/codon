@@ -4,40 +4,37 @@ import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.network.chat.Component;
 import org.jspecify.annotations.Nullable;
 import works.nuty.codon.client.CodonClientMod;
-import works.nuty.codon.client.network.ClientNetworking;
-import works.nuty.codon.client.state.ClientBreakpointState;
 import works.nuty.codon.client.state.ClientDebuggerState;
+import works.nuty.codon.client.state.ClientStagePreviewState;
+import works.nuty.codon.client.state.BreakpointTargetPolicy;
 import works.nuty.codon.core.model.BreakpointDefinition;
 import works.nuty.codon.core.model.BreakpointTarget;
 import works.nuty.codon.core.model.SourceLocation;
 
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.List;
 
 import static works.nuty.codon.client.ui.DebuggerTheme.*;
 
-/** Compact authoritative breakpoint list, reachable before the first pause. */
+/** Authoritative breakpoint locations; activating a row only navigates. */
 public final class BreakpointListScreen extends ScaledCodonScreen {
     private final Screen parent;
     private final ClientDebuggerState state;
     private final @Nullable List<BreakpointTarget> targets;
+    private final Map<String, DebuggerButton> buttons = new HashMap<>();
     private List<BreakpointDefinition> displayed = List.of();
-    private @Nullable BreakpointTarget selected;
-    private @Nullable BreakpointDefinition deleted;
-    private long deletedAt;
     private int left, top, panelWidth, panelHeight, offset, rows;
-    private @Nullable DebuggerButton undoButton;
 
-    public BreakpointListScreen(Screen parent, ClientDebuggerState state) {
-        this(parent, state, null);
-    }
+    public BreakpointListScreen(Screen parent, ClientDebuggerState state) { this(parent, state, null); }
 
-    /** A line with coexisting legacy conditions exposes every saved definition, including disabled ones. */
     public BreakpointListScreen(Screen parent, ClientDebuggerState state, @Nullable List<BreakpointTarget> targets) {
         super(Component.translatable("codon.breakpoint.list_title"), state.preferences());
         this.parent = parent;
@@ -45,127 +42,105 @@ public final class BreakpointListScreen extends ScaledCodonScreen {
         this.targets = targets == null ? null : List.copyOf(targets);
     }
 
+    Screen parentScreen() { return parent; }
+
     @Override protected void init() {
         panelWidth = Math.max(1, Math.min(480, width - 12));
         panelHeight = Math.max(1, Math.min(330, height - 12));
         left = (width - panelWidth) / 2;
         top = (height - panelHeight) / 2;
-        rows = Math.max(1, (panelHeight - 92) / 20);
+        rows = Math.max(1, (panelHeight - 62) / 20);
         rebuild();
     }
 
     private void rebuild() {
+        var focused = getFocused();
         clearWidgets();
         displayed = state.breakpoints().definitions().stream()
-            .filter(definition -> targets == null ? definition.enabled() : targets.contains(definition.target()))
+            .filter(definition -> targets == null || targets.contains(definition.target()))
             .sorted(Comparator.comparing(definition -> BreakpointUi.target(definition.target()))).toList();
         offset = Math.clamp(offset, 0, Math.max(0, displayed.size() - rows));
-        if (selected != null && displayed.stream().noneMatch(definition -> definition.target().equals(selected))) selected = null;
-        int listTop = top + 30;
         for (int row = 0; row < rows && offset + row < displayed.size(); row++) {
             BreakpointDefinition definition = displayed.get(offset + row);
             BreakpointTarget target = definition.target();
-            int y = listTop + row * 20;
-            String label = (definition.staleSource() ? "! " + tr("codon.breakpoint.location_review") + " · " : "")
-                + BreakpointUi.target(target)
-                + " · " + BreakpointUi.condition(definition.condition());
-            boolean function = target.location() instanceof SourceLocation.Function;
-            int actionWidth = function ? 24 : 0;
-            DebuggerButton button = addRenderableWidget(new DebuggerButton());
-            button.configure(left + 8, y, panelWidth - 16 - actionWidth, 18, Component.literal(label),
-                true, target.equals(selected), true, false, () -> {
-                    selected = target;
-                    if (function && targets == null) source();
-                    else rebuild();
-                });
-            button.withTextIcon(BreakpointUi.icon(definition));
+            String label = tr(definition.enabled() ? "codon.breakpoint.enabled" : "codon.breakpoint.disabled") + " · "
+                + (definition.staleSource() ? "! " + tr("codon.breakpoint.location_review") + " · " : "")
+                + BreakpointUi.target(target) + " · " + BreakpointUi.condition(definition.condition());
+            DebuggerButton button = addRenderableWidget(buttons.computeIfAbsent("row:" + target, ignored -> new DebuggerButton()));
+            button.configure(left + 8, top + 30 + row * 20, panelWidth - 16, 18, Component.literal(label),
+                canNavigate(target), false, true, false, () -> navigate(target));
+            button.withFlatChrome().withTextIcon(BreakpointUi.icon(definition));
+            button.setTooltip(Tooltip.create(Component.translatable(canNavigate(target)
+                ? "codon.breakpoint.go_to_location" : "codon.breakpoint.flow_unavailable")));
             button.setTabOrderGroup(row);
-            if (function) {
-                DebuggerButton actions = addRenderableWidget(WatchUi.button(left + panelWidth - 8 - actionWidth,
-                    y, actionWidth, 18, Component.literal("…"), () -> { selected = target; rebuild(); }));
-                actions.setTooltip(Tooltip.create(Component.translatable("codon.breakpoint.actions")));
-                actions.setTabOrderGroup(row);
-            }
         }
-        int actionsY = top + panelHeight - 53;
-        int unit = Math.max(42, (panelWidth - 20) / 5);
-        BreakpointDefinition current = current();
-        button(0, actionsY, unit - 3, tr("codon.breakpoint.toggle"), this::toggle,
-            current != null && !current.staleSource());
-        button(unit, actionsY, unit - 3, tr("codon.breakpoint.condition_action"), this::condition, selected != null);
-        button(unit * 2, actionsY, unit - 3, tr("codon.breakpoint.source"), this::source,
-            selected != null && selected.location() instanceof SourceLocation.Function);
-        button(unit * 3, actionsY, unit - 3, tr("codon.breakpoint.delete"), this::delete, selected != null);
-        undoButton = button(unit * 4, actionsY, unit - 3, tr("codon.breakpoint.undo"), this::undo, canUndo());
-        button(0, top + panelHeight - 27, Math.max(56, panelWidth - 16), tr("codon.breakpoint.close"), this::onClose, true);
+        DebuggerButton close = addRenderableWidget(buttons.computeIfAbsent("close", ignored -> new DebuggerButton()));
+        close.configure(left + 8, top + panelHeight - 27, Math.max(1, panelWidth - 16), 20,
+            Component.translatable("codon.breakpoint.close"), true, false, false, false, this::onClose);
+        if (focused instanceof AbstractWidget widget && children().contains(widget)) setFocused(widget);
+        else if (focused != null) setFocused(close);
     }
 
-    private DebuggerButton button(int x, int y, int width, String label, Runnable action, boolean active) {
-        DebuggerButton button = addRenderableWidget(WatchUi.button(left + 8 + x, y, width, 20,
-            Component.literal(label), action));
-        button.active = active;
-        button.setTabOrderGroup(100 + x);
-        return button;
+    private @Nullable CodonScreen debuggerScreen() {
+        Screen screen = parent;
+        while (true) {
+            if (screen instanceof CodonScreen codon) return codon;
+            if (screen instanceof FunctionSourceScreen source) screen = source.parentScreen();
+            else if (screen instanceof BreakpointListScreen list) screen = list.parentScreen();
+            else return null;
+        }
     }
 
-    private @Nullable BreakpointDefinition current() {
-        return selected == null ? null : state.breakpoints().get(selected);
+    private record FlowTarget(int flow, int stage, boolean unobserved) { }
+
+    private @Nullable FlowTarget flowTarget(BreakpointTarget target) {
+        var snapshot = state.snapshot();
+        if (snapshot == null || debuggerScreen() == null) return null;
+        for (int index = snapshot.executionFlows().size() - 1; index >= 0; index--) {
+            var flow = snapshot.executionFlows().get(index);
+            if (!flow.location().equals(target.location()) || flow.stages().isEmpty()) continue;
+            if (target.wholeCommand()) return new FlowTarget(index, 0, false);
+            String command = flow.stages().getFirst().command().text();
+            if (!target.commandFingerprint().equals(BreakpointTarget.fingerprint(command))) continue;
+            if (BreakpointTargetPolicy.stageCount(command, state.stagePreviews().get(flow.location()), flow) == 1) continue;
+            for (int stage = 0; stage < flow.stages().size(); stage++)
+                if (flow.stages().get(stage).index() == target.stageIndex()) return new FlowTarget(index, stage, false);
+            var preview = state.stagePreviews().get(flow.location());
+            if (preview != null && preview.status() == ClientStagePreviewState.Status.READY
+                && preview.savedCommand().equals(command)
+                && preview.spans().stream().anyMatch(span -> span.index() == target.stageIndex()))
+                return new FlowTarget(index, target.stageIndex(), true);
+        }
+        return null;
     }
 
-    private void toggle() {
-        BreakpointDefinition definition = current();
-        if (definition == null || definition.staleSource()) return;
-        ClientNetworking.sendBreakpointEdit(state, ClientBreakpointState.Action.TOGGLE, definition);
+    private boolean canNavigate(BreakpointTarget target) {
+        return target.location() instanceof SourceLocation.Function ? CodonClientMod.sources() != null : flowTarget(target) != null;
     }
 
-    private void condition() {
-        BreakpointDefinition definition = current();
-        if (definition == null) return;
-        int unit = Math.max(42, (panelWidth - 20) / 5);
-        BreakpointConditionScreen.Anchor anchor = new BreakpointConditionScreen.Anchor(
-            left + 8 + unit, top + panelHeight - 53, unit - 3, 20);
-        ScreenLayers.open(this, new BreakpointConditionScreen(this, state, definition, anchor));
-    }
-
-    private void source() {
-        if (!(selected != null && selected.location() instanceof SourceLocation.Function function)) return;
-        var sources = CodonClientMod.sources();
-        if (sources == null) return;
-        sources.selectAt(function.location());
-        Minecraft.getInstance().gui.setScreen(new FunctionSourceScreen(this, sources));
-    }
-
-    private void delete() {
-        BreakpointDefinition definition = current();
-        if (definition == null) return;
-        if (ClientNetworking.sendBreakpointEdit(state, ClientBreakpointState.Action.DELETE, definition))
-            recordDeleted(definition);
-    }
-
-    /** Make the short Undo action available after a deletion from this list or the condition editor. */
-    public void recordDeleted(BreakpointDefinition definition) {
-        deleted = definition;
-        deletedAt = System.nanoTime();
-        if (panelWidth > 0) rebuild();
-    }
-
-    private boolean canUndo() {
-        return deleted != null && System.nanoTime() - deletedAt < 8_000_000_000L
-            && state.breakpoints().error(deleted.target()) == null;
-    }
-
-    private void undo() {
-        if (!canUndo()) return;
-        if (ClientNetworking.sendBreakpointEdit(state, ClientBreakpointState.Action.SAVE, deleted)) deleted = null;
+    private void navigate(BreakpointTarget target) {
+        if (state.breakpoints().get(target) == null) return;
+        if (target.location() instanceof SourceLocation.Function function) {
+            var sources = CodonClientMod.sources();
+            if (sources == null) return;
+            sources.selectAt(function.location());
+            Minecraft.getInstance().gui.setScreen(new FunctionSourceScreen(this, sources).revealBreakpoint(target));
+            return;
+        }
+        FlowTarget destination = flowTarget(target);
+        CodonScreen screen = debuggerScreen();
+        if (destination == null || screen == null) return;
+        state.selectExecutionFlow(destination.flow());
+        if (destination.unobserved()) state.selectUnobservedExecutionFlowStage(destination.stage());
+        else state.selectExecutionFlowStage(destination.stage());
+        var flow = state.selectedExecutionFlow();
+        screen.revealSelectedFlow(CommandPanel.breakpointFocusId(flow, target));
+        Minecraft.getInstance().gui.setScreen(screen);
     }
 
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-        List<BreakpointDefinition> latest = state.breakpoints().definitions().stream()
-            .filter(definition -> targets == null ? definition.enabled() : targets.contains(definition.target()))
-            .sorted(Comparator.comparing(definition -> BreakpointUi.target(definition.target()))).toList();
-        if (!latest.equals(displayed)) rebuild();
-        if (undoButton != null) undoButton.active = canUndo() && deleted != null
-            && !state.breakpoints().pending(deleted.target());
+        // Reuse button identities while reflecting newly available navigation destinations.
+        rebuild();
         graphics.fill(0, 0, width, height, DebuggerTheme.color(0x70000000));
         graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.color(PANEL));
         graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.color(BORDER));
@@ -173,17 +148,6 @@ public final class BreakpointListScreen extends ScaledCodonScreen {
             left + 8, top + 10, panelWidth - 16, TEXT);
         if (displayed.isEmpty()) WatchUi.line(graphics, font, tr("codon.breakpoint.list_empty"), left + 12, top + 43,
             panelWidth - 24, MUTED);
-        if (canUndo()) WatchUi.line(graphics, font, state.breakpoints().pending(deleted.target())
-                ? tr("codon.breakpoint.deleting") : tr("codon.breakpoint.deleted_undo"),
-            left + 8, top + panelHeight - 67, panelWidth - 16, MUTED);
-        else if (selected != null) {
-            var error = state.breakpoints().error(selected);
-            String status = error != null ? tr("codon.breakpoint.error."
-                + error.name().toLowerCase(java.util.Locale.ROOT)) :
-                state.breakpoints().pending(selected) ? tr("codon.breakpoint.applying") : "";
-            WatchUi.line(graphics, font, status, left + 8, top + panelHeight - 67, panelWidth - 16,
-                error == null ? MUTED : AMBER);
-        }
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
     }
 
@@ -204,6 +168,5 @@ public final class BreakpointListScreen extends ScaledCodonScreen {
     @Override public void extractBackground(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) { }
     @Override public boolean isPauseScreen() { return false; }
     @Override public boolean isInGameUi() { return true; }
-
     private static String tr(String key, Object... args) { return Component.translatable(key, args).getString(); }
 }

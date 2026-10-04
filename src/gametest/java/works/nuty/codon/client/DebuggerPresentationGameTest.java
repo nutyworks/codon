@@ -105,6 +105,17 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
             });
             context.waitTicks(2);
             context.runOnClient(client -> {
+                boolean secondVisible = screen.children().stream().filter(DebuggerButton.class::isInstance)
+                    .map(DebuggerButton.class::cast).anyMatch(value -> value.getMessage().getString().equals("#2 Zombie 2"));
+                if (!secondVisible) {
+                    var first = button(screen, value -> value.equals("#1 Zombie 1"));
+                    require(screen.mouseScrolled(first.getX() + 2, first.getY() + 2, 0, -1),
+                        "The compact Contexts viewport scrolls to the next group member");
+                    require(state.selectedSourceIndex() == 0, "Revealing a group member does not select it");
+                }
+            });
+            context.waitTicks(2);
+            context.runOnClient(client -> {
                 DebuggerButton second = button(screen, value -> value.equals("#2 Zombie 2"));
                 click(screen, second);
                 require(state.selectedSourceIndex() == 1, "Group member click selects source");
@@ -485,9 +496,10 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
                 .map(DebuggerButton.class::cast).filter(value -> value.getMessage().getString().contains("continuation_"))
                 .sorted(java.util.Comparator.comparingInt(DebuggerButton::getY)).toList();
             require(fragments.size() > 1, "long stopped stage has visible continuation rows");
-            require(fragments.getFirst().icon() == DebuggerIcon.PAUSE, "first fragment retains pause icon");
-            require(fragments.stream().skip(1).allMatch(value -> value.icon() == null),
-                "continuations have no repeated pause icon");
+            require(fragments.stream().allMatch(value -> value.icon() == null),
+                "Stopped clause fragments do not reserve the removed pause icon");
+            require(fragments.stream().allMatch(value -> value.foregroundColor() == works.nuty.codon.client.ui.DebuggerTheme.AMBER),
+                "Every fragment retains the actual stopped stage's amber emphasis");
             require(fragments.get(1).getX() < fragments.getFirst().getX(),
                 "continuation reclaims the first fragment's breakpoint slot");
         });

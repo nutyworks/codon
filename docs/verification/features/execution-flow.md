@@ -2,6 +2,65 @@
 
 ## User path and expected result
 
+The UI scaffold uses shared neutral surfaces and flat Contexts, call-path and Flow
+buttons: idle rows have no repeated frame, hover has a neutral fill, selection keeps
+its semantic fill and underline, and keyboard focus has a filled corner caret.
+Foreground text and icons remain opaque when panel opacity is reduced. Live amber,
+selected teal, context-change colors, breakpoint icons and counts retain their roles.
+Unobserved stages keep the full observation text in their clause tooltip and
+selection summary. Future stages no longer repeat an inline Unrun label or reserve
+a status minimum width; Unreached/Unknown/Error remain distinct inline information.
+Cell horizontal padding is 6 logical pixels (previously 10), with 2 pixels between
+cells (previously 4). Both drawing and button text use that padding. The count-line
+minimum is measured count width + 6, plus 17 only when a warning control is present;
+it previously added 26 and another 15 for an editable source. Breakpoint and warning
+icons are reserved once, by the command line's leading inset. Compact rows with
+no count line reserve no count width. The shared count row remains when observed
+counts are shown; hidden Unrun labels do not produce a replacement badge. Stage
+targets, marker hitbox sizes, secondary actions and selection colors are unchanged.
+Character wrapping, row scrolling and call-path horizontal scrolling retain their
+existing behavior with the denser clause geometry.
+
+The actual paused Flow stage uses amber text/counts and its existing amber selected
+surface, without a pause glyph. The first clause fragment no longer reserves the
+14-pixel pause-icon inset; a compact warning still reserves its own icon space when
+needed. Amber is guarded by live paused state plus the actual flow/stage identity,
+so browsing a different recorded stage retains teal selection without moving the
+execution indicator. The stopped clause tooltip explicitly names Stop and the stage
+number; the selection detail band's textual Stop state and narration target remain.
+Breakpoint controls, toolbar controls and call-path markers are unchanged.
+
+The follow-up crop `Screenshot 2026-10-03 at 15.27.53.png` shows the space before
+`at @s`, inside the clause after its breakpoint marker. Parsed stage text includes
+the leading command separator; the display-only layout now strips that separator
+before measuring/wrapping, so it no longer adds to the 3-pixel button inset. Full
+command text, stage ranges, tooltips, marker hitboxes and spacing inside a clause
+are preserved. Continuation fragments are not stripped. The 6-pixel total padding,
+2-pixel cell gap and hidden inline Unrun remain in place.
+
+Contexts now labels the selected stop/recorded stage separately from the stage
+which supplies its displayed contexts. Complete modifier records show outputs plus
+excluded inputs; terminal, unfinished or incomplete-lineage records show inputs.
+A predecessor's outputs retain that predecessor's stage number. Empty observed
+context sets are not relabeled as missing recordings. Very short inspector viewports
+use the provenance caption as the heading to retain a selectable context row.
+
+Flow has a persistent two-line selection detail band with a keyboard focus/narration
+target. It names Stop/Recorded/Selected, the stage number, observation state and
+counts. The collapsed panel reserves 28 additional logical pixels; stage widths,
+wrapping rules and bottom action positions do not depend on the selected status.
+Expanded Flow retains its existing outer size and allocates the same detail band.
+Measured zero stays `0`; missing counts are `?`. Explicit stage-scoped execution
+warnings produce Error; zero successes alone do not. A missing suffix is Unrun only
+beyond the actual stop in the same invocation. A complete, reliable preceding stage
+with zero outputs permits Unreached. Other absent historical stages remain Unknown,
+with recording-missing/execution-unknown text. No lifecycle facts or error attribution
+are inferred for unrecorded stages or warnings without a stage identity.
+
+The trace model does not carry an authoritative lifecycle state for every absent
+parsed stage. Distinguishing all other non-execution versus missing-capture cases
+would require additional server evidence; this patch does not extend the protocol.
+
 Use the [shared setup](../README.md#prepare-and-launch). In a fresh scratch world,
 summon two tagged armor stands before pausing:
 
@@ -34,8 +93,8 @@ execute as @e[type=minecraft:armor_stand,tag=codon_verify] at @s if entity @s[ta
    Only the first fragment reserves breakpoint/pause/warning icon and count-label
    space. Continuation rows use the full text width with normal text padding.
    Flow also requests the saved command's parse-only server preview. Statically
-   known stages that have not been observed remain selectable: hover their first
-   fragment to reveal a marker, left-click the marker to toggle its breakpoint,
+   known stages that have not been observed remain selectable: their first fragment
+   keeps its marker visible; left-click the marker to toggle its breakpoint,
    or right-click the clause to edit its condition. Continue must stop on the
    stage's first occurrence. Selecting a static stage shows no recorded contexts
    or measured counts or a captured call path; Current restores the actual stop.
@@ -73,6 +132,7 @@ similar UUIDs/positions or replay a command to reconstruct its effects.
 | Recorded inputs/outputs/lineage | `coreTest`: `ExecutionFlowRecorderTest` |
 | Trace adapter | `test`: `CommandTraceTest` |
 | Recorded navigation/layout | `clientTest`: `ClientExecutionFlowTimelineTest`, `ClientCommandSelectionTest`, `CommandFlowLayoutTest` |
+| BP/stage Tab order, wrapped reveal, pending-toggle focus, direct exact condition editors, navigation-only breakpoint list | `FlowBreakpointInteractionGameTest`; `test`: `DebuggerNavigationTest` |
 | Native branching/filtering and stage stops | `DebuggerExecutionFlowGameTest` |
 | Native `if function` / `unless function` chronology | `DebuggerConditionalFunctionFlowGameTest` |
 | Flow options/markers for never-observed stages, rejection feedback, recovered previews, then first-occurrence terminal and conditional stops | `DebuggerUnobservedFlowBreakpointGameTest`; `clientTest`: `ClientUnobservedFlowSelectionTest`, `ClientFlowPreviewRequestsTest`, `CommandFlowLayoutTest` |
@@ -83,3 +143,54 @@ Example: `./gradlew runClientGameTest -PclientGameTest=DebuggerExecutionFlowGame
 The conditional-function test concerns Minecraft function conditions; conditional
 breakpoint coverage is listed in [Breakpoints](breakpoints.md). Keep native-flow
 assertions separate from screenshots produced by synthetic presentation fixtures.
+
+Condition/navigation follow-up: Flow's footer condition button is removed. Right-
+click a breakpoint marker (or Shift+F10 on that focused marker) to open its exact
+condition editor directly. Clauses and the selected detail band retain their
+condition menu, without a line-versus-stage chooser. Right-clicking a future
+stage does not select it or alter displayed contexts. Saved disabled breakpoints and unset breakpoint-capable stages
+stay visible as neutral hollow circles/diamonds, including run and terminal function
+stages. No definition is created until the existing marker action is activated.
+Only the first fragment of each exact parsed/recorded stage owns its marker; wrapped
+continuations do not invent additional targets. Unparsed suffixes do not invent stage targets. A separate whole-command marker
+now precedes the command root/execute prefix when the command has multiple stages;
+a one-stage command has only its line marker. Parsed stage count, not a literal
+execute check, decides this mapping. The actual pixels in the supplied Library screenshot
+`Screenshot 2026-10-03 at 15.59.01.png` were inspected before this change. Actual pause amber and functionally necessary inspection
+selection remain distinct. The Active breakpoint list selects an exact matching
+Flow/stage and reveals it without sending breakpoint edits; unavailable destinations
+remain listed with an explanation.
+
+Flow keyboard traversal follows visual reading order: the whole-command marker
+comes first when present, then each stage's marker immediately precedes its clause
+and optional warning. Tab and Right follow this order through wrapped rows;
+Shift+Tab and Left reverse it. Up/Down move between visual rows. Tab leaves Flow at
+the last control, and Shift+Tab leaves at the first; entering Flow starts at the
+corresponding edge. Other debugger regions keep their existing Tab behavior.
+Off-screen controls reveal their row, traversal skips pending/disabled markers, and
+wrapped continuations do not add breakpoint markers. Warning focus IDs use the
+recorded stage index so sparse recordings do not create phantom targets.
+Shift+F10 continues to use the focused control's exact condition target and return
+focus to that control. Single-stage line mapping, Source, Watch and pause colors
+are unchanged.
+
+Toggling a focused breakpoint with Enter/Space keeps focus on that exact target
+while the request is pending and after its server update. Its disabled button and
+focus caret remain present; it cannot accept another toggle until ready. Focus
+identity includes the invocation and complete breakpoint target (location, stage
+and command fingerprint), rather than the recorded-stage list position or whether
+the stage has been observed. Explicit traversal or a different clicked control
+replaces that focus immediately; acknowledgements never restore an older target.
+The direct condition editor returns focus to its opening marker only while its
+source/flow context remains current. Opening or cancelling does not save a
+breakpoint.
+
+Regression follow-up: `FlowBreakpointInteractionGameTest` exercises actual screen
+events with synthetic observations, including unset/disabled run and function
+markers, Tab/Shift+Tab through wrapped rows, Enter/Space pending/acknowledgement
+focus, direct marker editors and cancel/no-creation, and exact navigation-list
+destinations. `DebuggerNavigationTest` separately replaces widget instances while
+an edit is pending and verifies that explicit keyboard or pointer navigation wins
+over a later acknowledgement. Both passed in the [UI validation run](../ui-polish-validation.md),
+along with the focused Flow layout and keyboard checks. These fixtures do not
+establish server execution; the validation record lists remaining acceptance work.

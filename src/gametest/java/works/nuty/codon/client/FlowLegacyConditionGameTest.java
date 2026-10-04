@@ -38,68 +38,69 @@ public final class FlowLegacyConditionGameTest implements FabricClientGameTest {
                 client.setScreenAndShow(new CodonScreen(DebuggerPresentationGameTest.input(client, state), overlay));
                 return definition;
             });
+            var whole = BreakpointTarget.whole(legacy.target().location());
+            var line = BreakpointDefinition.plain(whole).withCondition(legacy.condition());
             context.waitTicks(3);
             context.takeScreenshot("codon-flow-legacy-condition");
             context.runOnClient(client -> {
                 var panel = (CommandPanel) FunctionLineBreakpointGameTest.field(overlay, "commandPanel");
                 var buttons = (Map<String, DebuggerButton>) FunctionLineBreakpointGameTest.field(panel, "cache");
-                if (!buttons.get("selected-condition").getMessage().getString().equals(BreakpointUi.condition(legacy.condition())))
-                    failures.add("Flow toolbar hides the saved legacy stage-zero condition");
+                if (buttons.containsKey("selected-condition"))
+                    failures.add("Flow recreates the removed selected-condition footer control");
                 try {
                     var method = CommandPanel.class.getDeclaredMethod("conditionSummary", ExecutionFlowStage.class);
                     method.setAccessible(true);
-                    if (!((String) method.invoke(panel, state.selectedExecutionFlowStage())).startsWith(BreakpointUi.condition(legacy.condition())))
-                        failures.add("Flow condition summary hides the saved legacy stage-zero condition");
-                    var summary = CommandPanel.class.getDeclaredMethod("summary");
-                    summary.setAccessible(true);
-                    if (!((String) summary.invoke(panel)).contains(BreakpointUi.condition(legacy.condition())))
-                        failures.add("Flow visible summary hides the saved legacy stage-zero condition");
+                    if (!((String) method.invoke(panel, state.selectedExecutionFlowStage())).isEmpty())
+                        failures.add("Single-stage line summary borrows the separate legacy stage-zero condition");
+                    state.breakpoints().acceptPage(2, 0, true, List.of(legacy, line));
+                    if (!((String) method.invoke(panel, state.selectedExecutionFlowStage())).startsWith(BreakpointUi.condition(line.condition())))
+                        failures.add("Flow hides the exact whole-line condition on a one-stage command");
                 } catch (ReflectiveOperationException error) { throw new AssertionError(error); }
             });
             context.runOnClient(client -> {
-                state.breakpoints().acceptPage(2, 0, true, List.of(legacy.withEnabled(false)));
-                BreakpointUi.openCondition(client.gui.screen(), state, BreakpointTarget.whole(legacy.target().location()),
-                    "say legacy_flow", 1, null);
+                state.breakpoints().acceptPage(3, 0, true, List.of(legacy.withEnabled(false), line.withEnabled(false)));
+                openMarker(client.gui.screen(), marker(overlay, whole));
             });
             context.waitTicks(2);
             context.takeScreenshot("codon-flow-legacy-disabled-editing");
             context.runOnClient(client -> {
                 var panel = FunctionLineBreakpointGameTest.field(overlay, "commandPanel");
                 var buttons = (Map<String, DebuggerButton>) FunctionLineBreakpointGameTest.field(panel, "cache");
-                var marker = buttons.get("breakpoint-1-0");
+                var marker = buttons.get("flow-breakpoint-1-" + whole);
                 if (ScreenLayers.get(client.gui.screen()) == null || marker == null
                     || (boolean) FunctionLineBreakpointGameTest.field(marker, "revealOnHover"))
-                    failures.add("Flow does not retain the exact disabled legacy line marker while editing");
-                if (!buttons.get("selected-condition").getMessage().getString().equals(BreakpointUi.condition(legacy.condition())))
-                    failures.add("Flow hides a disabled legacy condition in its toolbar");
+                    failures.add("Flow does not retain the exact disabled whole-line marker while editing");
+                if (!(ScreenLayers.get(client.gui.screen()) instanceof BreakpointConditionScreen editor)
+                    || !editor.editsMarker(whole, "say legacy_flow") || editor.editsMarker(legacy.target(), "say legacy_flow"))
+                    failures.add("Flow marker editor does not retain the exact whole-line target");
                 ScreenLayers.get(client.gui.screen()).onClose();
-                if (state.breakpoints().get(legacy.target()).enabled()) failures.add("Flow Cancel enables the saved target");
-                state.breakpoints().begin(ClientBreakpointState.Action.SAVE, legacy);
+                if (state.breakpoints().get(legacy.target()).enabled() || state.breakpoints().get(whole).enabled())
+                    failures.add("Flow Cancel changes a saved definition");
+                state.breakpoints().begin(ClientBreakpointState.Action.SAVE, line);
             });
             context.waitTicks(2);
             context.takeScreenshot("codon-flow-legacy-condition-pending");
             context.runOnClient(client -> {
                 var panel = FunctionLineBreakpointGameTest.field(overlay, "commandPanel");
                 var buttons = (Map<String, DebuggerButton>) FunctionLineBreakpointGameTest.field(panel, "cache");
-                if (buttons.get("selected-condition").active)
-                    failures.add("Flow toolbar remains enabled during the legacy target's pending edit");
-                var whole = BreakpointTarget.whole(legacy.target().location());
-                BreakpointUi.openCondition(client.gui.screen(), state, whole, "say legacy_flow", 1, null);
+                if (marker(overlay, whole).active)
+                    failures.add("Exact Flow marker remains enabled during its pending edit");
+                openMarker(client.gui.screen(), marker(overlay, whole));
                 if (ScreenLayers.get(client.gui.screen()) != null)
-                    failures.add("Pending legacy edit allows opening a second condition editor");
+                    failures.add("Pending whole-line edit allows opening a second condition editor");
                 // End the presentation-only pending request before simulating rejected acknowledgements.
                 state.breakpoints().reset();
-                state.breakpoints().acceptPage(3, 0, true, List.of(legacy.withEnabled(false)));
+                state.breakpoints().acceptPage(4, 0, true, List.of(legacy.withEnabled(false), line.withEnabled(false)));
             });
             for (var result : List.of(ClientBreakpointState.Result.NO_PERMISSION, ClientBreakpointState.Result.INVALID_TARGET)) {
                 context.runOnClient(client -> {
-                    var edit = state.breakpoints().begin(ClientBreakpointState.Action.TOGGLE, legacy);
+                    var edit = state.breakpoints().begin(ClientBreakpointState.Action.TOGGLE, line);
                     state.breakpoints().finish(edit.requestId(), result);
                 });
                 double[] pointer = context.computeOnClient(client -> {
                     var panel = FunctionLineBreakpointGameTest.field(overlay, "commandPanel");
                     var buttons = (Map<String, DebuggerButton>) FunctionLineBreakpointGameTest.field(panel, "cache");
-                    var marker = buttons.get("breakpoint-1-0");
+                    var marker = buttons.get("flow-breakpoint-1-" + whole);
                     return new double[]{(marker.getX() + 7.0) * client.getWindow().getScreenWidth() / client.gui.screen().width,
                         (marker.getY() + 4.0) * client.getWindow().getScreenHeight() / client.gui.screen().height};
                 });
@@ -110,16 +111,16 @@ public final class FlowLegacyConditionGameTest implements FabricClientGameTest {
                     var panel = FunctionLineBreakpointGameTest.field(overlay, "commandPanel");
                     var buttons = (Map<String, DebuggerButton>) FunctionLineBreakpointGameTest.field(panel, "cache");
                     var tooltip = (net.minecraft.client.gui.components.Tooltip)
-                        FunctionLineBreakpointGameTest.field(buttons.get("breakpoint-1-0"), "tooltip");
+                        FunctionLineBreakpointGameTest.field(buttons.get("flow-breakpoint-1-" + whole), "tooltip");
                     var text = new StringBuilder();
-                    for (var line : tooltip.toCharSequence(client)) {
-                        line.accept((index, style, codePoint) -> { text.appendCodePoint(codePoint); return true; });
+                    for (var textLine : tooltip.toCharSequence(client)) {
+                        textLine.accept((index, style, codePoint) -> { text.appendCodePoint(codePoint); return true; });
                         text.append(' ');
                     }
                     String expected = net.minecraft.network.chat.Component.translatable("codon.breakpoint.error."
                         + result.name().toLowerCase(java.util.Locale.ROOT)).getString();
                     if (!text.toString().replaceAll("\\s+", " ").contains(expected.replaceAll("\\s+", " ")))
-                        failures.add("Flow legacy marker hides rejected toggle " + result + ": " + text);
+                        failures.add("Flow exact line marker hides rejected toggle " + result + ": " + text);
                 });
             }
             context.runOnClient(client -> {
@@ -133,7 +134,7 @@ public final class FlowLegacyConditionGameTest implements FabricClientGameTest {
                     1, 0, 0, true, 1, 1, true, true, false, 2, List.of(frame));
                 state.applyPause(new PauseSnapshot(base.location(), command, 0, List.of(frame), base.pauseSources(),
                     List.of(new ExecutionFlowTrace(2, base.location(), List.of(modifier, terminal), false)), PauseReason.STEP));
-                state.breakpoints().acceptPage(4, 0, true, List.of(BreakpointDefinition.plain(BreakpointTarget.whole(base.location()))
+                state.breakpoints().acceptPage(5, 0, true, List.of(BreakpointDefinition.plain(BreakpointTarget.whole(base.location()))
                     .withCondition(legacy.condition())));
                 state.selectExecutionFlowStage(1);
             });
@@ -142,18 +143,40 @@ public final class FlowLegacyConditionGameTest implements FabricClientGameTest {
             context.runOnClient(client -> {
                 var panel = FunctionLineBreakpointGameTest.field(overlay, "commandPanel");
                 try {
-                    var summary = CommandPanel.class.getDeclaredMethod("summary");
+                    var summary = CommandPanel.class.getDeclaredMethod("conditionSummary", ExecutionFlowStage.class);
                     summary.setAccessible(true);
-                    if (((String) summary.invoke(panel)).contains(BreakpointUi.condition(legacy.condition())))
+                    if (((String) summary.invoke(panel, state.selectedExecutionFlowStage())).contains(BreakpointUi.condition(legacy.condition())))
                         failures.add("Flow attributes a whole-line modifier condition to the terminal stage");
                     state.selectExecutionFlowStage(0);
-                    if (!((String) summary.invoke(panel)).contains(BreakpointUi.condition(legacy.condition())))
-                        failures.add("Flow hides the applicable whole-line condition on its modifier stage");
+                    if (((String) summary.invoke(panel, state.selectedExecutionFlowStage())).contains(BreakpointUi.condition(legacy.condition())))
+                        failures.add("Flow attributes the whole-line condition to an exact modifier stage");
+                    var flow = state.selectedExecutionFlow();
+                    var stage = state.selectedExecutionFlowStage();
+                    var exact = BreakpointDefinition.plain(BreakpointTarget.stage(flow.location(), stage.index(), stage.command().text()))
+                        .withCondition(legacy.condition());
+                    state.breakpoints().acceptPage(6, 0, true, List.of(line, exact));
+                    if (!((String) summary.invoke(panel, state.selectedExecutionFlowStage())).contains(BreakpointUi.condition(exact.condition())))
+                        failures.add("Flow hides the modifier's own exact condition");
                 } catch (ReflectiveOperationException error) { throw new AssertionError(error); }
                 state.reset();
                 client.setScreenAndShow(null);
             });
             if (!failures.isEmpty()) throw new AssertionError(String.join("; ", failures));
         }
+    }
+
+    private static DebuggerButton marker(DebuggerOverlay overlay, BreakpointTarget target) {
+        var panel = FunctionLineBreakpointGameTest.field(overlay, "commandPanel");
+        var buttons = (Map<String, DebuggerButton>) FunctionLineBreakpointGameTest.field(panel, "cache");
+        var marker = buttons.get("flow-breakpoint-1-" + target);
+        if (marker == null) throw new AssertionError("Exact single-stage whole-line marker is present");
+        return marker;
+    }
+
+    private static void openMarker(net.minecraft.client.gui.screens.Screen screen, DebuggerButton marker) {
+        var event = new net.minecraft.client.input.MouseButtonEvent(marker.getX() + 3, marker.getY() + 3,
+            new net.minecraft.client.input.MouseButtonInfo(com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_RIGHT, 0));
+        screen.mouseClicked(event, false);
+        screen.mouseReleased(event);
     }
 }

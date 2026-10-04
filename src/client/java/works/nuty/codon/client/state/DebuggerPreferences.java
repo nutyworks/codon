@@ -18,6 +18,13 @@ public final class DebuggerPreferences {
     private boolean keepFreecam;
     private boolean watchesVisible = true;
     private boolean commandVisible = true;
+    public static final int DEFAULT_WATCH_WIDTH = 280;
+    public static final int DEFAULT_INSPECTOR_WIDTH = 190;
+    public static final int MIN_WATCH_WIDTH = 220;
+    public static final int MIN_INSPECTOR_WIDTH = 160;
+    public static final int MAX_PANEL_WIDTH = 640;
+    private int watchWidth = DEFAULT_WATCH_WIDTH;
+    private int inspectorWidth = DEFAULT_INSPECTOR_WIDTH;
     public enum UiScaleMode { FOLLOW_GAME, CUSTOM }
     public static final int MIN_UI_SCALE = 4;
     public static final int STANDARD_MAX_UI_SCALE = 16;
@@ -90,6 +97,25 @@ public final class DebuggerPreferences {
     }
 
     public boolean commandVisible() { return commandVisible; }
+
+    public int watchWidth() { return watchWidth; }
+    public int inspectorWidth() { return inspectorWidth; }
+
+    public void setWatchWidth(int width) {
+        width = Math.clamp(width, MIN_WATCH_WIDTH, MAX_PANEL_WIDTH);
+        if (watchWidth != width) {
+            watchWidth = width;
+            changed();
+        }
+    }
+
+    public void setInspectorWidth(int width) {
+        width = Math.clamp(width, MIN_INSPECTOR_WIDTH, MAX_PANEL_WIDTH);
+        if (inspectorWidth != width) {
+            inspectorWidth = width;
+            changed();
+        }
+    }
 
     public void setCommandVisible(boolean visible) {
         if (commandVisible != visible) {

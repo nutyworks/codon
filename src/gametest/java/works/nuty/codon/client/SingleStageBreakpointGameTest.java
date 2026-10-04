@@ -170,7 +170,10 @@ public final class SingleStageBreakpointGameTest implements FabricClientGameTest
                 context.runOnClient(client -> {
                     var state = CodonClientMod.state();
                     BreakpointUi.openCondition(client.gui.screen(), state, whole, COMMAND, 1, null);
-                    check(client.gui.screen() instanceof BreakpointListScreen, "coexisting saved conditions are both accessible after disable");
+                    check(ScreenLayers.get(client.gui.screen()) instanceof BreakpointConditionScreen, "whole-command marker opens its exact editor directly despite a coexisting legacy save");
+                    check(((BreakpointDefinition) FunctionLineBreakpointGameTest.field(ScreenLayers.get(client.gui.screen()), "original")).target().equals(whole),
+                        "the editor never redirects the line to the legacy stage-zero definition");
+                    ScreenLayers.get(client.gui.screen()).onClose();
                     check(state.breakpoints().definitions().size() == 2, "disabling preserves both saved definitions");
                 });
                 context.waitTicks(2);

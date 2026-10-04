@@ -27,6 +27,7 @@ public final class WatchDetailsScreen extends ScaledCodonScreen {
     private final InputManager input;
     private final ClientDebuggerState state;
     private final DebuggerOverlay overlay;
+    private final ScreenReturn origin;
     private final long entryId;
     private final List<AbstractWidget> tabOrder = new ArrayList<>();
     private final List<Line> lines = new ArrayList<>();
@@ -45,6 +46,7 @@ public final class WatchDetailsScreen extends ScaledCodonScreen {
         this.input = input;
         this.state = state;
         this.overlay = overlay;
+        this.origin = new ScreenReturn(input, overlay);
         this.entryId = entryId;
     }
 
@@ -96,7 +98,9 @@ public final class WatchDetailsScreen extends ScaledCodonScreen {
     }
 
     private void edit() {
-        if (entry() != null) Minecraft.getInstance().gui.setScreen(WatchScreen.edit(input, state, overlay, entryId));
+        if (entry() == null) return;
+        setFocused(edit);
+        Minecraft.getInstance().gui.setScreen(WatchScreen.edit(input, state, overlay, entryId));
     }
 
     private void toggleExpanded() {
@@ -179,7 +183,7 @@ public final class WatchDetailsScreen extends ScaledCodonScreen {
         graphics.enableScissor(left + 8, top + 29, left + panelWidth - 8, layout.textBottom());
         for (int row = 0; row < visibleLines() && offset + row < lines.size(); row++) {
             Line line = lines.get(offset + row);
-            graphics.text(font, line.text(), left + 10, top + 31 + row * (font.lineHeight + 3), DebuggerTheme.color(line.color()), false);
+            graphics.text(font, line.text(), left + 10, top + 31 + row * (font.lineHeight + 3), DebuggerTheme.foreground(line.color()), false);
         }
         graphics.disableScissor();
         if (maxOffset() > 0) {
@@ -220,7 +224,7 @@ public final class WatchDetailsScreen extends ScaledCodonScreen {
         return super.keyPressed(event);
     }
 
-    @Override public void onClose() { Minecraft.getInstance().gui.setScreen(new CodonScreen(input, overlay)); }
+    @Override public void onClose() { origin.restore(); }
     @Override public void extractBackground(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) { }
     @Override public boolean isPauseScreen() { return false; }
     @Override public boolean isInGameUi() { return true; }

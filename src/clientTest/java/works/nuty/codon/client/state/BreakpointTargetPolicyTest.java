@@ -32,6 +32,34 @@ class BreakpointTargetPolicyTest {
         assertNull(BreakpointTargetPolicy.target(LOCATION, 2, COMMAND, 2));
     }
 
+    @Test void parsedRunAndFunctionTargetsRemainSeparateFromTheLineEvenBeforeRecording() {
+        String command = "execute as @s run function test:leaf";
+        var spans = List.of(new ClientStagePreviewState.StageSpan(0, 8, 13, false),
+            new ClientStagePreviewState.StageSpan(1, 14, 17, false),
+            new ClientStagePreviewState.StageSpan(2, 18, command.length(), true));
+        var preview = new ClientStagePreviewState.Preview(ClientStagePreviewState.Status.READY, command, spans);
+        for (SourceLocation location : List.of(LOCATION,
+            new SourceLocation.Block(new BlockLocation(1, 64, 2, "minecraft:overworld")))) {
+            int count = BreakpointTargetPolicy.stageCount(command, preview, null);
+            assertEquals(3, count);
+            for (var span : spans) {
+                var target = BreakpointTargetPolicy.target(location, span.index(), command, count);
+                assertEquals(BreakpointTarget.stage(location, span.index(), command), target);
+                assertNotEquals(BreakpointTarget.whole(location), target);
+                assertNotEquals(BreakpointTarget.stage(location, span.index(), command + " changed"), target);
+            }
+        }
+    }
+
+    @Test void matchingParseDecidesMultiplicityForSingleFunctionAndExecuteCommands() {
+        for (String command : List.of("function test:leaf", "execute run say one")) {
+            var preview = new ClientStagePreviewState.Preview(ClientStagePreviewState.Status.READY, command,
+                List.of(new ClientStagePreviewState.StageSpan(0, 0, command.length(), true)));
+            assertEquals(BreakpointTarget.whole(LOCATION), BreakpointTargetPolicy.target(LOCATION, 0, command,
+                BreakpointTargetPolicy.stageCount(command, preview, null)), "Text prefix does not decide line versus stage");
+        }
+    }
+
     @Test void legacyConditionsCoexistWithoutMigrationAndObsoleteTargetsStaySeparate() {
         var legacy = new BreakpointDefinition(BreakpointTarget.stage(LOCATION, 0, COMMAND), false,
             BreakpointCondition.count(BreakpointCondition.Kind.INPUT_COUNT, BreakpointCondition.Comparison.EQ, 1));

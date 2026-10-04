@@ -14,13 +14,15 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.function.BooleanSupplier;
 
 /** Logical focus order, including controls outside a scrolling panel's viewport. */
 public final class DebuggerNavigation {
     public enum Group { TOOLBAR, VIEW_MENU, SOURCES, SOURCE_DETAILS, NBT, WATCH, WORLD, CALL_PATH, COMMAND, ACTIONS,
         WINDOW_HEADER, EDITOR, WATCH_LIST }
 
-    private record Target(String id, Group group, int row, int column, Runnable reveal) { }
+    private record Target(String id, Group group, int row, int column, Runnable reveal,
+                          boolean active, boolean retainWhenInactive) { }
     private static final Comparator<Target> ORDER = Comparator.comparing(Target::group)
         .thenComparingInt(Target::row).thenComparingInt(Target::column).thenComparing(Target::id);
     private final Map<String, Target> targets = new HashMap<>();
@@ -29,12 +31,14 @@ public final class DebuggerNavigation {
     private List<Target> ordered = List.of();
     private @Nullable Target cursor;
     private @Nullable String pending;
+    private record DeferredFocus(String id, BooleanSupplier current) { }
+    private @Nullable DeferredFocus deferred;
     private boolean mouseNavigation;
     private boolean awaitingScrollRender;
     private boolean keyboard;
 
     public void rememberFocus(@Nullable GuiEventListener focused) {
-        if (pending != null || focused == null) return;
+        if (deferred != null || pending != null || focused == null) return;
         visible.forEach((id, button) -> {
             if (button == focused && targets.containsKey(id)) remember(targets.get(id));
         });
@@ -42,19 +46,32 @@ public final class DebuggerNavigation {
 
     public void beginFrame(boolean keyboard) {
         this.keyboard = keyboard;
+        if (deferred != null && !deferred.current().getAsBoolean()) deferred = null;
         targets.clear();
         visible.clear();
     }
 
     /** Apply the current layout's reveal callback after its selection/resize scroll adjustment. */
     public void revealFocus(Group group) {
+        if (deferred != null) {
+            Target destination = targets.get(deferred.id());
+            if (destination != null && destination.group() == group) {
+                if (deferred.current().getAsBoolean()) requestFocus(destination.id());
+                deferred = null;
+            }
+        }
         if (cursor == null || cursor.group() != group || pending == null && (!keyboard || mouseNavigation)) return;
         Target target = targets.get(cursor.id());
         if (target != null) target.reveal().run();
     }
 
     public void add(String id, Group group, int row, int column, Runnable reveal) {
-        targets.put(id, new Target(id, group, row, column, reveal));
+        targets.put(id, new Target(id, group, row, column, reveal, true, false));
+    }
+
+    /** Keep an existing focus while an asynchronous edit disables the control; traversal skips it. */
+    public void addRetained(String id, Group group, int row, int column, boolean active, Runnable reveal) {
+        targets.put(id, new Target(id, group, row, column, reveal, active, true));
     }
 
     /** Select the exact logical row after an explicit Add/Edit action, including off-screen rows. */
@@ -65,17 +82,30 @@ public final class DebuggerNavigation {
         pending = id;
     }
 
+    /** One destination render only; ordinary focus requests still require a registered target. */
+    public void requestFocusOnNextFrame(String id, BooleanSupplier current) {
+        deferred = new DeferredFocus(id, current);
+        pending = null;
+    }
+
+    public void cancelDeferredFocus() { deferred = null; }
+
     public void bind(String id, Group group, AbstractWidget button) {
-        if (!button.active || !button.visible) {
+        Target target = targets.get(id);
+        if (!button.visible || !button.active && (target == null || !target.retainWhenInactive())) {
             targets.remove(id);
             return;
         }
         visible.put(id, button);
-        targets.putIfAbsent(id, new Target(id, group, button.getY(), button.getX(), () -> { }));
+        targets.put(id, target == null
+            ? new Target(id, group, button.getY(), button.getX(), () -> { }, button.active, false)
+            : new Target(id, group, target.row(), target.column(), target.reveal(), button.active, target.retainWhenInactive()));
     }
 
     public void endFrame() {
-        ordered = targets.values().stream().sorted(ORDER).toList();
+        // A missing destination must not capture focus if it appears in a later context.
+        deferred = null;
+        ordered = targets.values().stream().filter(Target::active).sorted(ORDER).toList();
         for (int i = 0; i < ordered.size(); i++) {
             AbstractWidget button = visible.get(ordered.get(i).id());
             if (button != null) button.setTabOrderGroup(i);
@@ -84,6 +114,7 @@ public final class DebuggerNavigation {
 
     /** Mouse scrolling must never silently arm a different button for Enter. */
     public void mouseScrolled() {
+        cancelDeferredFocus();
         mouseNavigation = true;
         awaitingScrollRender = true;
     }
@@ -119,12 +150,25 @@ public final class DebuggerNavigation {
 
     public boolean keyPressed(KeyEvent event, @Nullable GuiEventListener focused,
                               Consumer<@Nullable GuiEventListener> focus) {
+        if (event.key() == InputConstants.KEY_TAB || isArrow(event.key())) cancelDeferredFocus();
         rememberFocus(focused);
         int key = event.key();
         if (key == InputConstants.KEY_TAB || isArrow(key)) mouseNavigation = false;
         if (key == InputConstants.KEY_TAB) {
             if (ordered.isEmpty()) return false;
             int direction = event.hasShiftDown() ? -1 : 1;
+            // Flow exposes each marker immediately before its clause. Traverse those
+            // controls before leaving the region, including wrapped/off-screen cells.
+            if (cursor != null && cursor.group() == Group.COMMAND) {
+                Target current = targets.getOrDefault(cursor.id(), cursor);
+                for (Target candidate : direction > 0 ? ordered : ordered.reversed()) {
+                    if (candidate.group() == Group.COMMAND
+                        && Integer.signum(ORDER.compare(candidate, current)) == direction) {
+                        move(candidate, focus);
+                        return true;
+                    }
+                }
+            }
             List<Group> groups = ordered.stream().map(Target::group).distinct().toList();
             Group destination = null;
             for (Group group : direction > 0 ? groups : groups.reversed()) {
@@ -134,7 +178,9 @@ public final class DebuggerNavigation {
                 }
             }
             if (destination == null) destination = direction > 0 ? groups.getFirst() : groups.getLast();
-            Target remembered = targets.get(groupCursors.get(destination));
+            // Enter Flow at its reading-order edge so reversing Tab reverses the
+            // same path. Other regions retain their remembered-item navigation.
+            Target remembered = destination == Group.COMMAND ? null : targets.get(groupCursors.get(destination));
             Group chosenGroup = destination;
             List<Target> members = ordered.stream().filter(target -> target.group() == chosenGroup).toList();
             move(remembered != null ? remembered : direction > 0 ? members.getFirst() : members.getLast(), focus);
@@ -179,7 +225,7 @@ public final class DebuggerNavigation {
         }
         // A reveal is completed during rendering. Do not activate the previous, now hidden control.
         return pending != null && isArrow(key)
-            || (pending != null || awaitingScrollRender) && (key == InputConstants.KEY_RETURN
+            || (deferred != null || pending != null || awaitingScrollRender) && (key == InputConstants.KEY_RETURN
                 || key == InputConstants.KEY_SPACE || key == InputConstants.KEY_NUMPADENTER);
     }
 

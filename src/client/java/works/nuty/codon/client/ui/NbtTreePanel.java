@@ -67,11 +67,8 @@ public final class NbtTreePanel {
         }
         boundsSource = selectedSource;
         graphics.fill(area.x(), area.y(), area.x() + area.width(), area.y() + area.height(), DebuggerTheme.color(SURFACE));
-        graphics.outline(area.x(), area.y(), area.width(), area.height(), DebuggerTheme.color(BORDER));
-
-        // This is an inert heading, registered only so the screen can retain its stable bounds.
-        controls.button("nbt-heading", new Bounds(area.x() + 2, area.y() + 1, Math.max(1, area.width() - 4), HEADER_HEIGHT - 2),
-            Component.literal("NBT"), false, false, () -> { }).withoutChrome();
+        // NBT already sits inside the inspector; separate the section without a nested frame.
+        graphics.fill(area.x(), area.y(), area.x() + area.width(), area.y() + 1, DebuggerTheme.color(DIVIDER));
 
         List<ClientNbtState.Row> rows = displayRows(selectedSource);
         List<ClientNbtState.Row> currentRows = state.nbt().rows(selectedSource.executor().uuid());
@@ -80,6 +77,12 @@ public final class NbtTreePanel {
             var row = currentRows.get(index);
             if (row.kind() == ClientNbtState.Kind.NODE) currentPaths.add(row.path());
         }
+        boolean retained = ClientNbtState.loadedIndices(rows).stream().map(rows::get)
+            .anyMatch(row -> row.kind() == ClientNbtState.Kind.NODE && !currentPaths.contains(row.path()));
+        // Retained values stay inert while the current pause's read is pending.
+        controls.button("nbt-heading", new Bounds(area.x() + 2, area.y() + 1, Math.max(1, area.width() - 4), HEADER_HEIGHT - 2),
+            Component.translatable(retained ? "codon.nbt.refreshing_previous" : "codon.nbt.current_pause"),
+            false, false, () -> { }).withoutChrome();
         int visibleRows = Math.max(0, (area.height() - HEADER_HEIGHT - 2) / ROW_HEIGHT);
         scrollBounds = new Bounds(area.x(), area.y() + HEADER_HEIGHT, area.width(), Math.max(0, area.height() - HEADER_HEIGHT - 2));
         applyAnchor(rows, visibleRows);
@@ -128,7 +131,7 @@ public final class NbtTreePanel {
                 });
             graphics.fill(area.x() + area.width() - 3, area.y() + HEADER_HEIGHT,
                 area.x() + area.width() - 1, area.y() + HEADER_HEIGHT + height, DebuggerTheme.color(BORDER));
-            graphics.fill(area.x() + area.width() - 3, top, area.x() + area.width() - 1, top + thumb, DebuggerTheme.color(TEAL));
+            graphics.fill(area.x() + area.width() - 3, top, area.x() + area.width() - 1, top + thumb, DebuggerTheme.color(SCROLLBAR));
         }
     }
 
@@ -239,7 +242,8 @@ public final class NbtTreePanel {
         Component pinLabel = Component.translatable(present ? "codon.nbt.unpin" : "codon.nbt.pin", executor.name());
         DebuggerButton pin = controls.button(idPrefix + "pin-" + nodeId, pinBounds, pinLabel, active, present,
             () -> togglePin(pauseId, executor.uuid(), node.path())).withInputBlocked(!current);
-        pin.withIcon(DebuggerIcon.PIN).withSecondaryAction(() -> toggleAllPins(pauseId, executor.uuid(), node.path()));
+        pin.withoutChrome().withStatusColor(present ? TEAL : MUTED, TEAL_SURFACE)
+            .withIcon(DebuggerIcon.WATCHES).withSecondaryAction(() -> toggleAllPins(pauseId, executor.uuid(), node.path()));
         Component pinTooltip;
         if (spec == null) pinTooltip = Component.translatable("codon.nbt.path_unavailable");
         else {
@@ -249,6 +253,7 @@ public final class NbtTreePanel {
             Component right = Component.translatable(allPinned ? "codon.nbt.click_all_remove" : "codon.nbt.click_all", all.size());
             pinTooltip = left.copy().append("\n").append(right);
         }
+        if (!present) pin.revealOnHover(bounds.x(), bounds.y(), bounds.width(), bounds.height());
         pin.setTooltip(Tooltip.create(pinTooltip.copy().append("\n").append(node.path())));
     }
 
@@ -359,7 +364,7 @@ public final class NbtTreePanel {
         String rendered = font.width(value) <= bounds.width() ? value
             : font.plainSubstrByWidth(value, Math.max(0, bounds.width() - font.width("…"))) + "…";
         graphics.enableScissor(bounds.x(), bounds.y(), bounds.x() + bounds.width(), bounds.y() + bounds.height());
-        graphics.text(font, rendered, bounds.x() + 2, bounds.y() + 4, DebuggerTheme.color(color), false);
+        graphics.text(font, rendered, bounds.x() + 2, bounds.y() + 4, DebuggerTheme.foreground(color), false);
         graphics.disableScissor();
     }
 

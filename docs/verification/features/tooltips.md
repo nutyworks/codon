@@ -6,7 +6,7 @@ margin at every edge. The common boundary is `CodonGuiGraphics` and
 `CodonTooltips`; inline controls in vanilla command editors also use the shared
 positioner through `DebuggerButton` and `WrappedCommandEditBox`.
 
-Saved line breakpoints show their count, click toggle hint and right-click
+Source line breakpoints show their exact condition, click toggle hint and right-click
 condition hint on separate English/Korean lines. Long unbroken paths wrap too.
 Styles, explicit newlines, visual character order and deferred-tooltip priority
 are retained. Full detail/error text is preserved. A diagnostic taller than the
@@ -21,7 +21,7 @@ surface has passed manual acceptance. Record run-specific evidence separately.
 | Surface | Content and hover review | Runtime coverage / remaining manual check |
 | --- | --- | --- |
 | Source tree splitter, path and Find limit | Direct text now wraps; row/track hit regions remain separate | `DebuggerTooltipGameTest` tests actual Source saved-line hover; inspect path/splitter/Find manually |
-| Source saved line, stage summary, stale/preview hints | Saved count and both mouse actions are separate localized lines; direct text shares wrapper | `DebuggerTooltipGameTest`: English/Korean, enabled/disabled saved legacy definition and modal suppression |
+| Source saved line, stage summary, stale/preview hints | Exact line condition and both mouse actions are separate localized lines; a distinct stage count never aliases the gutter target | `DebuggerTooltipGameTest`: English/Korean, enabled/disabled whole-line definition, separate legacy stage count and modal suppression |
 | Source inline stage and navigation track | Direct stage/condition and existing wrapped navigation help share viewport placement | Existing `FunctionSourceScreenGameTest`; manually inspect an offscreen/long stage condition |
 | Flow breadcrumbs, clauses, markers and observations | `Tooltip.create` labels/details retained; delayed button hover and scissor checks remain | `DebuggerPresentationGameTest`, `FlowLegacyConditionGameTest`; long details and paused real execution remain manual |
 | Watches values, executor/grouping and row actions | Rich status/target/value text preserved; compact action hints wrap if necessary | `DebuggerCompactWatchGameTest`, `DebuggerWatchPinGameTest`; unusual long value diagnostics remain manual |

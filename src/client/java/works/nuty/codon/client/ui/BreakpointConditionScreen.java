@@ -39,6 +39,8 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     private final BreakpointDefinition original;
     private final BreakpointTarget markerTarget;
     private final Anchor anchor;
+    private java.util.function.BooleanSupplier contextCurrent = () -> true;
+    private Runnable restoreFocus = () -> { };
     private BreakpointCondition.Kind kind;
     private BreakpointCondition.Comparison comparison;
     private String thresholdText;
@@ -50,6 +52,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     private final List<DebuggerButton> kinds = new ArrayList<>();
     private final List<DebuggerButton> comparisons = new ArrayList<>();
     private boolean saving;
+    private boolean deleting;
     private boolean sendFailed;
     private boolean previewRequested;
     private int left, top, panelWidth, panelHeight;
@@ -83,6 +86,24 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
         this.comparison = definition.condition().comparison();
         this.thresholdText = Integer.toString(definition.condition().threshold());
     }
+
+    BreakpointConditionScreen withContextGuard(java.util.function.BooleanSupplier current) {
+        contextCurrent = current;
+        return this;
+    }
+
+    BreakpointConditionScreen withRestoreFocus(Runnable restoreFocus) {
+        this.restoreFocus = restoreFocus;
+        return this;
+    }
+
+    private boolean validContext() {
+        if (contextCurrent.getAsBoolean()) return true;
+        onClose();
+        return false;
+    }
+
+    @Override public void tick() { validContext(); }
 
     public boolean editsMarker(BreakpointTarget target, String command) {
         return BreakpointTargetPolicy.editedMarker(target, markerTarget, markerDefinition(), command);
@@ -214,6 +235,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
         if (saveButton != null) saveButton.active = validCount() && supportedCondition() && state.breakpoints().ready()
             && !state.breakpoints().pending(original.target());
         if (deleteButton != null) {
+            deleteButton.active = state.breakpoints().ready() && !state.breakpoints().pending(original.target());
             panelHeight = contentHeight();
             int nextTop = Math.max(6, Math.min(top, height - panelHeight - 6));
             if (nextTop != top) {
@@ -329,7 +351,9 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     }
 
     private void save() {
+        if (!validContext()) return;
         if (!validCount() || !supportedCondition() || state.breakpoints().pending(original.target())) return;
+        deleting = false;
         BreakpointDefinition current = state.breakpoints().get(original.target());
         saving = ClientNetworking.sendBreakpointEdit(state, ClientBreakpointState.Action.SAVE,
             (current == null ? original : current).withCondition(draft()).withEnabled(true));
@@ -338,14 +362,12 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     }
 
     private void delete() {
-        if (!ClientNetworking.sendBreakpointEdit(state, ClientBreakpointState.Action.DELETE, original)) {
-            sendFailed = true;
-            return;
-        }
-        BreakpointListScreen list = parent instanceof BreakpointListScreen existing ? existing
-            : new BreakpointListScreen(parent, state);
-        list.recordDeleted(original);
-        Minecraft.getInstance().gui.setScreen(list);
+        if (!validContext()) return;
+        if (state.breakpoints().pending(original.target())) return;
+        saving = false;
+        deleting = ClientNetworking.sendBreakpointEdit(state, ClientBreakpointState.Action.DELETE, original);
+        sendFailed = !deleting;
+        refreshControls();
     }
 
     private String hint() {
@@ -359,8 +381,9 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     private String feedback() {
         var error = state.breakpoints().error(original.target());
         return error != null ? tr("codon.breakpoint.error." + error.name().toLowerCase(java.util.Locale.ROOT))
-            : sendFailed ? tr("codon.breakpoint.request_unavailable")
-            : state.breakpoints().pending(original.target()) ? tr("codon.breakpoint.saving") : "";
+            : sendFailed || !state.breakpoints().ready() ? tr("codon.breakpoint.request_unavailable")
+            : state.breakpoints().pending(original.target())
+                ? tr(deleting ? "codon.breakpoint.deleting" : "codon.breakpoint.saving") : "";
     }
 
     private int textHeight(String text) {
@@ -372,8 +395,14 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     }
 
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+        if (!validContext()) return;
         refreshControls();
         updateMenuHover(mouseX, mouseY);
+        if (deleting && state.breakpoints().ready() && !state.breakpoints().pending(original.target())
+            && state.breakpoints().error(original.target()) == null && state.breakpoints().get(original.target()) == null) {
+            onClose();
+            return;
+        }
         if (saving && validCount() && !state.breakpoints().pending(original.target())
             && state.breakpoints().error(original.target()) == null) {
             BreakpointDefinition saved = state.breakpoints().get(original.target());
@@ -413,13 +442,14 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     private int drawLines(GuiGraphicsExtractor graphics, String text, int y, int color) {
         for (var line : font.split(Component.literal(text), panelWidth - 16)) {
             if (y + font.lineHeight > top + panelHeight - 32) break;
-            graphics.text(font, line, left + 8, y, DebuggerTheme.color(color), false);
+            graphics.text(font, line, left + 8, y, DebuggerTheme.foreground(color), false);
             y += font.lineHeight + 1;
         }
         return y;
     }
 
     @Override public boolean keyPressed(KeyEvent event) {
+        if (!validContext()) return true;
         if (menu != Menu.NONE) {
             if (event.key() == InputConstants.KEY_ESCAPE) { closeMenu(); return true; }
             if (event.key() == InputConstants.KEY_UP || event.key() == InputConstants.KEY_DOWN) {
@@ -453,6 +483,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     }
 
     @Override public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        if (!validContext()) return true;
         if (menu != Menu.NONE) {
             if (overMenu(event.x(), event.y())) {
                 for (var option : options()) if (option.visible && option.mouseClicked(event, doubleClick)) return true;
@@ -486,6 +517,11 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     }
 
     @Override public void onClose() { ScreenLayers.close(this); }
+
+    @Override public void removed() {
+        super.removed();
+        if (Minecraft.getInstance().gui.screen() == parent && contextCurrent.getAsBoolean()) restoreFocus.run();
+    }
     @Override public void extractBackground(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) { }
     @Override public boolean isPauseScreen() { return false; }
     @Override public boolean isInGameUi() { return true; }
