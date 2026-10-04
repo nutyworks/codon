@@ -10,18 +10,25 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
+import java.util.function.LongSupplier;
 import org.jspecify.annotations.Nullable;
 
 public final class WorldWatchPersistence {
     private static final int VERSION = 2;
     private final Consumer<Exception> onError;
+    private final LongSupplier clock;
     private final Map<UUID, Entry> entries = new HashMap<>();
     private final Map<UUID, WatchDefinitionTransfer> stagedTransfers = new HashMap<>();
     private Path worldDir;
     private @Nullable UUID currentSingleplayerOwner;
     private @Nullable UUID previousSingleplayerOwner;
 
-    public WorldWatchPersistence(Consumer<Exception> onError) { this.onError = onError; }
+    public WorldWatchPersistence(Consumer<Exception> onError) { this(onError, System::nanoTime); }
+
+    public WorldWatchPersistence(Consumer<Exception> onError, LongSupplier clock) {
+        this.onError = onError;
+        this.clock = java.util.Objects.requireNonNull(clock);
+    }
 
     public void openWorld(Path worldDir) {
         openWorld(worldDir, null, null);
@@ -74,7 +81,7 @@ public final class WorldWatchPersistence {
      * valid and complete; intermediate pages only update the authenticated player's staging area.
      */
     public ChunkSaveResult saveChunk(UUID player, long transferId, int offset, boolean last, List<WatchSpec> specs) {
-        WatchDefinitionTransfer transfer = stagedTransfers.computeIfAbsent(player, ignored -> new WatchDefinitionTransfer());
+        WatchDefinitionTransfer transfer = stagedTransfers.computeIfAbsent(player, ignored -> new WatchDefinitionTransfer(clock));
         var complete = transfer.accept(transferId, offset, last, specs);
         if (complete.isPresent()) {
             stagedTransfers.remove(player);
@@ -86,6 +93,11 @@ public final class WorldWatchPersistence {
 
     /** Removes a disconnected player's incomplete upload without touching their saved definitions. */
     public void resetTransfer(UUID player) { stagedTransfers.remove(player); }
+
+    /** Server-thread maintenance, including while parked: idle uploads need no new packet to expire. */
+    public void expireTransfers() {
+        stagedTransfers.values().removeIf(transfer -> !transfer.isActive());
+    }
 
     public enum ChunkSaveResult { ACCEPTED, INVALID, SAVE_FAILED }
 

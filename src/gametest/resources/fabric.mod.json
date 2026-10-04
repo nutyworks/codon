@@ -65,7 +65,8 @@
       "works.nuty.codon.client.DebuggerFontSamplingGameTest",
       "works.nuty.codon.client.DebuggerFontAtlasIsolationGameTest",
       "works.nuty.codon.client.WatchSaveProtocolGameTest",
-      "works.nuty.codon.client.WatchPromotionHandshakeGameTest"
+      "works.nuty.codon.client.WatchPromotionHandshakeGameTest",
+      "works.nuty.codon.client.WatchUploadIdleExpiryGameTest"
     ]
   }
 }
