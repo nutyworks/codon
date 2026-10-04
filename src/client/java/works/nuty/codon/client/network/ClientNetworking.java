@@ -10,6 +10,10 @@ import works.nuty.codon.client.state.ClientBreakpointState;
 import works.nuty.codon.client.state.ClientStagePreviewState;
 import works.nuty.codon.client.state.ClientPauseEffects;
 import works.nuty.codon.client.state.ClientWatchState;
+import works.nuty.codon.client.state.ClientWatchUploadState;
+import works.nuty.codon.core.model.TransferBudget;
+import works.nuty.codon.network.WatchSaveV2Payload;
+import works.nuty.codon.network.WatchSavePageAckPayload;
 import works.nuty.codon.network.BreakpointSyncPayload;
 import works.nuty.codon.network.BreakpointDefinitionsSyncPayload;
 import works.nuty.codon.network.BreakpointEditPayload;
@@ -24,6 +28,7 @@ import works.nuty.codon.network.ContinueSyncPayload;
 import works.nuty.codon.network.WatchSyncPayload;
 import works.nuty.codon.network.WatchChangesSyncPayload;
 import works.nuty.codon.network.WatchDefinitionsSyncPayload;
+import works.nuty.codon.network.WatchRestoreFailedPayload;
 import works.nuty.codon.network.NbtTreeSyncPayload;
 import works.nuty.codon.network.WatchEditorSyncPayload;
 import works.nuty.codon.network.WatchEditorQueryPayload;
@@ -31,6 +36,7 @@ import works.nuty.codon.network.WatchQueryPayload;
 import works.nuty.codon.network.WatchSavePayload;
 import works.nuty.codon.network.NbtTreeQueryPayload;
 import works.nuty.codon.network.WatchSaveSyncPayload;
+import works.nuty.codon.core.model.StagePreviewLocation;
 import works.nuty.codon.persistence.WatchDefinitions;
 import works.nuty.codon.persistence.WatchDefinitionTransfer;
 
@@ -41,6 +47,9 @@ import works.nuty.codon.persistence.WatchDefinitionTransfer;
 public final class ClientNetworking {
     private static long nextWatchTransferId;
     private static ClientWatchState saveState;
+    private static final ClientWatchUploadState watchUpload = new ClientWatchUploadState(System::nanoTime);
+    private static long acknowledgedTransferId;
+    private static long legacyTransferId;
     private ClientNetworking() {
     }
 
@@ -48,14 +57,35 @@ public final class ClientNetworking {
         WatchDefinitionTransfer joinedDefinitions = new WatchDefinitionTransfer();
         ClientPlayNetworking.registerGlobalReceiver(WatchDefinitionsSyncPayload.TYPE, (payload, context) ->
             context.client().execute(() -> {
+                if (state.watches().initialDefinitionsReceived() || state.watches().initialRestoreFailed()) return;
                 joinedDefinitions.accept(payload.transferId(), payload.offset(), payload.last(), payload.definitions())
-                    .ifPresent(definitions -> restoreWatchDefinitions(context.client(), state, definitions));
+                    .ifPresent(definitions -> restoreWatchDefinitions(state, definitions));
             }));
-        ClientTickEvents.END_CLIENT_TICK.register(client -> sendWatchQueries(client, state));
+        ClientPlayNetworking.registerGlobalReceiver(WatchRestoreFailedPayload.TYPE, (payload, context) ->
+            context.client().execute(() -> {
+                joinedDefinitions.reset();
+                state.watches().rejectInitialDefinitions();
+            }));
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            joinedDefinitions.isActive(); // Expire incomplete join transfers even when no further packets arrive.
+            expireWatchUpload();
+            sendWatchQueries(client, state);
+        });
         ClientPlayNetworking.registerGlobalReceiver(WatchEditorSyncPayload.TYPE, (payload, context) ->
             context.client().execute(() -> state.watchEditor().accept(payload.pauseId(), payload.requestId(), payload.page())));
         ClientPlayNetworking.registerGlobalReceiver(WatchSaveSyncPayload.TYPE, (payload, context) ->
-            context.client().execute(() -> state.watches().saveFinished(payload.transferId(), payload.status() == WatchSaveSyncPayload.Status.SAVED)));
+            context.client().execute(() -> {
+                boolean saved = payload.status() == WatchSaveSyncPayload.Status.SAVED;
+                if (payload.transferId() == acknowledgedTransferId) {
+                    if (watchUpload.finish(payload.transferId(), saved)) state.watches().saveFinished(payload.transferId(), saved);
+                    expireWatchUpload();
+                } else if (payload.transferId() == legacyTransferId) state.watches().saveFinished(payload.transferId(), saved);
+            }));
+        ClientPlayNetworking.registerGlobalReceiver(WatchSavePageAckPayload.TYPE, (payload, context) ->
+            context.client().execute(() -> {
+                watchUpload.acknowledge(payload.transferId(), payload.nextOffset()).ifPresent(ClientNetworking::sendWatchPage);
+                expireWatchUpload();
+            }));
         ClientPlayNetworking.registerGlobalReceiver(WatchSyncPayload.TYPE, (payload, context) ->
             context.client().execute(() -> state.watches().accept(payload.pauseId(), payload.requestId(), payload.result())));
         ClientPlayNetworking.registerGlobalReceiver(WatchChangesSyncPayload.TYPE, (payload, context) ->
@@ -64,7 +94,10 @@ public final class ClientNetworking {
             context.client().execute(() -> state.nbt().accept(payload.pauseId(), payload.requestId(), payload.page())));
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             joinedDefinitions.reset();
-            state.watches().setChangeListener(ignored -> {});
+            watchUpload.reset();
+            saveState = null;
+            acknowledgedTransferId = legacyTransferId = 0;
+            state.watches().endConnection();
             state.reset();
             freecam.synchronize(client);
             effects.synchronize(client);
@@ -117,13 +150,18 @@ public final class ClientNetworking {
             context.client().execute(() -> state.applyCompletedExecutionFlows(payload.flows())));
     }
 
-    private static void restoreWatchDefinitions(Minecraft client, ClientDebuggerState state,
+    private static void restoreWatchDefinitions(ClientDebuggerState state,
                                                 java.util.List<works.nuty.codon.core.model.WatchSpec> definitions) {
-        state.watches().restoreDefinitions(definitions);
-        if (state.snapshot() != null) state.watches().paused(state.snapshot().pauseId(), state.selectedPauseSourceIndex());
-        // Only attach after every join page arrives; empty startup/reset state must never erase a save.
         saveState = state.watches();
-        state.watches().setChangeListener(ClientNetworking::sendWatchDefinitions);
+        // Initial owner sync may arrive after local Add/Edit/Delete or a pause. Merge only the
+        // still-present local definitions; no empty startup echo or live-query reset is needed.
+        state.watches().initializeDefinitions(definitions, ClientNetworking::canUploadWatchDefinitions,
+            ClientNetworking::sendWatchDefinitions);
+    }
+
+    static boolean canUploadWatchDefinitions(java.util.List<works.nuty.codon.core.model.WatchSpec> definitions) {
+        try { WatchDefinitions.validatedPages(definitions); return true; }
+        catch (IllegalArgumentException invalid) { return false; }
     }
 
     private static void sendWatchDefinitions(java.util.List<works.nuty.codon.core.model.WatchSpec> definitions) {
@@ -131,18 +169,40 @@ public final class ClientNetworking {
         if (watches == null) return;
         Minecraft client = Minecraft.getInstance();
         long transferId = nextTransferId();
-        watches.saveStarted(transferId);
+        watches.saveStarted(transferId, TransferBudget.TIMEOUT_NANOS);
+        watchUpload.reset();
+        acknowledgedTransferId = legacyTransferId = 0;
         if (client.player == null) {
             watches.saveFinished(transferId, false);
             return;
         }
-        int offset = 0;
-        var pages = WatchDefinitions.pages(definitions);
-        for (int index = 0; index < pages.size(); index++) {
-            var page = pages.get(index);
-            ClientPlayNetworking.send(new WatchSavePayload(transferId, offset, index == pages.size() - 1, page));
-            offset += page.size();
+        try {
+            var pages = WatchDefinitions.validatedPages(definitions);
+            if (ClientPlayNetworking.canSend(WatchSaveV2Payload.TYPE.id())) {
+                acknowledgedTransferId = transferId;
+                sendWatchPage(watchUpload.begin(transferId, pages));
+            } else if (ClientPlayNetworking.canSend(WatchSavePayload.TYPE.id())) {
+                legacyTransferId = transferId;
+                int offset = 0;
+                for (int index = 0; index < pages.size(); index++) {
+                    var page = pages.get(index);
+                    ClientPlayNetworking.send(new WatchSavePayload(transferId, offset, index == pages.size() - 1, page));
+                    offset += page.size();
+                }
+            } else watches.saveFinished(transferId, false);
+        } catch (IllegalArgumentException invalid) {
+            watchUpload.reset();
+            watches.saveFinished(transferId, false);
         }
+    }
+
+    private static void sendWatchPage(ClientWatchUploadState.Page page) {
+        ClientPlayNetworking.send(new WatchSaveV2Payload(page.transferId(), page.offset(), page.last(), page.definitions()));
+    }
+
+    private static void expireWatchUpload() {
+        long expired = watchUpload.expire();
+        if (expired > 0 && saveState != null) saveState.saveFinished(expired, false);
     }
 
     private static long nextTransferId() {
@@ -164,6 +224,7 @@ public final class ClientNetworking {
 
     public static boolean requestStagePreview(ClientDebuggerState state,
                                               works.nuty.codon.core.model.SourceLocation location) {
+        if (!StagePreviewLocation.supported(location)) return false;
         Minecraft client = Minecraft.getInstance();
         if (client.player == null || !ClientPlayNetworking.canSend(BreakpointStagePreviewRequestPayload.TYPE.id()))
             return false;

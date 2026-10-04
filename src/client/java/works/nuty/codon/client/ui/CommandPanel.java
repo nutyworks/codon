@@ -4,6 +4,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.network.chat.Component;
+import net.minecraft.locale.Language;
 import org.jspecify.annotations.Nullable;
 import works.nuty.codon.client.input.InputManager;
 import works.nuty.codon.client.network.ClientNetworking;
@@ -11,6 +12,7 @@ import works.nuty.codon.client.state.ClientBreakpointState;
 import works.nuty.codon.client.state.BreakpointTargetPolicy;
 import works.nuty.codon.client.state.ClientDebuggerState;
 import works.nuty.codon.client.state.ClientFlowPreviewRequests;
+import works.nuty.codon.client.state.ClientStagePreviewState;
 import works.nuty.codon.client.ui.layout.CommandFlowLayout;
 import works.nuty.codon.client.ui.layout.CommandFlowLayout.Part;
 import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds;
@@ -29,6 +31,7 @@ import works.nuty.codon.core.service.BreakpointConditionEvaluator;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -40,6 +43,8 @@ import static works.nuty.codon.client.ui.layout.CommandFlowLayout.CELL_HORIZONTA
 public final class CommandPanel {
     private static final Bounds EMPTY = new Bounds(0, 0, 0, 0);
     private static final int DETAIL_HEIGHT = 26;
+    static final int MAX_WARNING_TEXT = 8_192;
+    private static final int WARNING_COMMAND_EXCERPT = 256;
     private record SelectionDetail(String title, String values, String explanation, int color) { }
     private final Minecraft client = Minecraft.getInstance();
     private final ClientDebuggerState state;
@@ -62,6 +67,45 @@ public final class CommandPanel {
     private DebuggerNavigation navigation;
     private ScrollbarInput scrollbars;
     private DebuggerNavigation.Group navigationGroup = DebuggerNavigation.Group.ACTIONS;
+    // One current layout only: immutable trace/preview identity and resource/geometry
+    // changes invalidate it, including reloads that replace Language with the same locale.
+    private final TextCache<FlowText> flowText = new TextCache<>();
+    private final TextCache<List<net.minecraft.util.FormattedCharSequence>> rawText = new TextCache<>();
+    private ExecutionFlowTrace detailsFlow;
+    private Language detailsLanguage;
+    private final Map<ExecutionFlowStage, String> stageDetailCache = new IdentityHashMap<>();
+    private String flowWarningDetails;
+
+    private record FlowText(CommandFlowLayout.Content content, List<Part> parts, CommandFlowLayout.Layout layout) { }
+
+    /** Shared bounded cache for raw/recorded layouts, also usable without a running client. */
+    static final class TextCache<T> {
+        private CommandSnippet command;
+        private Object flow, preview, font, language;
+        private int width, rowHeight, fontOptions;
+        private T value;
+
+        T get(CommandSnippet command, Object flow, Object preview, Object font, Object language,
+              int width, int rowHeight, int fontOptions, java.util.function.Supplier<T> build) {
+            if (value == null || !command.equals(this.command) || flow != this.flow || preview != this.preview
+                || font != this.font || language != this.language || width != this.width || rowHeight != this.rowHeight
+                || fontOptions != this.fontOptions) {
+                T next = build.get();
+                this.command = command;
+                this.flow = flow;
+                this.preview = preview;
+                this.font = font;
+                this.language = language;
+                this.width = width;
+                this.rowHeight = rowHeight;
+                this.fontOptions = fontOptions;
+                value = next;
+            }
+            return value;
+        }
+
+        void clear() { command = null; flow = preview = font = language = value = null; }
+    }
 
     public CommandPanel(ClientDebuggerState state, Runnable selectionChanged) {
         this.state = state;
@@ -89,6 +133,11 @@ public final class CommandPanel {
         graphics.fill(area.x(), area.y(), area.x() + area.width(), area.y() + area.height(), DebuggerTheme.color(PANEL));
         graphics.outline(area.x(), area.y(), area.width(), area.height(), DebuggerTheme.color(BORDER));
         if (snapshot == null) {
+            flowText.clear();
+            rawText.clear();
+            stageDetailCache.clear();
+            detailsFlow = null;
+            flowWarningDetails = null;
             drawText(graphics, tr("codon.ui.no_snapshot"), area.x() + 7, area.y() + 7, area.width() - 14, MUTED);
             lastSelection = null;
             return finish();
@@ -280,6 +329,7 @@ public final class CommandPanel {
 
     private void conditionAction(DebuggerButton button, String focusId, ExecutionFlowTrace flow,
                                  BreakpointTarget target, String command, boolean unobserved, boolean direct) {
+        if (target == null) return;
         PauseSnapshot expected = renderedSnapshot;
         Runnable open = () -> {
             var parent = client.gui.screen();
@@ -314,44 +364,20 @@ public final class CommandPanel {
             renderRawCommand(graphics, body, snippet, snapshot);
             return;
         }
-        CommandFlowLayout.Content content = CommandFlowLayout.content(snippet, flow, state.stagePreviews().get(flow.location()));
-        List<Part> parts = content.parts();
-        if (!content.inline()) {
-            parts = new ArrayList<>(parts);
-            parts.addFirst(new Part(content.command(), -1));
-        }
-        List<Part> displayed = parts;
-        // Parsed clauses include the separator after the preceding stage. The cell
-        // gap/padding already separates them; keep the original text for targets/tooltips.
-        List<Part> layoutParts = parts.stream().map(part -> part.targetStageIndex() < 0 ? part
-            : new Part(part.text().stripLeading(), part.stageIndex(), part.targetStageIndex(), part.observation())).toList();
+        rawText.clear();
         boolean editableSource = !(flow.location() instanceof SourceLocation.Player)
             && stageCount(flow, snippet.text()) > 0;
         // The parser (or conclusive recorded evidence) decides single versus multi-stage.
         // A multi-stage command has a separate whole-command marker before its first part.
         boolean commandMarker = editableSource && stageCount(flow, snippet.text()) > 1;
-        java.util.function.IntUnaryOperator minimumWidth = index -> {
-                int stage = displayed.get(index).stageIndex();
-                // Counts occupy their own line. Breakpoint/warning icons belong only to
-                // the command line and are already included by leadingInset below.
-                if (stage < 0 || body.height() < 30) return 0;
-                return client.font.width(counts(flow.stages().get(stage))) + CELL_HORIZONTAL_PADDING
-                    + (hasWarning(flow.stages().get(stage)) ? 17 : 0);
-            };
-        java.util.function.IntUnaryOperator leadingInset = index -> {
-            int stage = displayed.get(index).stageIndex();
-            int iconInset = stage >= 0 && body.height() < 30 && hasWarning(flow.stages().get(stage))
-                ? DebuggerButton.TEXT_ICON_INSET : 0;
-            return iconInset + (displayed.get(index).targetStageIndex() >= 0 && editableSource ? 15 : 0)
-                + (commandMarker && index == 0 ? 15 : 0);
-        };
-        CommandFlowLayout.Layout layout = CommandFlowLayout.layout(layoutParts, body.width() - 4,
-            client.font::width, minimumWidth, leadingInset);
-        if (layout.rows() > 1) {
-            layout = CommandFlowLayout.layout(layoutParts, body.width() - 4 - DebuggerIcon.SIZE,
-                client.font::width, minimumWidth, leadingInset);
-        }
         int rowHeight = body.height() < 30 ? 17 : 30;
+        var preview = state.stagePreviews().get(flow.location());
+        FlowText text = flowText.get(snippet, flow, preview, client.font, Language.getInstance(), body.width(), rowHeight, fontOptions(),
+            () -> layoutFlow(snippet, flow, preview, body.width(), rowHeight, editableSource, commandMarker));
+        CommandFlowLayout.Content content = text.content();
+        List<Part> parts = text.parts();
+        List<Part> displayed = parts;
+        CommandFlowLayout.Layout layout = text.layout();
         int rows = Math.max(1, body.height() / rowHeight);
         maxCommandOffset = Math.max(0, layout.rows() - rows);
         Selection selection = new Selection(snapshot, state.selectedCallFrameIndex(), state.selectedFlowIndex(),
@@ -365,8 +391,7 @@ public final class CommandPanel {
                 .mapToInt(CommandFlowLayout.Cell::row).summaryStatistics();
             int firstRow = selectedRows.getCount() == 0 ? 0 : selectedRows.getMin();
             int lastRow = selectedRows.getCount() == 0 ? 0 : selectedRows.getMax();
-            // A visible fragment is already reachable. In particular, clicking it must not
-            // scroll that same clause away from the pointer, even when it spans several rows.
+            // Keep a clicked visible fragment under the pointer when its clause spans rows.
             if (lastRow < commandOffset) commandOffset = firstRow;
             else if (firstRow >= commandOffset + rows) commandOffset = firstRow - rows + 1;
             commandOffset = Math.clamp(commandOffset, 0, maxCommandOffset);
@@ -374,6 +399,47 @@ public final class CommandPanel {
         }
         commandOffset = Math.clamp(commandOffset, 0, maxCommandOffset);
         commandBounds = body;
+        renderFlowCells(graphics, body, flow, snippet, content, parts, layout, rows, rowHeight, editableSource, commandMarker);
+        scrollbar(graphics, body.x() + body.width() - 1, body.y(), body.height(), commandOffset, maxCommandOffset, rows);
+    }
+
+    private FlowText layoutFlow(CommandSnippet snippet, ExecutionFlowTrace flow, ClientStagePreviewState.Preview preview,
+                                int width, int rowHeight, boolean editableSource, boolean commandMarker) {
+        CommandFlowLayout.Content content = CommandFlowLayout.content(snippet, flow, preview);
+        List<Part> displayed = new ArrayList<>(content.parts());
+        if (!content.inline()) displayed.addFirst(new Part(content.command(), -1));
+        // The original text remains available for exact targets/tooltips.
+        List<Part> layoutParts = displayed.stream().map(part -> part.targetStageIndex() < 0 ? part
+            : new Part(part.text().stripLeading(), part.stageIndex(), part.targetStageIndex(), part.observation())).toList();
+        java.util.function.IntUnaryOperator minimumWidth = index -> {
+                int stage = displayed.get(index).stageIndex();
+                // Counts occupy their own line. Breakpoint/warning icons belong only to
+                // the command line and are already included by leadingInset below.
+                if (stage < 0 || rowHeight < 30) return 0;
+                return client.font.width(counts(flow.stages().get(stage))) + CELL_HORIZONTAL_PADDING
+                    + (hasWarning(flow.stages().get(stage)) ? 17 : 0);
+            };
+        java.util.function.IntUnaryOperator leadingInset = index -> {
+            int stage = displayed.get(index).stageIndex();
+            int iconInset = stage >= 0 && rowHeight < 30 && hasWarning(flow.stages().get(stage))
+                ? DebuggerButton.TEXT_ICON_INSET : 0;
+            boolean stageMarker = editableSource && BreakpointTargetPolicy.target(flow.location(),
+                displayed.get(index).targetStageIndex(), snippet.text(), stageCount(flow, snippet.text())) != null;
+            return iconInset + (stageMarker ? 15 : 0)
+                + (commandMarker && index == 0 ? 15 : 0);
+        };
+        CommandFlowLayout.Layout layout = CommandFlowLayout.layout(layoutParts, width - 4,
+            client.font::width, minimumWidth, leadingInset);
+        if (layout.rows() > 1) {
+            layout = CommandFlowLayout.layout(layoutParts, width - 4 - DebuggerIcon.SIZE,
+                client.font::width, minimumWidth, leadingInset);
+        }
+        return new FlowText(content, List.copyOf(displayed), layout);
+    }
+
+    private void renderFlowCells(GuiGraphicsExtractor graphics, Bounds body, ExecutionFlowTrace flow, CommandSnippet snippet,
+                                  CommandFlowLayout.Content content, List<Part> parts, CommandFlowLayout.Layout layout,
+                                  int rows, int rowHeight, boolean editableSource, boolean commandMarker) {
         for (CommandFlowLayout.Cell cell : layout.cells()) {
             Part part = parts.get(cell.partIndex());
             int stageIndex = part.stageIndex();
@@ -388,8 +454,8 @@ public final class CommandPanel {
             }
             if (stageIndex >= 0) {
                 ExecutionFlowStage stage = flow.stages().get(stageIndex);
-                if (cell.first() && editableSource) {
-                    BreakpointTarget target = breakpointTarget(flow, stage);
+                BreakpointTarget target = cell.first() && editableSource ? breakpointTarget(flow, stage) : null;
+                if (cell.first() && editableSource && target != null) {
                     navigation.addRetained(breakpointFocusId(flow, target), navigationGroup, cell.row(), column++,
                         state.breakpoints().ready() && !state.breakpoints().pending(target), reveal);
                 }
@@ -439,8 +505,8 @@ public final class CommandPanel {
                     && stageIndex == state.pausedFlowStageIndex();
                 int clauseX = x;
                 int clauseWidth = cell.width();
-                if (cell.first() && editableSource) {
-                    BreakpointTarget target = breakpointTarget(flow, stage);
+                BreakpointTarget target = breakpointTarget(flow, stage);
+                if (cell.first() && editableSource && target != null) {
                     BreakpointDefinition definition = state.breakpoints().get(target);
                     String focusId = breakpointFocusId(flow, target);
                     DebuggerButton breakpoint = button(focusId,
@@ -480,9 +546,9 @@ public final class CommandPanel {
                 clause.setTooltip(Tooltip.create(Component.literal(part.text().strip() + "\n"
                     + (stopped ? tr("codon.ui.flow_detail.stop") + " · #" + (stage.index() + 1) + "\n" : "")
                     + stageDetails(stage))));
-                if (editableSource) conditionMenu(clause,
+                if (editableSource && target != null) conditionMenu(clause,
                     "clause-" + flow.invocationId() + "-" + stage.index() + "-" + cell.row(),
-                    flow, breakpointTarget(flow, stage), stage.command().text(), false);
+                    flow, target, stage.command().text(), false);
                 if (cell.first() && rowHeight < 30 && hasWarning(stage)) clause.withTextIcon(DebuggerIcon.WARNING);
                 if (cell.first() && rowHeight >= 30) {
                     String count = counts(stage);
@@ -501,7 +567,6 @@ public final class CommandPanel {
                 }
             }
         }
-        scrollbar(graphics, body.x() + body.width() - 1, body.y(), body.height(), commandOffset, maxCommandOffset, rows);
     }
 
     private void renderUnobservedClause(GuiGraphicsExtractor graphics, ExecutionFlowTrace flow, Part part,
@@ -556,7 +621,7 @@ public final class CommandPanel {
     }
 
     private void toggleExact(BreakpointTarget target) {
-        if (!state.breakpoints().ready() || state.breakpoints().pending(target)) return;
+        if (target == null || !state.breakpoints().ready() || state.breakpoints().pending(target)) return;
         var definition = state.breakpoints().get(target);
         ClientNetworking.sendBreakpointEdit(state, ClientBreakpointState.Action.TOGGLE,
             definition == null ? BreakpointDefinition.plain(target) : definition);
@@ -616,10 +681,12 @@ public final class CommandPanel {
     }
 
     private void renderRawCommand(GuiGraphicsExtractor graphics, Bounds body, CommandSnippet command, PauseSnapshot snapshot) {
-        var lines = rawCommandLines(command, Math.max(1, body.width() - 12));
-        if (lines.size() > 1) {
-            lines = rawCommandLines(command, Math.max(1, body.width() - 12 - DebuggerIcon.SIZE));
-        }
+        flowText.clear();
+        var lines = rawText.get(command, null, null, client.font, Language.getInstance(), body.width(), 11, fontOptions(), () -> {
+            int width = Math.max(1, body.width() - 12);
+            if (client.font.width(command.text()) > width) width = Math.max(1, width - DebuggerIcon.SIZE);
+            return rawCommandLines(command, width);
+        });
         int rows = Math.max(1, body.height() / 11);
         maxCommandOffset = Math.max(0, lines.size() - rows);
         Selection selection = new Selection(snapshot, state.selectedCallFrameIndex(), state.selectedFlowIndex(), -1, -1,
@@ -649,6 +716,10 @@ public final class CommandPanel {
             offset += text.length();
         }
         return lines;
+    }
+
+    private int fontOptions() {
+        return (client.options.forceUnicodeFont().get() ? 1 : 0) | (client.options.japaneseGlyphVariants().get() ? 2 : 0);
     }
 
     private SelectionDetail selectionDetail() {
@@ -711,15 +782,31 @@ public final class CommandPanel {
     }
 
     private String stageDetails(ExecutionFlowStage stage) {
-        String details = stageSummary(stage) + "\n" + tr("codon.ui.context_explanation");
+        prepareDetails();
         ExecutionFlowTrace flow = state.selectedExecutionFlow();
+        return stageDetailCache.computeIfAbsent(stage, ignored -> stageDetails(stage, flow));
+    }
+
+    private void prepareDetails() {
+        ExecutionFlowTrace flow = state.selectedExecutionFlow();
+        Language language = Language.getInstance();
+        if (flow != detailsFlow || language != detailsLanguage) {
+            detailsFlow = flow;
+            detailsLanguage = language;
+            stageDetailCache.clear();
+            flowWarningDetails = null;
+        }
+    }
+
+    static String stageDetails(ExecutionFlowStage stage, @Nullable ExecutionFlowTrace flow) {
+        StringBuilder details = new StringBuilder(stageSummary(stage)).append('\n').append(tr("codon.ui.context_explanation"));
         List<ExecutionFlowWarning> warnings = warningsForStage(flow, stage.index());
         if (!warnings.isEmpty()) {
-            for (ExecutionFlowWarning warning : warnings) details += "\n" + warningText(warning);
+            appendWarnings(details, warnings);
         } else if (!stage.lineageComplete() || stage.truncated()) {
-            details += "\n" + tr("codon.ui.recording_warning_legacy");
+            details.append('\n').append(tr("codon.ui.recording_warning_legacy"));
         }
-        return details;
+        return details.toString();
     }
 
     private boolean hasFlowWarning() {
@@ -748,14 +835,17 @@ public final class CommandPanel {
     private static String warningSummary(ExecutionFlowWarning warning) {
         String reason = tr("codon.ui.recording_reason." + warning.reason().name().toLowerCase(java.util.Locale.ROOT));
         if (warning.limit() >= 0) reason = tr("codon.ui.recording_warning_limit", reason, warning.limit());
-        return warning.stageIndex() >= 0 ? tr("codon.ui.recording_warning_stage", reason, warning.stageIndex() + 1) : reason;
+        return warning.stageIndex() >= 0 ? tr("codon.ui.recording_warning_stage", reason, (long) warning.stageIndex() + 1) : reason;
     }
 
     private static String highlightedCommand(CommandSnippet command) {
         String text = command.text();
         int start = Math.clamp(command.highlightStart(), 0, text.length());
         int end = Math.clamp(command.highlightEnd(), start, text.length());
-        return text.substring(start, end);
+        int excerptEnd = Math.min(end, start + WARNING_COMMAND_EXCERPT);
+        if (excerptEnd < end && excerptEnd > start && Character.isHighSurrogate(text.charAt(excerptEnd - 1))
+            && Character.isLowSurrogate(text.charAt(excerptEnd))) excerptEnd--;
+        return text.substring(start, excerptEnd) + (excerptEnd < end ? "…" : "");
     }
 
     private void warningButton(String key, Bounds bounds, ExecutionFlowStage stage) {
@@ -765,17 +855,34 @@ public final class CommandPanel {
     }
 
     private String flowDetails(ExecutionFlowStage selectedStage) {
+        prepareDetails();
         ExecutionFlowTrace flow = state.selectedExecutionFlow();
         if (flow == null) return stageDetails(selectedStage);
         if (flow.warnings().isEmpty()) return flow.truncated()
             ? stageDetails(selectedStage) + "\n" + tr("codon.ui.recording_warning_legacy")
             : stageDetails(selectedStage);
+        if (flowWarningDetails == null) flowWarningDetails = warningDetails(flow.warnings());
+        return flowWarningDetails;
+    }
+
+    static String warningDetails(List<ExecutionFlowWarning> warnings) {
         StringBuilder details = new StringBuilder();
-        for (ExecutionFlowWarning warning : flow.warnings()) {
-            if (!details.isEmpty()) details.append('\n');
-            details.append(warningText(warning));
-        }
+        appendWarnings(details, warnings);
         return details.toString();
+    }
+
+    /** Bound presentation expansion without mutating captured warning evidence. */
+    private static void appendWarnings(StringBuilder details, List<ExecutionFlowWarning> warnings) {
+        for (int index = 0; index < warnings.size(); index++) {
+            String text = warningText(warnings.get(index));
+            // Reserve room for an explicit omitted-warning count, using existing translations.
+            if (details.length() + text.length() + 1 > MAX_WARNING_TEXT - 64) {
+                details.append('\n').append(tr("codon.ui.recording_warning_more", "…", warnings.size() - index));
+                break;
+            }
+            if (!details.isEmpty()) details.append('\n');
+            details.append(text);
+        }
     }
 
     static String counts(ExecutionFlowStage stage) {

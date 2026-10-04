@@ -1,6 +1,8 @@
 package works.nuty.codon.persistence;
 
 import works.nuty.codon.core.model.WatchSpec;
+import works.nuty.codon.core.model.WatchIdentity;
+import works.nuty.codon.core.model.TransferBudget;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -14,10 +16,17 @@ import java.util.Set;
  * discarded, so it can never become a partial replacement later.
  */
 public final class WatchDefinitionTransfer {
+    private final TransferBudget budget;
     private long transferId;
     private int nextOffset;
     private List<WatchSpec> staged = List.of();
-    private Set<WatchSpec> unique = Set.of();
+    private Set<WatchIdentity.Key> unique = Set.of();
+
+    public WatchDefinitionTransfer() { this(System::nanoTime); }
+
+    public WatchDefinitionTransfer(java.util.function.LongSupplier clock) {
+        budget = new TransferBudget(TransferBudget.WATCH_DEFINITIONS, clock);
+    }
 
     public Optional<List<WatchSpec>> accept(long transferId, int offset, boolean last, List<WatchSpec> definitions) {
         if (transferId <= 0 || offset < 0 || definitions == null || (!last && definitions.isEmpty())) return reject();
@@ -30,8 +39,9 @@ public final class WatchDefinitionTransfer {
         }
         try {
             List<WatchSpec> page = WatchDefinitions.validate(definitions);
-            for (WatchSpec spec : page) if (!unique.add(spec)) return reject();
-            if (!isActive()) throw new IllegalStateException("transfer was unexpectedly reset");
+            if (!budget.accept(page.size(), WatchDefinitions.toPageJson(page).length(), last)) return reject();
+            for (WatchSpec spec : page) if (!unique.add(WatchIdentity.rawKey(spec))) return reject();
+            if (!isActive()) return reject();
             if (!(staged instanceof ArrayList)) staged = new ArrayList<>();
             staged.addAll(page);
             nextOffset += page.size();
@@ -44,9 +54,13 @@ public final class WatchDefinitionTransfer {
         }
     }
 
-    public boolean isActive() { return transferId != 0; }
+    public boolean isActive() {
+        if (budget.expired()) reset();
+        return transferId != 0;
+    }
 
     public void reset() {
+        budget.reset();
         transferId = 0;
         nextOffset = 0;
         staged = List.of();

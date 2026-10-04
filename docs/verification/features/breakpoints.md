@@ -73,6 +73,13 @@ The command alternatives are `/codon breakpoint block <x> <y> <z>` and
 `/codon breakpoint function <namespace:path> <line>` (one-based file line).
 They toggle whole-command targets; use the UI for stage/condition editing.
 
+The active list retains widget identity only for currently rendered controls.
+Replacement authoritative snapshots, scrolling and empty/disconnected lists release
+obsolete labels, tooltips and actions; unchanged visible targets retain widget identity
+and focus restoration. `BreakpointListCacheTest` exercises 100 acknowledged replacement
+snapshots, stable widget focus and empty-list eviction. It does not render the native
+Screen; actual list navigation and focus remain a UI acceptance check.
+
 ## Code entry points
 
 - [InputManager](../../../src/client/java/works/nuty/codon/client/input/InputManager.java): F10 target and command dispatch.
@@ -93,6 +100,7 @@ They toggle whole-command targets; use the UI for stage/condition editing.
 | Inactive condition marker retention, menus/Cancel and server-acknowledged Save enabling | `BreakpointConditionVisibilityGameTest`, `DebuggerBreakpointUiGameTest` |
 | Flow legacy/line isolation, exact condition attribution, rejected toggle feedback and pending action gating (presentation fixture) | `FlowLegacyConditionGameTest` |
 | Native execution and measured-zero result breakpoints | `DebuggerBreakpointResultGameTest` |
+| Unauthorized command-block save does not acquire a chunk; authorized loaded edit succeeds | `DebuggerRequestTransportGameTest` |
 
 Example: `./gradlew runClientGameTest -PclientGameTest=DebuggerBreakpointUiGameTest`.
 Inspect `*codon-breakpoint-*.png` in the shared screenshot directory. The UI test

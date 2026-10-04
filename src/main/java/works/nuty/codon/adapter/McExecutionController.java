@@ -20,13 +20,19 @@ public final class McExecutionController implements ExecutionController {
     private static final long CHUNK_SYNC_INTERVAL_NANOS = 50_000_000L;
     private static volatile boolean parked;
     private final Supplier<MinecraftServer> server;
+    private final Runnable pausedMaintenance;
 
     public static boolean isParked() {
         return parked;
     }
 
     public McExecutionController(Supplier<MinecraftServer> server) {
+        this(server, () -> { });
+    }
+
+    public McExecutionController(Supplier<MinecraftServer> server, Runnable pausedMaintenance) {
         this.server = server;
+        this.pausedMaintenance = java.util.Objects.requireNonNull(pausedMaintenance);
     }
 
     @Override
@@ -57,6 +63,7 @@ public final class McExecutionController implements ExecutionController {
                     nextChunkSyncNanos = now + CHUNK_SYNC_INTERVAL_NANOS;
                 }
                 if (now >= nextKeepAliveNanos) {
+                    pausedMaintenance.run();
                     keepConnectionsAlive(s);
                     nextKeepAliveNanos = now + KEEP_ALIVE_INTERVAL_NANOS;
                 }

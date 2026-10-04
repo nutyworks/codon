@@ -11,6 +11,8 @@ import org.jspecify.annotations.Nullable;
 import works.nuty.codon.core.model.FunctionId;
 import works.nuty.codon.core.model.FunctionLocation;
 import works.nuty.codon.core.model.FunctionSourceDocument;
+import works.nuty.codon.core.model.TransferBudget;
+import java.util.function.LongSupplier;
 
 /**
  * Client-side request and response state for the read-only datapack function browser.
@@ -76,6 +78,16 @@ public final class ClientFunctionSourceState {
         }
     }
 
+    private final TransferBudget listBudget;
+    private final TransferBudget sourceBudget;
+
+    public ClientFunctionSourceState() { this(System::nanoTime); }
+
+    public ClientFunctionSourceState(LongSupplier clock) {
+        listBudget = new TransferBudget(TransferBudget.FUNCTION_LIST, clock);
+        sourceBudget = new TransferBudget(TransferBudget.FUNCTION_SOURCE, clock);
+    }
+
     private long nextRequestId;
     private long listRequestId;
     private int expectedListOffset;
@@ -105,6 +117,7 @@ public final class ClientFunctionSourceState {
 
     /** Requests a fresh effective function list, retaining old rows only until the new list arrives. */
     public void refreshList() {
+        listBudget.reset();
         listRequestId = nextId();
         expectedListOffset = 0;
         pendingFunctions.clear();
@@ -125,6 +138,7 @@ public final class ClientFunctionSourceState {
         pendingProvider = pendingRevision = null;
         pendingTruncated = false;
         expectedReadOffset = 0;
+        sourceBudget.reset();
         readRequestId = nextId();
         sourceStatus = Status.LOADING;
         outgoing.add(new Request.ReadFunction(readRequestId, selected));
@@ -146,10 +160,10 @@ public final class ClientFunctionSourceState {
     }
 
     public List<FunctionId> functions() { return functions; }
-    public Status listStatus() { return listStatus; }
+    public Status listStatus() { expire(); return listStatus; }
     public @Nullable FunctionId selected() { return selected; }
     public @Nullable FunctionSourceDocument document() { return document; }
-    public Status sourceStatus() { return sourceStatus; }
+    public Status sourceStatus() { expire(); return sourceStatus; }
     public BrowseView browseView() { return browseView; }
     public int treeWidth() { return treeWidth; }
     public void rememberTreeWidth(int width) { treeWidth = Math.max(0, width); }
@@ -185,6 +199,7 @@ public final class ClientFunctionSourceState {
     }
 
     public List<Request> drainRequests() {
+        expire();
         List<Request> result = List.copyOf(outgoing);
         outgoing.clear();
         return result;
@@ -198,6 +213,11 @@ public final class ClientFunctionSourceState {
             return;
         }
         if (page.offset() != expectedListOffset) return;
+        long characters = page.functions().stream().mapToLong(id -> (long) id.namespace().length() + id.path().length()).sum();
+        if (!listBudget.accept(page.functions().size(), characters, page.last())) {
+            rejectList();
+            return;
+        }
         pendingFunctions.addAll(page.functions());
         expectedListOffset += page.functions().size();
         if (!page.last()) return;
@@ -226,6 +246,11 @@ public final class ClientFunctionSourceState {
             pendingLines.clear();
             return;
         }
+        long characters = page.lines().stream().mapToLong(String::length).sum();
+        if (!sourceBudget.accept(page.lines().size(), characters, page.last())) {
+            rejectSource();
+            return;
+        }
         pendingLines.addAll(page.lines());
         expectedReadOffset += page.lines().size();
         if (!page.last()) return;
@@ -237,6 +262,8 @@ public final class ClientFunctionSourceState {
 
     /** Cancels in-flight requests and drops server-specific browse data on disconnect. */
     public void reset() {
+        listBudget.reset();
+        sourceBudget.reset();
         listRequestId = readRequestId = 0;
         expectedListOffset = expectedReadOffset = 0;
         pendingFunctions.clear();
@@ -249,6 +276,24 @@ public final class ClientFunctionSourceState {
         functionViews.clear();
         backStack.clear();
         clearSelection();
+    }
+
+    private void expire() {
+        if (listStatus == Status.LOADING && listBudget.expired()) rejectList();
+        if (sourceStatus == Status.LOADING && sourceBudget.expired()) rejectSource();
+    }
+
+    private void rejectList() {
+        pendingFunctions.clear();
+        listStatus = Status.ERROR;
+        listBudget.reset();
+    }
+
+    private void rejectSource() {
+        pendingLines.clear();
+        pendingProvider = pendingRevision = null;
+        sourceStatus = Status.ERROR;
+        sourceBudget.reset();
     }
 
     private void clearSelection() {

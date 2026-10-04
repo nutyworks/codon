@@ -223,7 +223,15 @@ public final class CommandFlowLayout {
         while (start < codePoints) {
             int limit = start == 0 ? firstLimit : continuationLimit;
             int low = start;
-            int high = codePoints;
+            int high = start + 1;
+            // Bracket this line with growing prefixes before binary search. Probing the
+            // entire remaining suffix for every narrow line repeatedly measures/copies it.
+            while (measure.applyAsInt(text.substring(boundaries[start], boundaries[high])) <= limit) {
+                low = high;
+                if (high == codePoints) break;
+                high += Math.min(high - start, codePoints - high);
+            }
+            if (low < high) high--;
             while (low < high) {
                 int middle = low + (high - low + 1) / 2;
                 if (measure.applyAsInt(text.substring(boundaries[start], boundaries[middle])) <= limit) {

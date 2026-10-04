@@ -1,4 +1,5 @@
 {
+  "codon.pause.snapshot_too_large": "Codon이 일시 정지되어 있지만 스냅샷이 너무 커서 표시할 수 없습니다. /codon resume 명령으로 실행을 재개하세요.",
   "codon.ui.background_opacity.usage": "왼쪽·오른쪽 방향키로 패널 불투명도를 조절하세요.",
   "codon.ui.background_opacity": "패널 불투명도: %s%%",
   "codon.ui.resize_panel": "드래그하여 패널 너비 조절 · Esc로 취소",
@@ -448,7 +449,8 @@
   "codon.watch.scope.fixed": "고정 · %s",
   "codon.watch.scope.context": "컨텍스트 · %s",
   "codon.watch.save.retry": "감시 항목 저장 재시도",
-  "codon.watch.save.failed": "세션에서만 유지 · 저장 실패. 위에서 재시도하세요.",
+  "codon.watch.save.failed": "저장 확인 안 됨 · 위에서 다시 시도하세요.",
+  "codon.watch.restore.failed": "저장된 감시 목록이 너무 커서 복원할 수 없습니다. 기존 데이터는 보존되며 편집 내용은 이번 세션에만 유지됩니다. 월드를 닫은 상태에서 저장 목록을 줄인 뒤 다시 여세요.",
   "codon.watch.save.saving": "저장 중…",
   "codon.watch.save.saved": "저장됨",
   "codon.watch.details.title": "감시 항목 상세",

@@ -22,6 +22,99 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ClientNbtStateTest {
     @Test
+    void rejectsDuplicateChildPathsBeforeTraversal() {
+        ClientNbtState state = new ClientNbtState(() -> 0);
+        state.paused(1, List.of(source(entity("hostile"))), 0);
+        var query = onlyQuery(state);
+        var node = new NbtPage.Node("x", "x", "{}", true);
+        state.accept(1, query.requestId(), new NbtPage(WatchResult.Status.VALUE, List.of(node, node), 0, 2));
+        assertEquals(1, state.rows().size());
+        assertEquals(WatchResult.Status.INVALID_PATH, state.rows().getFirst().status());
+        assertTrue(state.drainQueries().isEmpty());
+    }
+
+    @Test
+    void rejectsSelfAncestorSiblingAndSkippedDescendantPathsInBothRowViews() {
+        for (String child : List.of("x", "other", "xy.child", "x.child.grandchild", "x[0][1]", "x.[0]")) {
+            ClientNbtState state = new ClientNbtState(() -> 0);
+            EntityRef entity = entity("hostile");
+            state.paused(1, List.of(source(entity)), 0);
+            state.accept(1, onlyQuery(state).requestId(), page("x", "x", true));
+            assertTrue(state.toggle("x"));
+            var request = onlyQuery(state);
+            var node = new NbtPage.Node("hostile", child, "{}", true);
+            state.accept(1, request.requestId(), new NbtPage(WatchResult.Status.VALUE, List.of(node, node), 0, 2));
+            assertEquals(2, state.rows().size(), child);
+            assertEquals(WatchResult.Status.INVALID_PATH, state.rows().getLast().status(), child);
+            assertEquals(state.rows(), state.displayedRows(entity.uuid()));
+            assertTrue(state.drainQueries().isEmpty());
+        }
+    }
+
+    @Test
+    void rejectsCrossPageAliasesAndInconsistentTotalsWithoutReplacingLoadedChildren() {
+        ClientNbtState state = new ClientNbtState(() -> 0);
+        state.paused(1, List.of(source(entity("paging"))), 0);
+        state.accept(1, onlyQuery(state).requestId(), manyNodes(0, 64));
+        assertTrue(state.page("", 32));
+        state.accept(1, onlyQuery(state).requestId(), new NbtPage(WatchResult.Status.VALUE,
+            List.of(new NbtPage.Node("alias", "node0", "{}", true)), 32, 64));
+        assertEquals(WatchResult.Status.INVALID_PATH, state.rows().get(32).status());
+        assertEquals("\"node0\"", state.rows().getFirst().path());
+        state.refresh();
+        state.accept(1, onlyQuery(state).requestId(), manyNodes(0, 64));
+        state.page("", 32);
+        state.accept(1, onlyQuery(state).requestId(), manyNodes(32, 65));
+        assertEquals(64, state.rows().size());
+        assertEquals(WatchResult.Status.INVALID_PATH, state.rows().get(32).status());
+    }
+
+    @Test
+    void acceptsQuotedUnicodeEscapesEmptyKeysAndInaccessibleLeaves() {
+        ClientNbtState state = new ClientNbtState(() -> 0);
+        state.paused(1, List.of(source(entity("quoted"))), 0);
+        var nodes = List.of(new NbtPage.Node("unicode", "\"한.😀\"", "{}", true),
+            new NbtPage.Node("quote", "\"a\\\"b\\\\c\"", "{}", false),
+            new NbtPage.Node("empty", "\"\"", "{}", false),
+            new NbtPage.Node("inaccessible1", "", "{}", false),
+            new NbtPage.Node("inaccessible2", "", "{}", false));
+        state.accept(1, onlyQuery(state).requestId(), new NbtPage(WatchResult.Status.VALUE, nodes, 0, nodes.size()));
+        assertEquals(nodes, state.rows().stream().map(ClientNbtState.Row::node).toList());
+        assertTrue(state.toggle(nodes.getFirst().path()));
+        state.accept(1, onlyQuery(state).requestId(), page("index", nodes.getFirst().path() + "[0]", false));
+        assertEquals(nodes.size() + 1, state.rows().size());
+    }
+
+    @Test
+    void capsMaterializedTraversalWhileKeepingSparsePageJumpsCheap() {
+        ClientNbtState state = new ClientNbtState(() -> 0);
+        state.paused(1, List.of(source(entity("budget"))), 0);
+        int total = ClientNbtState.MAX_MATERIALIZED_ROWS + NbtPage.PAGE_SIZE;
+        state.accept(1, onlyQuery(state).requestId(), manyNodes(0, total));
+        for (int offset = NbtPage.PAGE_SIZE; offset < total; offset += NbtPage.PAGE_SIZE) {
+            assertTrue(state.page("", offset));
+            state.accept(1, onlyQuery(state).requestId(), manyNodes(offset, total));
+        }
+        var rows = state.rows();
+        assertEquals(ClientNbtState.MAX_MATERIALIZED_ROWS + 1, ClientNbtState.loadedIndices(rows).size());
+        assertEquals(WatchResult.Status.TOO_LARGE, rows.getLast().status());
+        assertTrue(state.drainQueries().isEmpty());
+    }
+
+    @Test
+    void countsSparsePageTraversalEvenWhenPlaceholdersCollapseIntoOneRun() {
+        ClientNbtState state = new ClientNbtState(() -> 0);
+        state.paused(1, List.of(source(entity("sparse-budget"))), 0);
+        state.accept(1, onlyQuery(state).requestId(), manyNodes(0, 1_000_000));
+        // Public viewport paging can leave many pending sparse pages, all displayed as one gap.
+        for (int i = 1; i <= ClientNbtState.MAX_TRAVERSAL_STEPS; i++)
+            assertTrue(state.page("", i * NbtPage.PAGE_SIZE));
+        var rows = state.rows();
+        assertEquals(WatchResult.Status.TOO_LARGE, rows.getLast().status());
+        assertTrue(ClientNbtState.loadedIndices(rows).size() <= ClientNbtState.MAX_MATERIALIZED_ROWS + 1);
+    }
+
+    @Test
     void queriesAllEntityRootsRegardlessOfSelectedSourceAndReusesThePauseCache() {
         EntityRef a = entity("a");
         EntityRef b = entity("b");

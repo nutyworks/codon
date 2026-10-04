@@ -28,6 +28,79 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NetworkCodecsTest {
     @Test
+    void boundsLiveSnapshotCountsBeforeReadingElementsAndPreservesExactLimits() {
+        SourceLocation location = new SourceLocation.Block(new BlockLocation(0, 64, 0, "minecraft:overworld"));
+        CommandSnippet command = CommandSnippet.plain("say boundary");
+        for (boolean stack : new boolean[]{true, false}) {
+            int limit = stack ? ClientboundLimits.MAX_CALL_STACK : ClientboundLimits.MAX_PAUSE_SOURCES;
+            for (int count : new int[]{limit, limit + 1, Integer.MAX_VALUE, -1}) {
+                FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
+                try {
+                    NetworkCodecs.writeSourceLocation(buffer, location);
+                    NetworkCodecs.writeCommandSnippet(buffer, command);
+                    buffer.writeVarInt(0);
+                    if (!stack) buffer.writeVarInt(0);
+                    buffer.writeVarInt(count);
+                    int countEnd = buffer.writerIndex();
+                    if (count != limit) {
+                        if (count < 0) assertThrows(IllegalArgumentException.class, () -> PauseSyncPayload.CODEC.decode(buffer));
+                        else assertThrows(DecoderException.class, () -> PauseSyncPayload.CODEC.decode(buffer));
+                        assertEquals(countEnd, buffer.readerIndex(), "reject before reading any collection element");
+                        continue;
+                    }
+                    for (int i = 0; i < count; i++) {
+                        if (stack) NetworkCodecs.writeCallFrame(buffer, new CallFrame(i, location, command));
+                        else NetworkCodecs.writePauseSource(buffer, source(i));
+                    }
+                    if (stack) buffer.writeVarInt(0);
+                    buffer.writeVarInt(0);
+                    buffer.writeEnum(PauseReason.STEP);
+                    buffer.writeVarLong(1);
+                    var decoded = PauseSyncPayload.CODEC.decode(buffer).snapshot();
+                    assertTrue(ClientboundLimits.supports(decoded));
+                    assertEquals(count, stack ? decoded.callStack().size() : decoded.pauseSources().size());
+                    if (!stack) assertEquals(source(count - 1), decoded.pauseSources().getLast());
+                    assertEquals(0, buffer.readableBytes());
+                } finally { buffer.release(); }
+            }
+        }
+    }
+
+    @Test
+    void boundsLegacyBreakpointsAtTheRegistryLimit() {
+        int limit = works.nuty.codon.core.service.BreakpointRegistry.MAX_DEFINITIONS;
+        for (int count : new int[]{limit, limit + 1, Integer.MAX_VALUE}) {
+            FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
+            try {
+                buffer.writeVarInt(count);
+                if (count > limit) {
+                    assertThrows(DecoderException.class, () -> NetworkCodecs.readBlockLocations(buffer));
+                } else {
+                    var blocks = IntStream.range(0, count).mapToObj(i -> new BlockLocation(i, 64, 0, "한😀")).toList();
+                    blocks.forEach(block -> NetworkCodecs.writeBlockLocation(buffer, block));
+                    assertEquals(blocks, NetworkCodecs.readBlockLocations(buffer));
+                }
+            } finally { buffer.release(); }
+        }
+    }
+
+    @Test
+    void unsupportedAutomaticPreviewReturnsBeforeTouchingMinecraftOrPendingState() {
+        var state = new works.nuty.codon.client.state.ClientDebuggerState(() -> 0);
+        for (SourceLocation location : List.of(
+            new SourceLocation.Function(new works.nuty.codon.core.model.FunctionLocation(
+                new works.nuty.codon.core.model.FunctionId("demo", "test"), 0)),
+            new SourceLocation.Function(new works.nuty.codon.core.model.FunctionLocation(
+                new works.nuty.codon.core.model.FunctionId("demo", "x".repeat(257)), 1)),
+            new SourceLocation.Block(new BlockLocation(0, 0, 0, "x".repeat(129))))) {
+            org.junit.jupiter.api.Assertions.assertFalse(
+                works.nuty.codon.client.network.ClientNetworking.requestStagePreview(state, location));
+            org.junit.jupiter.api.Assertions.assertNull(state.stagePreviews().get(location));
+            assertThrows(IllegalArgumentException.class, () -> new BreakpointStagePreviewRequestPayload(1, location));
+        }
+    }
+
+    @Test
     void bothPayloadsPreserveWarningCausesAndRangesWithoutRepeatingLongCommandText() {
         SourceLocation location = new SourceLocation.Block(new BlockLocation(0, 64, 0, "minecraft:overworld"));
         String command = "execute " + "positioned ~ ~ ~ ".repeat(1000) + "run say ok";

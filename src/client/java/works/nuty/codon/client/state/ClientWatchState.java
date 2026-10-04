@@ -7,6 +7,7 @@ import works.nuty.codon.core.model.WatchChange;
 import works.nuty.codon.core.model.EntityRef;
 import works.nuty.codon.core.model.PauseSource;
 import works.nuty.codon.core.model.WatchIdentity;
+import works.nuty.codon.core.model.TransferBudget;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -17,6 +18,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.LongSupplier;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 /** Client-thread watch definitions and correlated replies for the current continuous stepping session. */
 public final class ClientWatchState {
@@ -42,12 +44,15 @@ public final class ClientWatchState {
     public WatchGrouping.Mode grouping() { return grouping; }
     public void grouping(WatchGrouping.Mode mode) { grouping = java.util.Objects.requireNonNull(mode); }
 
-    public enum SaveStatus { IDLE, SAVING, SAVED, FAILED }
+    public enum SaveStatus { IDLE, SAVING, SAVED, FAILED, RESTORE_FAILED }
 
     private static final long TIMEOUT_NANOS = 5_000_000_000L;
     private static final int MAX_CAPTURES_PER_WATCH = 256;
     private final LongSupplier clock;
     private final Map<Long, Slot> slots = new LinkedHashMap<>();
+    private final Map<WatchIdentity.Key, Long> identities = new java.util.HashMap<>();
+    private final TransferBudget changesBudget;
+    private boolean changesRejected;
     /** Presentation only: retained rows never satisfy a query or become a comparison baseline. */
     private final Map<Long, PendingDisplay<Entry>> pendingDisplays = new LinkedHashMap<>();
     /** Last selected result, retained to distinguish a transient availability failure from a later recovery. */
@@ -57,7 +62,7 @@ public final class ClientWatchState {
     /** Re-read the executor we just stepped, even if the next command has a different/no executor. */
     private final Map<Long, WatchResult> stepTargets = new LinkedHashMap<>();
     private final Map<UUID, String> executorNames = new LinkedHashMap<>();
-    private final Map<WatchSpec, Entry> automaticChanges = new LinkedHashMap<>();
+    private final Map<WatchIdentity.Key, Entry> automaticChanges = new LinkedHashMap<>();
     private long nextAutomaticId;
     private int changesOffset;
     private boolean changesComplete;
@@ -70,13 +75,20 @@ public final class ClientWatchState {
     private int sourceIndex = -1;
     private boolean continuingStep;
     private Consumer<List<WatchSpec>> changeListener = ignored -> {};
+    private boolean initialDefinitionsReceived;
+    private boolean initialRestoreFailed;
+    private @Nullable InitialDefinitions pendingInitialization;
     private SaveStatus saveStatus = SaveStatus.IDLE;
     private long saveTransferId;
     private long saveStartedAt;
+    private long saveTimeoutNanos = TIMEOUT_NANOS;
     private long revealId = -1;
     private long revealRevision;
 
-    public ClientWatchState(LongSupplier clock) { this.clock = clock; }
+    public ClientWatchState(LongSupplier clock) {
+        this.clock = clock;
+        changesBudget = new TransferBudget(TransferBudget.WATCH_CHANGES, clock);
+    }
 
     public List<WatchSpec> definitions() {
         return slots.values().stream().map(slot -> slot.spec).toList();
@@ -86,15 +98,82 @@ public final class ClientWatchState {
         changeListener = java.util.Objects.requireNonNull(listener);
     }
 
+    public boolean initialDefinitionsReceived() { return initialDefinitionsReceived; }
+    public boolean initialRestoreFailed() { return initialRestoreFailed; }
+
+    /** A rejected remote snapshot stays session-only; never save an unseen server subset. */
+    public void rejectInitialDefinitions() {
+        if (initialDefinitionsReceived) return;
+        initialRestoreFailed = true;
+        changeListener = ignored -> {};
+        saveStatus = SaveStatus.RESTORE_FAILED;
+    }
+
+    /**
+     * First authenticated restore for this connection. Local edits made while waiting remain
+     * local slots, including their current IDs/results; only missing server definitions are added.
+     * The persistence listener is installed only after the complete union is transport-valid.
+     */
+    public boolean initializeDefinitions(List<WatchSpec> definitions, Predicate<List<WatchSpec>> canSave,
+                                         Consumer<List<WatchSpec>> save) {
+        if (initialDefinitionsReceived || initialRestoreFailed) return false;
+        List<WatchSpec> checked = checkedDefinitions(definitions);
+        pendingInitialization = new InitialDefinitions(checked, java.util.Objects.requireNonNull(canSave),
+            java.util.Objects.requireNonNull(save));
+        initialDefinitionsReceived = true;
+        // On a size conflict, edits or explicit Retry reattempt the same bounded server snapshot.
+        // They must never upload only the local subset and erase unseen server definitions.
+        changeListener = ignored -> finishInitialization();
+        return finishInitialization();
+    }
+
+    private boolean finishInitialization() {
+        InitialDefinitions initial = pendingInitialization;
+        if (initial == null) return false;
+        Map<WatchIdentity.Key, WatchSpec> server = new LinkedHashMap<>();
+        for (WatchSpec spec : initial.definitions()) server.putIfAbsent(WatchIdentity.key(spec), spec);
+        Map<WatchIdentity.Key, WatchSpec> merged = new LinkedHashMap<>();
+        slots.values().forEach(slot -> merged.put(WatchIdentity.key(slot.spec), slot.spec));
+        boolean localAdditions = merged.keySet().stream().anyMatch(key -> !server.containsKey(key));
+        server.forEach(merged::putIfAbsent);
+        if (!initial.canSave().test(List.copyOf(merged.values()))) {
+            saveStatus = SaveStatus.FAILED;
+            return false;
+        }
+        for (var entry : merged.entrySet()) {
+            if (identities.containsKey(entry.getKey())) continue;
+            long id = ++nextEntryId;
+            slots.put(id, new Slot(entry.getValue()));
+            identities.put(entry.getKey(), id);
+        }
+        pendingInitialization = null;
+        changeListener = initial.save();
+        saveStatus = SaveStatus.IDLE;
+        if (localAdditions) changeListener.accept(definitions());
+        return true;
+    }
+
+    private record InitialDefinitions(List<WatchSpec> definitions, Predicate<List<WatchSpec>> canSave,
+                                      Consumer<List<WatchSpec>> save) { }
+
+    private static List<WatchSpec> checkedDefinitions(List<WatchSpec> definitions) {
+        List<WatchSpec> checked = List.copyOf(definitions);
+        if (checked.stream().map(WatchIdentity::rawKey).distinct().count() != checked.size())
+            throw new IllegalArgumentException("Invalid watch definitions");
+        return checked;
+    }
+
     /** A world restore never writes back or restores stale observations from a prior connection. */
     public void restoreDefinitions(List<WatchSpec> definitions) {
-        List<WatchSpec> checked = List.copyOf(definitions);
-        if (checked.stream().distinct().count() != checked.size()) {
-            throw new IllegalArgumentException("Invalid watch definitions");
-        }
+        List<WatchSpec> checked = checkedDefinitions(definitions);
         reset();
         for (WatchSpec spec : checked) {
-            if (findId(spec) < 0) slots.put(++nextEntryId, new Slot(spec));
+            WatchIdentity.Key key = WatchIdentity.key(spec);
+            if (!identities.containsKey(key)) {
+                long id = ++nextEntryId;
+                identities.put(key, id);
+                slots.put(id, new Slot(spec));
+            }
         }
     }
 
@@ -144,14 +223,18 @@ public final class ClientWatchState {
     }
 
     private List<Entry> currentDisplayedEntries() {
+        expire();
         List<Entry> saved = new ArrayList<>();
-        Set<WatchSpec> represented = new LinkedHashSet<>();
+        Set<WatchIdentity.Key> represented = new LinkedHashSet<>();
+        Map<WatchIdentity.Key, Entry> automaticByField = new java.util.HashMap<>();
+        for (Entry automatic : automaticChanges.values()) {
+            automaticByField.putIfAbsent(WatchIdentity.key(automatic.spec(), automatic.displayedExecutor()), automatic);
+        }
         for (Entry entry : entries()) {
             Entry displayed = entry;
-            for (Entry automatic : automaticChanges.values()) {
-                if (!sameField(entry.spec(), automatic.spec())
-                    || !java.util.Objects.equals(entry.displayedExecutor(), automatic.displayedExecutor())) continue;
-                represented.add(automatic.spec());
+            Entry automatic = automaticByField.get(WatchIdentity.key(entry.spec(), entry.displayedExecutor()));
+            if (automatic != null) {
+                represented.add(WatchIdentity.rawKey(automatic.spec()));
                 // Server captures are available even when a query was not answered before stepping.
                 displayed = new Entry(entry.id(), entry.spec(),
                     entry.completedStep() == null ? automatic.result() : entry.result(),
@@ -159,14 +242,13 @@ public final class ClientWatchState {
                     entry.completedStep() == null ? automatic.previousValue() : entry.previousValue(),
                     entry.completedStep() == null ? null : new Observation(automatic.result(), automatic.change(), automatic.previousValue()),
                     automatic.displayedExecutor(), automatic.executorName());
-                break;
             }
             saved.add(displayed);
         }
         List<Entry> result = new ArrayList<>();
         saved.stream().filter(entry -> entry.spec().isPinned()).forEach(result::add);
         saved.stream().filter(entry -> !entry.spec().isPinned()).forEach(result::add);
-        automaticChanges.values().stream().filter(entry -> !represented.contains(entry.spec())).forEach(result::add);
+        automaticChanges.values().stream().filter(entry -> !represented.contains(WatchIdentity.rawKey(entry.spec()))).forEach(result::add);
         return List.copyOf(result);
     }
 
@@ -179,19 +261,23 @@ public final class ClientWatchState {
         }
     }
 
-    private static boolean sameField(WatchSpec first, WatchSpec second) { return WatchIdentity.sameField(first, second); }
-
     /** Pages cannot repopulate another pause, or overwrite a completed transfer. */
     public void acceptChanges(long id, int offset, boolean last, List<WatchChange> changes) {
         if (pauseId <= 0 || id != pauseId || changesComplete || offset != changesOffset) return;
+        long characters = changes.stream().mapToLong(delta -> TransferBudget.characters(delta.spec())
+            + TransferBudget.characters(delta.before()) + TransferBudget.characters(delta.after())).sum();
+        if (!changesBudget.accept(changes.size(), characters, last)) {
+            rejectChanges();
+            return;
+        }
         for (WatchChange delta : changes) {
             Change change = compare(delta.before(), delta.after());
             // Oversized before/after values can have the same status while the server detects a real change.
             if (change == Change.UNCHANGED) change = Change.VALUE_CHANGED;
             UUID executor = delta.spec().executor();
             String name = delta.after().targetName().isBlank() ? delta.before().targetName() : delta.after().targetName();
-            Entry existing = automaticChanges.get(delta.spec());
-            automaticChanges.put(delta.spec(), new Entry(existing == null ? --nextAutomaticId : existing.id(),
+            Entry existing = automaticChanges.get(WatchIdentity.rawKey(delta.spec()));
+            automaticChanges.put(WatchIdentity.rawKey(delta.spec()), new Entry(existing == null ? --nextAutomaticId : existing.id(),
                 delta.spec(), delta.after(), change, previousValue(delta.before(), change), null, executor, name));
         }
         changesOffset += changes.size();
@@ -200,6 +286,7 @@ public final class ClientWatchState {
 
     /** Promote a temporary row without changing its executor or losing this pause's before/after value. */
     public boolean pinChange(long id) {
+        expire();
         Entry entry = automaticChanges.values().stream().filter(candidate -> candidate.id() == id).findFirst().orElse(null);
         if (entry == null) return false;
         long existing = findId(entry.spec());
@@ -210,8 +297,20 @@ public final class ClientWatchState {
         return add(entry.spec());
     }
 
+    /** A failed transfer is never presented as a complete or partial observation. */
+    public boolean changesRejected() { expire(); return changesRejected; }
+
+    private void rejectChanges() {
+        automaticChanges.clear();
+        changesComplete = true;
+        changesRejected = true;
+        changesBudget.reset();
+    }
+
     private void clearChanges() {
         automaticChanges.clear();
+        changesBudget.reset();
+        changesRejected = false;
         changesOffset = 0;
         changesComplete = false;
     }
@@ -219,7 +318,7 @@ public final class ClientWatchState {
     public boolean add(WatchSpec spec) {
         if (findId(spec) >= 0) return false;
         long id = ++nextEntryId;
-        slots.put(id, new Slot(spec));
+        putSlot(id, spec);
         changeListener.accept(definitions());
         reveal(id);
         return true;
@@ -238,15 +337,28 @@ public final class ClientWatchState {
 
     /** Finds a saved equivalent expression, including a matching executor binding. */
     public long findId(WatchSpec spec) {
-        return slots.entrySet().stream().filter(entry -> WatchIdentity.same(entry.getValue().spec, spec))
-            .mapToLong(Map.Entry::getKey).findFirst().orElse(-1);
+        return identities.getOrDefault(WatchIdentity.key(spec), -1L);
     }
+
+    private void putSlot(long id, WatchSpec spec) {
+        Slot previous = slots.put(id, new Slot(spec));
+        if (previous != null) identities.remove(WatchIdentity.key(previous.spec));
+        identities.put(WatchIdentity.key(spec), id);
+    }
+
+    private @Nullable Slot removeSlot(long id) {
+        Slot removed = slots.remove(id);
+        if (removed != null) identities.remove(WatchIdentity.key(removed.spec));
+        return removed;
+    }
+
+    private void clearSlots() { slots.clear(); identities.clear(); }
 
     /** Replaces a saved definition in place and cancels all replies for its old expression. */
     public boolean update(long id, WatchSpec spec) {
-        if (!slots.containsKey(id) || slots.entrySet().stream()
-            .anyMatch(entry -> entry.getKey() != id && WatchIdentity.same(entry.getValue().spec, spec))) return false;
-        slots.put(id, new Slot(spec));
+        long existing = findId(spec);
+        if (!slots.containsKey(id) || existing >= 0 && existing != id) return false;
+        putSlot(id, spec);
         pendingDisplays.remove(id);
         previous.remove(id);
         targetHistory.remove(id);
@@ -260,11 +372,10 @@ public final class ClientWatchState {
     /** Adds a deduplicated group atomically; callers can treat an already-present group as successful. */
     public boolean addAll(List<WatchSpec> specs) {
         List<WatchSpec> requested = List.copyOf(specs);
-        List<WatchSpec> known = new ArrayList<>(slots.values().stream().map(slot -> slot.spec).toList());
+        Set<WatchIdentity.Key> known = new java.util.HashSet<>(identities.keySet());
         List<WatchSpec> missing = new ArrayList<>();
         for (WatchSpec spec : requested) {
-            if (known.stream().noneMatch(existing -> WatchIdentity.same(existing, spec))) {
-                known.add(spec);
+            if (known.add(WatchIdentity.key(spec))) {
                 missing.add(spec);
             }
         }
@@ -272,7 +383,7 @@ public final class ClientWatchState {
         long lastAdded = -1;
         for (WatchSpec spec : missing) {
             lastAdded = ++nextEntryId;
-            slots.put(lastAdded, new Slot(spec));
+            putSlot(lastAdded, spec);
         }
         changeListener.accept(definitions());
         reveal(lastAdded);
@@ -281,20 +392,16 @@ public final class ClientWatchState {
 
     /** Fills a partially pinned group, or removes the complete group in one persisted edit. */
     public void toggleAll(List<WatchSpec> specs) {
-        List<WatchSpec> requested = new ArrayList<>();
-        for (WatchSpec spec : List.copyOf(specs)) {
-            if (requested.stream().noneMatch(existing -> WatchIdentity.same(existing, spec))) requested.add(spec);
-        }
+        Map<WatchIdentity.Key, WatchSpec> requested = new LinkedHashMap<>();
+        for (WatchSpec spec : List.copyOf(specs)) requested.putIfAbsent(WatchIdentity.key(spec), spec);
         if (requested.isEmpty()) return;
-        if (requested.stream().anyMatch(spec -> findId(spec) < 0)) {
-            addAll(requested);
+        if (requested.keySet().stream().anyMatch(key -> !identities.containsKey(key))) {
+            addAll(List.copyOf(requested.values()));
             return;
         }
-        List<Long> removed = slots.entrySet().stream().filter(entry -> requested.stream()
-                .anyMatch(spec -> WatchIdentity.same(entry.getValue().spec, spec)))
-            .map(Map.Entry::getKey).toList();
+        List<Long> removed = requested.keySet().stream().map(identities::get).toList();
         for (long id : removed) {
-            slots.remove(id);
+            removeSlot(id);
             pendingDisplays.remove(id);
             previous.remove(id);
             targetHistory.remove(id);
@@ -307,7 +414,7 @@ public final class ClientWatchState {
     /** Deletes all definitions without ending the current pause or replacing the persistence listener. */
     public void clearDefinitions() {
         if (slots.isEmpty()) return;
-        slots.clear();
+        clearSlots();
         pendingDisplays.clear();
         previous.clear();
         targetHistory.clear();
@@ -318,7 +425,7 @@ public final class ClientWatchState {
 
     public @Nullable Removed removeForUndo(long id) {
         int index = new ArrayList<>(slots.keySet()).indexOf(id);
-        Slot removed = slots.remove(id);
+        Slot removed = removeSlot(id);
         if (removed == null) return null;
         pendingDisplays.remove(id);
         previous.remove(id);
@@ -345,8 +452,9 @@ public final class ClientWatchState {
             restored.put(entry.getKey(), entry.getValue());
         }
         if (!inserted) restored.put(removed.id(), new Slot(removed.spec()));
-        slots.clear();
+        clearSlots();
         slots.putAll(restored);
+        restored.forEach((id, slot) -> identities.put(WatchIdentity.key(slot.spec), id));
         nextEntryId = Math.max(nextEntryId, removed.id());
         changeListener.accept(definitions());
         reveal(removed.id());
@@ -377,9 +485,10 @@ public final class ClientWatchState {
     }
 
     private boolean rebind(long id, WatchSpec spec) {
-        if (slots.entrySet().stream().anyMatch(entry -> entry.getKey() != id && WatchIdentity.same(entry.getValue().spec, spec))) return false;
+        long existing = findId(spec);
+        if (existing >= 0 && existing != id) return false;
         // A new binding is an initial observation; cancel in-flight replies for the old target.
-        slots.put(id, new Slot(spec));
+        putSlot(id, spec);
         pendingDisplays.remove(id);
         previous.remove(id);
         targetHistory.remove(id);
@@ -404,7 +513,12 @@ public final class ClientWatchState {
 
     public void retrySave() { changeListener.accept(definitions()); }
 
-    public void saveStarted(long transferId) {
+    public void saveStarted(long transferId) { saveStarted(transferId, TIMEOUT_NANOS); }
+
+    public void saveStarted(long transferId, long timeoutNanos) {
+        if (initialRestoreFailed) return;
+        if (timeoutNanos <= 0) throw new IllegalArgumentException("invalid save timeout");
+        saveTimeoutNanos = timeoutNanos;
         saveTransferId = transferId;
         saveStartedAt = clock.getAsLong();
         saveStatus = SaveStatus.SAVING;
@@ -513,12 +627,22 @@ public final class ClientWatchState {
         pruneExecutorNames();
     }
 
+    /** Release connection-scoped persistence before the enclosing debugger resets its state. */
+    public void endConnection() {
+        changeListener = ignored -> {};
+        initialDefinitionsReceived = false;
+        initialRestoreFailed = false;
+        pendingInitialization = null;
+    }
+
+    /** Silent in-session reset; the current connection's persistence initialization survives. */
     public void reset() {
         generation++;
         resumed();
-        slots.clear();
+        clearSlots();
         executorNames.clear();
-        saveStatus = SaveStatus.IDLE;
+        saveStatus = initialRestoreFailed ? SaveStatus.RESTORE_FAILED
+            : pendingInitialization == null ? SaveStatus.IDLE : SaveStatus.FAILED;
         saveTransferId = 0;
         saveStartedAt = 0;
         revealId = -1;
@@ -565,8 +689,9 @@ public final class ClientWatchState {
     }
 
     private void expire() {
+        if (!changesComplete && changesBudget.expired()) rejectChanges();
         long now = clock.getAsLong();
-        if (saveStatus == SaveStatus.SAVING && now - saveStartedAt >= TIMEOUT_NANOS) saveStatus = SaveStatus.FAILED;
+        if (saveStatus == SaveStatus.SAVING && now - saveStartedAt >= saveTimeoutNanos) saveStatus = SaveStatus.FAILED;
         slots.values().forEach(slot -> {
             if (slot.requestId != 0 && slot.result == null && now - slot.requestedAt >= TIMEOUT_NANOS) {
                 slot.result = WatchResult.absent(WatchResult.Status.UNAVAILABLE, "");

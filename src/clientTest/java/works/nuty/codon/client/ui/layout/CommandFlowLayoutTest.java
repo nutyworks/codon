@@ -17,6 +17,51 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CommandFlowLayoutTest {
+    @Test void longCommandsDoNotMeasureTheRemainingSuffixForEveryLine() {
+        String command = "x".repeat(32_767);
+        long[] measured = {0};
+        var lines = CommandFlowLayout.wrapCharacters(command, 300, text -> {
+            measured[0] += text.length();
+            return text.length() * 6;
+        });
+        assertEquals(command, String.join("", lines));
+        assertTrue(lines.stream().allMatch(line -> line.length() <= 50));
+        assertTrue(measured[0] < 20L * command.length(), "Measured characters: " + measured[0]);
+    }
+
+    @Test void repeatedFallbackStagesUseTheSameBoundedWrapperAndKeepExactParts() {
+        String command = "x".repeat(32_767);
+        var stages = java.util.stream.IntStream.range(0, 24).mapToObj(index ->
+            new ExecutionFlowStage(index, CommandSnippet.plain(command), List.of(), List.of(), List.of(), List.of(),
+                0, 0, 0, false, 0, 0, true, true, false)).toArray(ExecutionFlowStage[]::new);
+        var content = CommandFlowLayout.content(CommandSnippet.plain(command), trace(stages));
+        assertFalse(content.inline());
+        var parts = new java.util.ArrayList<>(content.parts());
+        parts.addFirst(new CommandFlowLayout.Part(command, -1));
+        long[] measured = {0};
+        var layout = CommandFlowLayout.layout(parts, 306, text -> {
+            measured[0] += text.length();
+            return text.length() * 6;
+        }, ignored -> 0);
+        assertTrue(measured[0] < 20L * command.length() * 25, "Measured characters: " + measured[0]);
+        for (int part = 0; part < parts.size(); part++) {
+            int id = part;
+            assertEquals(command, layout.cells().stream().filter(cell -> cell.partIndex() == id)
+                .map(CommandFlowLayout.Cell::text).collect(Collectors.joining()));
+        }
+    }
+
+    @Test void zeroWidthTextAndOversizedCodePointsStillMakeProgressWithoutLoss() {
+        String text = "\u200b".repeat(32_767) + "😀";
+        long[] measured = {0};
+        var lines = CommandFlowLayout.wrapCharacters(text, 1, value -> {
+            measured[0] += value.length();
+            return value.contains("😀") ? 12 : 0;
+        });
+        assertEquals(List.of("\u200b".repeat(32_767), "😀"), lines);
+        assertTrue(measured[0] < 20L * text.length());
+    }
+
     private static final String PREVIEW_COMMAND = "execute if function pack:truthy as @a run say truthy returned";
 
     @Test

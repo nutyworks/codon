@@ -161,7 +161,7 @@ scroll settings. Synthetic callback input does not verify a physical trackpad.
 | Concern | Existing tests |
 | --- | --- |
 | Line/source model | `coreTest`: `FunctionSourceDocumentTest` |
-| Requests, selection and layout | `clientTest`: `ClientFunctionSourceStateTest`, `FunctionSourceScreenLayoutTest`, `SourceSyntaxTest`, `SourceLineLayoutTest`, `SourceInteractionTest`, `ClientStagePreviewStateTest`, `ScrollbarInputTest`, `CommandFlowLayoutTest` |
+| Requests, selection and layout | `clientTest`: `ClientFunctionSourceStateTest`, `ClientTransferLimitsTest`, `FunctionSourceScreenLayoutTest`, `SourceSyntaxTest`, `SourceLineLayoutTest`, `SourceInteractionTest`, `ClientStagePreviewStateTest`, `ScrollbarInputTest`, `CommandFlowLayoutTest` |
 | Network payloads | `test`: `FunctionSourcePayloadTest`, `BreakpointStagePreviewPayloadTest` |
 | Line gutter, one-stage suppression, EN/KO/custom scale and hit boxes | `FunctionLineBreakpointGameTest` |
 | Real rendering, selection, resize and inline stage markers | `FunctionSourceScreenGameTest`, `FunctionSourceInteractionGameTest`, `FunctionSourceReviewGameTest` |
@@ -331,3 +331,21 @@ The [UI validation record](../ui-polish-validation.md) records passing Source
 layout, native input, marker visibility and neutral/paused pixel checks. Manual
 physical input and the full reload/invalidation acceptance path remain separate
 from these selected regression scenarios.
+
+
+Source receive assembly independently enforces the server reader's existing 20,000
+line and 700,000 UTF-16 character limits. Function lists permit 32,768 identifiers
+and 4,194,304 identifier characters. Each transfer is limited to 1,024 pages within
+30 seconds from its first accepted page; further packets do not extend the deadline.
+Empty intermediate pages and aggregate overflow fail with ERROR and discard staged
+data. A valid empty final page remains supported, and user refresh starts a new
+request. Unicode text is preserved exactly. `ClientTransferLimitsTest` exercises the
+maximum Unicode document, one-extra-line and character overflow, timeout and recovery.
+
+Observed locations are checked for stage-preview representability before creating
+pending state or a network payload. Unknown/zero function lines, oversized fields and
+control characters remain their original observed values but cannot trigger an
+automatic preview request. `StagePreviewLocationTest`, `NetworkCodecsTest` and
+`BreakpointStagePreviewPayloadTest` cover the request predicate and exact wire limits.
+The latter headless test calls the central request helper for hostile locations without
+initializing Minecraft; native HUD validation remains a separate GameTest requirement.

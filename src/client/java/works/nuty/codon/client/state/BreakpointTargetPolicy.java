@@ -34,6 +34,9 @@ public final class BreakpointTargetPolicy {
         if (preview != null && preview.status() == ClientStagePreviewState.Status.READY
             && command.equals(preview.savedCommand())) return preview.spans().size();
         if (flow == null || flow.stages().isEmpty()) return 0;
+        // An invalid identity cannot prove a count or authorize a marker. In
+        // particular MAX_VALUE + 1 must not wrap and make the source look editable.
+        if (flow.stages().stream().anyMatch(stage -> stage.index() < 0 || stage.index() == Integer.MAX_VALUE)) return 0;
         // A partial recording is not the total stage count. Only an exact terminal
         // observation at index zero proves that the command has one stage.
         var only = flow.stages().getFirst();

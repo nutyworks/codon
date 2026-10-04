@@ -16,6 +16,17 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GizmoLabelLayoutTest {
+    @Test void crowdedCellWithoutCommonIntersectionUsesBoundedCoarseGrouping() {
+        var anchors = IntStream.range(0, 10_000)
+            .mapToObj(i -> new GizmoLabelLayout.Anchor(i, 160, i == 0 ? 120 : 140, 140)).toList();
+        var labels = GizmoLabelLayout.layout(anchors, VIEWPORT, 9_999, true, List.of(), 20);
+        assertEquals(1, labels.size(), "A saturated cell aggregates even disjoint members");
+        assertEquals(10_000, displayed(labels).size());
+        assertEquals(9_999, labels.getFirst().sourceIndices().getFirst());
+        assertReadableAndInBounds(labels, VIEWPORT);
+        assertEquals(labels, GizmoLabelLayout.layout(anchors.reversed(), VIEWPORT, 9_999, true, List.of(), 20));
+    }
+
     @Test
     void capOf20RetainsAll64SourcesByGroupingNearbyLabelsAndKeepsSelectedMemberFirst() {
         var anchors = IntStream.range(0, 64)

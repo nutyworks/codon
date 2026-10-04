@@ -41,7 +41,8 @@ public final class DebuggerWatchPersistenceGameTest implements FabricClientGameT
             "world A definitions require multiple bounded transport pages");
         TestWorldSave worldA;
         UUID playerA;
-        try (TestSingleplayerContext a = context.worldBuilder().create()) {
+        // Persistence restores on JOIN, so this fixture must already be authorized then.
+        try (TestSingleplayerContext a = context.worldBuilder().adjustSettings(settings -> settings.setAllowCommands(true)).create()) {
             a.getConnection().waitForChunksRender();
             playerA = grantOwner(a);
             worldA = a.getWorldSave();
@@ -58,7 +59,7 @@ public final class DebuggerWatchPersistenceGameTest implements FabricClientGameT
         seedLegacyOwner(worldA);
 
         TestWorldSave worldB;
-        try (TestSingleplayerContext b = context.worldBuilder().create()) {
+        try (TestSingleplayerContext b = context.worldBuilder().adjustSettings(settings -> settings.setAllowCommands(true)).create()) {
             b.getConnection().waitForChunksRender();
             grantOwner(b);
             worldB = b.getWorldSave();

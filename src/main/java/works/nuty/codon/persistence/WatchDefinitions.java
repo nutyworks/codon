@@ -5,6 +5,8 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import works.nuty.codon.core.model.WatchSpec;
+import works.nuty.codon.core.model.WatchIdentity;
+import works.nuty.codon.core.model.TransferBudget;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -100,6 +102,20 @@ public final class WatchDefinitions {
         return fromJson(json);
     }
 
+    /** Preflights the whole snapshot against the receiver's aggregate and per-page budgets. */
+    public static List<List<WatchSpec>> validatedPages(List<WatchSpec> specs) {
+        if (specs.size() > TransferBudget.WATCH_DEFINITIONS.entries())
+            throw new IllegalArgumentException("watch definition transfer too large");
+        var pages = pages(specs);
+        var budget = new TransferBudget(TransferBudget.WATCH_DEFINITIONS, () -> 0);
+        for (int i = 0; i < pages.size(); i++) {
+            var page = pages.get(i);
+            if (!budget.accept(page.size(), toPageJson(page).length(), i == pages.size() - 1))
+                throw new IllegalArgumentException("watch definition transfer too large");
+        }
+        return pages;
+    }
+
     /** Splits a complete, unique definition list into independently valid transport pages. */
     public static List<List<WatchSpec>> pages(List<WatchSpec> specs) {
         List<WatchSpec> checked = validate(specs);
@@ -124,8 +140,8 @@ public final class WatchDefinitions {
 
     static List<WatchSpec> validate(List<WatchSpec> specs) {
         if (specs == null) throw new IllegalArgumentException("watches are required");
-        Set<WatchSpec> unique = new HashSet<>();
-        for (WatchSpec spec : specs) if (spec == null || !unique.add(spec)) throw new IllegalArgumentException("duplicate watch");
+        Set<WatchIdentity.Key> unique = new HashSet<>();
+        for (WatchSpec spec : specs) if (spec == null || !unique.add(WatchIdentity.rawKey(spec))) throw new IllegalArgumentException("duplicate watch");
         return Collections.unmodifiableList(new ArrayList<>(specs));
     }
 }

@@ -6,12 +6,20 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.protocol.game.ServerboundSetCommandBlockPacket;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.permissions.LevelBasedPermissionSet;
+import net.minecraft.world.level.GameType;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.entity.CommandBlockEntity;
 import works.nuty.codon.CodonMod;
 import works.nuty.codon.adapter.DebuggerTaskQueue;
 import works.nuty.codon.adapter.SourceMapper;
 import works.nuty.codon.core.model.BlockLocation;
+import works.nuty.codon.core.model.BreakpointCondition;
+import works.nuty.codon.core.model.BreakpointDefinition;
+import works.nuty.codon.core.model.BreakpointTarget;
 import works.nuty.codon.core.model.CommandSnippet;
 import works.nuty.codon.core.model.SourceLocation;
 import works.nuty.codon.core.model.WatchResult;
@@ -44,6 +52,7 @@ public final class DebuggerRequestTransportGameTest implements FabricClientGameT
     public void runTest(ClientGameTestContext context) {
         try (TestSingleplayerContext world = context.worldBuilder().create()) {
             world.getConnection().waitForChunksRender();
+            assertCommandBlockAccess(world);
             world.getServer().runCommand("scoreboard objectives add transport_points dummy");
             world.getServer().runCommand("scoreboard players set @a transport_points 10");
             MinecraftServer server = world.getServer().computeOnServer(value -> value);
@@ -176,6 +185,47 @@ public final class DebuggerRequestTransportGameTest implements FabricClientGameT
             "internal request transports are absent from the public codon command tree");
         require(children.containsAll(List.of("breakpoint", "resume", "stepinto", "stepover", "stepout")),
             "public breakpoint and stepping controls remain available");
+    }
+
+    private static void assertCommandBlockAccess(TestSingleplayerContext world) {
+        world.getServer().runOnServer(server -> {
+            var player = server.getPlayerList().getPlayers().getFirst();
+            var level = player.level();
+            var loaded = player.blockPosition().offset(2, 0, 0);
+            var unloaded = new BlockPos(12_000_000, loaded.getY(), -12_000_000);
+            player.setGameMode(GameType.CREATIVE);
+            level.setBlock(loaded, Blocks.COMMAND_BLOCK.defaultBlockState(), 3);
+            var block = (CommandBlockEntity) level.getBlockEntity(loaded);
+            block.getCommandBlock().setCommand("say before");
+            var target = BreakpointTarget.whole(new SourceLocation.Block(
+                SourceMapper.toBlockLocation(loaded, level.dimension().identifier().toString())));
+            CodonMod.engine().saveBreakpoint(new BreakpointDefinition(target, true,
+                BreakpointCondition.count(BreakpointCondition.Kind.OUTPUT_COUNT, BreakpointCondition.Comparison.GT, 0)));
+            server.getPlayerList().deop(player.nameAndId());
+            require(!player.canUseGameMasterBlocks(), "fixture editor is unauthorized");
+            require(level.getChunkSource().getChunkNow(unloaded.getX() >> 4, unloaded.getZ() >> 4) == null,
+                "fixture target chunk starts absent");
+            for (var pos : List.of(unloaded, loaded)) {
+                player.connection.handleSetCommandBlock(new ServerboundSetCommandBlockPacket(pos, "say denied",
+                    CommandBlockEntity.Mode.REDSTONE, true, false, false));
+            }
+            DebuggerTaskQueue.drain(server);
+            require(level.getChunkSource().getChunkNow(unloaded.getX() >> 4, unloaded.getZ() >> 4) == null,
+                "unauthorized command-block packet must not acquire a chunk");
+            require(block.getCommandBlock().getCommand().equals("say before"), "unauthorized edit is rejected");
+            require(CodonMod.engine().breakpointDefinitions().stream().anyMatch(definition ->
+                definition.target().equals(target) && definition.enabled()), "denied edits preserve result conditions");
+            server.getPlayerList().op(player.nameAndId(), Optional.of(LevelBasedPermissionSet.OWNER), Optional.empty());
+            player.connection.handleSetCommandBlock(new ServerboundSetCommandBlockPacket(loaded, "say accepted",
+                CommandBlockEntity.Mode.REDSTONE, true, false, false));
+            DebuggerTaskQueue.drain(server);
+            require(block.getCommandBlock().getCommand().equals("say accepted"), "authorized loaded edit remains valid");
+            require(CodonMod.engine().breakpointDefinitions().stream().anyMatch(definition ->
+                definition.target().equals(target) && !definition.enabled() && definition.staleSource()),
+                "the actual authorized mutation invalidates old result conditions");
+            CodonMod.engine().clearBreakpoints();
+            level.removeBlock(loaded, false);
+        });
     }
 
     private static void setOwner(ClientGameTestContext context, MinecraftServer server, boolean owner) {

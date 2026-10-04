@@ -64,13 +64,13 @@ public final class CodonMod implements ModInitializer {
         StepController step = new StepController();
         CallStack callStack = new CallStack();
         ExecutionFlowHistory flows = new ExecutionFlowHistory();
-        McExecutionController executionController = new McExecutionController(() -> server);
         NetworkDebuggerEventSink eventSink = new NetworkDebuggerEventSink(() -> server);
         WorldBreakpointPersistence persistence = new WorldBreakpointPersistence(breakpoints, eventSink,
             failure -> LOGGER.warn("Could not persist Codon world breakpoints", failure));
 
         WorldWatchPersistence watches = new WorldWatchPersistence(
             failure -> LOGGER.warn("Could not persist Codon world watches", failure));
+        McExecutionController executionController = new McExecutionController(() -> server, watches::expireTransfers);
 
         DebuggerEngine wiredEngine = new DebuggerEngine(breakpoints, step, callStack, executionController, persistence, flows);
         engine = wiredEngine;
@@ -103,6 +103,7 @@ public final class CodonMod implements ModInitializer {
         ServerTickEvents.START_SERVER_TICK.register(DebuggerTaskQueue::drain);
         ServerTickEvents.END_SERVER_TICK.register(s -> {
             DebuggerTaskQueue.drain(s);
+            watches.expireTransfers();
             wiredEngine.onTickBoundary();
         });
 

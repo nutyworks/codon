@@ -191,9 +191,9 @@ public final class GizmoLabelLayout {
     }
 
     /**
-     * Finds connected overlap components with a screen-cell index.  When many
-     * members share one common screen rectangle, that common rectangle represents
-     * the whole component and prevents repeated pairwise checks for dense forks.
+     * Finds overlap components with a screen-cell index. Saturated cells become
+     * spatial groups even without a common intersection: each cell keeps at most
+     * MAX_EXACT_CELL_MEMBERS candidates, then uses one representative per insertion.
      */
     private static boolean mergeIntersectingBounds(List<Bounds> bounds, DisjointSet sets) {
         Map<Long, CollisionCell> cells = new HashMap<>();
@@ -207,7 +207,7 @@ public final class GizmoLabelLayout {
                         cellY <= Math.floorDiv(current.y() + current.height() - 1, CELL_SIZE); cellY++) {
                     CollisionCell cell = cells.computeIfAbsent(SpatialIndex.cellKey(cellX, cellY), ignored -> new CollisionCell());
                     touched.add(cell);
-                    if (cell.coarseMember >= 0 && !cell.commonBoundsEmpty && overlaps(current, cell.commonBounds)) {
+                    if (cell.coarseMember >= 0) {
                         sets.union(index, cell.coarseMember);
                         merged = true;
                     } else {
@@ -221,32 +221,19 @@ public final class GizmoLabelLayout {
                 }
             }
             for (CollisionCell cell : touched) {
+                if (cell.coarseMember >= 0) continue;
                 cell.members.add(index);
-                if (!cell.commonBoundsEmpty) {
-                    cell.commonBounds = intersection(cell.commonBounds, current);
-                    cell.commonBoundsEmpty = cell.commonBounds == null;
-                }
-                if (cell.coarseMember < 0 && cell.members.size() > MAX_EXACT_CELL_MEMBERS && !cell.commonBoundsEmpty) {
+                if (cell.members.size() >= MAX_EXACT_CELL_MEMBERS) {
                     cell.coarseMember = cell.members.get(0);
                     for (int candidate : cell.members) {
                         sets.union(cell.coarseMember, candidate);
                     }
+                    cell.members.clear();
                     merged = true;
                 }
             }
         }
         return merged;
-    }
-
-    private static Bounds intersection(Bounds first, Bounds second) {
-        if (first == null) {
-            return second;
-        }
-        int left = Math.max(first.x(), second.x());
-        int top = Math.max(first.y(), second.y());
-        int right = Math.min(first.x() + first.width(), second.x() + second.width());
-        int bottom = Math.min(first.y() + first.height(), second.y() + second.height());
-        return left < right && top < bottom ? new Bounds(left, top, right - left, bottom - top) : null;
     }
 
     private static List<Label> place(List<Unit> units, Bounds viewport, int selected, List<Bounds> obstacles) {
@@ -494,8 +481,6 @@ public final class GizmoLabelLayout {
     private static final class CollisionCell {
         private final List<Integer> members = new ArrayList<>();
         private int coarseMember = -1;
-        private Bounds commonBounds;
-        private boolean commonBoundsEmpty;
     }
 
     private static final class DisjointSet {

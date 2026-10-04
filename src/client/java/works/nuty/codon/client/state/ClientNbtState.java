@@ -24,6 +24,8 @@ public final class ClientNbtState {
     public record Query(long pauseId, long requestId, int sourceIndex, UUID executor, String path, int offset) {}
     public record EntitySource(int index, EntityRef executor) {}
     private static final int MAX_EXPANDED = 64;
+    static final int MAX_MATERIALIZED_ROWS = 8192;
+    static final int MAX_TRAVERSAL_STEPS = 16_384;
     private static final int MAX_DORMANT_UI_STATES = 256;
     private static final long TIMEOUT_NANOS = 5_000_000_000L;
     private final LongSupplier clock;
@@ -223,15 +225,38 @@ public final class ClientNbtState {
 
     public void accept(long pause, long request, NbtPage page) {
         if (pauseId <= 0 || pause != pauseId || request <= 0) return;
-        for (Tree tree : trees.values()) for (Branch branch : tree.branches.values()) {
+        for (Tree tree : trees.values()) for (var entry : tree.branches.entrySet()) {
+            Branch branch = entry.getValue();
             for (PageRequest pending : branch.pages.values()) {
                 if (pending.requestId != request || pending.page != null) continue;
                 if (page.status() == WatchResult.Status.VALUE && page.offset() != pending.offset) return;
+                if (page.status() == WatchResult.Status.VALUE && !validChildren(entry.getKey(), branch, page)) {
+                    pending.page = NbtPage.absent(WatchResult.Status.INVALID_PATH);
+                    return;
+                }
                 pending.page = page;
                 if (page.status() == WatchResult.Status.VALUE) branch.total = page.totalChildren();
                 return;
             }
         }
+    }
+
+    private static boolean validChildren(String path, Branch branch, NbtPage page) {
+        if (branch.total >= 0 && branch.total != page.totalChildren()) return false;
+        Set<String> identities = new java.util.HashSet<>();
+        for (PageRequest request : branch.pages.values()) {
+            if (request.page == null || request.page.status() != WatchResult.Status.VALUE) continue;
+            for (NbtPage.Node node : request.page.children()) {
+                if (!node.path().isEmpty()) identities.add(NbtPage.childIdentity(path, node.path()));
+            }
+        }
+        for (NbtPage.Node node : page.children()) {
+            // Multiple inaccessible values are legitimate leaves, never navigation targets.
+            if (node.path().isEmpty() && !node.expandable()) continue;
+            String identity = NbtPage.childIdentity(path, node.path());
+            if (identity == null || !identities.add(identity)) return false;
+        }
+        return true;
     }
 
     private void expire() {
@@ -272,6 +297,11 @@ public final class ClientNbtState {
     }
 
     private void append(Tree tree, String path, int depth, VirtualRows rows, boolean display) {
+        if (!rows.step(path, depth)) return;
+        if (!rows.visited.add(path)) {
+            rows.add(new Row(Kind.STATUS, path, depth, null, WatchResult.Status.INVALID_PATH, 0, false));
+            return;
+        }
         if (depth > MAX_EXPANDED) {
             rows.add(new Row(Kind.STATUS, path, depth, null, WatchResult.Status.TOO_LARGE, 0, false));
             return;
@@ -291,9 +321,16 @@ public final class ClientNbtState {
         }
         int cursor = 0;
         Set<Integer> offsets = new java.util.TreeSet<>();
-        if (branch != null) offsets.addAll(branch.pages.keySet());
-        if (display && tree.pendingPages.containsKey(path)) offsets.addAll(tree.pendingPages.get(path).keySet());
+        if (branch != null) for (int offset : branch.pages.keySet()) {
+            if (!rows.step(path, depth)) return;
+            offsets.add(offset);
+        }
+        if (display && tree.pendingPages.containsKey(path)) for (int offset : tree.pendingPages.get(path).keySet()) {
+            if (!rows.step(path, depth)) return;
+            offsets.add(offset);
+        }
         for (int offset : offsets) {
+            if (!rows.step(path, depth)) return;
             if (offset >= total) break;
             if (offset > cursor) rows.gap(path, depth, cursor, offset - cursor, null);
             int end = (int) Math.min(total, (long) offset + NbtPage.PAGE_SIZE);
@@ -303,6 +340,7 @@ public final class ClientNbtState {
             } else {
                 int index = offset;
                 for (NbtPage.Node node : page.children()) {
+                    if (!rows.step(path, depth)) return;
                     if (index++ >= end) break;
                     boolean expanded = node.expandable() && tree.expanded.contains(node.path());
                     rows.add(new Row(Kind.NODE, node.path(), depth, node, null, 0, expanded), path, offset);
@@ -329,6 +367,9 @@ public final class ClientNbtState {
     private static final class VirtualRows extends java.util.AbstractList<Row> {
         private record Run(Row row, int firstChild, String pagePath, int pageOffset) {}
         private final java.util.NavigableMap<Integer, Run> runs = new java.util.TreeMap<>();
+        private final Set<String> visited = new java.util.HashSet<>();
+        private boolean exhausted;
+        private int steps;
         private int size;
         @Override public int size() { return size; }
         @Override public Row get(int index) {
@@ -345,11 +386,35 @@ public final class ClientNbtState {
             return add(row, row.path(), row.targetOffset());
         }
         boolean add(Row row, String pagePath, int pageOffset) {
-            if (size == Integer.MAX_VALUE) return false;
+            if (!reserve(row.path(), row.depth())) return false;
             runs.put(size++, new Run(row, 0, pagePath, pageOffset));
             return true;
         }
+        private boolean reserve(String path, int depth) {
+            if (exhausted) return false;
+            if (runs.size() >= MAX_MATERIALIZED_ROWS || size == Integer.MAX_VALUE) {
+                failBudget(path, depth);
+                return false;
+            }
+            return true;
+        }
+        private boolean step(String path, int depth) {
+            if (exhausted) return false;
+            if (steps++ >= MAX_TRAVERSAL_STEPS) {
+                failBudget(path, depth);
+                return false;
+            }
+            return true;
+        }
+        private void failBudget(String path, int depth) {
+            exhausted = true;
+            // Keep a visible terminal failure even when the logical sparse extent is full.
+            int at = size == Integer.MAX_VALUE ? size - 1 : size++;
+            runs.put(at, new Run(new Row(Kind.STATUS, path, depth, null,
+                WatchResult.Status.TOO_LARGE, 0, false), 0, path, 0));
+        }
         void gap(String path, int depth, int first, int length, WatchResult.@Nullable Status status) {
+            if (!reserve(path, depth)) return;
             int bounded = Math.min(length, Integer.MAX_VALUE - size);
             if (bounded <= 0) return;
             var previous = runs.lastEntry();
