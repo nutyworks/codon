@@ -1,8 +1,11 @@
 package works.nuty.codon.network;
 
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.level.ServerPlayer;
 import works.nuty.codon.core.model.PauseSnapshot;
 import works.nuty.codon.core.service.DebuggerEngine;
@@ -10,11 +13,15 @@ import works.nuty.codon.persistence.WorldWatchPersistence;
 import works.nuty.codon.persistence.WatchDefinitions;
 
 import java.util.List;
+import java.util.HashSet;
+import java.util.IdentityHashMap;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Registers debugger request/sync payloads and brings newly joined clients up to date (current block
- * breakpoints, plus the active pause if the debugger is parked when they connect).
+ * Registers debugger request/sync payloads and brings authorized clients up to date on join or
+ * promotion (stored watches, breakpoints, plus an active pause).
  */
 public final class CodonNetworking {
     private static final AtomicLong nextWatchTransferId = new AtomicLong();
@@ -25,6 +32,7 @@ public final class CodonNetworking {
         PayloadTypeRegistry.serverboundPlay().register(WatchQueryPayload.TYPE, WatchQueryPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(WatchEditorQueryPayload.TYPE, WatchEditorQueryPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(WatchSavePayload.TYPE, WatchSavePayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(WatchSaveV2Payload.TYPE, WatchSaveV2Payload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(NbtTreeQueryPayload.TYPE, NbtTreeQueryPayload.CODEC);
         PayloadTypeRegistry.serverboundPlay().register(BreakpointEditPayload.TYPE, BreakpointEditPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(PauseSyncPayload.TYPE, PauseSyncPayload.CODEC);
@@ -34,6 +42,7 @@ public final class CodonNetworking {
         PayloadTypeRegistry.clientboundPlay().register(WatchDefinitionsSyncPayload.TYPE, WatchDefinitionsSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(WatchEditorSyncPayload.TYPE, WatchEditorSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(WatchSaveSyncPayload.TYPE, WatchSaveSyncPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(WatchSavePageAckPayload.TYPE, WatchSavePageAckPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(ResumeSyncPayload.TYPE, ResumeSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(StepSyncPayload.TYPE, StepSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(ContinueSyncPayload.TYPE, ContinueSyncPayload.CODEC);
@@ -53,6 +62,8 @@ public final class CodonNetworking {
             (payload, context) -> requests.editor(context.server(), context.player(), payload));
         ServerPlayNetworking.registerGlobalReceiver(WatchSavePayload.TYPE,
             (payload, context) -> requests.save(context.player(), payload));
+        ServerPlayNetworking.registerGlobalReceiver(WatchSaveV2Payload.TYPE,
+            (payload, context) -> requests.save(context.player(), payload));
         ServerPlayNetworking.registerGlobalReceiver(NbtTreeQueryPayload.TYPE,
             (payload, context) -> requests.nbt(context.server(), context.player(), payload));
         var breakpointEdits = new BreakpointEditHandler(engine);
@@ -63,32 +74,67 @@ public final class CodonNetworking {
     }
 
     public static void registerJoinSync(DebuggerEngine engine, WorldWatchPersistence watches, NetworkDebuggerEventSink eventSink) {
+        Map<ServerPlayer, Set<CustomPacketPayload.Type<?>>> synchronizedOwners = new IdentityHashMap<>();
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
             ServerPlayer player = handler.getPlayer();
-            if (ServerPlayNetworking.canSend(player, WatchDefinitionsSyncPayload.TYPE.id())) {
-                long transferId = nextTransferId();
-                int offset = 0;
-                List<List<works.nuty.codon.core.model.WatchSpec>> pages = WatchDefinitions.pages(watches.get(player.getUUID()));
-                for (int index = 0; index < pages.size(); index++) {
-                    List<works.nuty.codon.core.model.WatchSpec> page = pages.get(index);
-                    ServerPlayNetworking.send(player, new WatchDefinitionsSyncPayload(transferId, offset,
-                        index == pages.size() - 1, page));
-                    offset += page.size();
-                }
-            }
-
-            if (ServerPlayNetworking.canSend(player, BreakpointSyncPayload.TYPE.id())) {
-                ServerPlayNetworking.send(player, new BreakpointSyncPayload(List.copyOf(engine.blockBreakpoints())));
-            }
-            eventSink.sendBreakpointDefinitions(player, engine.breakpointDefinitions());
-
-            PauseSnapshot snapshot = engine.currentSnapshot();
-            if (snapshot != null && ServerPlayNetworking.canSend(player, PauseSyncPayload.TYPE.id())) {
-                ServerPlayNetworking.send(player, new PauseSyncPayload(snapshot));
-                eventSink.sendWatchChanges(player, snapshot.pauseId());
+            synchronizeOwner(player, engine, watches, eventSink, synchronizedOwners);
+        });
+        ServerTickEvents.END_SERVER_TICK.register(server -> {
+            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                // Promotion after JOIN still needs the handshake which enables watch persistence.
+                synchronizeOwner(player, engine, watches, eventSink, synchronizedOwners);
             }
         });
-        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> watches.resetTransfer(handler.getPlayer().getUUID()));
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+            synchronizedOwners.remove(handler.getPlayer());
+            watches.resetTransfer(handler.getPlayer().getUUID());
+        });
+        ServerLifecycleEvents.SERVER_STOPPED.register(server -> synchronizedOwners.clear());
+    }
+
+    private static void synchronizeOwner(ServerPlayer player, DebuggerEngine engine,
+                                          WorldWatchPersistence watches, NetworkDebuggerEventSink eventSink,
+                                          Map<ServerPlayer, Set<CustomPacketPayload.Type<?>>> synchronizedOwners) {
+        if (!NetworkDebuggerEventSink.authorized(player)) {
+            var sent = synchronizedOwners.get(player);
+            // A second watch restore would replace local edits after re-promotion. Remember only
+            // this completed handshake; all sends still require current owner permission.
+            if (sent != null) sent.retainAll(Set.of(WatchDefinitionsSyncPayload.TYPE));
+            return;
+        }
+        var sent = synchronizedOwners.computeIfAbsent(player, ignored -> new HashSet<>());
+        // Unsupported channels stay pending without resending other handshakes on each tick.
+        if (!sent.contains(WatchDefinitionsSyncPayload.TYPE)
+            && ServerPlayNetworking.canSend(player, WatchDefinitionsSyncPayload.TYPE.id())) {
+            long transferId = nextTransferId();
+            int offset = 0;
+            List<List<works.nuty.codon.core.model.WatchSpec>> pages = WatchDefinitions.pages(watches.get(player.getUUID()));
+            for (int index = 0; index < pages.size(); index++) {
+                List<works.nuty.codon.core.model.WatchSpec> page = pages.get(index);
+                ServerPlayNetworking.send(player, new WatchDefinitionsSyncPayload(transferId, offset,
+                    index == pages.size() - 1, page));
+                offset += page.size();
+            }
+            sent.add(WatchDefinitionsSyncPayload.TYPE);
+        }
+
+        if (!sent.contains(BreakpointSyncPayload.TYPE) && ServerPlayNetworking.canSend(player, BreakpointSyncPayload.TYPE.id())) {
+            ServerPlayNetworking.send(player, new BreakpointSyncPayload(List.copyOf(engine.blockBreakpoints())));
+            sent.add(BreakpointSyncPayload.TYPE);
+        }
+        if (!sent.contains(BreakpointDefinitionsSyncPayload.TYPE)
+            && ServerPlayNetworking.canSend(player, BreakpointDefinitionsSyncPayload.TYPE.id())) {
+            eventSink.sendBreakpointDefinitions(player, engine.breakpointDefinitions());
+            sent.add(BreakpointDefinitionsSyncPayload.TYPE);
+        }
+
+        if (!sent.contains(PauseSyncPayload.TYPE) && ServerPlayNetworking.canSend(player, PauseSyncPayload.TYPE.id())) {
+            PauseSnapshot snapshot = engine.currentSnapshot();
+            if (snapshot != null && eventSink.sendPauseSnapshot(player, snapshot)) {
+                eventSink.sendWatchChanges(player, snapshot.pauseId());
+            }
+            sent.add(PauseSyncPayload.TYPE);
+        }
     }
 
     private static long nextTransferId() {

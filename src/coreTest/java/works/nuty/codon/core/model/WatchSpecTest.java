@@ -12,6 +12,21 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WatchSpecTest {
+    @Test void identityOrderingMatchesEqualityWithNullBindingsUnicodeAndQuotedAliases() {
+        var values = java.util.List.of(new WatchSpec(WatchSpec.Kind.ENTITY_NBT, "", "Aa"),
+            new WatchSpec(WatchSpec.Kind.ENTITY_NBT, "", "BB"),
+            new WatchSpec(WatchSpec.Kind.ENTITY_NBT, "", "\"Aa\""),
+            new WatchSpec(WatchSpec.Kind.ENTITY_NBT, "", "한😀"),
+            new WatchSpec(WatchSpec.Kind.ENTITY_NBT, "", "Aa", new UUID(0, 1)),
+            WatchSpec.scoreHolder("score", " player "), WatchSpec.scoreHolder("score", "player"));
+        for (var first : values) for (var second : values) {
+            var a = WatchIdentity.key(first);
+            var b = WatchIdentity.key(second);
+            assertEquals(a.equals(b), a.compareTo(b) == 0);
+            assertEquals(Integer.signum(a.compareTo(b)), -Integer.signum(b.compareTo(a)));
+            assertEquals(first.equals(second), WatchIdentity.rawKey(first).compareTo(WatchIdentity.rawKey(second)) == 0);
+        }
+    }
     @Test
     void acceptsOnlyTheTargetAndPathShapeForEachWatchKind() {
         WatchSpec score = new WatchSpec(WatchSpec.Kind.SCORE, "  kills  ", " ");

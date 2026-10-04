@@ -114,6 +114,26 @@ excluded from watchdog accounting through the tick-deadline reset. The suspensio
 `RESUMED` or `CANCELLED`; cancellation, failures, and server shutdown clear stale pause state
 while preserving breakpoint definitions.
 
+Debugger mailbox admission is bounded before retaining network work: 256 requests
+and 64 controls globally, with 32 requests and 8 controls per connection. Console,
+RCON and disconnect recovery have 64 separately reserved slots. All admitted work
+shares FIFO ordering, so a later step cannot overtake an earlier observation.
+Execution-time connection and owner authorization remain on the server thread;
+overload drops network work without forwarding it to the ordinary packet queue.
+Command-block edits retain vanilla authorization and world lookup: stale stage
+breakpoints are invalidated around the authorized command mutation, with no added
+lookup before permission checks or after a rejected edit.
+
+Debugger flows, pause snapshots, breakpoint state and watch changes require a live
+owner-authorized recipient in addition to channel support. JOIN and later permission
+promotion initialize supported channels. Revocation retains only the completed watch
+handshake so re-promotion cannot replace local edits; other channels initialize again
+once authorized. Disconnect and server stop clear all bookkeeping. Promotion during a parked pause
+initializes after the next tick; `/codon resume` remains available. Empty terminal
+cleanup still reaches former owners. Live pause snapshots accept at most 1,024 stack
+frames and 4,096 sources. Oversized snapshots stay intact on the paused server and
+produce owner-visible recovery guidance instead of truncated client indices.
+
 At each stop, `PausedWorldState` publishes already-applied command changes before the server
 parks: dirty blocks/block-entity update packets, tracked entity poses/metadata/attributes,
 equipment (including cleared slots), passengers/leashes/motion, and player inventory, health,
@@ -222,7 +242,9 @@ entity NBT paths, or storage ID/path pairs. Edit, remove and pin existing defini
 the selected context in the inspector, not the selected caller frame. Examples: score objective
 `points`, entity path `Health` or `Pos[0]`, storage `demo:state` with path `counter`. Storage queries
 are independent of context selection. Definitions are saved per world and player, survive Continue,
-and are restored on rejoin; disconnect clears only the current client session. There is no watch-count limit. The Watches panel scrolls through the full list; no entries are
+and are restored on rejoin; disconnect clears only the current client session. Network
+restoration and uploads have the aggregate limits below; persisted files are not truncated.
+The Watches panel scrolls through the accepted list; no entries are
 replaced by a `+N` summary. Values align to the right with dot leaders from the field label. Long labels
 and values are clipped independently; click the row to inspect and copy full values.
 
@@ -389,24 +411,46 @@ in `WorldData.getSinglePlayerUUID()`. Migration leaves the legacy file intact an
 unrelated player files. An existing empty owner list stays empty. Only kind, objective/storage ID, NBT path,
 and optional pinned executor UUID are saved; values, display-name hints, captures, and change history
 are session-local. A bound target UUID is never rewritten when the singleplayer owner's UUID changes.
-Join sync (`codon:watch_definitions_v3`) sends bounded definition pages, assembles the complete
-list, then attaches the client edit listener, so initial empty state and disconnect cleanup cannot
-overwrite the save. Adds/removals and pin changes send validated `codon:watch_save` C2S payloads
-through the same owner-only control mailbox, including while paused. Individual pages
-remain bounded to 8,192 JSON characters; the full list has no count or aggregate JSON-length cap.
+Join sync (`codon:watch_definitions_v3`) sends bounded definition pages and merges the
+complete list with still-present local edits. Once the full union fits the transfer
+budget, it attaches the edit listener and saves only if local additions require it.
+Empty startup state and disconnect cleanup cannot overwrite the save. In-session
+reset preserves the save listener; disconnect explicitly releases it.
+Adds/removals and pin changes send validated C2S payloads through
+the same bounded debugger mailbox, including while paused. Individual pages remain
+bounded to 8,192 JSON characters. A complete definition transfer permits 8,192
+definitions and 2,097,152 serialized JSON UTF-16 characters, at most 1,024 pages,
+and 30 seconds from its first accepted page. Later pages do not extend that deadline.
 Transfers carry an identity and contiguous offsets and replace definitions only after the final page;
 incomplete, duplicate, or out-of-order chunks cannot partially overwrite the saved list.
+Updated peers use `codon:watch_save_v2` with one immutable page in flight. Only the
+exact transfer ID and next offset in `codon:watch_save_page_ack` release the next page;
+only the final durable-save response marks Saved. Timeout, rejection or disconnect
+releases pending work, with explicit user retry. A lost final reply means persistence
+is unconfirmed, because the server may already have saved. Legacy `codon:watch_save`
+uses the same bounded all-or-nothing assembly and may fail under mailbox overload.
 The authenticated sender determines ownership; clients cannot specify another player or world.
 Writes use temporary-file replacement, failed writes retry on later edits/world saves/shutdown,
 and unreadable or unsupported files are preserved with writes disabled for that session. Failed saves
 return a failure acknowledgement and warn that edits remain session-only.
+
+Other paged receives have independent aggregate budgets: automatic watch changes
+permit 4,096 rows and 2,097,152 retained text characters; function lists permit 32,768
+identifiers and 4,194,304 characters; source documents retain the existing 20,000-line
+and 700,000-character limits. Each permits at most 1,024 pages in a fixed 30-second
+window. Overflow or malformed/incomplete transfer state is discarded without partial
+completion. Counts and characters include repeated rows. Watch identity keys use a
+total order as well as equality to bound chosen-hash-collision lookup work. Persisted
+JSON format and on-disk data remain unchanged. NBT pages validate immediate-child
+paths and traversal visits each branch once; 8,192 materialized rows or 16,384 steps
+produce an explicit Too Large row, while sparse unloaded child ranges remain compressed.
 
 After each nonempty debugger mailbox batch, the parked server flushes outgoing connections before
 waiting or resuming. Vanilla normally batches these sends until the end of the tick, which cannot
 finish during a debugger pause. Watch replies and control acknowledgements therefore do not wait
 for the separate one-second keepalive. This flush does not tick connections or drain ordinary tasks.
 
-Pause payloads use `codon:pause_sync_v4` for the completion reason and the stop ID alongside context dimensions.
+Pause payloads use `codon:pause_sync_v9` for the completion reason and the stop ID alongside context dimensions.
 Client and server must both use the updated mod for pause visualization and watches.
 
 ## Persistence

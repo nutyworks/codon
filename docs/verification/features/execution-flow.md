@@ -118,6 +118,22 @@ purple in both the inspector and world markers. Incomplete or
 truncated lineage must retain its warning/unknown state. Do not infer edges from
 similar UUIDs/positions or replay a command to reconstruct its effects.
 
+Command wrapping grows measured prefixes only far enough to bracket each line,
+preserving spaces, code points, font measurements, part identity and raw highlight
+offsets. Flow and raw layouts retain one current result, invalidated by command and
+highlights, immutable flow/preview identity, width/row mode, font, Language reload,
+and Unicode/Japanese font options. Warning excerpts use at most 256 UTF-16 units
+without splitting surrogate pairs; expanded warning lists use at most 8,192 characters
+with visible omission counts. Captured command and warning evidence remains intact.
+Unavailable or unrepresentable stage identities create no navigation nodes or actions;
+valid sparse indices and single-stage aliases retain their exact mapping.
+
+Focused checks are `CommandFlowLayoutTest`, `BreakpointTargetPolicyTest`,
+`CommandPanelTest` and `DebuggerNavigationTest`. Native acceptance still requires
+`FlowBreakpointInteractionGameTest`, `DebuggerPresentationGameTest`, and long-command,
+highlight/font-reload and forged-index presentation checks. Headless checks do not
+establish native pixels or malicious-server timing.
+
 ## Code entry points
 
 - [BuildContextsMixin](../../../src/main/java/works/nuty/codon/mixin/BuildContextsMixin.java), [CommandTrace](../../../src/main/java/works/nuty/codon/adapter/CommandTrace.java): native execution instrumentation.
@@ -127,10 +143,33 @@ similar UUIDs/positions or replay a command to reconstruct its effects.
 
 ## Choose verification
 
+Server publication checks live `COMMANDS_OWNER` permission and connection state before
+sending pause snapshots, completed flows, or either breakpoint representation. Join
+synchronization applies the same boundary before reading the joining player's saved
+watches. Channel support alone grants no debugger access. Step/Continue go only to
+owners; other connected clients receive the empty terminal Resume cleanup so those
+transitions do not enable freecam. Terminal cleanup also reaches revoked owners.
+Owners retain legacy channel fallback and complete paged watch restoration, including
+the empty-list page. A player promoted after joining receives the same authorized
+initial synchronization on the next server tick, including the handshake that
+enables watch saving. Revocation preserves only the completed watch handshake so
+re-promotion cannot replace local watch edits; other initial state is refreshed
+once authorized again. All sends still check live owner permission. Disconnect
+and server shutdown clear every initialization flag.
+Each supported channel initializes once per authorized connection; a channel which
+becomes available later initializes without resending the others. Promotion polling
+waits while execution is parked because server ticks stop; `/codon resume` remains
+available to authorized command senders, and synchronization follows the next tick.
+If a live or join-time pause exceeds the wire collection limits, no partial snapshot
+or watch-change page is sent. Owners receive terminal presentation cleanup and a
+localized warning explaining that the server remains paused and `/codon resume`
+continues execution. This does not truncate or remap source indices.
+
 | Concern | Existing tests |
 | --- | --- |
 | Recorded inputs/outputs/lineage | `coreTest`: `ExecutionFlowRecorderTest` |
 | Trace adapter | `test`: `CommandTraceTest` |
+| Owner-only live and JOIN publication, revoked/disconnected recipients, legacy channels and terminal cleanup | `test`: `DebuggerRecipientAuthorizationTest`; authorized JOIN persistence: `DebuggerWatchPersistenceGameTest` |
 | Recorded navigation/layout | `clientTest`: `ClientExecutionFlowTimelineTest`, `ClientCommandSelectionTest`, `CommandFlowLayoutTest` |
 | BP/stage Tab order, wrapped reveal, pending-toggle focus, direct exact condition editors, navigation-only breakpoint list | `FlowBreakpointInteractionGameTest`; `test`: `DebuggerNavigationTest` |
 | Native branching/filtering and stage stops | `DebuggerExecutionFlowGameTest` |

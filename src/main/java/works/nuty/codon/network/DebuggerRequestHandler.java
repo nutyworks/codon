@@ -13,8 +13,11 @@ import works.nuty.codon.adapter.WatchReader;
 import works.nuty.codon.core.model.NbtPage;
 import works.nuty.codon.core.model.WatchEditorPage;
 import works.nuty.codon.core.model.WatchResult;
+import works.nuty.codon.core.model.WatchSpec;
 import works.nuty.codon.core.service.DebuggerEngine;
 import works.nuty.codon.persistence.WorldWatchPersistence;
+
+import java.util.List;
 
 /** Server-thread request handlers, reached through the same mailbox as debugger controls. */
 final class DebuggerRequestHandler {
@@ -93,27 +96,39 @@ final class DebuggerRequestHandler {
     }
 
     void save(ServerPlayer player, WatchSavePayload request) {
-        if (!authorized(player)) {
-            acknowledge(player, request.transferId(), WatchSaveSyncPayload.Status.FAILED);
+        save(player, request.transferId(), request.offset(), request.last(), request.definitions(), false);
+    }
+
+    void save(ServerPlayer player, WatchSaveV2Payload request) {
+        save(player, request.transferId(), request.offset(), request.last(), request.definitions(), true);
+    }
+
+    private void save(ServerPlayer player, long transferId, int offset, boolean last,
+                      List<WatchSpec> definitions, boolean acknowledgePages) {
+        if (!authorized(player) || (acknowledgePages
+            && !ServerPlayNetworking.canSend(player, WatchSavePageAckPayload.TYPE.id()))) {
+            acknowledge(player, transferId, WatchSaveSyncPayload.Status.FAILED);
             return;
         }
         try {
             // Only the authenticated sender identifies the owner; packets cannot name another player/world.
-            var result = watches.saveChunk(player.getUUID(), request.transferId(), request.offset(),
-                request.last(), request.definitions());
+            var result = watches.saveChunk(player.getUUID(), transferId, offset, last, definitions);
             if (result == WorldWatchPersistence.ChunkSaveResult.SAVE_FAILED) {
                 player.sendSystemMessage(Component.translatable("codon.watch.feedback.save_failed"));
-                acknowledge(player, request.transferId(), WatchSaveSyncPayload.Status.FAILED);
+                acknowledge(player, transferId, WatchSaveSyncPayload.Status.FAILED);
             } else if (result == WorldWatchPersistence.ChunkSaveResult.INVALID) {
                 player.sendSystemMessage(Component.translatable("codon.watch.feedback.invalid_saved"));
-                acknowledge(player, request.transferId(), WatchSaveSyncPayload.Status.INVALID);
-            } else if (request.last()) {
-                acknowledge(player, request.transferId(), WatchSaveSyncPayload.Status.SAVED);
+                acknowledge(player, transferId, WatchSaveSyncPayload.Status.INVALID);
+            } else if (last) {
+                acknowledge(player, transferId, WatchSaveSyncPayload.Status.SAVED);
+            } else if (acknowledgePages) {
+                // Progress acknowledges staging only. The existing final result confirms persistence.
+                ServerPlayNetworking.send(player, new WatchSavePageAckPayload(transferId, offset + definitions.size()));
             }
         } catch (IllegalArgumentException invalid) {
             watches.resetTransfer(player.getUUID());
             player.sendSystemMessage(Component.translatable("codon.watch.feedback.invalid_saved"));
-            acknowledge(player, request.transferId(), WatchSaveSyncPayload.Status.INVALID);
+            acknowledge(player, transferId, WatchSaveSyncPayload.Status.INVALID);
         }
     }
 

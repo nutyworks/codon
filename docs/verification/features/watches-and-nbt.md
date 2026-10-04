@@ -173,7 +173,9 @@ the repaired values and establish a complete baseline.
 | --- | --- |
 | Values, changes, pin identity | `clientTest`: `ClientWatchStateTest`, `ClientWatchChangesTest`, `ClientWatchPinTest` |
 | Pending/paged data | `clientTest`: `ClientNbtStateTest`, `ClientNbtDisplayDelayTest`, `ClientWatchDisplayDelayTest` |
-| Files and transfer | `test`: `WorldWatchPersistenceTest`, `WatchDefinitionTransferTest` |
+| Files and transfer | `test`: `WorldWatchPersistenceTest`, `WatchDefinitionTransferTest`, `WatchSaveV2PayloadTest`; `clientTest`: `ClientWatchUploadStateTest`, `ClientTransferLimitsTest` |
+| Delayed initial owner sync and local edits | `clientTest`: `ClientWatchInitializationTest`; `test`: `ClientWatchInitializationBudgetTest`; `WatchPromotionHandshakeGameTest`, `DebuggerWatchPinGameTest` |
+| Registered v2 and legacy save routes | `WatchSaveProtocolGameTest`: held/duplicate page ACK, durable final ACK, fixed timeout, stale ACK, retry, legacy multipage and invalid gap |
 | Watch readers and rendered values | `DebuggerWatchGameTest` |
 | Cold persisted Storage baseline, real restart/Continue, deletion/creation and entity/score history | `test`: `PersistedStorageNamespacesTest`; `DebuggerColdStorageWatchGameTest`, `PauseWatchChangesGameTest`, `DebuggerAutomaticWatchGameTest` |
 | Truncated/partial Storage decode, withheld baseline, and repaired-world reopen | `test`: `StorageReadFailureTest` (actual untransformed vanilla reader); `DebuggerStorageReadFailureGameTest` (actual mixin/snapshot/reopen) |
@@ -216,3 +218,54 @@ At a 320x240 GUI viewport, Details initially folds into the View menu. Open
 route and then verifies that both the selected source and NBT data remain visible.
 In short inspector viewports, a compact Contexts caption and one selected-source
 row leave room for the NBT heading plus data, even with the Flow detail band open.
+
+
+Client receive transfers have independent count, text, page and lifetime budgets. Watch
+restoration/upload permits 8,192 definitions and 2,097,152 serialized JSON UTF-16
+characters; automatic changes permit 4,096 received rows and 2,097,152 retained
+text characters. Both permit at most 1,024 pages within a fixed 30-second window.
+Repeated rows still consume the budget. Rejected/incomplete transfers never become
+completed definitions; persisted JSON files retain their existing format and are not
+truncated. Canonical watch identity lookup preserves the first expression and row order,
+including quoted paths, pin/unpin, edits and undo. Exact and canonical identity keys
+also have a total ordering, so chosen string-hash collisions cannot restore pairwise
+lookup work in staging, restoration or displayed-change merging.
+
+Updated peers negotiate `watch_save_v2`: one immutable page is in flight, and only
+an acknowledgement of its exact transfer ID and next offset releases another page.
+Only the final durable-save response can mark the upload Saved. Timeout, rejection,
+or disconnect releases the pending upload; retry is an explicit user action. A lost
+final acknowledgement leaves persistence unconfirmed, since the server may already
+have committed. Legacy peers use the existing bounded all-or-nothing transfer and
+can fail explicitly under overload. `ClientWatchUploadStateTest` includes 8,192
+entries across 1,024 acknowledged pages and stale, duplicate and unsolicited replies.
+
+The first completed owner watch sync merges the still-present local definitions
+with saved server definitions by canonical identity. Local row IDs, expressions,
+and live observations survive; missing server watches are appended. Only local
+identities absent from the server list trigger one merged save. An unchanged or
+empty startup state never writes back. Later initialization packets cannot replace
+edits. An in-session reset silently clears rows while preserving the connection's
+initialization and save callback; disconnect explicitly releases both. Session-local
+editing remains available when no initial server sync is supported. If the complete union exceeds
+the upload budget, local rows remain intact and persistence stays unconfirmed;
+edits or explicit Retry recheck the full union without uploading a partial subset.
+The initialization tests cover delayed empty/nonempty restores, edit/delete and
+canonical aliases, reset/disconnect, and actual count/serialized-character limits.
+`WatchPromotionHandshakeGameTest` holds the actual first owner snapshot after a
+non-owner joins and is promoted, then verifies an accepted local edit survives
+restoration and reaches durable storage. `DebuggerWatchPinGameTest` exercises the
+existing immediate edit/pause ordering. `WatchSaveProtocolGameTest` observes the
+registered receivers while preserving production handlers, including the real
+30-second lost-ACK deadline and explicit legacy packets. The cold-storage and
+completed-flow fixtures create an owner world before observing private state.
+
+NBT pages must contain unique immediate child paths, also across loaded pages.
+Self/ancestor links, skipped descendants, path aliases and inconsistent totals reject
+the page. Quoted/escaped Unicode keys, empty quoted keys and multiple inaccessible
+leaf paths remain supported. Traversal visits each branch once and emits a Too Large
+status after 8,192 materialized rows or 16,384 traversal steps; sparse million-child scroll ranges still use
+compressed gaps. `ClientNbtStateTest` and `ClientNbtDisplayDelayTest` cover both live
+and retained display rows. `ClientTransferLimitsTest` covers the original watch
+restoration/accumulation triggers and valid controls. These headless tests do not
+establish native rendering or real multiplayer transport.

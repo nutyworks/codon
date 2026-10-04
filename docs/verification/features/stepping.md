@@ -39,6 +39,17 @@ ID when the mailbox executes the request: a delayed control for an earlier stop
 must not advance a newer stop, including an execution-complete inspection stop.
 Explicit `/codon resume`, `stepinto`, `stepover` and `stepout` commands without an
 ID retain their manual/console behavior and target the stop present at execution.
+The debugger mailbox admits at most 256 pending client requests and 64 client
+control commands per server, with per-connection limits of 32 and 8 respectively.
+Admitted queries and controls keep their receive order. Excess work is dropped
+without falling back to the ordinary server queue; retry after pending work drains.
+Server-thread permission checks and normal denial replies remain authoritative.
+Console, RCON and disconnect cleanup have 64 reserved entries in the same bounded
+FIFO, preserving queries before subsequent local steps as well. RCON reports
+rejection and console logs it; blocking disconnect cleanup waits for admission or
+server shutdown. Client traffic cannot consume local recovery capacity, but a
+coordinated command flood can still exhaust client control admission. These are
+retention and scheduling bounds, not a wall-clock latency guarantee.
 After completion, current-stop controls must not act on a historical snapshot.
 Releasing the execution-complete stop with Continue or any Step action must also
 retain a selected, read-only completed Flow stage and its measured results. The
@@ -73,6 +84,7 @@ captures a selected row alongside a keyboard-focused, truncated action label.
 | --- | --- |
 | Depth, chain boundaries and completion | `coreTest`: `StepControllerTest`, `CommandBlockSteppingTest`, `DebuggerEngineTest` |
 | Delayed controls and pause ID validation | `coreTest`: `DebuggerControlTest`; command transport: `DebuggerRequestTransportGameTest` |
+| Mailbox limits, concurrent admission, request/step order, recovery and shutdown completion | `test`: `DebuggerMailboxTest`, `DebuggerTaskQueueTest` |
 | Pending state, current/history separation | `clientTest`: `ClientDebuggerStateTest`, `ClientHistoricalCallStackTest`, `DebuggerStatusTest` |
 | Native command-chain execution/stage recording | `DebuggerExecutionFlowGameTest` |
 | Stop after step/resume in a parked native command context | `DebuggerStopRoutingGameTest` |

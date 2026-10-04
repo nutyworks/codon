@@ -5,6 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import works.nuty.codon.core.model.WatchSpec;
+import works.nuty.codon.core.model.WatchIdentity;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -124,8 +125,8 @@ public final class WatchDefinitions {
 
     static List<WatchSpec> validate(List<WatchSpec> specs) {
         if (specs == null) throw new IllegalArgumentException("watches are required");
-        Set<WatchSpec> unique = new HashSet<>();
-        for (WatchSpec spec : specs) if (spec == null || !unique.add(spec)) throw new IllegalArgumentException("duplicate watch");
+        Set<WatchIdentity.Key> unique = new HashSet<>();
+        for (WatchSpec spec : specs) if (spec == null || !unique.add(WatchIdentity.rawKey(spec))) throw new IllegalArgumentException("duplicate watch");
         return Collections.unmodifiableList(new ArrayList<>(specs));
     }
 }

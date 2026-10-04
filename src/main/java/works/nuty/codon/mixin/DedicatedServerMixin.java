@@ -23,13 +23,14 @@ abstract class DedicatedServerMixin {
             return original.call(command);
         }
         CompletableFuture<String> result = new CompletableFuture<>();
-        DebuggerTaskQueue.execute(server, () -> {
+        boolean admitted = DebuggerTaskQueue.execute(server, () -> {
             try {
                 result.complete(original.call(command));
             } catch (RuntimeException e) {
                 result.completeExceptionally(e);
             }
         });
+        if (!admitted) return "Debugger command unavailable: mailbox full or server stopping";
         try {
             return result.get(10, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
@@ -47,7 +48,9 @@ abstract class DedicatedServerMixin {
             return;
         }
         DedicatedServer server = (DedicatedServer) (Object) this;
-        DebuggerTaskQueue.execute(server, () -> server.getCommands().performPrefixedCommand(source, command));
+        if (!DebuggerTaskQueue.execute(server, () -> server.getCommands().performPrefixedCommand(source, command))) {
+            works.nuty.codon.CodonMod.LOGGER.warn("Debugger console command unavailable: mailbox full or server stopping");
+        }
         ci.cancel();
     }
 }

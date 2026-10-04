@@ -13,6 +13,53 @@ class WatchDefinitionTransferTest {
     private static final WatchSpec B = new WatchSpec(WatchSpec.Kind.SCORE, "b", "");
     private static final WatchSpec C = new WatchSpec(WatchSpec.Kind.SCORE, "c", "");
 
+    @Test void acceptsExactAggregateCountButDiscardsTheFirstExtraEntry() {
+        var definitions = java.util.stream.IntStream.range(0, works.nuty.codon.core.model.TransferBudget.WATCH_DEFINITIONS.entries())
+            .mapToObj(i -> new WatchSpec(WatchSpec.Kind.ENTITY_NBT, "", "한😀" + i)).toList();
+        var pages = WatchDefinitions.pages(definitions);
+        var accepted = new WatchDefinitionTransfer(() -> 0);
+        var rejected = new WatchDefinitionTransfer(() -> 0);
+        int offset = 0;
+        Optional<List<WatchSpec>> complete = Optional.empty();
+        for (var page : pages) {
+            boolean last = offset + page.size() == definitions.size();
+            complete = accepted.accept(1, offset, last, page);
+            assertTrue(rejected.accept(1, offset, false, page).isEmpty());
+            offset += page.size();
+        }
+        assertEquals(Optional.of(definitions), complete);
+        assertTrue(rejected.accept(1, offset, true, List.of(A)).isEmpty());
+        assertFalse(rejected.isActive());
+        assertTrue(rejected.accept(1, offset, true, List.of()).isEmpty());
+        assertEquals(Optional.of(List.of(B)), rejected.accept(2, 0, true, List.of(B)));
+    }
+
+    @Test void rejectsAggregateEscapedJsonCharactersAndTimesOutWithoutAReply() {
+        var transfer = new WatchDefinitionTransfer(() -> 0);
+        int offset = 0;
+        long characters = 0;
+        // JSON escaping is charged, while expressions remain unchanged.
+        var definitions = java.util.stream.IntStream.range(0, 8192)
+            .mapToObj(i -> new WatchSpec(WatchSpec.Kind.STORAGE_NBT,
+                "demo:" + "x".repeat(120), "\\".repeat(120) + i)).toList();
+        for (var page : WatchDefinitions.pages(definitions)) {
+            characters += WatchDefinitions.toPageJson(page).length();
+            assertTrue(transfer.accept(1, offset, false, page).isEmpty());
+            offset += page.size();
+            if (!transfer.isActive()) break;
+        }
+        assertFalse(transfer.isActive());
+        assertTrue(characters > works.nuty.codon.core.model.TransferBudget.WATCH_DEFINITIONS.characters());
+        assertTrue(offset < definitions.size());
+
+        var now = new java.util.concurrent.atomic.AtomicLong();
+        transfer = new WatchDefinitionTransfer(now::get);
+        assertTrue(transfer.accept(2, 0, false, List.of(A)).isEmpty());
+        now.set(works.nuty.codon.core.model.TransferBudget.TIMEOUT_NANOS);
+        assertFalse(transfer.isActive());
+        assertTrue(transfer.accept(2, 1, true, List.of(B)).isEmpty());
+    }
+
     @Test void acceptsEmptyAndMultipleOrderedPages() {
         var empty = new WatchDefinitionTransfer();
         assertEquals(Optional.of(List.of()), empty.accept(1, 0, true, List.of()));

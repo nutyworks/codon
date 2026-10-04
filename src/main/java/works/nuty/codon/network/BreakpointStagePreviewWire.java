@@ -1,6 +1,7 @@
 package works.nuty.codon.network;
 
 import java.util.Objects;
+import works.nuty.codon.core.model.StagePreviewLocation;
 import net.minecraft.network.FriendlyByteBuf;
 import works.nuty.codon.core.model.BlockLocation;
 import works.nuty.codon.core.model.FunctionId;
@@ -9,9 +10,9 @@ import works.nuty.codon.core.model.SourceLocation;
 
 /** Bounds and serializes the small, read-only stage-preview protocol. */
 final class BreakpointStagePreviewWire {
-    static final int MAX_DIMENSION_LENGTH = 128;
-    static final int MAX_NAMESPACE_LENGTH = 64;
-    static final int MAX_PATH_LENGTH = 256;
+    static final int MAX_DIMENSION_LENGTH = StagePreviewLocation.MAX_DIMENSION_LENGTH;
+    static final int MAX_NAMESPACE_LENGTH = StagePreviewLocation.MAX_NAMESPACE_LENGTH;
+    static final int MAX_PATH_LENGTH = StagePreviewLocation.MAX_PATH_LENGTH;
     static final int MAX_COMMAND_LENGTH = 16_384;
 
     private BreakpointStagePreviewWire() { }
@@ -49,16 +50,7 @@ final class BreakpointStagePreviewWire {
     }
 
     static SourceLocation validateLocation(SourceLocation location) {
-        location = Objects.requireNonNull(location, "location");
-        switch (location) {
-            case SourceLocation.Block block -> bounded(block.block().dimension(), MAX_DIMENSION_LENGTH, "dimension");
-            case SourceLocation.Function function -> {
-                bounded(function.location().function().namespace(), MAX_NAMESPACE_LENGTH, "namespace");
-                bounded(function.location().function().path(), MAX_PATH_LENGTH, "path");
-                if (function.location().line() < 1) throw new IllegalArgumentException("invalid function line");
-            }
-            case SourceLocation.Player ignored -> throw new IllegalArgumentException("stage preview requires a saved source");
-        }
+        if (!StagePreviewLocation.supported(location)) throw new IllegalArgumentException("unsupported stage preview location");
         return location;
     }
 

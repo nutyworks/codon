@@ -48,7 +48,8 @@ public final class DebuggerColdStorageWatchGameTest implements FabricClientGameT
     @Override public void runTest(ClientGameTestContext context) {
         TestWorldSave save;
         Fixture fixture;
-        try (var prepared = context.worldBuilder().create()) {
+        // This owner-storage fixture needs the authorized JOIN restore before its first edit.
+        try (var prepared = context.worldBuilder().adjustSettings(settings -> settings.setAllowCommands(true)).create()) {
             prepared.getConnection().waitForChunksRender();
             prepared.getServer().runCommand("scoreboard objectives add cold_storage_points dummy");
             prepared.getServer().runCommand("data merge storage codon_cold:acceptance {changed:0,removed:1,unchanged:7}");

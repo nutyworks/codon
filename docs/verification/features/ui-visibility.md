@@ -18,6 +18,13 @@ The default binding is `H`; the same gesture works in world and debugger cursor 
 6. Resume and step normally: hiding does not send a debugger control request or change
    client/server pause snapshots. Visibility is session state and is not saved to settings.
 
+Gizmo collision cells retain at most 128 exact candidates before becoming a spatial
+aggregate, including cells whose rectangles have no common intersection. Coarse groups
+retain every source and the selected member; the existing 20-label spatial budget and
+obstacle rules remain. `GizmoLabelLayoutTest` covers 10,000 split-height sources in both
+input orders, plus grouping, selection, obstacle and visible-budget controls. Native
+world projection and rendering remain separate acceptance checks.
+
 ## Code entry points
 
 - [UiHideGesture](../../../src/client/java/works/nuty/codon/client/input/UiHideGesture.java): monotonic press/release classification and cancelled gestures.

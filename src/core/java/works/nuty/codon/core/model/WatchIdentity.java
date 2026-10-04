@@ -1,6 +1,8 @@
 package works.nuty.codon.core.model;
 
 import java.util.Objects;
+import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Semantic identity for persisted watches.  The expression itself remains untouched: this only
@@ -9,6 +11,28 @@ import java.util.Objects;
  */
 public final class WatchIdentity {
     private WatchIdentity() {}
+
+    /** Total ordering lets hash-map tree bins stay logarithmic even for chosen string hashes. */
+    public record Key(WatchSpec.Kind kind, String target, String path, @Nullable UUID executor,
+                      @Nullable String scoreHolder) implements Comparable<Key> {
+        private static final java.util.Comparator<Key> ORDER = java.util.Comparator.comparing(Key::kind)
+            .thenComparing(Key::target).thenComparing(Key::path)
+            .thenComparing(Key::executor, java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder()))
+            .thenComparing(Key::scoreHolder, java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder()));
+
+        @Override public int compareTo(Key other) { return ORDER.compare(this, other); }
+    }
+
+    /** Exact identity for transport/persistence uniqueness; quoted aliases stay distinct here. */
+    public static Key rawKey(WatchSpec spec) {
+        return new Key(spec.kind(), spec.target(), spec.path(), spec.executor(), spec.scoreHolder());
+    }
+
+    public static Key key(WatchSpec spec) { return key(spec, spec.executor()); }
+
+    public static Key key(WatchSpec spec, @Nullable UUID executor) {
+        return new Key(spec.kind(), spec.target(), canonicalPath(spec.path()), executor, spec.scoreHolder());
+    }
 
     public static boolean same(WatchSpec first, WatchSpec second) {
         return first.kind() == second.kind()

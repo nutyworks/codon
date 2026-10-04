@@ -1,4 +1,5 @@
 {
+  "codon.pause.snapshot_too_large": "Codon is paused, but this snapshot is too large to display. Use /codon resume to continue.",
   "codon.ui.background_opacity.usage": "Use Left and Right to adjust panel opacity.",
   "codon.ui.background_opacity": "Panel opacity: %s%%",
   "codon.ui.resize_panel": "Drag to resize panel width · Esc cancels",
@@ -448,7 +449,7 @@
   "codon.watch.scope.fixed": "Fixed · %s",
   "codon.watch.scope.context": "Context · %s",
   "codon.watch.save.retry": "Retry saving watches",
-  "codon.watch.save.failed": "Session only · Saving failed. Retry above.",
+  "codon.watch.save.failed": "Save not confirmed · Retry above.",
   "codon.watch.save.saving": "Saving…",
   "codon.watch.save.saved": "Saved",
   "codon.watch.details.title": "Watch details",

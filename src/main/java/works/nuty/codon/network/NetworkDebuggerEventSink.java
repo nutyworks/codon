@@ -1,6 +1,7 @@
 package works.nuty.codon.network;
 
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -21,8 +22,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
 /**
- * Minecraft adapter for {@link DebuggerEventSink}: broadcasts debugger state to every connected
- * client that has Codon installed. This is what makes the in-game UI work on dedicated servers —
+ * Minecraft adapter for {@link DebuggerEventSink}: broadcasts debugger state to connected,
+ * owner-authorized clients that support it. This makes the in-game UI work on dedicated servers —
  * the client renders from synced state rather than reaching into the server's memory.
  */
 public final class NetworkDebuggerEventSink implements DebuggerEventSink {
@@ -41,7 +42,9 @@ public final class NetworkDebuggerEventSink implements DebuggerEventSink {
         MinecraftServer s = server.get();
         changesPauseId = snapshot.pauseId();
         changes = List.of();
-        if (s != null) {
+        if (!ClientboundLimits.supports(snapshot)) {
+            resetWatchChanges();
+        } else if (s != null) {
             try {
                 changes = watchChanges.capture(s, snapshot);
             } catch (RuntimeException failure) {
@@ -49,13 +52,28 @@ public final class NetworkDebuggerEventSink implements DebuggerEventSink {
                 CodonMod.LOGGER.warn("Could not capture pause watch changes", failure);
             }
         }
-        broadcast(new PauseSyncPayload(snapshot));
-        if (s != null) for (ServerPlayer player : s.getPlayerList().getPlayers()) sendWatchChanges(player, snapshot.pauseId());
+        if (s != null) for (ServerPlayer player : s.getPlayerList().getPlayers()) {
+            if (sendPauseSnapshot(player, snapshot)) sendWatchChanges(player, snapshot.pauseId());
+        }
+    }
+
+    /** Shared live/JOIN boundary: never truncate source indices or disconnect an owner on encode. */
+    public boolean sendPauseSnapshot(ServerPlayer player, PauseSnapshot snapshot) {
+        if (!authorized(player) || !ServerPlayNetworking.canSend(player, PauseSyncPayload.TYPE.id())) return false;
+        if (!ClientboundLimits.supports(snapshot)) {
+            sendResume(player);
+            // Only presentation is cleared. The engine remains paused and its controls remain usable.
+            player.sendSystemMessage(Component.translatableWithFallback("codon.pause.snapshot_too_large",
+                "Codon is paused, but this snapshot is too large to display. Use /codon resume to continue."));
+            return false;
+        }
+        ServerPlayNetworking.send(player, new PauseSyncPayload(snapshot));
+        return true;
     }
 
     public void sendWatchChanges(ServerPlayer player, long pauseId) {
         if (pauseId <= 0 || pauseId != changesPauseId
-            || !player.createCommandSourceStack().permissions().hasPermission(Permissions.COMMANDS_OWNER)
+            || !authorized(player)
             || !ServerPlayNetworking.canSend(player, WatchChangesSyncPayload.TYPE.id())) return;
         for (int offset = 0; ; offset += WatchChangesSyncPayload.PAGE_SIZE) {
             int end = Math.min(changes.size(), offset + WatchChangesSyncPayload.PAGE_SIZE);
@@ -74,7 +92,8 @@ public final class NetworkDebuggerEventSink implements DebuggerEventSink {
     @Override
     public void resumed() {
         resetWatchChanges();
-        broadcast(new ResumeSyncPayload());
+        MinecraftServer s = server.get();
+        if (s != null) for (ServerPlayer player : s.getPlayerList().getPlayers()) sendResume(player);
     }
 
     @Override
@@ -85,10 +104,10 @@ public final class NetworkDebuggerEventSink implements DebuggerEventSink {
         MinecraftServer s = server.get();
         if (s == null) return;
         for (ServerPlayer player : s.getPlayerList().getPlayers()) {
-            if (ServerPlayNetworking.canSend(player, ContinueSyncPayload.TYPE.id())) {
+            if (authorized(player) && ServerPlayNetworking.canSend(player, ContinueSyncPayload.TYPE.id())) {
                 ServerPlayNetworking.send(player, new ContinueSyncPayload());
-            } else if (ServerPlayNetworking.canSend(player, ResumeSyncPayload.TYPE.id())) {
-                ServerPlayNetworking.send(player, new ResumeSyncPayload());
+            } else {
+                sendResume(player);
             }
         }
     }
@@ -100,11 +119,10 @@ public final class NetworkDebuggerEventSink implements DebuggerEventSink {
         MinecraftServer s = server.get();
         if (s == null) return;
         for (ServerPlayer player : s.getPlayerList().getPlayers()) {
-            if (ServerPlayNetworking.canSend(player, StepSyncPayload.TYPE.id())) {
+            if (authorized(player) && ServerPlayNetworking.canSend(player, StepSyncPayload.TYPE.id())) {
                 ServerPlayNetworking.send(player, new StepSyncPayload());
-            } else if (ServerPlayNetworking.canSend(player, ResumeSyncPayload.TYPE.id())) {
-                // Keep the original resume protocol usable by clients without step support.
-                ServerPlayNetworking.send(player, new ResumeSyncPayload());
+            } else {
+                sendResume(player);
             }
         }
     }
@@ -125,8 +143,7 @@ public final class NetworkDebuggerEventSink implements DebuggerEventSink {
     }
 
     public void sendBreakpointDefinitions(ServerPlayer player, List<BreakpointDefinition> definitions) {
-        if (!player.connection.isAcceptingMessages()
-            || !player.createCommandSourceStack().permissions().hasPermission(Permissions.COMMANDS_OWNER)
+        if (!authorized(player)
             || !ServerPlayNetworking.canSend(player, BreakpointDefinitionsSyncPayload.TYPE.id())) return;
         long transferId = nextBreakpointTransferId.incrementAndGet();
         List<BreakpointDefinition> sorted = definitions.stream()
@@ -146,9 +163,23 @@ public final class NetworkDebuggerEventSink implements DebuggerEventSink {
             return;
         }
         for (ServerPlayer player : s.getPlayerList().getPlayers()) {
-            if (ServerPlayNetworking.canSend(player, payload.type().id())) {
+            if (authorized(player) && ServerPlayNetworking.canSend(player, payload.type().id())) {
                 ServerPlayNetworking.send(player, payload);
             }
+        }
+    }
+
+    static boolean authorized(ServerPlayer player) {
+        // Capability advertisement is not authorization; recheck live permission for each send.
+        return player.connection.isAcceptingMessages()
+            && player.createCommandSourceStack().permissions().hasPermission(Permissions.COMMANDS_OWNER);
+    }
+
+    private static void sendResume(ServerPlayer player) {
+        // Empty terminal cleanup must reach former owners, and keeps legacy clients usable.
+        // Step/Continue would retain freecam while their subsequent owner-only pauses are withheld.
+        if (player.connection.isAcceptingMessages() && ServerPlayNetworking.canSend(player, ResumeSyncPayload.TYPE.id())) {
+            ServerPlayNetworking.send(player, new ResumeSyncPayload());
         }
     }
 }

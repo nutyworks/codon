@@ -13,13 +13,12 @@ import works.nuty.codon.client.CodonClientMod;
 import works.nuty.codon.client.state.ClientDebuggerState;
 import works.nuty.codon.client.state.ClientStagePreviewState;
 import works.nuty.codon.client.state.BreakpointTargetPolicy;
+import works.nuty.codon.client.ui.layout.VisibleWidgetCache;
 import works.nuty.codon.core.model.BreakpointDefinition;
 import works.nuty.codon.core.model.BreakpointTarget;
 import works.nuty.codon.core.model.SourceLocation;
 
 import java.util.Comparator;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.List;
 
 import static works.nuty.codon.client.ui.DebuggerTheme.*;
@@ -29,7 +28,7 @@ public final class BreakpointListScreen extends ScaledCodonScreen {
     private final Screen parent;
     private final ClientDebuggerState state;
     private final @Nullable List<BreakpointTarget> targets;
-    private final Map<String, DebuggerButton> buttons = new HashMap<>();
+    private final VisibleWidgetCache<String, DebuggerButton> buttons = new VisibleWidgetCache<>();
     private List<BreakpointDefinition> displayed = List.of();
     private int left, top, panelWidth, panelHeight, offset, rows;
 
@@ -56,6 +55,7 @@ public final class BreakpointListScreen extends ScaledCodonScreen {
     private void rebuild() {
         var focused = getFocused();
         clearWidgets();
+        buttons.begin();
         displayed = state.breakpoints().definitions().stream()
             .filter(definition -> targets == null || targets.contains(definition.target()))
             .sorted(Comparator.comparing(definition -> BreakpointUi.target(definition.target()))).toList();
@@ -66,7 +66,7 @@ public final class BreakpointListScreen extends ScaledCodonScreen {
             String label = tr(definition.enabled() ? "codon.breakpoint.enabled" : "codon.breakpoint.disabled") + " · "
                 + (definition.staleSource() ? "! " + tr("codon.breakpoint.location_review") + " · " : "")
                 + BreakpointUi.target(target) + " · " + BreakpointUi.condition(definition.condition());
-            DebuggerButton button = addRenderableWidget(buttons.computeIfAbsent("row:" + target, ignored -> new DebuggerButton()));
+            DebuggerButton button = addRenderableWidget(buttons.get("row:" + target, DebuggerButton::new));
             button.configure(left + 8, top + 30 + row * 20, panelWidth - 16, 18, Component.literal(label),
                 canNavigate(target), false, true, false, () -> navigate(target));
             button.withFlatChrome().withTextIcon(BreakpointUi.icon(definition));
@@ -74,11 +74,12 @@ public final class BreakpointListScreen extends ScaledCodonScreen {
                 ? "codon.breakpoint.go_to_location" : "codon.breakpoint.flow_unavailable")));
             button.setTabOrderGroup(row);
         }
-        DebuggerButton close = addRenderableWidget(buttons.computeIfAbsent("close", ignored -> new DebuggerButton()));
+        DebuggerButton close = addRenderableWidget(buttons.get("close", DebuggerButton::new));
         close.configure(left + 8, top + panelHeight - 27, Math.max(1, panelWidth - 16), 20,
             Component.translatable("codon.breakpoint.close"), true, false, false, false, this::onClose);
         if (focused instanceof AbstractWidget widget && children().contains(widget)) setFocused(widget);
         else if (focused != null) setFocused(close);
+        buttons.end();
     }
 
     private @Nullable CodonScreen debuggerScreen() {

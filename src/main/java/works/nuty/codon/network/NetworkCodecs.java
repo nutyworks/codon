@@ -21,6 +21,7 @@ import works.nuty.codon.core.model.SourceLocation;
 import works.nuty.codon.core.model.Vec3d;
 import works.nuty.codon.core.service.ExecutionFlowHistory;
 import works.nuty.codon.core.service.ExecutionFlowRecorder;
+import works.nuty.codon.core.service.BreakpointRegistry;
 
 import java.util.List;
 
@@ -36,16 +37,16 @@ final class NetworkCodecs {
 
     private static final StreamCodec<FriendlyByteBuf, List<CallFrame>> CALL_STACK_CODEC =
         StreamCodec.<FriendlyByteBuf, CallFrame>of(NetworkCodecs::writeCallFrame, NetworkCodecs::readCallFrame)
-            .apply(ByteBufCodecs.list());
+            .apply(ByteBufCodecs.list(ClientboundLimits.MAX_CALL_STACK));
     private static final StreamCodec<FriendlyByteBuf, List<CallFrame>> FLOW_CALL_STACK_CODEC =
         StreamCodec.<FriendlyByteBuf, CallFrame>of(NetworkCodecs::writeCallFrame, NetworkCodecs::readCallFrame)
             .apply(ByteBufCodecs.list(ExecutionFlowRecorder.MAX_STACK_FRAMES));
     private static final StreamCodec<FriendlyByteBuf, List<PauseSource>> PAUSE_SOURCES_CODEC =
         StreamCodec.<FriendlyByteBuf, PauseSource>of(NetworkCodecs::writePauseSource, NetworkCodecs::readPauseSource)
-            .apply(ByteBufCodecs.list());
+            .apply(ByteBufCodecs.list(ClientboundLimits.MAX_PAUSE_SOURCES));
     private static final StreamCodec<FriendlyByteBuf, List<BlockLocation>> BLOCK_LOCATIONS_CODEC =
         StreamCodec.<FriendlyByteBuf, BlockLocation>of(NetworkCodecs::writeBlockLocation, NetworkCodecs::readBlockLocation)
-            .apply(ByteBufCodecs.list());
+            .apply(ByteBufCodecs.list(BreakpointRegistry.MAX_DEFINITIONS));
     private static final StreamCodec<FriendlyByteBuf, List<ExecutionFlowContext>> FLOW_CONTEXTS_CODEC =
         StreamCodec.<FriendlyByteBuf, ExecutionFlowContext>of(NetworkCodecs::writeFlowContext, NetworkCodecs::readFlowContext)
             .apply(ByteBufCodecs.list(ExecutionFlowRecorder.MAX_CONTEXTS));

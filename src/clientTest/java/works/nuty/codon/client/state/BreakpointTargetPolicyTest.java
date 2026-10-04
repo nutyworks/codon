@@ -6,6 +6,25 @@ import works.nuty.codon.core.model.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class BreakpointTargetPolicyTest {
+    @Test void overflowingStageIdentityCannotEnableBreakpointControls() {
+        var stage = new ExecutionFlowStage(Integer.MAX_VALUE, CommandSnippet.plain(COMMAND),
+            List.of(), List.of(), List.of(), List.of(), 0, 0, 0, true, 0, 0, true, true, false);
+        var flow = new ExecutionFlowTrace(1, LOCATION, List.of(stage), false);
+        assertEquals(0, BreakpointTargetPolicy.stageCount(COMMAND, null, flow));
+        assertNull(BreakpointTargetPolicy.target(LOCATION, stage.index(), COMMAND, 2));
+    }
+
+    @Test void negativeIdentityIsUnavailableAndSparseValidIdentityRemainsExact() {
+        for (int index : List.of(-1, 7)) {
+            var stage = new ExecutionFlowStage(index, CommandSnippet.plain(COMMAND),
+                List.of(), List.of(), List.of(), List.of(), 0, 0, 0, true, 0, 0, true, true, false);
+            int count = BreakpointTargetPolicy.stageCount(COMMAND, null, new ExecutionFlowTrace(1, LOCATION, List.of(stage), false));
+            assertEquals(index < 0 ? 0 : 8, count);
+            assertEquals(index < 0 ? null : BreakpointTarget.stage(LOCATION, 7, COMMAND),
+                BreakpointTargetPolicy.target(LOCATION, index, COMMAND, count));
+        }
+    }
+
     private static final SourceLocation LOCATION = new SourceLocation.Function(new FunctionLocation(new FunctionId("test", "one"), 1));
     private static final String COMMAND = "say one";
 

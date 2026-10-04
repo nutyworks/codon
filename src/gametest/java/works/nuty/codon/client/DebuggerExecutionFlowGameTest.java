@@ -49,7 +49,8 @@ public final class DebuggerExecutionFlowGameTest implements FabricClientGameTest
         } catch (Throwable failure) {
             throw new AssertionError("BuildContexts mixin failed to load", failure);
         }
-        try (TestSingleplayerContext world = context.worldBuilder().create()) {
+        // Private pause/completion packets belong to the authorized observer used by this fixture.
+        try (TestSingleplayerContext world = context.worldBuilder().adjustSettings(settings -> settings.setAllowCommands(true)).create()) {
             world.getConnection().waitForChunksRender();
             context.runOnClient(client -> state().reset());
             Setup setup = world.getServer().computeOnServer(DebuggerExecutionFlowGameTest::setup);
