@@ -194,3 +194,10 @@ an edit is pending and verifies that explicit keyboard or pointer navigation win
 over a later acknowledgement. Both passed in the [UI validation run](../ui-polish-validation.md),
 along with the focused Flow layout and keyboard checks. These fixtures do not
 establish server execution; the validation record lists remaining acceptance work.
+
+`DebuggerUnobservedFlowBreakpointGameTest` waits for both the acknowledged disabled
+definition and its rendered marker to become active before opening conditions.
+A controlled no-op save acknowledgement between renders reproduces the stale
+pending button deterministically without changing the server's definitions. The
+bounded readiness wait preserves the active-button and accepted-click assertions;
+the rest of the test still checks real server edits and first-occurrence stops.

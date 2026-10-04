@@ -185,6 +185,10 @@ public final class DebuggerUnobservedFlowBreakpointGameTest implements FabricCli
             ClientNetworking.sendBreakpointEdit(state(), ClientBreakpointState.Action.TOGGLE, state().breakpoints().get(target));
         });
         context.waitFor(client -> !state().breakpoints().pending(target) && !state().breakpoints().get(target).enabled(), 200);
+        acknowledgeBetweenRenders(context, fragment, target);
+        // The acknowledgement updates state before the next render updates the cached button.
+        context.waitFor(client -> !state().breakpoints().pending(target) && !state().breakpoints().get(target).enabled()
+            && marker(client.gui.screen(), clause(client.gui.screen(), fragment)).active, 200);
         context.runOnClient(client -> {
             click(client.gui.screen(), marker(client.gui.screen(), clause(client.gui.screen(), fragment)), InputConstants.MOUSE_BUTTON_RIGHT);
             require(ScreenLayers.get(client.gui.screen()) instanceof BreakpointConditionScreen,
@@ -221,6 +225,22 @@ public final class DebuggerUnobservedFlowBreakpointGameTest implements FabricCli
         context.runOnClient(client -> require(state().breakpoints().get(target).enabled()
                 && state().breakpoints().get(target).condition().equals(condition),
             "server acknowledges the exact static stage index, fingerprint, and condition"));
+    }
+
+    /** A controlled no-op save acknowledgement exposes the frame boundary without changing server definitions. */
+    private static void acknowledgeBetweenRenders(ClientGameTestContext context, String fragment, BreakpointTarget target) {
+        var edit = context.computeOnClient(client -> state().breakpoints().begin(ClientBreakpointState.Action.SAVE,
+            state().breakpoints().get(target)));
+        require(edit != null, "no real breakpoint edit remains pending before the controlled acknowledgement");
+        context.waitFor(client -> !marker(client.gui.screen(), clause(client.gui.screen(), fragment)).active, 200);
+        context.runOnClient(client -> {
+            require(state().breakpoints().pending(target), "the pending save disables the rendered marker");
+            state().breakpoints().finish(edit.requestId(), ClientBreakpointState.Result.APPLIED);
+            require(!state().breakpoints().pending(target) && !state().breakpoints().get(target).enabled(),
+                "the acknowledgement leaves the exact disabled definition ready");
+            require(!marker(client.gui.screen(), clause(client.gui.screen(), fragment)).active,
+                "the rendered marker still reflects the pending frame immediately after acknowledgement");
+        });
     }
 
     /** Controlled rejected acknowledgements verify UI feedback without inventing execution records. */
