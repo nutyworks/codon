@@ -44,7 +44,7 @@ public final class ClientWatchState {
     public WatchGrouping.Mode grouping() { return grouping; }
     public void grouping(WatchGrouping.Mode mode) { grouping = java.util.Objects.requireNonNull(mode); }
 
-    public enum SaveStatus { IDLE, SAVING, SAVED, FAILED }
+    public enum SaveStatus { IDLE, SAVING, SAVED, FAILED, RESTORE_FAILED }
 
     private static final long TIMEOUT_NANOS = 5_000_000_000L;
     private static final int MAX_CAPTURES_PER_WATCH = 256;
@@ -76,6 +76,7 @@ public final class ClientWatchState {
     private boolean continuingStep;
     private Consumer<List<WatchSpec>> changeListener = ignored -> {};
     private boolean initialDefinitionsReceived;
+    private boolean initialRestoreFailed;
     private @Nullable InitialDefinitions pendingInitialization;
     private SaveStatus saveStatus = SaveStatus.IDLE;
     private long saveTransferId;
@@ -98,6 +99,15 @@ public final class ClientWatchState {
     }
 
     public boolean initialDefinitionsReceived() { return initialDefinitionsReceived; }
+    public boolean initialRestoreFailed() { return initialRestoreFailed; }
+
+    /** A rejected remote snapshot stays session-only; never save an unseen server subset. */
+    public void rejectInitialDefinitions() {
+        if (initialDefinitionsReceived) return;
+        initialRestoreFailed = true;
+        changeListener = ignored -> {};
+        saveStatus = SaveStatus.RESTORE_FAILED;
+    }
 
     /**
      * First authenticated restore for this connection. Local edits made while waiting remain
@@ -106,7 +116,7 @@ public final class ClientWatchState {
      */
     public boolean initializeDefinitions(List<WatchSpec> definitions, Predicate<List<WatchSpec>> canSave,
                                          Consumer<List<WatchSpec>> save) {
-        if (initialDefinitionsReceived) return false;
+        if (initialDefinitionsReceived || initialRestoreFailed) return false;
         List<WatchSpec> checked = checkedDefinitions(definitions);
         pendingInitialization = new InitialDefinitions(checked, java.util.Objects.requireNonNull(canSave),
             java.util.Objects.requireNonNull(save));
@@ -506,6 +516,7 @@ public final class ClientWatchState {
     public void saveStarted(long transferId) { saveStarted(transferId, TIMEOUT_NANOS); }
 
     public void saveStarted(long transferId, long timeoutNanos) {
+        if (initialRestoreFailed) return;
         if (timeoutNanos <= 0) throw new IllegalArgumentException("invalid save timeout");
         saveTimeoutNanos = timeoutNanos;
         saveTransferId = transferId;
@@ -620,6 +631,7 @@ public final class ClientWatchState {
     public void endConnection() {
         changeListener = ignored -> {};
         initialDefinitionsReceived = false;
+        initialRestoreFailed = false;
         pendingInitialization = null;
     }
 
@@ -629,7 +641,8 @@ public final class ClientWatchState {
         resumed();
         clearSlots();
         executorNames.clear();
-        saveStatus = pendingInitialization == null ? SaveStatus.IDLE : SaveStatus.FAILED;
+        saveStatus = initialRestoreFailed ? SaveStatus.RESTORE_FAILED
+            : pendingInitialization == null ? SaveStatus.IDLE : SaveStatus.FAILED;
         saveTransferId = 0;
         saveStartedAt = 0;
         revealId = -1;

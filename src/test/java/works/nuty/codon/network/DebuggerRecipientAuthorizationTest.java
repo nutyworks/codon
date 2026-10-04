@@ -231,6 +231,66 @@ class DebuggerRecipientAuthorizationTest {
         only(owner, WatchDefinitionsSyncPayload.class);
     }
 
+    @Test void oversizedCountIsRejectedBeforeAnyJoinOrPromotionPage() {
+        rejectOversizedRestore(java.util.stream.IntStream.range(0, 8193)
+            .mapToObj(i -> new WatchSpec(WatchSpec.Kind.SCORE, "saved" + i, "")).toList());
+    }
+
+    @Test void oversizedSerializedTextIsRejectedBeforeAnyJoinOrPromotionPage() {
+        rejectOversizedRestore(java.util.stream.IntStream.range(0, 6000)
+            .mapToObj(i -> new WatchSpec(WatchSpec.Kind.STORAGE_NBT, "demo:" + "x".repeat(120),
+                "\\".repeat(120) + i)).toList());
+    }
+
+    private void rejectOversizedRestore(List<WatchSpec> definitions) {
+        when(watches.get(owner.getUUID())).thenReturn(definitions);
+        when(watches.get(visitor.getUUID())).thenReturn(definitions);
+        join(owner);
+        assertTrue(payloads(owner, WatchDefinitionsSyncPayload.class).isEmpty(),
+            "JOIN must validate the entire saved list before sending a partial snapshot");
+        join(visitor);
+        assertTrue(sent.get(visitor).isEmpty());
+        when(permissions.get(visitor).hasPermission(Permissions.COMMANDS_OWNER)).thenReturn(true);
+        tick();
+        assertTrue(payloads(visitor, WatchDefinitionsSyncPayload.class).isEmpty(),
+            "Promotion uses the same restore budget as JOIN");
+        only(owner, WatchRestoreFailedPayload.class);
+        only(visitor, WatchRestoreFailedPayload.class);
+        only(owner, BreakpointSyncPayload.class);
+        only(visitor, PauseSyncPayload.class);
+        clearSent();
+        tick();
+        when(permissions.get(owner).hasPermission(Permissions.COMMANDS_OWNER)).thenReturn(false);
+        tick();
+        when(permissions.get(owner).hasPermission(Permissions.COMMANDS_OWNER)).thenReturn(true);
+        tick();
+        assertTrue(payloads(owner, WatchRestoreFailedPayload.class).isEmpty());
+        assertTrue(payloads(visitor, WatchRestoreFailedPayload.class).isEmpty());
+        verify(watches, times(1)).get(owner.getUUID());
+        verify(watches, times(1)).get(visitor.getUUID());
+        verify(owner, times(1)).sendSystemMessage(any());
+        verify(visitor, times(1)).sendSystemMessage(any());
+    }
+
+    @Test void oldClientReceivesOneRestoreWarningAndCanRestoreARepairedListOnReconnect() {
+        when(playerList.getPlayers()).thenReturn(List.of(owner));
+        unsupported.get(owner).add(WatchRestoreFailedPayload.TYPE.id());
+        when(watches.get(owner.getUUID())).thenReturn(java.util.stream.IntStream.range(0, 8193)
+            .mapToObj(i -> new WatchSpec(WatchSpec.Kind.SCORE, "saved" + i, "")).toList());
+        join(owner);
+        tick();
+        assertTrue(payloads(owner, WatchRestoreFailedPayload.class).isEmpty());
+        assertTrue(payloads(owner, WatchDefinitionsSyncPayload.class).isEmpty());
+        verify(owner).sendSystemMessage(argThat(message -> message.getContents() instanceof TranslatableContents content
+            && content.getKey().equals("codon.watch.restore.failed")));
+        verify(watches).get(owner.getUUID());
+        clearSent();
+        when(watches.get(owner.getUUID())).thenReturn(List.of(WATCH));
+        ServerPlayConnectionEvents.DISCONNECT.invoker().onPlayDisconnect(owner.connection, server);
+        join(owner);
+        assertEquals(List.of(WATCH), only(owner, WatchDefinitionsSyncPayload.class).definitions());
+    }
+
     @Test void missingWatchChannelStillInitializesAfterRevocationAndLaterCapability() {
         when(playerList.getPlayers()).thenReturn(List.of(owner));
         unsupported.get(owner).add(WatchDefinitionsSyncPayload.TYPE.id());

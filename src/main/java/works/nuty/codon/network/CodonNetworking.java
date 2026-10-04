@@ -6,6 +6,7 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import works.nuty.codon.core.model.PauseSnapshot;
 import works.nuty.codon.core.service.DebuggerEngine;
@@ -40,6 +41,7 @@ public final class CodonNetworking {
         PayloadTypeRegistry.clientboundPlay().register(WatchChangesSyncPayload.TYPE, WatchChangesSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(NbtTreeSyncPayload.TYPE, NbtTreeSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(WatchDefinitionsSyncPayload.TYPE, WatchDefinitionsSyncPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(WatchRestoreFailedPayload.TYPE, WatchRestoreFailedPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(WatchEditorSyncPayload.TYPE, WatchEditorSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(WatchSaveSyncPayload.TYPE, WatchSaveSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(WatchSavePageAckPayload.TYPE, WatchSavePageAckPayload.CODEC);
@@ -97,25 +99,17 @@ public final class CodonNetworking {
                                           Map<ServerPlayer, Set<CustomPacketPayload.Type<?>>> synchronizedOwners) {
         if (!NetworkDebuggerEventSink.authorized(player)) {
             var sent = synchronizedOwners.get(player);
-            // A second watch restore would replace local edits after re-promotion. Remember only
-            // this completed handshake; all sends still require current owner permission.
-            if (sent != null) sent.retainAll(Set.of(WatchDefinitionsSyncPayload.TYPE));
+            // Preserve completed or rejected restores through re-promotion; neither may replace
+            // local edits or retry the same oversized snapshot on every tick.
+            if (sent != null) sent.retainAll(Set.of(WatchDefinitionsSyncPayload.TYPE, WatchRestoreFailedPayload.TYPE));
             return;
         }
         var sent = synchronizedOwners.computeIfAbsent(player, ignored -> new HashSet<>());
         // Unsupported channels stay pending without resending other handshakes on each tick.
         if (!sent.contains(WatchDefinitionsSyncPayload.TYPE)
+            && !sent.contains(WatchRestoreFailedPayload.TYPE)
             && ServerPlayNetworking.canSend(player, WatchDefinitionsSyncPayload.TYPE.id())) {
-            long transferId = nextTransferId();
-            int offset = 0;
-            List<List<works.nuty.codon.core.model.WatchSpec>> pages = WatchDefinitions.pages(watches.get(player.getUUID()));
-            for (int index = 0; index < pages.size(); index++) {
-                List<works.nuty.codon.core.model.WatchSpec> page = pages.get(index);
-                ServerPlayNetworking.send(player, new WatchDefinitionsSyncPayload(transferId, offset,
-                    index == pages.size() - 1, page));
-                offset += page.size();
-            }
-            sent.add(WatchDefinitionsSyncPayload.TYPE);
+            synchronizeWatches(player, watches, sent);
         }
 
         if (!sent.contains(BreakpointSyncPayload.TYPE) && ServerPlayNetworking.canSend(player, BreakpointSyncPayload.TYPE.id())) {
@@ -135,6 +129,32 @@ public final class CodonNetworking {
             }
             sent.add(PauseSyncPayload.TYPE);
         }
+    }
+
+    private static void synchronizeWatches(ServerPlayer player, WorldWatchPersistence watches,
+                                           Set<CustomPacketPayload.Type<?>> sent) {
+        List<List<works.nuty.codon.core.model.WatchSpec>> pages;
+        try {
+            pages = WatchDefinitions.validatedPages(watches.get(player.getUUID()));
+        } catch (IllegalArgumentException tooLarge) {
+            // No prefix or empty success: both would hide saved definitions from later edits.
+            sent.add(WatchRestoreFailedPayload.TYPE);
+            if (ServerPlayNetworking.canSend(player, WatchRestoreFailedPayload.TYPE.id()))
+                ServerPlayNetworking.send(player, new WatchRestoreFailedPayload());
+            player.sendSystemMessage(Component.translatableWithFallback("codon.watch.restore.failed",
+                "Saved watches are too large to restore. Saved data is preserved; edits are session-only. "
+                    + "Reduce the saved list while the world is closed, then reopen it."));
+            return;
+        }
+        long transferId = nextTransferId();
+        int offset = 0;
+        for (int index = 0; index < pages.size(); index++) {
+            List<works.nuty.codon.core.model.WatchSpec> page = pages.get(index);
+            ServerPlayNetworking.send(player, new WatchDefinitionsSyncPayload(transferId, offset,
+                index == pages.size() - 1, page));
+            offset += page.size();
+        }
+        sent.add(WatchDefinitionsSyncPayload.TYPE);
     }
 
     private static long nextTransferId() {

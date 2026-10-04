@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import works.nuty.codon.core.model.WatchSpec;
 import works.nuty.codon.core.model.WatchIdentity;
+import works.nuty.codon.core.model.TransferBudget;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -99,6 +100,20 @@ public final class WatchDefinitions {
     public static List<WatchSpec> fromPageJson(String json) {
         if (json == null || json.length() > MAX_JSON_LENGTH) throw new IllegalArgumentException("watch JSON page too long");
         return fromJson(json);
+    }
+
+    /** Preflights the whole snapshot against the receiver's aggregate and per-page budgets. */
+    public static List<List<WatchSpec>> validatedPages(List<WatchSpec> specs) {
+        if (specs.size() > TransferBudget.WATCH_DEFINITIONS.entries())
+            throw new IllegalArgumentException("watch definition transfer too large");
+        var pages = pages(specs);
+        var budget = new TransferBudget(TransferBudget.WATCH_DEFINITIONS, () -> 0);
+        for (int i = 0; i < pages.size(); i++) {
+            var page = pages.get(i);
+            if (!budget.accept(page.size(), toPageJson(page).length(), i == pages.size() - 1))
+                throw new IllegalArgumentException("watch definition transfer too large");
+        }
+        return pages;
     }
 
     /** Splits a complete, unique definition list into independently valid transport pages. */

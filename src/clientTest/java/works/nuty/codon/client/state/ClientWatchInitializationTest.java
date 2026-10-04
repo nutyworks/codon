@@ -193,6 +193,40 @@ class ClientWatchInitializationTest {
         assertEquals(ClientWatchState.SaveStatus.IDLE, state.saveStatus());
     }
 
+    @Test void rejectedRemoteSnapshotPreservesLocalObservationsAndBlocksPartialSavesUntilReconnect() {
+        var state = new ClientWatchState(() -> 0);
+        state.add(LOCAL);
+        long id = state.findId(LOCAL);
+        state.paused(7, 0);
+        var query = state.drainQueries().getFirst();
+        var observed = new WatchResult(WatchResult.Status.VALUE, "7", "holder");
+        state.accept(7, query.requestId(), observed);
+        List<List<WatchSpec>> saves = new ArrayList<>();
+        state.rejectInitialDefinitions();
+        assertFalse(state.initialDefinitionsReceived(), "Failure is not a completed empty restore");
+        assertTrue(state.initialRestoreFailed());
+        assertEquals(ClientWatchState.SaveStatus.RESTORE_FAILED, state.saveStatus());
+        assertEquals(id, state.findId(LOCAL));
+        assertEquals(observed, state.entries().getFirst().result());
+        assertTrue(state.add(OTHER));
+        state.retrySave();
+        assertFalse(state.initializeDefinitions(List.of(REMOTE), ignored -> true, saves::add));
+        assertEquals(List.of(LOCAL, OTHER), state.definitions());
+        assertTrue(saves.isEmpty());
+        state.reset();
+        assertEquals(ClientWatchState.SaveStatus.RESTORE_FAILED, state.saveStatus());
+        state.add(LOCAL);
+        state.retrySave();
+        assertTrue(saves.isEmpty());
+        state.endConnection();
+        state.reset();
+        assertFalse(state.initialRestoreFailed());
+        assertTrue(state.initializeDefinitions(List.of(REMOTE), ignored -> true, saves::add));
+        state.rejectInitialDefinitions(); // A late unsolicited failure cannot revoke a valid restore.
+        state.add(LOCAL);
+        assertEquals(List.of(List.of(REMOTE, LOCAL)), saves);
+    }
+
     @Test void invalidInitialDefinitionsDoNotInstallCallbacksOrConsumeInitialization() {
         var state = new ClientWatchState(() -> 0);
         state.add(LOCAL);

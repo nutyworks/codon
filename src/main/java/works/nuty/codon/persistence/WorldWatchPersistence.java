@@ -71,6 +71,7 @@ public final class WorldWatchPersistence {
         List<WatchSpec> checked = WatchDefinitions.decode(WatchDefinitions.encode(specs));
         Entry entry = entries.computeIfAbsent(player, ignored -> load(player));
         entry.specs = checked;
+        entry.clientSaveAllowed = null;
         entry.dirty = true;
         flush();
         return worldDir != null && !entry.disabled && !entry.dirty;
@@ -81,6 +82,21 @@ public final class WorldWatchPersistence {
      * valid and complete; intermediate pages only update the authenticated player's staging area.
      */
     public ChunkSaveResult saveChunk(UUID player, long transferId, int offset, boolean last, List<WatchSpec> specs) {
+        Entry entry = entries.computeIfAbsent(player, ignored -> load(player));
+        if (entry.clientSaveAllowed == null) {
+            try {
+                WatchDefinitions.validatedPages(entry.specs);
+                entry.clientSaveAllowed = !entry.disabled;
+            } catch (IllegalArgumentException tooLarge) {
+                entry.clientSaveAllowed = false;
+            }
+        }
+        // Older or stale clients must not overwrite a saved snapshot they could not restore.
+        // Cache the decision until the definitions change, avoiding repeated validation per page.
+        if (!entry.clientSaveAllowed) {
+            stagedTransfers.remove(player);
+            return ChunkSaveResult.SAVE_FAILED;
+        }
         WatchDefinitionTransfer transfer = stagedTransfers.computeIfAbsent(player, ignored -> new WatchDefinitionTransfer(clock));
         var complete = transfer.accept(transferId, offset, last, specs);
         if (complete.isPresent()) {
@@ -159,6 +175,7 @@ public final class WorldWatchPersistence {
         private List<WatchSpec> specs;
         private boolean dirty;
         private final boolean disabled;
+        private @Nullable Boolean clientSaveAllowed;
         private Entry(List<WatchSpec> specs, boolean dirty, boolean disabled) { this.specs = specs; this.dirty = dirty; this.disabled = disabled; }
     }
 }

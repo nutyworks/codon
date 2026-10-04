@@ -260,6 +260,27 @@ registered receivers while preserving production handlers, including the real
 30-second lost-ACK deadline and explicit legacy packets. The cold-storage and
 completed-flow fixtures create an owner world before observing private state.
 
+Before JOIN or promotion sends any restored Watch page, the server validates the
+complete saved snapshot against the same aggregate budget as the client. An oversized
+snapshot produces one explicit restore failure per connection, retaining the saved
+file and local edits without installing a partial-save callback. The Watch warning
+explains that edits remain session-only; repair the saved list while the world is
+closed, then reopen it. Older clients receive the same chat notice. Both upload
+protocols refuse to replace a stored snapshot that could not fit the restore budget.
+The failure remains recorded through re-promotion, without retrying on every tick.
+`DebuggerRecipientAuthorizationTest`, `WatchRestorePreservationTest` and
+`ClientWatchInitializationTest` cover count/text overflow, JOIN/promotion, one-time
+failure, local state and legacy/partial overwrite protection. `WatchRestoreFailureGameTest`
+uses actual packets and a closed-world repair/reopen; its warning screenshot uses a
+synthetic pause only to present the received failure in the Watch panel.
+
+Server staging expires without further packets at ordinary END ticks and during the
+parked server's existing one-second maintenance. This removes only unfinished uploads;
+committed definitions and other active transfers survive. `WorldWatchIdleExpiryTest`
+covers injected-clock deadlines, isolation, late continuation and fresh/reconnect
+recovery. `WatchUploadIdleExpiryGameTest` checks running and debugger-parked lifecycles.
+The 2,097,152-character budget counts serialized UTF-16 units, not actual heap bytes.
+
 NBT pages must contain unique immediate child paths, also across loaded pages.
 Self/ancestor links, skipped descendants, path aliases and inconsistent totals reject
 the page. Quoted/escaped Unicode keys, empty quoted keys and multiple inaccessible

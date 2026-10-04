@@ -204,6 +204,13 @@ public final class WatchPanel {
             button("watch-save-retry", new Bounds(bounds.x() + bounds.width() - 65, bounds.y() + 3, 18, 17), text("save.retry"),
                 true, false, () -> state.watches().retrySave(), navigation, -4, 2).withIcon(DebuggerIcon.WARNING)
                 .setTooltip(Tooltip.create(text("save.failed")));
+        } else if (save == ClientWatchState.SaveStatus.RESTORE_FAILED) {
+            // Vanilla styles inactive labels gray; retain that style across toolbar reconfiguration
+            // so the hover timer does not restart every frame.
+            button("watch-restore-failed", new Bounds(bounds.x() + bounds.width() - 65, bounds.y() + 3, 18, 17),
+                text("restore.failed").copy().withStyle(net.minecraft.ChatFormatting.GRAY), false, false, () -> {}, navigation, -4, 2)
+                .withIcon(DebuggerIcon.WARNING)
+                .setTooltip(Tooltip.create(text("restore.failed")));
         }
         if (undoAvailable) {
             button("watch-undo", new Bounds(bounds.x() + 4, bounds.y() + HEADER, bounds.width() - 8, 17),

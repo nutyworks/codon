@@ -450,6 +450,7 @@
   "codon.watch.scope.context": "Context · %s",
   "codon.watch.save.retry": "Retry saving watches",
   "codon.watch.save.failed": "Save not confirmed · Retry above.",
+  "codon.watch.restore.failed": "Saved watches are too large to restore. Saved data is preserved; edits are session-only. Reduce the saved list while the world is closed, then reopen it.",
   "codon.watch.save.saving": "Saving…",
   "codon.watch.save.saved": "Saved",
   "codon.watch.details.title": "Watch details",

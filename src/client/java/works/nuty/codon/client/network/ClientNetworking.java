@@ -28,6 +28,7 @@ import works.nuty.codon.network.ContinueSyncPayload;
 import works.nuty.codon.network.WatchSyncPayload;
 import works.nuty.codon.network.WatchChangesSyncPayload;
 import works.nuty.codon.network.WatchDefinitionsSyncPayload;
+import works.nuty.codon.network.WatchRestoreFailedPayload;
 import works.nuty.codon.network.NbtTreeSyncPayload;
 import works.nuty.codon.network.WatchEditorSyncPayload;
 import works.nuty.codon.network.WatchEditorQueryPayload;
@@ -56,9 +57,14 @@ public final class ClientNetworking {
         WatchDefinitionTransfer joinedDefinitions = new WatchDefinitionTransfer();
         ClientPlayNetworking.registerGlobalReceiver(WatchDefinitionsSyncPayload.TYPE, (payload, context) ->
             context.client().execute(() -> {
-                if (state.watches().initialDefinitionsReceived()) return;
+                if (state.watches().initialDefinitionsReceived() || state.watches().initialRestoreFailed()) return;
                 joinedDefinitions.accept(payload.transferId(), payload.offset(), payload.last(), payload.definitions())
                     .ifPresent(definitions -> restoreWatchDefinitions(state, definitions));
+            }));
+        ClientPlayNetworking.registerGlobalReceiver(WatchRestoreFailedPayload.TYPE, (payload, context) ->
+            context.client().execute(() -> {
+                joinedDefinitions.reset();
+                state.watches().rejectInitialDefinitions();
             }));
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             joinedDefinitions.isActive(); // Expire incomplete join transfers even when no further packets arrive.
@@ -154,22 +160,8 @@ public final class ClientNetworking {
     }
 
     static boolean canUploadWatchDefinitions(java.util.List<works.nuty.codon.core.model.WatchSpec> definitions) {
-        try { validatedWatchPages(definitions); return true; }
+        try { WatchDefinitions.validatedPages(definitions); return true; }
         catch (IllegalArgumentException invalid) { return false; }
-    }
-
-    private static java.util.List<java.util.List<works.nuty.codon.core.model.WatchSpec>> validatedWatchPages(
-        java.util.List<works.nuty.codon.core.model.WatchSpec> definitions) {
-        if (definitions.size() > TransferBudget.WATCH_DEFINITIONS.entries())
-            throw new IllegalArgumentException("watch definition transfer too large");
-        var pages = WatchDefinitions.pages(definitions);
-        var budget = new TransferBudget(TransferBudget.WATCH_DEFINITIONS, () -> 0);
-        for (int i = 0; i < pages.size(); i++) {
-            var page = pages.get(i);
-            if (!budget.accept(page.size(), WatchDefinitions.toPageJson(page).length(), i == pages.size() - 1))
-                throw new IllegalArgumentException("watch definition transfer too large");
-        }
-        return pages;
     }
 
     private static void sendWatchDefinitions(java.util.List<works.nuty.codon.core.model.WatchSpec> definitions) {
@@ -185,7 +177,7 @@ public final class ClientNetworking {
             return;
         }
         try {
-            var pages = validatedWatchPages(definitions);
+            var pages = WatchDefinitions.validatedPages(definitions);
             if (ClientPlayNetworking.canSend(WatchSaveV2Payload.TYPE.id())) {
                 acknowledgedTransferId = transferId;
                 sendWatchPage(watchUpload.begin(transferId, pages));

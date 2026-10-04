@@ -434,6 +434,15 @@ Writes use temporary-file replacement, failed writes retry on later edits/world 
 and unreadable or unsupported files are preserved with writes disabled for that session. Failed saves
 return a failure acknowledgement and warn that edits remain session-only.
 
+Restoration preflights the full persisted snapshot against the same transfer budget
+before sending any page. Oversized snapshots produce a bounded failure outcome and
+one user notice per connection, also retained through re-promotion. No empty success
+or partial list activates persistence: local edits remain session-only and both save
+protocols refuse to overwrite unseen oversized saved data. Closing the world, repairing
+the saved list and reopening permits a fresh restore. Idle upload staging is swept
+on the server thread at END ticks and during the existing one-second parked maintenance,
+without another packet or ordinary world ticking; committed definitions remain intact.
+
 Other paged receives have independent aggregate budgets: automatic watch changes
 permit 4,096 rows and 2,097,152 retained text characters; function lists permit 32,768
 identifiers and 4,194,304 characters; source documents retain the existing 20,000-line
