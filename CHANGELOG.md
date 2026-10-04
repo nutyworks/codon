@@ -1,5 +1,10 @@
 # Release notes
 
+## 0.1.0-alpha.2 — alpha prerelease
+
+- Update the current version and documented runtime JAR name to `0.1.0-alpha.2`.
+- This version update does not change runtime behavior.
+
 ## 0.1.0-alpha.1 — alpha prerelease
 
 First alpha prerelease for Codon, intended for early testing and feedback.
