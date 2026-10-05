@@ -1,5 +1,12 @@
 # Function source
 
+Function-list and source-read requests now expire 30 seconds after request creation,
+even when no page arrives. The browser shows its existing error state and permits
+Refresh or Reread; an old reply cannot complete a newer request. Stage previews
+also retry a timed-out loading request once with a new ID, then require Reload or
+line re-selection after another timeout. `ClientTransferLimitsTest` and
+`ClientFlowPreviewRequestsTest` cover the headless state transitions.
+
 ## User path and expected result
 
 Use the [shared setup](../README.md#prepare-and-launch) with a loaded scratch

@@ -28,6 +28,45 @@ class ClientWatchStateTest {
     private static final WatchSpec ENTITY = new WatchSpec(WatchSpec.Kind.ENTITY_NBT, "", "Health");
     private static final WatchSpec STORAGE = new WatchSpec(WatchSpec.Kind.STORAGE_NBT, "example:data", "value");
 
+    @Test void retryAvailabilityMatchesTheOnlyStatusesThatCanReissueAQuery() {
+        var state = new ClientWatchState(() -> 0);
+        state.add(SCORE);
+        long id = state.entries().getFirst().id();
+        assertFalse(state.canRetry(id));
+        state.paused(1, 0);
+        assertFalse(state.canRetry(id));
+        var query = onlyQuery(state);
+        state.accept(1, query.requestId(), value("1", "entity"));
+        assertFalse(state.canRetry(id));
+        state.paused(2, 0);
+        query = onlyQuery(state);
+        state.accept(2, query.requestId(), WatchResult.absent(WatchResult.Status.UNAVAILABLE, ""));
+        assertTrue(state.canRetry(id));
+        state.retry(id);
+        assertFalse(state.canRetry(id));
+        query = onlyQuery(state);
+        state.accept(2, query.requestId(), WatchResult.absent(WatchResult.Status.ERROR, ""));
+        assertTrue(state.canRetry(id));
+        state.resumed();
+        assertFalse(state.canRetry(id));
+    }
+
+    @Test void unavailableAutomaticChangesRejectTheWholePauseAndClearOnNextStop() {
+        var state = new ClientWatchState(() -> 0);
+        state.paused(1, 0);
+        state.acceptUnavailableChanges(2, true);
+        assertFalse(state.changesRejected());
+        state.acceptUnavailableChanges(1, true);
+        assertTrue(state.changesRejected());
+        assertTrue(state.changesTooLarge());
+        state.paused(2, 0);
+        assertFalse(state.changesRejected());
+        assertFalse(state.changesTooLarge());
+        state.acceptUnavailableChanges(2, false);
+        assertTrue(state.changesRejected());
+        assertFalse(state.changesTooLarge());
+    }
+
     @Test
     void rejectsDuplicatesAndAcceptsWatchesBeyondTheFormerLimit() {
         ClientWatchState state = new ClientWatchState(() -> 0);

@@ -53,6 +53,7 @@ public final class ClientWatchState {
     private final Map<WatchIdentity.Key, Long> identities = new java.util.HashMap<>();
     private final TransferBudget changesBudget;
     private boolean changesRejected;
+    private boolean changesTooLarge;
     /** Presentation only: retained rows never satisfy a query or become a comparison baseline. */
     private final Map<Long, PendingDisplay<Entry>> pendingDisplays = new LinkedHashMap<>();
     /** Last selected result, retained to distinguish a transient availability failure from a later recovery. */
@@ -300,6 +301,14 @@ public final class ClientWatchState {
     /** A failed transfer is never presented as a complete or partial observation. */
     public boolean changesRejected() { expire(); return changesRejected; }
 
+    public boolean changesTooLarge() { return changesTooLarge; }
+
+    public void acceptUnavailableChanges(long id, boolean tooLarge) {
+        if (pauseId <= 0 || id != pauseId || changesComplete) return;
+        rejectChanges();
+        changesTooLarge = tooLarge;
+    }
+
     private void rejectChanges() {
         automaticChanges.clear();
         changesComplete = true;
@@ -311,6 +320,7 @@ public final class ClientWatchState {
         automaticChanges.clear();
         changesBudget.reset();
         changesRejected = false;
+        changesTooLarge = false;
         changesOffset = 0;
         changesComplete = false;
     }
@@ -500,14 +510,21 @@ public final class ClientWatchState {
     }
 
     /** Reissues a timed-out or failed primary query while retaining the active pause and definition. */
-    public void retry(long id) {
+    public boolean canRetry(long id) {
+        expire();
         Slot slot = slots.get(id);
-        if (pauseId <= 0 || slot == null || slot.result == null
-            || (slot.result.status() != WatchResult.Status.UNAVAILABLE && slot.result.status() != WatchResult.Status.ERROR)) return;
+        return pauseId > 0 && slot != null && slot.result != null
+            && (slot.result.status() == WatchResult.Status.UNAVAILABLE || slot.result.status() == WatchResult.Status.ERROR);
+    }
+
+    public void retry(long id) {
+        if (!canRetry(id)) return;
+        Slot slot = slots.get(id);
         retainPendingDisplays();
         slot.captures.remove(slot.requestSourceIndex);
         slot.requestId = 0;
         slot.requestedAt = 0;
+        slot.requestTimedOut = false;
         slot.result = null;
     }
 
@@ -650,19 +667,24 @@ public final class ClientWatchState {
     }
 
     /** One read per selection plus one previous-executor read per watch/stop; no automatic retries. */
-    public List<Query> drainQueries() {
+    public List<Query> drainQueries() { return drainQueries(Integer.MAX_VALUE); }
+
+    /** Create IDs and start timeouts only for queries the transport can send now. */
+    public List<Query> drainQueries(int limit) {
+        if (limit < 0) throw new IllegalArgumentException("negative query limit");
         expire();
-        if (pauseId <= 0) return List.of();
+        if (pauseId <= 0 || limit == 0) return List.of();
         List<Query> queries = new ArrayList<>();
         slots.forEach((watchId, slot) -> {
-            if (slot.requestId == 0 && slot.result == null) {
+            if (queries.size() < limit && slot.requestId == 0 && slot.result == null) {
                 slot.requestId = ++nextRequestId;
                 slot.requestedAt = clock.getAsLong();
                 slot.requestSourceIndex = slot.spec.isPinned() ? -1 : sourceIndex;
                 queries.add(new Query(pauseId, slot.requestId, slot.requestSourceIndex, slot.spec, slot.spec.executor()));
             }
             UUID capturedEntity = entityId(stepTargets.get(watchId));
-            if (capturedEntity != null && slot.completionRequestId == 0 && slot.completionResult == null) {
+            if (queries.size() < limit && capturedEntity != null
+                && slot.completionRequestId == 0 && slot.completionResult == null) {
                 slot.completionRequestId = ++nextRequestId;
                 slot.completionRequestedAt = clock.getAsLong();
                 queries.add(new Query(pauseId, slot.completionRequestId, -1, slot.spec, capturedEntity));
@@ -671,7 +693,40 @@ public final class ClientWatchState {
         return List.copyOf(queries);
     }
 
+    /** Includes unsent reads, so a step cannot overtake the rest of a throttled Watch burst. */
+    public boolean hasUnresolvedQueries() {
+        expire();
+        if (pauseId <= 0) return false;
+        for (var entry : slots.entrySet()) {
+            Slot slot = entry.getValue();
+            if (slot.result == null || entityId(stepTargets.get(entry.getKey())) != null && slot.completionResult == null)
+                return true;
+        }
+        return false;
+    }
+
+    /** A client timeout is not a reply, even if the row now displays UNAVAILABLE. */
+    public boolean hasTimedOutQueries() {
+        expire();
+        return slots.values().stream().anyMatch(slot -> slot.requestTimedOut || slot.completionTimedOut);
+    }
+
+    /** Stop this pause's remaining reads after transport failure; omitted values were not captured. */
+    public void failUnresolvedQueries() {
+        if (pauseId <= 0) return;
+        slots.forEach((watchId, slot) -> {
+            if (slot.result == null) {
+                if (slot.requestId == 0) slot.requestSourceIndex = slot.spec.isPinned() ? -1 : sourceIndex;
+                slot.result = WatchResult.absent(WatchResult.Status.UNAVAILABLE, "");
+                slot.capture(slot.requestSourceIndex, slot.result);
+            }
+            if (entityId(stepTargets.get(watchId)) != null && slot.completionResult == null)
+                slot.completionResult = WatchResult.absent(WatchResult.Status.UNAVAILABLE, "");
+        });
+    }
+
     public void accept(long id, long requestId, WatchResult result) {
+        expire();
         if (pauseId <= 0 || id != pauseId) return;
         for (Slot slot : slots.values()) {
             if (slot.requestId == requestId && slot.result == null) {
@@ -694,11 +749,13 @@ public final class ClientWatchState {
         if (saveStatus == SaveStatus.SAVING && now - saveStartedAt >= saveTimeoutNanos) saveStatus = SaveStatus.FAILED;
         slots.values().forEach(slot -> {
             if (slot.requestId != 0 && slot.result == null && now - slot.requestedAt >= TIMEOUT_NANOS) {
+                slot.requestTimedOut = true;
                 slot.result = WatchResult.absent(WatchResult.Status.UNAVAILABLE, "");
                 slot.capture(slot.requestSourceIndex, slot.result);
             }
             if (slot.completionRequestId != 0 && slot.completionResult == null
                 && now - slot.completionRequestedAt >= TIMEOUT_NANOS) {
+                slot.completionTimedOut = true;
                 slot.completionResult = WatchResult.absent(WatchResult.Status.UNAVAILABLE, "");
             }
         });
@@ -767,17 +824,21 @@ public final class ClientWatchState {
         final Map<Integer, WatchResult> captures = new LinkedHashMap<>();
         long requestId;
         long requestedAt;
+        boolean requestTimedOut;
         int requestSourceIndex;
         @Nullable WatchResult result;
         long completionRequestId;
         long completionRequestedAt;
+        boolean completionTimedOut;
         @Nullable WatchResult completionResult;
         Slot(WatchSpec spec) { this.spec = spec; }
         void clear() {
             requestId = 0;
+            requestTimedOut = false;
             result = null;
             captures.clear();
             completionRequestId = 0;
+            completionTimedOut = false;
             completionResult = null;
         }
         void capture(int sourceIndex, WatchResult captured) {
@@ -789,6 +850,7 @@ public final class ClientWatchState {
         }
         void selectSource(int sourceIndex) {
             requestId = 0;
+            requestTimedOut = false;
             result = captures.get(sourceIndex);
         }
     }

@@ -1,5 +1,15 @@
 # Watches and NBT
 
+Automatic pause changes use the same 4,096-row and 2,097,152-character aggregate
+budget on send and receive. Oversized changes and failed captures send explicit
+unavailable outcomes instead of partial rows or an empty success; older peers receive
+a system notice.
+The Watch panel displays an unavailable warning for rejected transfers. Details
+enables Retry only while the current query is eligible (`ERROR` or `UNAVAILABLE`).
+Entity option ellipses preserve UTF-16 surrogate pairs. Focused checks are
+`DebuggerRecipientAuthorizationTest`, `ClientWatchStateTest`,
+`WatchChangesUnavailablePayloadTest`, and `WatchEditorCompactTest`.
+
 The compact Watch regression uses row context menus for Copy, Pin, Edit and
 Delete. It checks a single full-row inspection target, including the value's right
 edge, with no inline management controls. `WatchPanelLayoutTest` covers the same
@@ -133,11 +143,28 @@ data modify storage codon:verify counter set value 0
    to check menu layering and that Source-covered pixels cannot retarget it.
    In Details at 320x240, the footer wraps to two rows clear of the scrollable text.
    Check Copy value/path, Retry, Edit and Close hitboxes. More/Less retains focus on
-   the same toggle; Tab then reaches Edit when expanded and Retry when collapsed.
+   the same toggle; Tab then reaches Edit when expanded, or skips hidden Edit and
+   disabled Retry to reach Close for a successful value. A failed read enables Retry.
 
 Queries while paused must remain read-only and must not cause an extra execution
 step. Keep previous/current comparison tied to observed pauses. A brief retained
 display during a pending reply must not enable actions on stale data.
+
+On a pause with many Watches, the client sends at most 12 Watch reads, one editor
+read and three NBT reads concurrently. It sends later Watch reads as replies
+arrive. Step is sent only after all Watch reads for that pause have replied. A
+five-second Watch timeout, or ten seconds waiting for the full pre-step capture,
+cancels Step without advancing execution. The remaining rows show UNAVAILABLE,
+the status explains the failure, and no more reads are sent for that pause.
+Transport credit is not recycled on a local timeout because the server may still
+hold the request. Resume remains available, and a new pause starts a fresh window.
+Editor requests waiting for a credit also expire after five seconds; an explicit
+Retry cannot remain loading indefinitely behind a lost reply.
+This ten-second bound can cancel an otherwise healthy, very large Watch list.
+Verify 33 Watches and 17 Entity NBT Watches at a paused breakpoint, including
+Watch values before step, editor/NBT responsiveness, and explicit failure plus
+Resume after a lost reply. The per-connection mailbox also receives other Codon requests, so
+the reserved 16 slots are not an absolute guarantee under concurrent traffic.
 
 For cold Storage history, persist `changed:0,removed:1,unchanged:7`, save/close the
 world, then reopen before any Storage query. Pause before changing the values and
@@ -161,6 +188,7 @@ the repaired values and establish a complete baseline.
 
 - [WatchReader](../../../src/main/java/works/nuty/codon/adapter/WatchReader.java), [NbtTreeReader](../../../src/main/java/works/nuty/codon/adapter/NbtTreeReader.java): server-side reads.
 - [ClientWatchState](../../../src/client/java/works/nuty/codon/client/state/ClientWatchState.java), [ClientNbtState](../../../src/client/java/works/nuty/codon/client/state/ClientNbtState.java): requests, values and selected target.
+- [ClientQueryScheduler](../../../src/client/java/works/nuty/codon/client/state/ClientQueryScheduler.java): bounded paused-read dispatch and step ordering.
 - [WatchPanel](../../../src/client/java/works/nuty/codon/client/ui/WatchPanel.java), [WatchScreen](../../../src/client/java/works/nuty/codon/client/ui/WatchScreen.java), [NbtTreePanel](../../../src/client/java/works/nuty/codon/client/ui/NbtTreePanel.java): user interaction.
 - [WatchFormLayout](../../../src/client/java/works/nuty/codon/client/ui/layout/WatchFormLayout.java): shared form columns and vertical slots.
 - [DebuggerContextMenu](../../../src/client/java/works/nuty/codon/client/ui/DebuggerContextMenu.java): shared modal dropdown hosted by ScreenLayers; Watch retains its existing guarded actions, row switching and keyboard/pointer handling.
@@ -173,6 +201,7 @@ the repaired values and establish a complete baseline.
 | --- | --- |
 | Values, changes, pin identity | `clientTest`: `ClientWatchStateTest`, `ClientWatchChangesTest`, `ClientWatchPinTest` |
 | Pending/paged data | `clientTest`: `ClientNbtStateTest`, `ClientNbtDisplayDelayTest`, `ClientWatchDisplayDelayTest` |
+| Paused Watch bursts and step ordering | `clientTest`: `ClientQuerySchedulerTest`, `ClientWatchBurstProbeTest`; `test`: `DebuggerMailboxTest` |
 | Files and transfer | `test`: `WorldWatchPersistenceTest`, `WatchDefinitionTransferTest`, `WatchSaveV2PayloadTest`; `clientTest`: `ClientWatchUploadStateTest`, `ClientTransferLimitsTest` |
 | Delayed initial owner sync and local edits | `clientTest`: `ClientWatchInitializationTest`; `test`: `ClientWatchInitializationBudgetTest`; `WatchPromotionHandshakeGameTest`, `DebuggerWatchPinGameTest` |
 | Registered v2 and legacy save routes | `WatchSaveProtocolGameTest`: held/duplicate page ACK, durable final ACK, fixed timeout, stale ACK, retry, legacy multipage and invalid gap |

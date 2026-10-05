@@ -22,8 +22,19 @@ public final class ClientFlowPreviewRequests {
             && (ClientStagePreviewState.needsRefresh(preview, command)
                 || preview != null && switch (preview.status()) {
                     case NOT_FOUND, UNAUTHORIZED, INVALID -> true;
-                    case LOADING, READY -> false;
+                    case LOADING, READY, TIMED_OUT -> false;
                 });
+    }
+
+    /** One retry per expired request, even if this snapshot already attempted it. */
+    public boolean needsRequestWithState(PauseSnapshot snapshot, SourceLocation location,
+                                         ClientStagePreviewState previews, String command) {
+        if (this.snapshot != snapshot) {
+            this.snapshot = snapshot;
+            requested.clear();
+        }
+        if (previews.loadingExpired(location) && !(location instanceof SourceLocation.Player)) return true;
+        return needsRequest(snapshot, location, previews.get(location), command);
     }
 
     public void requested(SourceLocation location) { requested.add(location); }

@@ -190,8 +190,8 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                 var location = new SourceLocation.Function(new FunctionLocation(sources.selected(), selectedLine));
                 var preview = debugger.stagePreviews().get(location);
                 if (preview == null || sources.document() != null && selectedLine <= sources.document().lines().size()
-                    && ClientStagePreviewState.needsRefresh(preview, sources.document().lines().get(selectedLine - 1).trim()))
-                    ClientNetworking.requestStagePreview(debugger, location);
+                    && debugger.stagePreviews().refreshNeeded(location, sources.document().lines().get(selectedLine - 1).trim()))
+                    ClientNetworking.requestAutomaticStagePreview(debugger, location);
             }
         }
         rebuildEntries();
@@ -559,8 +559,8 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             && previewMatchesLine(document, line, cached.preview())
             && cached.stages().stream().anyMatch(stage -> BreakpointUi.editingMarker(this, stage.target(), code.source().trim())))
             return cached.stages();
-        if (requestIfMissing && ClientStagePreviewState.needsRefresh(preview, document.lines().get(line - 1).trim())) {
-            ClientNetworking.requestStagePreview(state, location);
+        if (requestIfMissing && state.stagePreviews().refreshNeeded(location, document.lines().get(line - 1).trim())) {
+            ClientNetworking.requestAutomaticStagePreview(state, location);
             preview = state.stagePreviews().get(location);
         }
         if (cached != null && cached.preview() == preview) return cached.stages();

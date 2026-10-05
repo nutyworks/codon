@@ -312,7 +312,9 @@ public final class DebuggerOverlay {
             DebuggerButton control = iconButton("control-" + action,
                 new Bounds(x, toolbar.y() + 2, width, DebuggerLayout.ICON_BUTTON_SIZE),
                 component(action.translationKey()).copy().append(" ").append(keybind(input.keyLabel(action))),
-                icon, snapshot != null && state.isPaused() && !state.controlPending(),
+                icon, snapshot != null && state.isPaused()
+                    && (action == InputManager.Control.RESUME || !state.watchReadsFailed())
+                    && (!state.controlPending() || action == InputManager.Control.RESUME && state.controlAwaitingReads()),
                 () -> input.control(action));
             if (action == InputManager.Control.RESUME) control.withStatusColor(AMBER, AMBER_SURFACE);
             else control.withFlatChrome();

@@ -80,22 +80,26 @@ public final class ClientFunctionSourceState {
 
     private final TransferBudget listBudget;
     private final TransferBudget sourceBudget;
+    private final LongSupplier clock;
 
     public ClientFunctionSourceState() { this(System::nanoTime); }
 
     public ClientFunctionSourceState(LongSupplier clock) {
+        this.clock = Objects.requireNonNull(clock);
         listBudget = new TransferBudget(TransferBudget.FUNCTION_LIST, clock);
         sourceBudget = new TransferBudget(TransferBudget.FUNCTION_SOURCE, clock);
     }
 
     private long nextRequestId;
     private long listRequestId;
+    private long listStartedAt;
     private int expectedListOffset;
     private final List<FunctionId> pendingFunctions = new ArrayList<>();
     private List<FunctionId> functions = List.of();
     private Status listStatus = Status.IDLE;
 
     private long readRequestId;
+    private long readStartedAt;
     private int expectedReadOffset;
     private final List<String> pendingLines = new ArrayList<>();
     private @Nullable FunctionId selected;
@@ -112,6 +116,7 @@ public final class ClientFunctionSourceState {
 
     /** Opens the browse flow and requests the current function list if none is in flight. */
     public void open() {
+        expire();
         if (listStatus != Status.LOADING) refreshList();
     }
 
@@ -119,6 +124,7 @@ public final class ClientFunctionSourceState {
     public void refreshList() {
         listBudget.reset();
         listRequestId = nextId();
+        listStartedAt = clock.getAsLong();
         expectedListOffset = 0;
         pendingFunctions.clear();
         listStatus = Status.LOADING;
@@ -140,6 +146,7 @@ public final class ClientFunctionSourceState {
         expectedReadOffset = 0;
         sourceBudget.reset();
         readRequestId = nextId();
+        readStartedAt = clock.getAsLong();
         sourceStatus = Status.LOADING;
         outgoing.add(new Request.ReadFunction(readRequestId, selected));
     }
@@ -206,6 +213,7 @@ public final class ClientFunctionSourceState {
     }
 
     public void accept(ListPage page) {
+        expire();
         if (page.requestId() != listRequestId || listStatus != Status.LOADING) return;
         if (page.status() != Status.READY) {
             listStatus = page.status();
@@ -229,6 +237,7 @@ public final class ClientFunctionSourceState {
     }
 
     public void accept(SourcePage page) {
+        expire();
         if (page.requestId() != readRequestId || sourceStatus != Status.LOADING || !page.function().equals(selected)) return;
         if (page.status() != Status.READY) {
             sourceStatus = page.status();
@@ -264,7 +273,7 @@ public final class ClientFunctionSourceState {
     public void reset() {
         listBudget.reset();
         sourceBudget.reset();
-        listRequestId = readRequestId = 0;
+        listRequestId = readRequestId = listStartedAt = readStartedAt = 0;
         expectedListOffset = expectedReadOffset = 0;
         pendingFunctions.clear();
         pendingLines.clear();
@@ -279,8 +288,11 @@ public final class ClientFunctionSourceState {
     }
 
     private void expire() {
-        if (listStatus == Status.LOADING && listBudget.expired()) rejectList();
-        if (sourceStatus == Status.LOADING && sourceBudget.expired()) rejectSource();
+        long now = clock.getAsLong();
+        if (listStatus == Status.LOADING && (now - listStartedAt >= TransferBudget.TIMEOUT_NANOS
+            || listBudget.expired())) rejectList();
+        if (sourceStatus == Status.LOADING && (now - readStartedAt >= TransferBudget.TIMEOUT_NANOS
+            || sourceBudget.expired())) rejectSource();
     }
 
     private void rejectList() {

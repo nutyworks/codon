@@ -71,6 +71,19 @@ class DebuggerStatusTest {
         assertEquals("codon.ui.running", DebuggerStatus.translationKey(state));
     }
 
+    @Test
+    void failedWatchReadIsVisibleUntilServerConfirmsResume() {
+        ClientDebuggerState state = new ClientDebuggerState();
+        state.applyPause(snapshot(PauseReason.BREAKPOINT));
+        state.failWatchReads();
+        assertEquals("codon.ui.watch_reads_failed", DebuggerStatus.translationKey(state));
+        assertTrue(state.beginControlRequest());
+        state.controlSent();
+        assertEquals("codon.ui.watch_reads_failed", DebuggerStatus.translationKey(state));
+        state.applyResume();
+        assertEquals("codon.ui.running", DebuggerStatus.translationKey(state));
+    }
+
     private static PauseSnapshot snapshot(PauseReason reason) {
         return new PauseSnapshot(new SourceLocation.Block(new BlockLocation(0, 64, 0, "overworld")),
             CommandSnippet.plain("say done"), 0, List.of(), List.of(), reason);

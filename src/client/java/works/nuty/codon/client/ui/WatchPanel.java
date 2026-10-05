@@ -117,7 +117,8 @@ public final class WatchPanel {
         boolean undoAvailable = removedWatch != null && removedWatch.generation() == state.watches().generation()
             && System.nanoTime() < undoUntil;
         if (!undoAvailable) removedWatch = null;
-        int bodyStart = HEADER + (undoAvailable ? 18 : 0);
+        boolean changesRejected = state.watches().changesRejected();
+        int bodyStart = HEADER + (undoAvailable ? 18 : 0) + (changesRejected ? 18 : 0);
         if (revealRevision != state.watches().revealRevision()) {
             revealRevision = state.watches().revealRevision();
             select(state.watches().revealId());
@@ -219,6 +220,11 @@ public final class WatchPanel {
                     if (removed != null && state.watches().restore(removed)) select(removed.id());
                     removedWatch = null;
                 }, navigation, -2, 0);
+        }
+        if (changesRejected) {
+            String warning = text(state.watches().changesTooLarge() ? "changes.too_large" : "changes.unavailable").getString();
+            WatchUi.line(graphics, font, warning, bounds.x() + 7,
+                bounds.y() + HEADER + (undoAvailable ? 18 : 0) + 4, bounds.width() - 14, AMBER);
         }
         for (int index = 0; index < rows.size(); index++) {
             Row row = rows.get(index);

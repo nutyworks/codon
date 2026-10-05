@@ -119,7 +119,7 @@ public final class WatchDetailsScreen extends ScaledCodonScreen {
             return;
         }
         copyValue.active = copyPath.active = true;
-        retry.active = !entry.automatic();
+        retry.active = !entry.automatic() && !state.watchReadsFailed() && state.watches().canRetry(entryId);
         edit.active = expanded;
         add(WatchUi.text("details.expression"), TEAL);
         add(Component.literal(expression(entry.spec())), TEXT);
