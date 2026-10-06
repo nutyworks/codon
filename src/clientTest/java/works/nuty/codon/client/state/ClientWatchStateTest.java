@@ -51,6 +51,26 @@ class ClientWatchStateTest {
         assertFalse(state.canRetry(id));
     }
 
+    @Test void localTimeoutCannotRetryOrBecomeRetryableAfterALateReply() {
+        var clock = new AtomicLong();
+        var state = new ClientWatchState(clock::get);
+        state.add(SCORE);
+        state.paused(1, 0);
+        var query = onlyQuery(state);
+        long id = state.entries().getFirst().id();
+        clock.set(5_000_000_000L);
+        assertFalse(state.canRetry(id), "Retry eligibility applies the local deadline even before rendering");
+        state.retry(id);
+        assertTrue(state.hasTimedOutQueries(), "attempted Retry preserves the timeout");
+        assertEquals(WatchResult.Status.UNAVAILABLE, onlyEntry(state).result().status());
+        assertTrue(state.drainQueries(12).isEmpty());
+        state.accept(query.pauseId(), query.requestId(), value("late", "entity"));
+        assertTrue(state.hasTimedOutQueries());
+        assertFalse(state.canRetry(id));
+        assertEquals(WatchResult.Status.UNAVAILABLE, onlyEntry(state).result().status());
+        assertTrue(state.drainQueries(12).isEmpty());
+    }
+
     @Test void unavailableAutomaticChangesRejectTheWholePauseAndClearOnNextStop() {
         var state = new ClientWatchState(() -> 0);
         state.paused(1, 0);

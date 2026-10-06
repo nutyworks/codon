@@ -141,6 +141,112 @@ class ClientQuerySchedulerTest {
         assertTrue(state.watchReadsFailed());
     }
 
+    @Test void retryBeforeLateReplyCannotBypassTimedOutPauseQuarantine() {
+        for (boolean waitingStep : List.of(false, true)) {
+            var clock = new AtomicLong();
+            var state = paused(clock, 1, false);
+            var scheduler = new ClientQueryScheduler(clock::get);
+            var sender = new Sent();
+            scheduler.pump(state, sender);
+            var old = sender.watches.getFirst();
+            long entryId = state.watches().entries().getFirst().id();
+            if (waitingStep) {
+                assertTrue(state.beginControlRequest());
+                scheduler.requestControl(state, 1, "stepinto", true, sender);
+            }
+
+            clock.set(5_000_000_000L);
+            assertEquals(WatchResult.Status.UNAVAILABLE, state.watches().entries().getFirst().result().status());
+            boolean retryAvailable = state.watches().canRetry(entryId);
+            state.watches().retry(entryId); // Attempt Details Retry before the END tick pump.
+            boolean timeoutRetained = state.watches().hasTimedOutQueries();
+            // Match the production receiver: release the ticket before accepting the result.
+            scheduler.watchReply(old.pauseId(), old.requestId());
+            state.watches().accept(old.pauseId(), old.requestId(),
+                new WatchResult(WatchResult.Status.VALUE, "late", "entity:target"));
+            scheduler.pump(state, sender);
+
+            assertEquals(1, sender.watches.size(), "Retry and a late reply must not dispatch a new same-pause query");
+            assertFalse(retryAvailable, "only a server-reported failure permits Retry");
+            assertTrue(timeoutRetained, "an attempted Retry cannot clear the local timeout");
+            assertTrue(state.watches().hasTimedOutQueries(), "late accept cannot clear the timeout either");
+            assertTrue(state.watchReadsFailed());
+            assertFalse(state.controlPending());
+            assertTrue(sender.controls.isEmpty());
+            assertEquals(WatchResult.Status.UNAVAILABLE, state.watches().entries().getFirst().result().status());
+
+            scheduler.watchReply(old.pauseId(), old.requestId());
+            state.watches().accept(old.pauseId(), old.requestId(),
+                new WatchResult(WatchResult.Status.VALUE, "later", "entity:target"));
+            scheduler.pump(state, sender);
+            assertEquals(1, sender.watches.size(), "a reply after the pump cannot revive this pause");
+            assertTrue(state.beginControlRequest());
+            scheduler.requestControl(state, 1, "stepover", true, sender);
+            assertTrue(sender.controls.isEmpty());
+            assertFalse(state.controlPending());
+
+            state.applyPause(snapshot(2));
+            scheduler.pump(state, sender);
+            var current = sender.watches.getLast();
+            assertEquals(2, sender.watches.size());
+            assertNotEquals(old.requestId(), current.requestId());
+            assertFalse(state.watchReadsFailed());
+            scheduler.watchReply(old.pauseId(), old.requestId());
+            state.watches().accept(old.pauseId(), old.requestId(),
+                new WatchResult(WatchResult.Status.VALUE, "old pause", "entity:target"));
+            assertNull(state.watches().entries().getFirst().result());
+
+            scheduler.reset();
+            state.reset();
+            scheduler.watchReply(current.pauseId(), current.requestId());
+            state.watches().accept(current.pauseId(), current.requestId(),
+                new WatchResult(WatchResult.Status.VALUE, "disconnected", "entity:target"));
+            scheduler.pump(state, sender);
+            assertEquals(2, sender.watches.size());
+            assertFalse(state.watchReadsFailed());
+            assertTrue(sender.controls.isEmpty());
+        }
+    }
+
+    @Test void serverFailureAllowsRetryAndStaleRepliesCannotReleaseItsNewTicket() {
+        for (var status : List.of(WatchResult.Status.UNAVAILABLE, WatchResult.Status.ERROR)) {
+            var clock = new AtomicLong();
+            var state = paused(clock, 1, false);
+            var scheduler = new ClientQueryScheduler(clock::get);
+            var sender = new Sent();
+            scheduler.pump(state, sender);
+            var old = sender.watches.getFirst();
+            clock.set(4_000_000_000L);
+            scheduler.watchReply(old.pauseId(), old.requestId());
+            state.watches().accept(old.pauseId(), old.requestId(), WatchResult.absent(status, ""));
+            long entryId = state.watches().entries().getFirst().id();
+            assertTrue(state.watches().canRetry(entryId));
+            state.watches().retry(entryId);
+            scheduler.pump(state, sender);
+            var current = sender.watches.getLast();
+            assertEquals(2, sender.watches.size());
+            assertNotEquals(old.requestId(), current.requestId());
+            assertFalse(state.watchReadsFailed());
+
+            scheduler.watchReply(2, current.requestId());
+            state.watches().accept(2, current.requestId(), new WatchResult(WatchResult.Status.VALUE, "wrong pause", ""));
+            scheduler.watchReply(old.pauseId(), old.requestId());
+            state.watches().accept(old.pauseId(), old.requestId(), new WatchResult(WatchResult.Status.VALUE, "old request", ""));
+            assertNull(state.watches().entries().getFirst().result());
+            for (int i = 1; i <= 12; i++)
+                assertTrue(state.watches().add(new WatchSpec(WatchSpec.Kind.SCORE, "objective" + i, "")));
+            scheduler.pump(state, sender);
+            assertEquals(13, sender.watches.size(), "the fresh retry retains one of the twelve credits");
+
+            scheduler.watchReply(current.pauseId(), current.requestId());
+            state.watches().accept(current.pauseId(), current.requestId(),
+                new WatchResult(WatchResult.Status.VALUE, "fresh", "entity:target"));
+            scheduler.pump(state, sender);
+            assertEquals(14, sender.watches.size(), "only the matching reply releases the last queued read");
+            assertEquals("fresh", state.watches().entries().getFirst().result().value());
+        }
+    }
+
     @Test void otherRequestSaturationFailsWithoutRetryAndNewPauseRecovers() {
         var clock = new AtomicLong();
         var state = paused(clock, 33, false);

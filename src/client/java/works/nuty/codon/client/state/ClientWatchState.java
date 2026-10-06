@@ -509,11 +509,11 @@ public final class ClientWatchState {
         return true;
     }
 
-    /** Reissues a timed-out or failed primary query while retaining the active pause and definition. */
+    /** Only server-reported failures permit Retry; a local timeout must still fail this pause. */
     public boolean canRetry(long id) {
         expire();
         Slot slot = slots.get(id);
-        return pauseId > 0 && slot != null && slot.result != null
+        return pauseId > 0 && slot != null && !slot.requestTimedOut && slot.result != null
             && (slot.result.status() == WatchResult.Status.UNAVAILABLE || slot.result.status() == WatchResult.Status.ERROR);
     }
 

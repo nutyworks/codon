@@ -50,18 +50,20 @@ class ClientWatchManagementStateTest {
     }
 
     @Test
-    void retryReplacesTimedOutRequestAndRejectsItsLateReply() {
+    void retryReplacesServerFailedRequestAndRejectsItsOldReply() {
         AtomicLong now = new AtomicLong();
         ClientWatchState state = new ClientWatchState(now::get);
         long id = state.addOrFind(new WatchSpec(WatchSpec.Kind.SCORE, "points", ""));
         state.paused(6, 0);
-        ClientWatchState.Query timedOut = state.drainQueries().getFirst();
-        now.set(5_000_000_000L);
+        ClientWatchState.Query failed = state.drainQueries().getFirst();
+        now.set(4_000_000_000L);
+        state.accept(6, failed.requestId(), WatchResult.absent(WatchResult.Status.UNAVAILABLE, ""));
         assertEquals(WatchResult.Status.UNAVAILABLE, state.entries().getFirst().result().status());
+        assertTrue(state.canRetry(id));
 
         state.retry(id);
         ClientWatchState.Query retried = state.drainQueries().getFirst();
-        state.accept(6, timedOut.requestId(), value("late"));
+        state.accept(6, failed.requestId(), value("late"));
         assertNull(state.entries().getFirst().result());
         state.accept(6, retried.requestId(), value("fresh"));
         assertEquals("fresh", state.entries().getFirst().result().value());

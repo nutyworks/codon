@@ -5,7 +5,8 @@ budget on send and receive. Oversized changes and failed captures send explicit
 unavailable outcomes instead of partial rows or an empty success; older peers receive
 a system notice.
 The Watch panel displays an unavailable warning for rejected transfers. Details
-enables Retry only while the current query is eligible (`ERROR` or `UNAVAILABLE`).
+enables Retry for server-reported `ERROR` or `UNAVAILABLE`, never for a local
+timeout. A late reply after an attempted Retry cannot bypass the failed pause.
 Entity option ellipses preserve UTF-16 surrogate pairs. Focused checks are
 `DebuggerRecipientAuthorizationTest`, `ClientWatchStateTest`,
 `WatchChangesUnavailablePayloadTest`, and `WatchEditorCompactTest`.
