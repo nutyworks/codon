@@ -11,6 +11,35 @@ import static org.junit.jupiter.api.Assertions.*;
 class ClientTransferLimitsTest {
     private static final FunctionId FUNCTION = new FunctionId("demo", "한글/😀");
 
+    @Test void firstListAndSourceRepliesExpireFromRequestTimeAndLateIdsStayStale() {
+        AtomicLong now = new AtomicLong();
+        var state = new ClientFunctionSourceState(now::get);
+        state.open();
+        long oldList = state.drainRequests().getFirst().requestId();
+        now.set(TransferBudget.TIMEOUT_NANOS);
+        assertEquals(ClientFunctionSourceState.Status.ERROR, state.listStatus());
+        state.accept(new ClientFunctionSourceState.ListPage(oldList, ClientFunctionSourceState.Status.READY, 0, true, List.of(FUNCTION)));
+        assertTrue(state.functions().isEmpty());
+        state.open();
+        long newList = state.drainRequests().getFirst().requestId();
+        assertNotEquals(oldList, newList);
+        state.accept(new ClientFunctionSourceState.ListPage(newList, ClientFunctionSourceState.Status.READY, 0, true, List.of(FUNCTION)));
+        assertEquals(List.of(FUNCTION), state.functions());
+
+        state.select(FUNCTION);
+        long oldSource = state.drainRequests().getFirst().requestId();
+        now.addAndGet(TransferBudget.TIMEOUT_NANOS);
+        state.accept(source(oldSource, 0, true, List.of("late")));
+        assertEquals(ClientFunctionSourceState.Status.ERROR, state.sourceStatus());
+        assertNull(state.document());
+        state.refreshSource();
+        long newSource = state.drainRequests().getFirst().requestId();
+        assertNotEquals(oldSource, newSource);
+        state.accept(source(oldSource, 0, true, List.of("stale")));
+        state.accept(source(newSource, 0, true, List.of("current")));
+        assertEquals(List.of("current"), state.document().lines());
+    }
+
     @Test void boundsFunctionListsAndCannotPublishAnAbortedPartialTransfer() {
         var state = new ClientFunctionSourceState(() -> 0);
         state.open();

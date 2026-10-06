@@ -184,7 +184,8 @@ and changes that require subsequent simulation ticks still wait for normal execu
   a group filters the inspector without changing the underlying context positions.
 - `render/` — `DebugHudElement` and `DebugLevelRenderer`: rings for entity-bearing contexts,
   squares for position-only contexts, one-block facing arrows, selected-context emphasis, red
-  breakpoint outlines, and amber active stops. Contexts in other dimensions remain in the inspector
+  plain whole-block breakpoint outlines, thicker purple conditional whole-block outlines,
+  and amber active stops. Contexts in other dimensions remain in the inspector
   but are not drawn in the current world. Context anchors are execution reference points, not
   necessarily the attached entity's position.
 - `input/InputManager` — keybinds; control actions go to the server as `/codon` commands.
@@ -299,7 +300,9 @@ The chooser aligns search, rows and right-side actions, centers single-line opti
 short result pages without moving the title or search. Shared row bounds keep expansion controls,
 scrollbars, rendered gaps and native selection aligned at the applied Codon UI scale.
 Draft previews use pause/request/context correlation and never save definitions. Timeout retries are explicit. Input fields
-handle typing before global shortcuts; Tab changes fields, Enter adds and returns to Watches,
+handle typing before global shortcuts; Tab visits each field and its Browse/Choose action,
+then Add/Save and Close. The first validation reason appears beside disabled Add/Save
+without attempting a submit. Enter adds and returns to Watches,
 Ctrl+Enter adds another with focus restored. Watches owns editing, binding and removal controls.
 All three forms share label, field and action columns. Inline choices leave room before the
 next label; visible validation replaces choices in that slot, and Retry aligns with the preview value.
@@ -425,7 +428,9 @@ Transfers carry an identity and contiguous offsets and replace definitions only 
 incomplete, duplicate, or out-of-order chunks cannot partially overwrite the saved list.
 Updated peers use `codon:watch_save_v2` with one immutable page in flight. Only the
 exact transfer ID and next offset in `codon:watch_save_page_ack` release the next page;
-only the final durable-save response marks Saved. Timeout, rejection or disconnect
+only the final durable-save response marks Saved. The client UI and uploader share
+one fixed 30-second start instant before page validation/copying, with an expiry
+check before each page is sent. Timeout, rejection or disconnect
 releases pending work, with explicit user retry. A lost final reply means persistence
 is unconfirmed, because the server may already have saved. Legacy `codon:watch_save`
 uses the same bounded all-or-nothing assembly and may fail under mailbox overload.

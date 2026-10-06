@@ -19,6 +19,7 @@ import net.minecraft.world.level.block.Blocks;
 import works.nuty.codon.client.input.InputManager;
 import works.nuty.codon.client.render.DebugLevelRenderer;
 import works.nuty.codon.client.state.ClientDebuggerState;
+import works.nuty.codon.client.state.DebuggerPreferences;
 import works.nuty.codon.client.ui.CodonScreen;
 import works.nuty.codon.client.ui.DebuggerButton;
 import works.nuty.codon.client.ui.DebuggerIcon;
@@ -80,6 +81,8 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
             checkVisibleClauseSelection(context, screen, state);
             checkHorizontalCallPath(context, screen, state);
             checkSourceColors(context, screen, state);
+            checkContextStatusLabels(context, screen, state);
+            checkUuidCopyFeedback(context, screen, state);
             context.runOnClient(client -> {
                 DebuggerButton view = button(screen, value -> value.equals("View"));
                 click(screen, view);
@@ -192,6 +195,35 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
                 state.reset();
                 client.setScreenAndShow(null);
             });
+        }
+    }
+
+    private static void checkUuidCopyFeedback(ClientGameTestContext context, CodonScreen screen,
+                                               ClientDebuggerState state) {
+        String clipboard = context.computeOnClient(client -> client.keyboardHandler.getClipboard());
+        try {
+            String uuid = context.computeOnClient(client -> state.selectedSource().entity().uuid().toString());
+            context.runOnClient(client -> click(screen, button(screen, label -> label.startsWith("UUID: "))));
+            context.getInput().setCursorPos(0, 0);
+            context.waitTicks(2);
+            context.runOnClient(client -> {
+                DebuggerButton copied = button(screen, label -> label.startsWith("UUID: "));
+                require(client.keyboardHandler.getClipboard().equals(uuid), "Copy UUID writes the selected context UUID");
+                require(copied.icon() == DebuggerIcon.CONFIRM
+                    && copied.getMessage().getString().contains(Component.translatable("codon.ui.copied").getString()),
+                    "Copy UUID exposes a success icon and copied accessible name without hover");
+            });
+            context.takeScreenshot("codon-copy-uuid-confirmed");
+            context.runOnClient(client -> state.selectSource(1));
+            context.waitTicks(2);
+            context.runOnClient(client -> require(button(screen, label -> label.startsWith("UUID: ")).icon() == DebuggerIcon.COPY_UUID,
+                "Copied confirmation does not transfer to another context UUID"));
+            context.runOnClient(client -> state.applyPause(fixture(client)));
+            context.waitTicks(2);
+            context.runOnClient(client -> require(button(screen, label -> label.startsWith("UUID: ")).icon() == DebuggerIcon.COPY_UUID,
+                "A new pause clears copied confirmation even for the same UUID"));
+        } finally {
+            context.runOnClient(client -> client.keyboardHandler.setClipboard(clipboard));
         }
     }
 
@@ -544,7 +576,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
         });
         context.waitTicks(3);
         context.runOnClient(client -> {
-            require(button(screen, value -> value.equals("#1 Zombie 1")).foregroundColor() == DebuggerTheme.GREEN,
+            require(button(screen, value -> value.equals("+ #1 Zombie 1")).foregroundColor() == DebuggerTheme.GREEN,
                 "A genuinely changed executor source is green");
             require(state.selectedFlowStageIndex() == 1 && !state.selectedExecutionFlowStage().complete(),
                 "Created world markers are visible without selecting the preceding as stage");
@@ -582,6 +614,176 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
         });
         context.getInput().resizeWindow(1280, 800);
         context.waitTicks(2);
+    }
+
+    /** All statuses must be readable in both scan surfaces without interpreting their colors. */
+    private static void checkContextStatusLabels(ClientGameTestContext context, CodonScreen screen,
+                                                 ClientDebuggerState state) {
+        context.getInput().resizeWindow(1280, 1600);
+        context.runOnClient(client -> {
+            state.applyPause(contextStatusFixture(client));
+            state.setGizmoMode(ClientDebuggerState.GizmoMode.LABELS);
+        });
+        context.waitTicks(3);
+        List<String> titles = List.of("#1 Unchanged", "+ #2 Created", "#3 Changed",
+            "+ [4] Position context", "× Removed");
+        Map<String, WidgetBounds> slots = context.computeOnClient(client -> {
+            require(state.isDisplayedSourceCreated(1) && state.isDisplayedSourceChanged(2)
+                && state.isDisplayedSourceCreated(3) && state.isDisplayedSourceDropped(4),
+                "The fixture records distinct unchanged, changed, branched and removed contexts");
+            Map<String, WidgetBounds> result = new HashMap<>();
+            for (String title : titles) {
+                DebuggerButton label = worldLabelButton(screen, title);
+                require(label.hasChangedDot() == title.equals("#3 Changed"), "Only changed world labels show the dot");
+                require(label.getWidth() <= 150, "Status labels retain the world width budget");
+                result.put(title, WidgetBounds.of(label));
+            }
+            return Map.copyOf(result);
+        });
+        for (int index = 0; index < titles.size(); index++) {
+            int sourceIndex = index;
+            String title = titles.get(index);
+            context.runOnClient(client -> {
+                click(screen, worldLabelButton(screen, title));
+                require(state.selectedSourceIndex() == sourceIndex,
+                    "The status glyph preserves the exact source selection: " + title);
+            });
+            context.waitTicks(2);
+            context.runOnClient(client -> {
+                var inspector = works.nuty.codon.client.ui.layout.DebuggerLayout
+                    .create(screen.width, screen.height, true).inspector();
+                require(screen.children().stream().anyMatch(child -> child instanceof DebuggerButton button
+                    && button.getMessage().getString().equals(title) && button.getX() >= inspector.x()
+                    && button.getRight() <= inspector.x() + inspector.width()
+                    && button.hasChangedDot() == (sourceIndex == 2)),
+                    "The Contexts viewport reveals the selected status and source identity: " + title);
+                for (String member : titles) require(slots.get(member).equals(WidgetBounds.of(worldLabelButton(screen, member))),
+                    "Selecting a status label preserves every world slot: " + member);
+            });
+        }
+        // The existing three-row viewport now shows Changed, Created (position), Removed together.
+        context.runOnClient(client -> {
+            for (String title : titles.subList(2, 5)) button(screen, value -> value.equals(title));
+        });
+        context.takeScreenshot("codon-context-status-labels");
+        checkChangedDotsAtScales(context, screen, state);
+        context.runOnClient(client -> {
+            state.applyPause(fixture(client));
+            state.setGizmoMode(ClientDebuggerState.GizmoMode.GROUPED);
+        });
+        context.getInput().resizeWindow(1280, 800);
+        context.waitTicks(2);
+    }
+
+    private static void checkChangedDotsAtScales(ClientGameTestContext context, CodonScreen screen,
+                                                  ClientDebuggerState state) {
+        for (int[] settings : List.of(new int[]{1280, 800, 4}, new int[]{1280, 800, 6},
+                new int[]{1280, 800, 9}, new int[]{640, 480, 6})) {
+            context.getInput().resizeWindow(settings[0], settings[1]);
+            context.runOnClient(client -> {
+                state.preferences().setCustomUiScale(settings[2]);
+                state.preferences().setUiScaleMode(DebuggerPreferences.UiScaleMode.CUSTOM);
+                state.selectSource(2);
+                client.setLastInputType(InputType.MOUSE);
+                screen.setFocused(null);
+            });
+            context.waitTicks(3);
+            String name = "codon-context-dot-" + settings[0] + "x" + settings[1] + "-scale-" + settings[2];
+            context.runOnClient(client -> {
+                List<DebuggerButton> labels = screen.children().stream().filter(DebuggerButton.class::isInstance)
+                    .map(DebuggerButton.class::cast).filter(value -> value.getMessage().getString().equals("#3 Changed")).toList();
+                require(labels.size() == 2 && labels.stream().allMatch(DebuggerButton::hasChangedDot),
+                    "Changed list and world labels retain their drawn dot at " + name);
+                double scale = screen.uiScale().effective();
+                require(scale == settings[2] / 4.0, "The requested physical scale is applied at " + name);
+                for (DebuggerButton label : labels) System.out.println("CONTEXT_DOT " + name + " scale=" + scale
+                    + " widget=" + label.getX() + "," + label.getY() + "," + label.getWidth() + "," + label.getHeight());
+            });
+            context.takeScreenshot(name);
+        }
+        context.getInput().resizeWindow(1280, 800);
+        context.runOnClient(client -> state.preferences().setUiScaleMode(DebuggerPreferences.UiScaleMode.FOLLOW_GAME));
+        context.waitTicks(3);
+        context.runOnClient(client -> {
+            DebuggerButton label = worldLabelButton(screen, "#3 Changed");
+            client.setLastInputType(InputType.KEYBOARD_TAB);
+            screen.setFocused(label);
+        });
+        context.waitTicks(2);
+        context.takeScreenshot("codon-context-dot-keyboard-tooltip-en");
+        context.runOnClient(client -> {
+            state.setGizmoMode(ClientDebuggerState.GizmoMode.GROUPED);
+            screen.setFocused(null);
+            client.setLastInputType(InputType.MOUSE);
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> require(button(screen, title -> title.startsWith("#3 Changed")
+            && title.contains("  +")).hasChangedDot(), "A mixed group retains its named changed member's dot"));
+        context.takeScreenshot("codon-context-dot-grouped");
+        context.runOnClient(client -> state.setGizmoMode(ClientDebuggerState.GizmoMode.LABELS));
+        String oldLanguage = context.computeOnClient(client -> client.getLanguageManager().getSelected());
+        var reload = context.computeOnClient(client -> {
+            client.getLanguageManager().setSelected("ko_kr");
+            return client.reloadResourcePacks();
+        });
+        context.waitFor(client -> reload.isDone() && client.gui.overlay() == null, 400);
+        context.runOnClient(client -> {
+            client.setLastInputType(InputType.KEYBOARD_TAB);
+            screen.setFocused(worldLabelButton(screen, "#3 Changed"));
+        });
+        context.waitTicks(2);
+        context.takeScreenshot("codon-context-dot-keyboard-tooltip-ko");
+        context.runOnClient(client -> client.setLastInputType(InputType.MOUSE));
+        context.getInput().setCursorPos(0, 0);
+        context.runOnClient(client -> screen.setFocused(null));
+        double[] point = context.computeOnClient(client -> {
+            DebuggerButton label = worldLabelButton(screen, "#3 Changed");
+            double scale = screen.uiScale().effective();
+            return new double[]{(label.getX() + label.getWidth() / 2.0) * scale,
+                (label.getY() + label.getHeight() / 2.0) * scale};
+        });
+        context.getInput().setCursorPos(point[0], point[1]);
+        context.waitTicks(12);
+        context.takeScreenshot("codon-context-dot-hover-tooltip-ko");
+        var restored = context.computeOnClient(client -> {
+            client.getLanguageManager().setSelected(oldLanguage);
+            return client.reloadResourcePacks();
+        });
+        context.waitFor(client -> restored.isDone() && client.gui.overlay() == null, 400);
+        context.runOnClient(client -> screen.setFocused(null));
+        context.getInput().setCursorPos(0, 0);
+    }
+
+    private static PauseSnapshot contextStatusFixture(Minecraft client) {
+        PauseSnapshot base = fixture(client, true);
+        PauseSource anchor = base.pauseSources().getFirst();
+        var position = anchor.anchor();
+        PauseSource unchanged = new PauseSource(position, 0, 0,
+            new EntityRef(new UUID(0, 1), "Unchanged"), anchor.dimension());
+        PauseSource changedBefore = new PauseSource(position, 0, 0,
+            new EntityRef(new UUID(0, 2), "Changed"), anchor.dimension());
+        PauseSource changed = new PauseSource(new Vec3d(position.x() + 0.5, position.y(), position.z()),
+            0, 45, changedBefore.entity(), anchor.dimension());
+        PauseSource created = new PauseSource(new Vec3d(position.x() + 1, position.y(), position.z()),
+            0, 0, new EntityRef(new UUID(0, 3), "Created"), anchor.dimension());
+        PauseSource createdPosition = new PauseSource(new Vec3d(position.x() + 1.5, position.y(), position.z()),
+            0, 0, null, anchor.dimension());
+        PauseSource removed = new PauseSource(new Vec3d(position.x() + 2, position.y(), position.z()),
+            0, 0, new EntityRef(new UUID(0, 4), "Removed"), anchor.dimension());
+        List<ExecutionFlowContext> inputs = List.of(new ExecutionFlowContext(1, unchanged),
+            new ExecutionFlowContext(2, changedBefore), new ExecutionFlowContext(3, anchor),
+            new ExecutionFlowContext(4, removed));
+        List<ExecutionFlowContext> outputs = List.of(inputs.getFirst(), new ExecutionFlowContext(6, created),
+            new ExecutionFlowContext(5, changed), new ExecutionFlowContext(7, createdPosition));
+        CommandSnippet command = CommandSnippet.plain("execute as @e at @s");
+        List<CallFrame> stack = List.of(new CallFrame(0, base.location(), command, 77, 0));
+        ExecutionFlowStage stage = new ExecutionFlowStage(0, command, inputs, outputs,
+            List.of(new ExecutionFlowEdge(1, 1), new ExecutionFlowEdge(2, 5),
+                new ExecutionFlowEdge(3, 6), new ExecutionFlowEdge(3, 7)),
+            List.of(4L), 4, 4, 1, false, 0, 0, true, true, false, 0, stack);
+        return new PauseSnapshot(base.location(), command, 0, stack,
+            inputs.stream().map(ExecutionFlowContext::source).toList(),
+            List.of(new ExecutionFlowTrace(77, base.location(), List.of(stage), false)), PauseReason.STEP);
     }
 
     /** LABELS mode keeps each source's numbered screen slot stable when the selected source changes. */

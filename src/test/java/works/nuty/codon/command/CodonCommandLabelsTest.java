@@ -2,6 +2,7 @@ package works.nuty.codon.command;
 
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.datafixers.util.Pair;
+import java.util.Optional;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
 import net.minecraft.commands.arguments.item.FunctionArgument;
@@ -11,6 +12,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.contents.TranslatableContents;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.Bootstrap;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.ServerFunctionManager;
 import net.minecraft.world.level.Level;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeAll;
@@ -49,13 +52,18 @@ class CodonCommandLabelsTest {
     @SuppressWarnings("unchecked")
     void functionLimitReturnsATranslatableFailure() throws Exception {
         var source = mock(CommandSourceStack.class);
+        var server = mock(MinecraftServer.class);
+        var functions = mock(ServerFunctionManager.class);
+        when(source.getServer()).thenReturn(server);
+        when(server.getFunctions()).thenReturn(functions);
+        when(functions.get(any())).thenReturn(Optional.empty());
         CommandContext<CommandSourceStack> context = mock(CommandContext.class);
         when(context.getSource()).thenReturn(source);
         when(context.getArgument("line", int.class)).thenReturn(1);
         var engine = mock(DebuggerEngine.class);
         when(engine.toggleFunctionBreakpoint(any())).thenThrow(new BreakpointRegistry.LimitExceeded());
-        try (var functions = mockStatic(FunctionArgument.class)) {
-            functions.when(() -> FunctionArgument.getFunctionOrTag(context, "function"))
+        try (var arguments = mockStatic(FunctionArgument.class)) {
+            arguments.when(() -> FunctionArgument.getFunctionOrTag(context, "function"))
                 .thenReturn(Pair.of(Identifier.fromNamespaceAndPath("demo", "state"), null));
             assertLimit("toggleFunctionBreakpoint", context, engine, source);
         }

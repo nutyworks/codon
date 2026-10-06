@@ -354,6 +354,37 @@ class DebuggerRecipientAuthorizationTest {
         assertTrue(sent.get(reconnected).isEmpty(), "Revocation takes effect before the next cleanup tick");
     }
 
+    @Test void respawnedPlayerKeepsConnectionHandshakeAndDisconnectClearsIt() {
+        when(playerList.getPlayers()).thenReturn(List.of(owner));
+        join(owner);
+        clearSent();
+
+        var respawned = player(true);
+        respawned.connection = owner.connection;
+        UUID originalUuid = owner.getUUID();
+        when(respawned.getUUID()).thenReturn(originalUuid);
+        when(owner.connection.getPlayer()).thenReturn(respawned);
+        when(playerList.getPlayers()).thenReturn(List.of(respawned));
+        tick();
+
+        assertTrue(sent.get(respawned).isEmpty(), "respawn retains the connection's one-time handshake");
+        verify(watches, times(1)).get(originalUuid);
+
+        when(permissions.get(respawned).hasPermission(Permissions.COMMANDS_OWNER)).thenReturn(false);
+        tick();
+        when(permissions.get(respawned).hasPermission(Permissions.COMMANDS_OWNER)).thenReturn(true);
+        tick();
+        assertTrue(payloads(respawned, WatchDefinitionsSyncPayload.class).isEmpty(),
+            "re-promotion after respawn must not overwrite an existing watch restore");
+        only(respawned, BreakpointSyncPayload.class);
+        verify(watches, times(1)).get(originalUuid);
+
+        ServerPlayConnectionEvents.DISCONNECT.invoker().onPlayDisconnect(owner.connection, server);
+        when(playerList.getPlayers()).thenReturn(List.of(owner));
+        tick();
+        only(owner, WatchDefinitionsSyncPayload.class);
+    }
+
     @Test void revocationIsRecheckedForLiveStateAndRejoin() {
         sink.paused(SNAPSHOT);
         clearSent();
@@ -438,6 +469,77 @@ class DebuggerRecipientAuthorizationTest {
         assertTrue(sent.get(owner).isEmpty());
         ServerPlayConnectionEvents.DISCONNECT.invoker().onPlayDisconnect(visitor.connection, server);
         verify(watches).resetTransfer(visitor.getUUID());
+    }
+
+    @Test void oversizedCapturedChangesHaveNoPartialPagesAndNotifyOnlyTheOwner(
+        @org.junit.jupiter.api.io.TempDir java.nio.file.Path world) {
+        var storage = mock(net.minecraft.world.level.storage.CommandStorage.class,
+            withSettings().extraInterfaces(works.nuty.codon.mixin.CommandStorageAccessor.class));
+        when(((works.nuty.codon.mixin.CommandStorageAccessor) storage).codon$loadedNamespaces()).thenReturn(Map.of());
+        var id = Identifier.fromNamespaceAndPath("probe", "large");
+        var current = new java.util.concurrent.atomic.AtomicReference<net.minecraft.nbt.CompoundTag>();
+        when(storage.keys()).thenAnswer(call -> java.util.stream.Stream.of(id));
+        when(storage.get(id)).thenAnswer(call -> current.get());
+        when(server.getCommandStorage()).thenReturn(storage);
+        when(server.getWorldPath(net.minecraft.world.level.storage.LevelResource.DATA)).thenReturn(world.resolve("data"));
+
+        var initial = new net.minecraft.nbt.CompoundTag();
+        var changed = new net.minecraft.nbt.CompoundTag();
+        for (int i = 0; i < 4097; i++) {
+            initial.putInt("field" + i, 0);
+            changed.putInt("field" + i, 1);
+        }
+        current.set(initial);
+        sink.paused(SNAPSHOT);
+        clearSent();
+        current.set(changed);
+        var next = new PauseSnapshot(LOCATION, SNAPSHOT.command(), 0, List.of(), SNAPSHOT.pauseSources(),
+            PauseReason.BREAKPOINT, 42);
+        sink.paused(next);
+
+        assertEquals(next, only(owner, PauseSyncPayload.class).snapshot());
+        assertEquals(new WatchChangesUnavailablePayload(42, WatchChangesUnavailablePayload.Reason.TOO_LARGE),
+            only(owner, WatchChangesUnavailablePayload.class));
+        assertTrue(payloads(owner, WatchChangesSyncPayload.class).isEmpty());
+        assertTrue(sent.get(visitor).isEmpty());
+        clearSent();
+        unsupported.get(owner).add(WatchChangesUnavailablePayload.TYPE.id());
+        sink.sendWatchChanges(owner, 42);
+        assertTrue(sent.get(owner).isEmpty());
+        verify(owner).sendSystemMessage(argThat(message -> message.getContents() instanceof TranslatableContents text
+            && text.getKey().equals("codon.watch.changes.too_large")));
+    }
+
+    @Test void failedCaptureReportsUnavailabilityWithoutAnEmptySuccessPage() {
+        when(server.isSameThread()).thenReturn(false);
+        sink.paused(SNAPSHOT);
+
+        assertEquals(SNAPSHOT, only(owner, PauseSyncPayload.class).snapshot());
+        assertEquals(new WatchChangesUnavailablePayload(41, WatchChangesUnavailablePayload.Reason.CAPTURE_FAILED),
+            only(owner, WatchChangesUnavailablePayload.class));
+        assertTrue(payloads(owner, WatchChangesSyncPayload.class).isEmpty());
+        assertTrue(sent.get(visitor).isEmpty());
+    }
+
+    @Test void senderUsesTheSameAggregateCharacterAndRowBoundAsTheReceiver() {
+        var spec = new WatchSpec(WatchSpec.Kind.SCORE, "score", "");
+        var empty = new WatchResult(WatchResult.Status.VALUE, "", "entity", "name");
+        long metadata = TransferBudget.characters(spec) + 2 * TransferBudget.characters(empty);
+        int beforeLength = (int) ((2048 - metadata) / 2);
+        int afterLength = (int) (2048 - metadata - beforeLength);
+        var before = new WatchResult(WatchResult.Status.VALUE, "x".repeat(beforeLength), "entity", "name");
+        var after = new WatchResult(WatchResult.Status.VALUE, "y".repeat(afterLength), "entity", "name");
+        var exact = new WatchChange(spec, before, after);
+        assertEquals(2048, TransferBudget.characters(spec) + TransferBudget.characters(before)
+            + TransferBudget.characters(after));
+        assertTrue(NetworkDebuggerEventSink.fitsChangeBudget(Collections.nCopies(1024, exact)));
+        var extra = new WatchChange(spec, before,
+            new WatchResult(WatchResult.Status.VALUE, "y".repeat(afterLength + 1), "entity", "name"));
+        assertFalse(NetworkDebuggerEventSink.fitsChangeBudget(Collections.nCopies(1024, extra)));
+        assertTrue(NetworkDebuggerEventSink.fitsChangeBudget(Collections.nCopies(4096,
+            new WatchChange(spec, empty, empty))));
+        assertFalse(NetworkDebuggerEventSink.fitsChangeBudget(Collections.nCopies(4097,
+            new WatchChange(spec, empty, empty))));
     }
 
     @Test void oversizedLivePauseStaysPausedUntilExplicitResume() {

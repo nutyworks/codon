@@ -14,6 +14,7 @@ import works.nuty.codon.client.state.ClientDebuggerState;
 import works.nuty.codon.client.state.ClientStagePreviewState;
 import works.nuty.codon.client.state.BreakpointTargetPolicy;
 import works.nuty.codon.client.ui.layout.VisibleWidgetCache;
+import works.nuty.codon.client.ui.layout.BreakpointListOrder;
 import works.nuty.codon.core.model.BreakpointDefinition;
 import works.nuty.codon.core.model.BreakpointTarget;
 import works.nuty.codon.core.model.SourceLocation;
@@ -25,6 +26,7 @@ import static works.nuty.codon.client.ui.DebuggerTheme.*;
 
 /** Authoritative breakpoint locations; activating a row only navigates. */
 public final class BreakpointListScreen extends ScaledCodonScreen {
+    private static final int ROW_HEIGHT = 30;
     private final Screen parent;
     private final ClientDebuggerState state;
     private final @Nullable List<BreakpointTarget> targets;
@@ -48,7 +50,7 @@ public final class BreakpointListScreen extends ScaledCodonScreen {
         panelHeight = Math.max(1, Math.min(330, height - 12));
         left = (width - panelWidth) / 2;
         top = (height - panelHeight) / 2;
-        rows = Math.max(1, (panelHeight - 62) / 20);
+        rows = Math.max(1, (panelHeight - 62) / ROW_HEIGHT);
         rebuild();
     }
 
@@ -58,7 +60,7 @@ public final class BreakpointListScreen extends ScaledCodonScreen {
         buttons.begin();
         displayed = state.breakpoints().definitions().stream()
             .filter(definition -> targets == null || targets.contains(definition.target()))
-            .sorted(Comparator.comparing(definition -> BreakpointUi.target(definition.target()))).toList();
+            .sorted(Comparator.comparing(BreakpointDefinition::target, BreakpointListOrder.TARGETS)).toList();
         offset = Math.clamp(offset, 0, Math.max(0, displayed.size() - rows));
         for (int row = 0; row < rows && offset + row < displayed.size(); row++) {
             BreakpointDefinition definition = displayed.get(offset + row);
@@ -66,12 +68,29 @@ public final class BreakpointListScreen extends ScaledCodonScreen {
             String label = tr(definition.enabled() ? "codon.breakpoint.enabled" : "codon.breakpoint.disabled") + " · "
                 + (definition.staleSource() ? "! " + tr("codon.breakpoint.location_review") + " · " : "")
                 + BreakpointUi.target(target) + " · " + BreakpointUi.condition(definition.condition());
-            DebuggerButton button = addRenderableWidget(buttons.get("row:" + target, DebuggerButton::new));
-            button.configure(left + 8, top + 30 + row * 20, panelWidth - 16, 18, Component.literal(label),
+            RowButton button = (RowButton) addRenderableWidget(buttons.get("row:" + target, RowButton::new));
+            button.configure(left + 8, top + 30 + row * ROW_HEIGHT, panelWidth - 16, ROW_HEIGHT - 2, Component.literal(label),
                 canNavigate(target), false, true, false, () -> navigate(target));
-            button.withFlatChrome().withTextIcon(BreakpointUi.icon(definition));
-            button.setTooltip(Tooltip.create(Component.translatable(canNavigate(target)
-                ? "codon.breakpoint.go_to_location" : "codon.breakpoint.flow_unavailable")));
+            button.asHitSurface().withTextIcon(BreakpointUi.icon(definition));
+            String status = tr(definition.enabled() ? "codon.breakpoint.enabled" : "codon.breakpoint.disabled");
+            String kind = tr(target.wholeCommand() ? "codon.breakpoint.whole_target" : "codon.breakpoint.stage_target",
+                target.stageIndex() + 1);
+            String detail = BreakpointUi.condition(definition.condition());
+            if (definition.staleSource()) detail += " · ! " + tr("codon.breakpoint.location_review");
+            switch (target.location()) {
+                case SourceLocation.Block block -> {
+                    button.headline = status + " · " + kind + " · " + block.block().x() + "," + block.block().y() + "," + block.block().z();
+                    button.detail = detail + " · " + block.block().dimension();
+                }
+                case SourceLocation.Function function -> {
+                    button.headline = status + " · " + tr("codon.breakpoint.line_target", function.location().line())
+                        + (target.wholeCommand() ? "" : " · " + kind) + " · " + function.location().function();
+                    button.detail = detail;
+                }
+                case SourceLocation.Player ignored -> throw new IllegalStateException("Player breakpoint cannot be saved");
+            }
+            button.setTooltip(Tooltip.create(Component.literal(label + "\n" + tr(canNavigate(target)
+                ? "codon.breakpoint.go_to_location" : "codon.breakpoint.flow_unavailable"))));
             button.setTabOrderGroup(row);
         }
         DebuggerButton close = addRenderableWidget(buttons.get("close", DebuggerButton::new));
@@ -80,6 +99,23 @@ public final class BreakpointListScreen extends ScaledCodonScreen {
         if (focused instanceof AbstractWidget widget && children().contains(widget)) setFocused(widget);
         else if (focused != null) setFocused(close);
         buttons.end();
+    }
+
+    private static final class RowButton extends DebuggerButton {
+        private String headline = "", detail = "";
+
+        @Override protected void extractContents(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+            if (active && (isHovered() || isFocused()))
+                graphics.fill(getX(), getY(), getRight(), getBottom(), DebuggerTheme.color(RAISED));
+            var font = Minecraft.getInstance().font;
+            int textX = getX() + TEXT_ICON_INSET + 5;
+            int textWidth = Math.max(0, getRight() - 5 - textX);
+            if (icon() != null) icon().draw(graphics, getX() + 4, getY() + 3,
+                DebuggerTheme.foreground(active ? TEXT : MUTED));
+            WatchUi.line(graphics, font, headline, textX, getY() + 3, textWidth, active ? TEXT : MUTED);
+            WatchUi.line(graphics, font, detail, textX, getY() + 16, textWidth, MUTED);
+            super.extractContents(graphics, mouseX, mouseY, partialTick);
+        }
     }
 
     private @Nullable CodonScreen debuggerScreen() {
@@ -159,7 +195,7 @@ public final class BreakpointListScreen extends ScaledCodonScreen {
     }
 
     @Override public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
-        if (x < left || x >= left + panelWidth || y < top + 30 || y >= top + 30 + rows * 20
+        if (x < left || x >= left + panelWidth || y < top + 30 || y >= top + 30 + rows * ROW_HEIGHT
             || scrollY == 0) return super.mouseScrolled(x, y, scrollX, scrollY);
         offset = Math.clamp(offset - (int) Math.signum(scrollY) * 2, 0, Math.max(0, displayed.size() - rows));
         rebuild();

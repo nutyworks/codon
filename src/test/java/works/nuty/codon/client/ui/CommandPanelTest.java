@@ -16,6 +16,8 @@ import works.nuty.codon.core.model.BreakpointTarget;
 import works.nuty.codon.client.state.ClientDebuggerState;
 import works.nuty.codon.core.model.ExecutionFlowWarning;
 import works.nuty.codon.core.model.PauseSource;
+import works.nuty.codon.core.model.PauseSnapshot;
+import works.nuty.codon.core.model.PauseReason;
 import works.nuty.codon.core.model.SourceLocation;
 import works.nuty.codon.core.model.Vec3d;
 import works.nuty.codon.core.service.ExecutionFlowHistory;
@@ -144,9 +146,11 @@ class CommandPanelTest {
     @Test
     void pendingAndAbandonedReturnRunOutputsRemainUnmeasuredAfterSync() {
         recorder.beginStage(CommandSnippet.plain("return run say ok"), List.of(input), 1, false);
-        assertDisplay("1→...", "Execution contexts: 1 in → ... out");
+        assertDisplay("1→?", "Execution contexts: 1 in → ? out");
+        assertDetail("In 1 → Out ? · Excluded ?");
         recorder.abandonStage();
-        assertDisplay("1→...", "Execution contexts: 1 in → ... out");
+        assertDisplay("1→?", "Execution contexts: 1 in → ? out");
+        assertDetail("In 1 → Out ? · Excluded ?");
     }
 
     @Test
@@ -155,6 +159,7 @@ class CommandPanelTest {
         recorder.inputDropped(input);
         recorder.finishStage(0, 1);
         assertDisplay("1→0  −1", "Execution contexts: 1 in → 0 out · 1 filtered out");
+        assertDetail("In 1 → Out 0 · Excluded 1");
     }
 
     @Test
@@ -168,11 +173,14 @@ class CommandPanelTest {
     @Test
     void terminalSummaryDistinguishesPendingResultsFromMeasuredZeroAfterSync() {
         recorder.beginStage(CommandSnippet.plain("say ok"), List.of(input), 1, true);
-        assertDisplay("1→1", "Execution contexts: 1 · Runs: ... · Successes: ...");
+        assertDisplay("1→1", "Execution contexts: 1 · Runs: ? · Successes: ?");
+        assertDetail("Contexts 1 · Runs ? · Successes ?");
         recorder.executionStarted();
-        assertDisplay("1→1", "Execution contexts: 1 · Runs: 1 · Successes: ...");
+        assertDisplay("1→1", "Execution contexts: 1 · Runs: 1 · Successes: ?");
+        assertDetail("Contexts 1 · Runs 1 · Successes ?");
         recorder.executionResult(false);
         assertDisplay("1→1", "Execution contexts: 1 · Runs: 1 · Successes: 0");
+        assertDetail("Contexts 1 · Runs 1 · Successes 0");
         recorder.executionStarted();
         recorder.executionResult(true);
         assertDisplay("1→1", "Execution contexts: 1 · Runs: 2 · Successes: 1");
@@ -200,6 +208,24 @@ class CommandPanelTest {
                 CommandPanel.warningText(decoded.flows().getFirst().warnings().getFirst()));
         } finally {
             buffer.release();
+        }
+    }
+
+    private void assertDetail(String expected) {
+        var flow = recorder.snapshot();
+        var stage = flow.stages().getLast();
+        var state = new ClientDebuggerState();
+        state.applyPause(new PauseSnapshot(flow.location(), stage.command(), 0, List.of(), List.of(), List.of(flow), PauseReason.STEP));
+        var panel = new CommandPanel(state, () -> { });
+        try {
+            var method = CommandPanel.class.getDeclaredMethod("selectionDetail");
+            method.setAccessible(true);
+            var detail = method.invoke(panel);
+            var values = detail.getClass().getDeclaredMethod("values");
+            values.setAccessible(true);
+            assertEquals(expected, values.invoke(detail));
+        } catch (ReflectiveOperationException error) {
+            throw new AssertionError(error);
         }
     }
 

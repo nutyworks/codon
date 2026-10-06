@@ -14,6 +14,7 @@ import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.CommandBlockEntity;
 import works.nuty.codon.CodonMod;
+import works.nuty.codon.client.input.InputManager;
 import works.nuty.codon.adapter.DebuggerTaskQueue;
 import works.nuty.codon.adapter.SourceMapper;
 import works.nuty.codon.core.model.BlockLocation;
@@ -55,6 +56,8 @@ public final class DebuggerRequestTransportGameTest implements FabricClientGameT
             assertCommandBlockAccess(world);
             world.getServer().runCommand("scoreboard objectives add transport_points dummy");
             world.getServer().runCommand("scoreboard players set @a transport_points 10");
+            for (int i = 0; i < 33; i++)
+                world.getServer().runCommand("scoreboard players set burst_" + i + " transport_points 10");
             MinecraftServer server = world.getServer().computeOnServer(value -> value);
             AtomicBoolean completed = new AtomicBoolean();
             AtomicBoolean ordinaryTask = new AtomicBoolean();
@@ -83,6 +86,10 @@ public final class DebuggerRequestTransportGameTest implements FabricClientGameT
                             CommandSnippet.plain("scoreboard players set @s transport_points 11"), () -> sources));
                         server.getScoreboard().getOrCreatePlayerScore(player,
                             server.getScoreboard().getObjective("transport_points")).set(11);
+                        for (int i = 0; i < 33; i++)
+                            server.getScoreboard().getOrCreatePlayerScore(
+                                net.minecraft.world.scores.ScoreHolder.forNameOnly("burst_" + i),
+                                server.getScoreboard().getObjective("transport_points")).set(11);
                         engine.onCommandStage(new CommandStageEvent(981002, 0, new SourceLocation.Block(BREAKPOINT),
                             CommandSnippet.plain("say transport-next-stage"), () -> sources));
                     } catch (Throwable problem) {
@@ -102,26 +109,41 @@ public final class DebuggerRequestTransportGameTest implements FabricClientGameT
                 require(!ordinaryTask.get(), "normal server work stays blocked while request mailbox remains live");
 
                 context.runOnClient(client -> {
-                    ClientPlayNetworking.send(new WatchQueryPayload(firstPause, 101, 0, SCORE));
-                    // The request packet must precede this control command in the parked-server FIFO.
-                    client.player.connection.sendCommand("codon stepinto");
+                    ClientPlayNetworking.send(new WatchQueryPayload(firstPause, 1000101, 0, SCORE));
+                    // Add more than one connection mailbox can admit at once, then use the UI path
+                    // immediately, before the next tick can send any of these reads.
+                    var state = CodonClientMod.state();
+                    state.watches().setChangeListener(ignored -> {});
+                    state.watches().clearDefinitions();
+                    for (int i = 0; i < 33; i++)
+                        require(state.watches().add(WatchSpec.scoreHolder("transport_points", "burst_" + i)),
+                            "add distinct burst Watch");
+                    CodonClientMod.input().control(InputManager.Control.INTO);
+                    require(state.controlAwaitingReads(), "UI Step waits for its 33 pre-step reads");
+                    CodonClientMod.input().control(InputManager.Control.INTO);
                 });
-                context.waitFor(client -> replies.watch(101) != null && CodonClientMod.state().isPaused()
+                context.waitFor(client -> replies.watch(1000101) != null && CodonClientMod.state().isPaused()
                     && CodonClientMod.state().snapshot().pauseId() != firstPause, 200);
-                require(replies.watch(101).result().status() == WatchResult.Status.VALUE
-                        && replies.watch(101).result().value().equals("10"),
+                require(replies.watch(1000101).result().status() == WatchResult.Status.VALUE
+                        && replies.watch(1000101).result().value().equals("10"),
                     "watch request observes the pre-step value before the next stage mutates it");
                 require(!ordinaryTask.get(), "query and step do not drain ordinary server tasks");
+                var captured = replies.watches.stream().filter(reply -> reply.pauseId() == firstPause
+                    && reply.requestId() != 1000101).toList();
+                require(captured.size() == 33 && captured.stream().allMatch(reply ->
+                    reply.result().status() == WatchResult.Status.VALUE && reply.result().value().equals("10")),
+                    "all 33 Watch responses observe pre-step values before server mutation");
+                CodonMod.LOGGER.info("Watch burst native PASS: 33 pre-step reads completed through UI Step; repeated Step suppressed");
 
                 long secondPause = context.computeOnClient(client -> CodonClientMod.state().snapshot().pauseId());
                 context.runOnClient(client -> {
-                    ClientPlayNetworking.send(new WatchQueryPayload(firstPause, 102, 0, SCORE));
-                    ClientPlayNetworking.send(new NbtTreeQueryPayload(secondPause, 103, 0, 0, ""));
+                    ClientPlayNetworking.send(new WatchQueryPayload(firstPause, 1000102, 0, SCORE));
+                    ClientPlayNetworking.send(new NbtTreeQueryPayload(secondPause, 1000103, 0, 0, ""));
                 });
-                context.waitFor(client -> replies.watch(102) != null && replies.nbt(103) != null, 200);
-                require(replies.watch(102).result().status() == WatchResult.Status.UNAVAILABLE,
+                context.waitFor(client -> replies.watch(1000102) != null && replies.nbt(1000103) != null, 200);
+                require(replies.watch(1000102).result().status() == WatchResult.Status.UNAVAILABLE,
                     "an old pause ID receives an explicit unavailable result");
-                require(replies.nbt(103).page().status() == WatchResult.Status.VALUE,
+                require(replies.nbt(1000103).page().status() == WatchResult.Status.VALUE,
                     "an owner can request the selected executor NBT over C2S while parked");
 
                 context.runOnClient(client -> {
@@ -129,40 +151,61 @@ public final class DebuggerRequestTransportGameTest implements FabricClientGameT
                         client.player.connection.sendCommand("codon " + action + " " + firstPause);
                     }
                     // This query follows all stale controls through the same mailbox.
-                    ClientPlayNetworking.send(new WatchQueryPayload(secondPause, 108, 0, SCORE));
+                    ClientPlayNetworking.send(new WatchQueryPayload(secondPause, 1000108, 0, SCORE));
                 });
-                context.waitFor(client -> replies.watch(108) != null, 200);
-                require(replies.watch(108).result().status() == WatchResult.Status.VALUE
-                        && replies.watch(108).result().value().equals("11")
+                context.waitFor(client -> replies.watch(1000108) != null, 200);
+                require(replies.watch(1000108).result().status() == WatchResult.Status.VALUE
+                        && replies.watch(1000108).result().value().equals("11")
                         && CodonMod.engine().isPaused() && CodonMod.engine().currentSnapshot().pauseId() == secondPause,
                     "delayed controls for the first pause must leave the second pause unchanged");
 
                 setOwner(context, server, false);
                 context.runOnClient(client -> {
-                    ClientPlayNetworking.send(new WatchQueryPayload(secondPause, 104, 0, SCORE));
-                    ClientPlayNetworking.send(new NbtTreeQueryPayload(secondPause, 105, 0, 0, ""));
-                    ClientPlayNetworking.send(new WatchSavePayload(106, 0, true, List.of(SCORE)));
+                    ClientPlayNetworking.send(new WatchQueryPayload(secondPause, 1000104, 0, SCORE));
+                    ClientPlayNetworking.send(new NbtTreeQueryPayload(secondPause, 1000105, 0, 0, ""));
+                    ClientPlayNetworking.send(new WatchSavePayload(1000106, 0, true, List.of(SCORE)));
                 });
-                context.waitFor(client -> replies.save(106) != null, 200);
+                context.waitFor(client -> replies.save(1000106) != null, 200);
                 context.waitTicks(5);
-                require(replies.watch(104) == null && replies.nbt(105) == null,
+                require(replies.watch(1000104) == null && replies.nbt(1000105) == null,
                     "a non-owner receives no read reply and cannot inspect paused data");
-                require(replies.save(106).status() == WatchSaveSyncPayload.Status.FAILED,
+                require(replies.save(1000106).status() == WatchSaveSyncPayload.Status.FAILED,
                     "a non-owner cannot persist watch definitions");
 
                 setOwner(context, server, true);
-                context.runOnClient(client -> ClientPlayNetworking.send(new WatchQueryPayload(secondPause, 107, 0, SCORE)));
-                context.waitFor(client -> replies.watch(107) != null, 200);
-                require(replies.watch(107).result().value().equals("11"),
+                context.runOnClient(client -> ClientPlayNetworking.send(new WatchQueryPayload(secondPause, 1000107, 0, SCORE)));
+                context.waitFor(client -> replies.watch(1000107) != null, 200);
+                require(replies.watch(1000107).result().value().equals("11"),
                     "permission is checked at request execution time and an owner can read again");
 
-                context.runOnClient(client -> client.player.connection.sendCommand("codon stepinto " + secondPause));
+                context.runOnClient(client -> client.player.connection.sendCommand("codon stepinto"));
                 context.waitFor(client -> CodonClientMod.state().isPaused()
                     && CodonClientMod.state().snapshot().reason() == works.nuty.codon.core.model.PauseReason.EXECUTION_COMPLETE, 200);
-                context.runOnClient(client -> client.player.connection.sendCommand("codon stepinto"));
+                long terminalPause = context.computeOnClient(client -> CodonClientMod.state().snapshot().pauseId());
+                context.waitFor(client -> !CodonClientMod.state().watches().hasUnresolvedQueries(), 200);
+                context.runOnClient(client -> {
+                    replies.dropNextWatch.set(true);
+                    require(CodonClientMod.state().watches().add(WatchSpec.scoreHolder("transport_points", "lost_reply")),
+                        "queue a new terminal-pause Watch");
+                    CodonClientMod.input().control(InputManager.Control.INTO);
+                    require(CodonClientMod.state().controlAwaitingReads(), "terminal Step waits for its Watch response");
+                });
+                context.waitFor(client -> CodonClientMod.state().watchReadsFailed(), 200);
+                context.runOnClient(client -> {
+                    var state = CodonClientMod.state();
+                    require(!state.controlPending() && state.snapshot().pauseId() == terminalPause
+                        && CodonMod.engine().isPaused(), "lost response cancels Step without releasing the terminal pause");
+                    CodonClientMod.input().control(InputManager.Control.INTO);
+                    require(!state.controlPending(), "repeated Step remains disabled after read failure");
+                });
+                context.takeScreenshot("codon-watch-read-timeout");
+                CodonMod.LOGGER.info("Watch loss native PASS: dropped actual reply cancels Step, keeps pause, and displays failure");
+                context.runOnClient(client -> CodonClientMod.input().control(InputManager.Control.RESUME));
                 context.waitFor(client -> completed.get() && !CodonClientMod.state().isPaused(), 200);
                 if (failure.get() != null) throw new AssertionError("parked transport fixture failed", failure.get());
                 context.waitFor(client -> ordinaryTask.get(), 200);
+                require(!context.computeOnClient(client -> CodonClientMod.state().watchReadsFailed()),
+                    "server acknowledgement clears read failure after Resume");
                 CodonMod.LOGGER.info("Paused control transport PASS: stale IDs rejected for all four actions; current ID and unversioned steps accepted");
             } finally {
                 AtomicBoolean cleaned = new AtomicBoolean();
@@ -253,7 +296,7 @@ public final class DebuggerRequestTransportGameTest implements FabricClientGameT
         require(watch != null && nbt != null && save != null, "the live client has the normal reply handlers to preserve");
         require(ClientPlayNetworking.registerReceiver(WatchSyncPayload.TYPE, (payload, context) -> {
                 replies.watches.add(payload);
-                watch.receive(payload, context);
+                if (!replies.dropNextWatch.compareAndSet(true, false)) watch.receive(payload, context);
             }),
             "install a connection-local Watch reply observer");
         require(ClientPlayNetworking.registerReceiver(NbtTreeSyncPayload.TYPE, (payload, context) -> {
@@ -290,6 +333,7 @@ public final class DebuggerRequestTransportGameTest implements FabricClientGameT
     }
 
     private static final class Replies {
+        final AtomicBoolean dropNextWatch = new AtomicBoolean();
         final List<WatchSyncPayload> watches = new CopyOnWriteArrayList<>();
         final List<NbtTreeSyncPayload> nbts = new CopyOnWriteArrayList<>();
         final List<WatchSaveSyncPayload> saves = new CopyOnWriteArrayList<>();

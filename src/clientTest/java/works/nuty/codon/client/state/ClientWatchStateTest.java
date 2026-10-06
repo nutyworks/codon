@@ -28,6 +28,65 @@ class ClientWatchStateTest {
     private static final WatchSpec ENTITY = new WatchSpec(WatchSpec.Kind.ENTITY_NBT, "", "Health");
     private static final WatchSpec STORAGE = new WatchSpec(WatchSpec.Kind.STORAGE_NBT, "example:data", "value");
 
+    @Test void retryAvailabilityMatchesTheOnlyStatusesThatCanReissueAQuery() {
+        var state = new ClientWatchState(() -> 0);
+        state.add(SCORE);
+        long id = state.entries().getFirst().id();
+        assertFalse(state.canRetry(id));
+        state.paused(1, 0);
+        assertFalse(state.canRetry(id));
+        var query = onlyQuery(state);
+        state.accept(1, query.requestId(), value("1", "entity"));
+        assertFalse(state.canRetry(id));
+        state.paused(2, 0);
+        query = onlyQuery(state);
+        state.accept(2, query.requestId(), WatchResult.absent(WatchResult.Status.UNAVAILABLE, ""));
+        assertTrue(state.canRetry(id));
+        state.retry(id);
+        assertFalse(state.canRetry(id));
+        query = onlyQuery(state);
+        state.accept(2, query.requestId(), WatchResult.absent(WatchResult.Status.ERROR, ""));
+        assertTrue(state.canRetry(id));
+        state.resumed();
+        assertFalse(state.canRetry(id));
+    }
+
+    @Test void localTimeoutCannotRetryOrBecomeRetryableAfterALateReply() {
+        var clock = new AtomicLong();
+        var state = new ClientWatchState(clock::get);
+        state.add(SCORE);
+        state.paused(1, 0);
+        var query = onlyQuery(state);
+        long id = state.entries().getFirst().id();
+        clock.set(5_000_000_000L);
+        assertFalse(state.canRetry(id), "Retry eligibility applies the local deadline even before rendering");
+        state.retry(id);
+        assertTrue(state.hasTimedOutQueries(), "attempted Retry preserves the timeout");
+        assertEquals(WatchResult.Status.UNAVAILABLE, onlyEntry(state).result().status());
+        assertTrue(state.drainQueries(12).isEmpty());
+        state.accept(query.pauseId(), query.requestId(), value("late", "entity"));
+        assertTrue(state.hasTimedOutQueries());
+        assertFalse(state.canRetry(id));
+        assertEquals(WatchResult.Status.UNAVAILABLE, onlyEntry(state).result().status());
+        assertTrue(state.drainQueries(12).isEmpty());
+    }
+
+    @Test void unavailableAutomaticChangesRejectTheWholePauseAndClearOnNextStop() {
+        var state = new ClientWatchState(() -> 0);
+        state.paused(1, 0);
+        state.acceptUnavailableChanges(2, true);
+        assertFalse(state.changesRejected());
+        state.acceptUnavailableChanges(1, true);
+        assertTrue(state.changesRejected());
+        assertTrue(state.changesTooLarge());
+        state.paused(2, 0);
+        assertFalse(state.changesRejected());
+        assertFalse(state.changesTooLarge());
+        state.acceptUnavailableChanges(2, false);
+        assertTrue(state.changesRejected());
+        assertFalse(state.changesTooLarge());
+    }
+
     @Test
     void rejectsDuplicatesAndAcceptsWatchesBeyondTheFormerLimit() {
         ClientWatchState state = new ClientWatchState(() -> 0);

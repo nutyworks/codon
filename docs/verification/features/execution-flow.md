@@ -1,5 +1,12 @@
 # Execution flow
 
+Stage-preview requests now use a 30-second deadline from request creation. A dropped
+reply permits one automatic retry with a new request ID; the older reply cannot replace
+the retry. A second timeout stops automatic requests until explicit Source Reload or
+line re-selection starts a fresh attempt. `ClientFlowPreviewRequestsTest` covers the timed-out loading state and
+stale response guard. Native packet-loss and unobserved-stage presentation remain
+separate acceptance checks.
+
 ## User path and expected result
 
 The UI scaffold uses shared neutral surfaces and flat Contexts, call-path and Flow
@@ -17,7 +24,8 @@ it previously added 26 and another 15 for an editable source. Breakpoint and war
 icons are reserved once, by the command line's leading inset. Compact rows with
 no count line reserve no count width. The shared count row remains when observed
 counts are shown; hidden Unrun labels do not produce a replacement badge. Stage
-targets, marker hitbox sizes, secondary actions and selection colors are unchanged.
+targets, secondary actions and selection colors retain their existing semantics. Marker
+and warning controls use separate 18×18 targets with a 19-pixel layout slot.
 Character wrapping, row scrolling and call-path horizontal scrolling retain their
 existing behavior with the denser clause geometry.
 
@@ -50,7 +58,8 @@ target. It names Stop/Recorded/Selected, the stage number, observation state and
 counts. The collapsed panel reserves 28 additional logical pixels; stage widths,
 wrapping rules and bottom action positions do not depend on the selected status.
 Expanded Flow retains its existing outer size and allocates the same detail band.
-Measured zero stays `0`; missing counts are `?`. Explicit stage-scoped execution
+Measured zero stays `0`; clause counts, summaries and detail values use `?` for
+unmeasured counts. Watch/NBT `…` remains a pending request indicator. Explicit stage-scoped execution
 warnings produce Error; zero successes alone do not. A missing suffix is Unrun only
 beyond the actual stop in the same invocation. A complete, reliable preceding stage
 with zero outputs permits Unreached. Other absent historical stages remain Unknown,
@@ -113,8 +122,14 @@ execute as @e[type=minecraft:armor_stand,tag=codon_verify] at @s if entity @s[ta
    measured zero output and no terminal execution. For nested/conditional function
    cases, use the native fixture tests below and inspect their chronology.
 
-Created contexts are green, removed contexts are red, and changed contexts are
-purple in both the inspector and world markers. Incomplete or
+Created contexts are green with a `+` prefix, removed contexts are red with `×`,
+and changed contexts are purple with a neutral dot in the Contexts list and world labels.
+The dot is drawn at 4 logical pixels in diameter, with a 4-pixel gap before the label;
+it does not depend on font glyphs. Hover or keyboard focus explains the changed state,
+and narration includes it. Only changed labels opt in; Watch rows are unaffected.
+The indicator describes the named member of a group; expand it to inspect other members.
+Indicators share the existing text budget, preserving label slots, grouping, source indices,
+and the 150-pixel world-label cap. Three-dimensional marker shapes are unchanged. Incomplete or
 truncated lineage must retain its warning/unknown state. Do not infer edges from
 similar UUIDs/positions or replay a command to reconstruct its effects.
 
@@ -176,7 +191,7 @@ continues execution. This does not truncate or remap source indices.
 | Native `if function` / `unless function` chronology | `DebuggerConditionalFunctionFlowGameTest` |
 | Flow options/markers for never-observed stages, rejection feedback, recovered previews, then first-occurrence terminal and conditional stops | `DebuggerUnobservedFlowBreakpointGameTest`; `clientTest`: `ClientUnobservedFlowSelectionTest`, `ClientFlowPreviewRequestsTest`, `CommandFlowLayoutTest` |
 | Continuations and incomplete-record warnings | `DebuggerContinuationRecordingGameTest` |
-| Rendered command/context UI with injected data | `DebuggerPresentationGameTest` |
+| Rendered context indicators, stable selection/grouping, dot size at 1.00/1.50/2.25 scales, EN/KO hover/focus explanations | `DebuggerPresentationGameTest`; `clientTest`: `GizmoLabelLayoutTest`; `test`: `DebuggerButtonTest` (narration and reused-button cleanup) |
 
 Example: `./gradlew runClientGameTest -PclientGameTest=DebuggerExecutionFlowGameTest`.
 The conditional-function test concerns Minecraft function conditions; conditional

@@ -5,13 +5,41 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.input.MouseButtonInfo;
 import net.minecraft.network.chat.Component;
+import net.minecraft.client.gui.narration.NarrationElementOutput;
+import net.minecraft.client.gui.narration.NarratedElementType;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 class DebuggerButtonTest {
+    @Test
+    void changedContextRetainsItsNameAndNarratesStatusWithoutMouseHover() {
+        DebuggerButton button = new DebuggerButton();
+        Component name = Component.literal("#3 Changed");
+        Component status = Component.literal("Context changed at this stage");
+        button.configure(0, 0, 80, 17, name, true, false, true, false, () -> { });
+        button.withChangedDot(status);
+        assertEquals(name, button.getMessage());
+        assertTrue(button.hasChangedDot());
+        NarrationElementOutput output = mock(NarrationElementOutput.class);
+        button.updateWidgetNarration(output);
+        verify(output).add(NarratedElementType.HINT, status);
+    }
+
+    @Test
+    void reusedButtonClearsChangedIndicatorAndNarration() {
+        DebuggerButton button = new DebuggerButton();
+        button.withChangedDot(Component.literal("Changed"));
+        button.configure(0, 0, 80, 17, Component.literal("#1 Unchanged"), true, false, true, false, () -> { });
+        assertFalse(button.hasChangedDot());
+        NarrationElementOutput output = mock(NarrationElementOutput.class);
+        button.updateWidgetNarration(output);
+        verify(output, never()).add(eq(NarratedElementType.HINT), any(Component.class));
+    }
+
     @Test
     void pendingInputBlockKeepsAppearanceAndFocusButStopsBothClickActionsAndKeyboardActivation() {
         AtomicInteger presses = new AtomicInteger();

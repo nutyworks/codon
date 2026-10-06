@@ -61,6 +61,8 @@ public final class FunctionLineBreakpointGameTest implements FabricClientGameTes
                     "line breakpoint artwork and hit target must be LEFT of the line number; marker=" + marker + " code=" + codeLeft);
             });
             verifyPreviewTransitions(context);
+            verifyStaleWarning(context);
+            verifyStopCue(context);
             verifySingleStage(context, "en-default");
             context.runOnClient(client -> {
                 var screen = (ScaledCodonScreen) client.gui.screen();
@@ -140,6 +142,52 @@ public final class FunctionLineBreakpointGameTest implements FabricClientGameTes
             "Source has no removed line/stage condition header controls"));
     }
 
+    private static void verifyStaleWarning(ClientGameTestContext context) {
+        int[] point = context.computeOnClient(client -> {
+            var state = CodonClientMod.state();
+            var obsolete = BreakpointDefinition.plain(BreakpointTarget.stage(LOCATION, 0, "say obsolete")).withStaleSource(true);
+            state.breakpoints().reset();
+            state.breakpoints().acceptPage(1, 0, true, List.of(BreakpointDefinition.plain(BreakpointTarget.whole(LOCATION)), obsolete));
+            return new int[]{value(client.gui.screen(), "sourceLeft") + 23, value(client.gui.screen(), "sourceLineTop") + 9};
+        });
+        move(context, point[0], point[1]);
+        context.runOnClient(client -> DebuggerTooltipGameTest.beginObservation());
+        context.waitTicks(3);
+        context.runOnClient(client -> {
+            String text = DebuggerTooltipGameTest.endObservation().replaceAll("\\s", "");
+            String expected = Component.translatable("codon.breakpoint.error.stale_source").getString().replaceAll("\\s", "");
+            require(text.contains(expected), "Obsolete-stage warning keeps its own tooltip beside the enlarged gutter target");
+            click(client.gui.screen(), point[0], point[1], false);
+            require(!CodonClientMod.state().breakpoints().pending(BreakpointTarget.whole(LOCATION)),
+                "Clicking the obsolete-stage warning only selects the line, never toggles its whole breakpoint");
+        });
+        context.takeScreenshot("codon-line-stale-warning-target");
+        context.getInput().setCursorPos(0, 0);
+    }
+
+    private static void verifyStopCue(ClientGameTestContext context) {
+        context.runOnClient(client -> {
+            var state = CodonClientMod.state();
+            state.breakpoints().reset();
+            state.breakpoints().acceptPage(1, 0, true, List.of());
+            state.applyPause(new PauseSnapshot(LOCATION, CommandSnippet.plain(COMMAND), 0, List.of(), List.of(), PauseReason.BREAKPOINT));
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            var screen = client.gui.screen();
+            int y = value(screen, "sourceLineTop") + 9;
+            click(screen, value(screen, "sourceLeft") + 3, y, false);
+            require(!CodonClientMod.state().breakpoints().pending(BreakpointTarget.whole(LOCATION)),
+                "Clicking the stopped line's amber cue only selects the line, never toggles its breakpoint");
+            click(screen, value(screen, "lineMarkerX"), y, false);
+            require(CodonClientMod.state().breakpoints().pending(BreakpointTarget.whole(LOCATION)),
+                "The stopped line's breakpoint marker still requests the whole-line target");
+        });
+        context.takeScreenshot("codon-line-stop-cue-target");
+        context.runOnClient(client -> CodonClientMod.state().applyResume());
+        context.waitTicks(2);
+    }
+
     private static void verifySingleStage(ClientGameTestContext context, String name) {
         context.getInput().setCursorPos(0, 0);
         context.runOnClient(client -> {
@@ -178,9 +226,12 @@ public final class FunctionLineBreakpointGameTest implements FabricClientGameTes
             click(screen, geometry[0], geometry[1] + 18, false);
             require(!CodonClientMod.state().breakpoints().pending(BreakpointTarget.whole(LOCATION)),
                 "the half-open next comment row cannot toggle the first line");
-            click(screen, geometry[0], geometry[1] + 9, false);
+            click(screen, geometry[0] + 10, geometry[1] + 9, false);
+            require(!CodonClientMod.state().breakpoints().pending(BreakpointTarget.whole(LOCATION)),
+                "the half-open right edge selects the line without toggling");
+            click(screen, geometry[0] - 8, geometry[1], false);
             require(CodonClientMod.state().breakpoints().pending(BreakpointTarget.whole(LOCATION)),
-                "gutter native click requests only the whole-line target");
+                "expanded 18×18 gutter corner requests only the whole-line target");
             require(!CodonClientMod.state().breakpoints().pending(BreakpointTarget.stage(LOCATION, 0, COMMAND)),
                 "no single-stage request is sent");
         });

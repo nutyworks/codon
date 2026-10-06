@@ -27,6 +27,27 @@ class DebuggerMailboxTest {
         assertTrue(mailbox.offerNetwork(connection, false, NOTHING), "draining releases the connection budget");
     }
 
+    @Test void thirtyThirdRequestDependsOnWhetherDrainInterleaves() {
+        Object connection = new Object();
+        var saturated = new DebuggerMailbox();
+        for (int i = 0; i < 32; i++) assertTrue(saturated.offerNetwork(connection, false, NOTHING));
+        assertFalse(saturated.offerNetwork(connection, false, NOTHING));
+
+        var interleaved = new DebuggerMailbox();
+        for (int i = 0; i < 32; i++) assertTrue(interleaved.offerNetwork(connection, false, NOTHING));
+        assertSame(NOTHING, interleaved.poll());
+        assertTrue(interleaved.offerNetwork(connection, false, NOTHING));
+    }
+
+    @Test void unrelatedRequestsCanConsumeTheWatchBurstHeadroom() {
+        var mailbox = new DebuggerMailbox();
+        Object connection = new Object();
+        for (int i = 0; i < 21; i++) assertTrue(mailbox.offerNetwork(connection, false, NOTHING));
+        for (int i = 0; i < 11; i++) assertTrue(mailbox.offerNetwork(connection, false, NOTHING));
+        assertFalse(mailbox.offerNetwork(connection, false, NOTHING),
+            "twelve Watch credits cannot guarantee admission after twenty-one other requests");
+    }
+
     @Test void globalSaturationLeavesControlAndLocalRecoveryCapacity() {
         var mailbox = new DebuggerMailbox();
         int admitted = 0;

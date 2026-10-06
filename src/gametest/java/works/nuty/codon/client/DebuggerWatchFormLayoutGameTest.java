@@ -8,6 +8,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.KeyEvent;
 import net.minecraft.network.chat.Component;
 import works.nuty.codon.client.state.ClientDebuggerState;
 import works.nuty.codon.client.state.ClientWatchEditorState;
@@ -68,12 +69,55 @@ public final class DebuggerWatchFormLayoutGameTest implements FabricClientGameTe
         click(context, "kind." + kind.name().toLowerCase(Locale.ROOT));
         context.runOnClient(DebuggerWatchFormLayoutGameTest::checkGeometry);
         clickField(context, 0);
+        context.runOnClient(client -> requireFocus(screen(client), fields(screen(client)).getFirst(), "Native click starts keyboard navigation in the first expression field"));
+        String name = "codon-watch-form-" + language + "-game-" + scale + (custom > 0 ? "-custom-2_25" : "") + "-" + kind.name().toLowerCase(Locale.ROOT);
+        context.runOnClient(client -> {
+            require(!button(screen(client), text("add")).active, "Empty required fields disable Add before any submit attempt");
+            String error = kind == WatchSpec.Kind.SCORE ? "objective" : kind == WatchSpec.Kind.ENTITY_NBT ? "path_required" : "storage";
+            require(client.font.width(Component.translatable("codon.watch.error." + error))
+                <= WatchFormLayout.create(screen(client).width, screen(client).height).submitReason().width(),
+                "The initial localized reason fits beside disabled Add");
+        });
+        capture(context, name + "-empty");
+        if (language.equals("en_us") && custom == 0 && kind == WatchSpec.Kind.SCORE) {
+            for (int index = 0; index < 4; index++) {
+                context.getInput().pressKey(InputConstants.KEY_TAB);
+                int step = index;
+                context.runOnClient(client -> requireFocus(screen(client), switch (step) {
+                    case 0 -> browse(screen(client), 0);
+                    case 1 -> fields(screen(client)).get(1);
+                    case 2 -> browse(screen(client), 1);
+                    default -> button(screen(client), text("close"));
+                }, "Native blank-form Tab step " + (step + 1) + " visits field actions and skips disabled Add"));
+            }
+            for (var type : WatchSpec.Kind.values()) {
+                context.getInput().pressKey(InputConstants.KEY_TAB);
+                context.runOnClient(client -> requireFocus(screen(client), button(screen(client), text("kind." + type.name().toLowerCase(Locale.ROOT))),
+                    "Native Tab retains access to each Watch type control"));
+            }
+        }
+        clickField(context, 0);
         String primary = kind == WatchSpec.Kind.SCORE ? "aligned_points" : kind == WatchSpec.Kind.ENTITY_NBT ? "Health" : "demo:aligned";
         context.getInput().typeChars(primary);
         context.getInput().pressKey(InputConstants.KEY_TAB);
-        context.runOnClient(client -> require(screen(client).getFocused() == fields(screen(client)).get(1), "Native Tab reaches the second field"));
+        context.runOnClient(client -> requireFocus(screen(client), browse(screen(client), 0), "Native Tab reaches Browse immediately after its field"));
+        context.getInput().pressKey(InputConstants.KEY_TAB);
+        context.runOnClient(client -> requireFocus(screen(client), fields(screen(client)).get(1), "Native Tab reaches the second field"));
         String secondary = kind == WatchSpec.Kind.SCORE ? "#aligned" : kind == WatchSpec.Kind.STORAGE_NBT ? "counter" : "";
         if (!secondary.isEmpty()) context.getInput().typeChars(secondary);
+        context.getInput().pressKey(InputConstants.KEY_TAB);
+        context.runOnClient(client -> requireFocus(screen(client), browse(screen(client), 1), "Native Tab reaches the second field's Browse/Choose action"));
+        context.getInput().pressKey(InputConstants.KEY_TAB);
+        context.runOnClient(client -> requireFocus(screen(client), button(screen(client), text("add")), "Native Tab reaches enabled Add after the form rows"));
+        context.getInput().pressKey(InputConstants.KEY_TAB);
+        context.runOnClient(client -> requireFocus(screen(client), button(screen(client), text("close")), "Native Tab reaches Close after Add"));
+        context.runOnClient(client -> {
+            // TestInput constructs key events with modifiers=0, including while Shift is held.
+            var event = new KeyEvent(InputConstants.KEY_TAB, InputConstants.KEYCODE_TAB, InputConstants.MOD_SHIFT);
+            client.keyboardHandler.keyPress(client.getWindow().handle(), InputConstants.PRESS, event);
+            client.keyboardHandler.keyPress(client.getWindow().handle(), InputConstants.RELEASE, event);
+            requireFocus(screen(client), button(screen(client), text("add")), "Native Shift+Tab retraces the main form order");
+        });
         clickField(context, 0);
         context.runOnClient(client -> require(fields(screen(client)).getFirst().getValue().equals(primary), "Native typing preserves the expression"));
         if (custom > 0) {
@@ -103,7 +147,6 @@ public final class DebuggerWatchFormLayoutGameTest implements FabricClientGameTe
         ClientWatchEditorState.Query query = accept(context, state, inline
             ? choices(primary) : WatchEditorPage.absent(WatchResult.Status.ERROR));
         context.waitTicks(3);
-        String name = "codon-watch-form-" + language + "-game-" + scale + (custom > 0 ? "-custom-2_25" : "") + "-" + kind.name().toLowerCase(Locale.ROOT);
         capture(context, name);
         if (inline) {
             context.runOnClient(client -> require(buttons(screen(client)).stream().noneMatch(button -> button.getMessage().getString().equals(text("retry"))),
@@ -212,6 +255,13 @@ public final class DebuggerWatchFormLayoutGameTest implements FabricClientGameTe
     private static Screen screen(Minecraft client) { if (client.gui.screen() == null) throw new AssertionError("Watch UI is open"); return client.gui.screen(); }
     private static List<EditBox> fields(Screen screen) { return screen.children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast).filter(EditBox::isVisible).toList(); }
     private static List<DebuggerButton> buttons(Screen screen) { return screen.children().stream().filter(DebuggerButton.class::isInstance).map(DebuggerButton.class::cast).filter(button -> button.visible).toList(); }
+    private static DebuggerButton browse(Screen screen, int index) { return buttons(screen).stream().filter(button -> button.getY() == fields(screen).get(index).getY()).findFirst().orElseThrow(); }
+    private static void requireFocus(Screen screen, AbstractWidget expected, String message) {
+        require(screen.getFocused() == expected, message + "; expected=" + describe(expected) + "; actual="
+            + (screen.getFocused() instanceof AbstractWidget focused ? describe(focused) : String.valueOf(screen.getFocused())));
+    }
+    private static String describe(AbstractWidget widget) { return widget.getClass().getSimpleName() + "[" + widget.getMessage().getString()
+        + " at " + widget.getX() + "," + widget.getY() + "; active=" + widget.active + "; visible=" + widget.visible + "]"; }
     private static String text(String key) { return Component.translatable("codon.watch." + key).getString(); }
     private static DebuggerButton button(Screen screen, String label) { return buttons(screen).stream().filter(button -> button.getMessage().getString().equals(label)).findFirst().orElseThrow(() -> new AssertionError("Visible button: " + label)); }
     private static void click(ClientGameTestContext context, String key) { clickLabel(context, context.computeOnClient(client -> text(key))); }

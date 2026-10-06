@@ -48,6 +48,7 @@ public final class FlowBreakpointInteractionGameTest implements FabricClientGame
             });
             context.waitTicks(3);
             checkOrderAndAffordances(context, screen, state);
+            checkSmallTargets(context, screen, state);
             checkExactEditors(context, screen, state);
             checkKeyboardToggle(context, screen, state);
             checkNavigationList(context, screen, state);
@@ -90,6 +91,51 @@ public final class FlowBreakpointInteractionGameTest implements FabricClientGame
                 require(screen.getFocused() == expected.get(index), "Shift+Tab reverses the same order: " + index);
             }
         });
+    }
+
+    private static void checkSmallTargets(ClientGameTestContext context, CodonScreen screen, ClientDebuggerState state) {
+        context.getInput().resizeWindow(640, 480);
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            require(screen.width == 320 && screen.height == 240, "Fixture uses 320×240 logical pixels");
+            assertTargetBounds(screen);
+            // A warning remains a separate target even in the compact one-line layout.
+            var flow = state.selectedExecutionFlow();
+            var warning = new ExecutionFlowWarning(ExecutionFlowWarning.Reason.CONTEXT_LIMIT, 0,
+                flow.stages().getFirst().command(), 128, "target fixture");
+            state.applyPause(new PauseSnapshot(flow.location(), state.selectedCommand(), 0, List.of(), List.of(),
+                List.of(new ExecutionFlowTrace(flow.invocationId(), flow.location(), flow.stages(), true, List.of(warning))), PauseReason.STEP));
+            state.selectExecutionFlowStage(0);
+            preview(state, COMMAND, SPANS);
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            assertTargetBounds(screen);
+            require(buttons(screen).stream().filter(button -> button.icon() == DebuggerIcon.WARNING).count() >= 2,
+                "Stage and footer warning targets are both rendered");
+        });
+        context.takeScreenshot("codon-flow-targets-320x240");
+        context.getInput().resizeWindow(1280, 720);
+        context.runOnClient(client -> { state.applyPause(snapshot(COMMAND, SPANS, 2)); preview(state, COMMAND, SPANS); });
+        context.waitTicks(2);
+    }
+
+    private static void assertTargetBounds(CodonScreen screen) {
+        var buttons = buttons(screen);
+        var targets = buttons.stream().filter(button -> button.icon() == DebuggerIcon.BREAKPOINT
+            || button.icon() == DebuggerIcon.BREAKPOINT_EMPTY || button.icon() == DebuggerIcon.WARNING).toList();
+        require(!targets.isEmpty(), "Breakpoint targets remain available");
+        for (var target : targets) {
+            require(target.getWidth() >= 18 && target.getHeight() >= 18, "Small target is at least 18×18");
+            require(target.getX() >= 0 && target.getY() >= 0 && target.getRight() <= screen.width
+                && target.getBottom() <= screen.height, "Target stays within the logical viewport");
+            for (var other : buttons) {
+                if (target == other || other.icon() == null && other.getHeight() != 16) continue;
+                require(target.getRight() <= other.getX() || other.getRight() <= target.getX()
+                    || target.getBottom() <= other.getY() || other.getBottom() <= target.getY(),
+                    "Target cannot overlap another icon or command clause");
+            }
+        }
     }
 
     private static void checkExactEditors(ClientGameTestContext context, CodonScreen screen, ClientDebuggerState state) {
@@ -409,7 +455,7 @@ public final class FlowBreakpointInteractionGameTest implements FabricClientGame
     }
 
     private static List<DebuggerButton> markers(Screen screen) {
-        return buttons(screen).stream().filter(button -> button.getWidth() == 14 && button.getHeight() == 16)
+        return buttons(screen).stream().filter(button -> button.getWidth() == 18 && button.getHeight() == 18)
             .filter(button -> button.icon() == DebuggerIcon.BREAKPOINT || button.icon() == DebuggerIcon.BREAKPOINT_EMPTY)
             .sorted(Comparator.comparingInt(DebuggerButton::getY).thenComparingInt(DebuggerButton::getX)).toList();
     }

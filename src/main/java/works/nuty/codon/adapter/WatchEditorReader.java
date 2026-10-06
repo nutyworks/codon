@@ -137,7 +137,7 @@ public final class WatchEditorReader {
     private static String compact(String text, int max) {
         if (text.length() <= max) return text;
         int end = max - 1;
-        if (Character.isHighSurrogate(text.charAt(end))) end--;
+        if (end > 0 && Character.isHighSurrogate(text.charAt(end - 1))) end--;
         return text.substring(0, end) + "…";
     }
 }

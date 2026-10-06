@@ -42,6 +42,18 @@ class WatchFormLayoutTest {
         }
     }
 
+    @Test void disabledSubmitReasonHasItsOwnSpaceBesideTheButton() {
+        for (int height : new int[]{240, 267, 400}) {
+            var layout = WatchFormLayout.create(320, height);
+            var reason = layout.submitReason();
+            assertEquals(layout.contentX(), reason.x());
+            assertEquals(layout.submit().y(), reason.y());
+            assertEquals(layout.submit().height(), reason.height());
+            assertEquals(8, layout.submit().x() - reason.x() - reason.width());
+            assertTrue(reason.y() + reason.height() <= layout.keysY());
+        }
+    }
+
     @Test void compactControlsLabelsAndStatusStayWithinTheSupportedViewport() {
         var layout = WatchFormLayout.create(320, 240);
         assertFalse(layout.inlineSuggestions());
