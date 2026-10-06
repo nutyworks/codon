@@ -94,6 +94,7 @@ public final class DebuggerHelpScreen extends ScaledCodonScreen {
                 entry("keyboard", null, TEAL, keybind(Component.literal("Tab / Shift+Tab")),
                     keybind(Component.literal("↑ / ↓ / ← / →")), keybind(Component.literal("Enter / Space")));
                 entry("scrolling", null, TEAL);
+                entry("source_viewer", null, TEAL);
                 entry("gizmo", DebuggerIcon.GIZMO_GROUPED, TEAL);
                 entry("labels", DebuggerIcon.GIZMO_LABELS, TEAL);
                 entry("details", DebuggerIcon.DETAILS_OPEN, TEAL);

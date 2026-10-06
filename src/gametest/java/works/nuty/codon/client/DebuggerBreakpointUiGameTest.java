@@ -6,8 +6,10 @@ import java.util.Optional;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.CommandBlockEditScreen;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -633,6 +635,11 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
                     "Status, whole-command/stage identity and coordinates remain visible at 320x240");
                 require(detail.startsWith(BreakpointUi.condition(CodonClientMod.state().breakpoints().get(wholeRow ? whole : stage).condition())),
                     "Condition has its own line before the dimension text");
+                // Vanilla wraps the tooltip, so compare the sentence across its line breaks.
+                String tooltip = tooltipText(client, row).replace('\n', ' ');
+                require(tooltip.contains(Component.translatable("codon.breakpoint.flow_unavailable").getString())
+                    && !tooltip.contains("Shift+F10"),
+                    "An unavailable row's tooltip gives the reason without the repeated navigation instruction: " + tooltip);
             }
             var before = CodonClientMod.state().breakpoints().definitions();
             var row = rows.getFirst();
@@ -840,6 +847,20 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
     private static boolean focusedMarkerReady(Screen screen, BreakpointTarget target) {
         return screen.getFocused() instanceof InlineBreakpointButton control
             && control.target().equals(target) && control.isActive();
+    }
+
+    private static String tooltipText(Minecraft client, DebuggerButton button) {
+        try {
+            var field = DebuggerButton.class.getDeclaredField("tooltip");
+            field.setAccessible(true);
+            var tooltip = (Tooltip) field.get(button);
+            StringBuilder text = new StringBuilder();
+            if (tooltip != null) for (var line : tooltip.toCharSequence(client)) {
+                line.accept((index, style, codePoint) -> { text.appendCodePoint(codePoint); return true; });
+                text.append('\n');
+            }
+            return text.toString();
+        } catch (ReflectiveOperationException error) { throw new AssertionError(error); }
     }
 
     private static List<DebuggerButton> controls(Screen screen) {

@@ -45,10 +45,10 @@ public final class DebuggerOverlay {
     private enum AuxiliaryPanel { NONE, INSPECTOR, WATCHES }
     private static final Bounds EMPTY = new Bounds(0, 0, 0, 0);
     private static final int MAX_WORLD_LABELS = 20;
-    private static final int SOURCE_LIST_MIN_HEIGHT = 62;
+    private static final int SOURCE_LIST_MIN_HEIGHT = 51;
     private static final int SOURCE_COMPACT_MIN_HEIGHT = 40;
     private static final int SOURCE_LIST_MAX_HEIGHT = 109;
-    private static final int SOURCE_ROWS_TOP = 43;
+    private static final int SOURCE_ROWS_TOP = 32;
     private static final int SOURCE_DETAILS_VIEWPORT_HEIGHT = 102;
     private static final int SOURCE_DETAILS_MIN_HEIGHT = 22;
     private static final int NBT_HEADER_VIEWPORT_HEIGHT = 20;
@@ -500,7 +500,7 @@ public final class DebuggerOverlay {
             }), statusIndex);
             // A group names its representative; its status remains available even in a mixed group.
             if (state.isWorldSourceChanged(index)) sourceButton.withChangedDot(component("codon.ui.flow_changed"));
-            sourceButton.setTooltip(Tooltip.create(worldSourceTooltip(title, index)));
+            sourceButton.setTooltip(state.isWorldSourceChanged(index) ? Tooltip.create(component("codon.ui.flow_changed")) : null);
         }
 
     }
@@ -581,11 +581,8 @@ public final class DebuggerOverlay {
             : Component.translatable("codon.ui.group", expandedGroup.size()).getString();
         if (compactCaption) heading = contextProvenance();
         text(graphics, heading, area.x() + 7 + headingInset, area.y() + 6, area.width() - 42 - headingInset, TEXT);
-        if (!compactCaption) {
-            text(graphics, contextSelection(), area.x() + 7, area.y() + 18, area.width() - 14,
-                state.isViewingCurrentCommand() ? AMBER : TEAL);
-            text(graphics, contextProvenance(), area.x() + 7, area.y() + 29, area.width() - 14, MUTED);
-        }
+        // The Flow detail band owns the selected stage and its stop/recorded state; this line only says which contexts are listed.
+        if (!compactCaption) text(graphics, contextProvenance(), area.x() + 7, area.y() + 18, area.width() - 14, MUTED);
         if (!expandedGroup.isEmpty()) {
             navigation.add("all-sources", DebuggerNavigation.Group.SOURCES, -1, 0, () -> { });
             button("all-sources", new Bounds(area.x() + area.width() - 39, area.y() + 2, 35, 15),
@@ -627,8 +624,10 @@ public final class DebuggerOverlay {
             String name = sourceLabel(source, index, state.isDisplayedSourceDropped(index),
                 state.isDisplayedSourceCreated(index));
             Component title = Component.literal(name);
-            Component tooltip = sourceTooltip(title, index);
-            if (!source.dimension().equals(dimension())) tooltip = tooltip.copy().append("\n" + shortDimension(source.dimension()));
+            // The row draws its title (a clipped one is echoed by the button); the tooltip adds only status and dimension.
+            List<Component> notes = new ArrayList<>();
+            if (state.isDisplayedSourceChanged(index)) notes.add(component("codon.ui.flow_changed"));
+            if (!source.dimension().equals(dimension())) notes.add(Component.literal(shortDimension(source.dimension())));
             int labelWidth = area.width() - 13;
             colorSourceButton(button("source-" + index, new Bounds(area.x() + 5, area.y() + rowTop + row * 19, labelWidth, 17),
                 title, true, index == state.selectedSourceIndex(), true, false, () -> {
@@ -636,7 +635,7 @@ public final class DebuggerOverlay {
                         state.selectSource(index);
                         state.preferences().setInspectorTab(InspectorTab.SOURCES);
                     }
-                }).withFlatChrome(), index).setTooltip(Tooltip.create(tooltip));
+                }).withFlatChrome(), index).setTooltip(notes.isEmpty() ? null : Tooltip.create(joinLines(notes)));
         }
         if (rows > 0 && indices.size() > rows) {
             if (area.height() - (rowTop + rows * 19) >= 9) {
@@ -646,15 +645,6 @@ public final class DebuggerOverlay {
             scrollbar(graphics, "sources", value -> sourceOffset = value, area.x() + area.width() - 5, area.y() + rowTop, Math.max(1, rows * 19 - 2),
                 sourceOffset, maxSourceOffset, rows, indices.size());
         }
-    }
-
-    private String contextSelection() {
-        if (state.selectedUnobservedStageIndex() >= 0)
-            return tr("codon.ui.contexts.unobserved", state.selectedUnobservedStageIndex() + 1);
-        ExecutionFlowStage stage = state.selectedExecutionFlowStage();
-        if (stage == null) return tr(state.displayedSources().isEmpty()
-            ? "codon.ui.contexts.no_stage" : "codon.ui.contexts.pause_packet");
-        return tr(state.isViewingCurrentCommand() ? "codon.ui.contexts.current" : "codon.ui.contexts.history", stage.index() + 1);
     }
 
     private String contextProvenance() {
@@ -680,7 +670,8 @@ public final class DebuggerOverlay {
             component("codon.ui.move_to_source"), DebuggerIcon.FREECAM, status.equals("ready"),
             () -> { if (freecam != null) freecam.moveToSelectedAnchor(client); })
             .withoutChrome()
-            .setTooltip(Tooltip.create(component("codon.ui.move_to_source." + status)));
+            // Ready needs no sentence beyond the icon label; only an unavailable state has a reason to show.
+            .setTooltip(status.equals("ready") ? null : Tooltip.create(component("codon.ui.move_to_source." + status)));
         iconX -= 18;
         boolean copied = source.entity() != null && source.entity().uuid().toString().equals(copiedUuid)
             && System.nanoTime() < copiedUuidUntil;
@@ -785,10 +776,6 @@ public final class DebuggerOverlay {
         return button;
     }
 
-    private Component worldSourceTooltip(Component title, int index) {
-        return state.isWorldSourceChanged(index) ? title.copy().append("\n").append(component("codon.ui.flow_changed")) : title;
-    }
-
     private DebuggerButton colorSourceButton(DebuggerButton button, int index) {
         if (state.isDisplayedSourceDropped(index)) return button.withStatusColor(RED, RED_SURFACE);
         if (state.isDisplayedSourceCreated(index)) return button.withStatusColor(GREEN, GREEN_SURFACE);
@@ -797,8 +784,10 @@ public final class DebuggerOverlay {
         return button;
     }
 
-    private Component sourceTooltip(Component title, int index) {
-        return state.isDisplayedSourceChanged(index) ? title.copy().append("\n").append(component("codon.ui.flow_changed")) : title;
+    private static Component joinLines(List<Component> lines) {
+        var joined = Component.empty();
+        for (int i = 0; i < lines.size(); i++) joined.append(i == 0 ? lines.get(i) : Component.literal("\n").append(lines.get(i)));
+        return joined;
     }
 
     public boolean scroll(double x, double y, double scrollX, double amount) {
