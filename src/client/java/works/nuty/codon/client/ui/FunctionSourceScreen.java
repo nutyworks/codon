@@ -249,6 +249,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
     private int codeRight() { return sourceLeft() + sourceWidth() - 12; }
     private int codeWidth() { return Math.max(1, sourceWidth() - gutterWidth() - 12); }
     private int lineMarkerX() { return sourceLeft() + 11; }
+    private boolean lineMarkerContains(double x) { return x >= lineMarkerX() - 8 && x < lineMarkerX() + 10; }
     private int maximumLineOffset() { return sources.document() == null ? 0 : Math.max(0, codeLines.size() - sourceRows()); }
 
     private boolean splitterContains(double x, double y) {
@@ -500,7 +501,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                 if (hovered && mouseX >= sourceLeft + 21 && mouseX < sourceLeft + 26)
                     graphics.setTooltipForNextFrame(font, Component.translatable("codon.breakpoint.error.stale_source"), mouseX, mouseY);
             }
-            if (hovered && mouseX >= lineMarkerX() - 2 && mouseX < lineMarkerX() + 10 && wholeEligible(document, line)) {
+            if (hovered && lineMarkerContains(mouseX) && wholeEligible(document, line)) {
                 var hint = Component.translatable("codon.source.line_breakpoint_hint",
                     definition == null ? tr("codon.source.no_breakpoint") : BreakpointUi.condition(definition.condition()));
                 if (counts.enabled() > 0)
@@ -969,10 +970,10 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                     if (event.button() == InputConstants.MOUSE_BUTTON_RIGHT) {
                         if (wholeEligible(document, line)) openCondition(BreakpointTarget.whole(location),
                             new Bounds((int) event.x(), (int) event.y(), 1, 1),
-                            event.x() >= lineMarkerX() - 2 && event.x() < lineMarkerX() + 10);
+                            lineMarkerContains(event.x()));
                         return true;
                     }
-                    if (event.x() >= lineMarkerX() - 2 && event.x() < lineMarkerX() + 10
+                    if (lineMarkerContains(event.x())
                         && debugger != null && wholeEligible(document, line)) {
                         selectedLine = line;
                         selectedStageIndex = -1;

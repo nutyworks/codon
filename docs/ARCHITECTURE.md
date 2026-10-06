@@ -184,7 +184,8 @@ and changes that require subsequent simulation ticks still wait for normal execu
   a group filters the inspector without changing the underlying context positions.
 - `render/` — `DebugHudElement` and `DebugLevelRenderer`: rings for entity-bearing contexts,
   squares for position-only contexts, one-block facing arrows, selected-context emphasis, red
-  breakpoint outlines, and amber active stops. Contexts in other dimensions remain in the inspector
+  plain whole-block breakpoint outlines, thicker purple conditional whole-block outlines,
+  and amber active stops. Contexts in other dimensions remain in the inspector
   but are not drawn in the current world. Context anchors are execution reference points, not
   necessarily the attached entity's position.
 - `input/InputManager` — keybinds; control actions go to the server as `/codon` commands.

@@ -24,7 +24,8 @@ it previously added 26 and another 15 for an editable source. Breakpoint and war
 icons are reserved once, by the command line's leading inset. Compact rows with
 no count line reserve no count width. The shared count row remains when observed
 counts are shown; hidden Unrun labels do not produce a replacement badge. Stage
-targets, marker hitbox sizes, secondary actions and selection colors are unchanged.
+targets, secondary actions and selection colors retain their existing semantics. Marker
+and warning controls use separate 18×18 targets with a 19-pixel layout slot.
 Character wrapping, row scrolling and call-path horizontal scrolling retain their
 existing behavior with the denser clause geometry.
 
@@ -57,7 +58,8 @@ target. It names Stop/Recorded/Selected, the stage number, observation state and
 counts. The collapsed panel reserves 28 additional logical pixels; stage widths,
 wrapping rules and bottom action positions do not depend on the selected status.
 Expanded Flow retains its existing outer size and allocates the same detail band.
-Measured zero stays `0`; missing counts are `?`. Explicit stage-scoped execution
+Measured zero stays `0`; clause counts, summaries and detail values use `?` for
+unmeasured counts. Watch/NBT `…` remains a pending request indicator. Explicit stage-scoped execution
 warnings produce Error; zero successes alone do not. A missing suffix is Unrun only
 beyond the actual stop in the same invocation. A complete, reliable preceding stage
 with zero outputs permits Unreached. Other absent historical stages remain Unknown,
