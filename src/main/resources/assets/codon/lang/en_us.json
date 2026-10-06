@@ -71,6 +71,7 @@
   "codon.ui.no_frames": "No call frames",
   "codon.ui.anchor": "Execution anchor",
   "codon.ui.copy": "Copy",
+  "codon.ui.copied": "Copied",
   "codon.ui.offscreen": "Outside the world viewport",
   "codon.ui.other_dimension": "In another dimension",
   "codon.ui.command": "Command",
