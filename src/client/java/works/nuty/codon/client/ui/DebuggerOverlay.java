@@ -50,8 +50,9 @@ public final class DebuggerOverlay {
     private static final int SOURCE_LIST_MAX_HEIGHT = 109;
     private static final int SOURCE_ROWS_TOP = 43;
     private static final int SOURCE_DETAILS_VIEWPORT_HEIGHT = 102;
+    private static final int SOURCE_DETAILS_MIN_HEIGHT = 22;
     private static final int NBT_HEADER_VIEWPORT_HEIGHT = 20;
-    private static final int NBT_MIN_VIEWPORT_HEIGHT = 54;
+    private static final int NBT_PREFERRED_VIEWPORT_HEIGHT = 71;
     /** Blank advance (see font/inline_icon.json) reserving room for a toolbar icon inside wrapped text. */
     private static final int ICON_SLOT = 0xE000;
     private static final FontDescription ICON_SLOT_FONT =
@@ -112,6 +113,7 @@ public final class DebuggerOverlay {
     public WatchPanel watchPanel() { return watchPanel; }
     void revealSelectedFlow(CodonScreen screen, String focusId) {
         preferences().setCommandVisible(true);
+        closeAuxiliaryPanel();
         commandPanel.revealSelection();
         var level = client.level;
         var snapshot = state.snapshot();
@@ -214,8 +216,11 @@ public final class DebuggerOverlay {
         int maximumInspectorWidth = DebuggerLayout.maximumInspectorWidth(graphics.guiWidth(), showWatches);
         int inspectorWidth = Math.min(maximumInspectorWidth,
             panelResizing.requestedWidth("inspector", preferences().inspectorWidth()));
+        // An explicitly opened narrow drawer owns the workspace until the user closes it.
+        boolean showCommand = state.preferences().commandVisible()
+            && !(narrowAuxiliary && auxiliaryPanel != AuxiliaryPanel.NONE);
         DebuggerLayout layout = DebuggerLayout.create(graphics.guiWidth(), graphics.guiHeight(), reserveSide,
-            state.preferences().commandVisible()
+            showCommand
                 ? commandPanel.preferredHeight(graphics.guiWidth(), graphics.guiHeight(), snapshot) : 0,
             inspectorWidth, DebuggerHudInsets.bottom(preferences()));
         Bounds auxiliaryBounds = narrowAuxiliary
@@ -244,7 +249,7 @@ public final class DebuggerOverlay {
             if (showWatches) panelResizing.add("watch", watchPanel.bounds(), true,
                 MIN_WATCH_WIDTH, WatchPanelLayout.maximumWidth(layout), preferences()::setWatchWidth);
         }
-        if (state.preferences().commandVisible()) {
+        if (showCommand) {
             controls.addAll(commandPanel.render(graphics, layout.command(), snapshot, input, this, navigation));
         }
         buttonCache.keySet().retainAll(usedButtons);
@@ -533,21 +538,22 @@ public final class DebuggerOverlay {
                                           PauseSnapshot snapshot, int headingInset) {
         // Inspector regions are viewport allocations. Tree loading and expansion must never move controls.
         boolean hasNbt = nbtPanel.hasSelectedSource();
+        int nbtMinimum = hasNbt ? Math.min(NBT_PREFERRED_VIEWPORT_HEIGHT,
+            Math.max(0, body.height() - SOURCE_COMPACT_MIN_HEIGHT - SOURCE_DETAILS_MIN_HEIGHT)) : 0;
         int listHeight = Math.min(body.height(),
             Math.max(SOURCE_LIST_MIN_HEIGHT, Math.min(SOURCE_LIST_MAX_HEIGHT, body.height() / 3)));
         // The compact caption and one source row need 40 pixels. Reserve the rest
         // for actual NBT rows when the taller Flow detail band leaves a short inspector.
         if (hasNbt) listHeight = Math.min(listHeight,
-            Math.max(SOURCE_COMPACT_MIN_HEIGHT, body.height() - NBT_MIN_VIEWPORT_HEIGHT));
+            Math.max(SOURCE_COMPACT_MIN_HEIGHT, body.height() - nbtMinimum - SOURCE_DETAILS_MIN_HEIGHT));
         int remainingHeight = body.height() - listHeight;
         if (hasNbt && remainingHeight < NBT_HEADER_VIEWPORT_HEIGHT) {
             listHeight = body.height();
             remainingHeight = 0;
         }
-        int nbtMinimum = hasNbt ? NBT_MIN_VIEWPORT_HEIGHT : 0;
         int detailHeight = Math.min(SOURCE_DETAILS_VIEWPORT_HEIGHT,
             Math.max(0, remainingHeight - nbtMinimum));
-        if (detailHeight < 22) detailHeight = 0;
+        if (detailHeight < SOURCE_DETAILS_MIN_HEIGHT) detailHeight = 0;
         int nbtHeight = Math.max(0, remainingHeight - detailHeight);
         navigationGroup = DebuggerNavigation.Group.SOURCES;
         renderSources(graphics, new Bounds(body.x(), body.y(), body.width(), listHeight), snapshot, headingInset);

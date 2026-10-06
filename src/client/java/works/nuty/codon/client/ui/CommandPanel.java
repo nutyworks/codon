@@ -156,13 +156,14 @@ public final class CommandPanel {
         int actionLeft = renderActions(new Bounds(area.x() + 4, actionY, area.width() - 8, 17));
         if (area.height() >= 40) {
             // Recent chat can leave a short panel: retain path, selected clause and actions.
-            boolean shortPanel = area.height() < 65;
+            boolean shortPanel = area.height() < 66;
             int y = area.y() + (shortPanel ? 1 : 3);
             renderPath(graphics, new Bounds(area.x() + 4, y, area.width() - 8, 17), snapshot);
             y += shortPanel ? 18 : 19;
             // Fixed full-width detail band: selected state never changes clause widths or action positions.
-            int detailHeight = shortPanel ? 0 : Math.min(DETAIL_HEIGHT, Math.max(0, actionY - y - 23));
-            int detailY = actionY - (shortPanel ? 2 : 4) - detailHeight;
+            int detailHeight = shortPanel ? 0 : Math.min(DETAIL_HEIGHT,
+                Math.max(0, actionY - y - MARKER_SIZE - 6));
+            int detailY = actionY - (shortPanel ? 1 : 4) - detailHeight;
             Bounds body = new Bounds(area.x() + 5, y, area.width() - 12,
                 Math.max(0, detailY - (shortPanel ? 0 : 2) - y));
             renderClauses(graphics, body, snapshot);

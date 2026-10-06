@@ -11,6 +11,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DebuggerLayoutTest {
     @Test
+    void hudInsetKeepsContextDetailsAndNbtAlongsideASelectableCommand() {
+        var layout = DebuggerLayout.create(640, 300, true, 104, 190, 60);
+        assertTrue(layout.inspector().height() >= 116,
+            "Context row, detail actions and NBT rows remain available");
+        assertTrue(layout.command().height() >= 58, "The command keeps its marker-sized row");
+        assertFalse(overlaps(layout.command(), layout.inspector()));
+        assertTrue(layout.command().y() + layout.command().height() <= 240);
+    }
+
+    @Test
     void reservesVanillaHudAndRecentChatWithoutChangingRequestedSizes() {
         for (Size size : List.of(new Size(320, 240), new Size(427, 240), new Size(640, 360))) {
             for (int inset : List.of(60, 80, 134)) {

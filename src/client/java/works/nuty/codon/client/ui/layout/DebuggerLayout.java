@@ -42,6 +42,8 @@ public record DebuggerLayout(Bounds header, Bounds controls, Bounds world, Bound
         int worldY = margin + headerHeight + controlHeight + 3;
         int workspaceBottom = Math.max(worldY, height - margin - Math.max(0, bottomInset));
         int minimumWorldHeight = height < 180 ? 16 : height < 300 ? 42 : 80;
+        // Retain a context row, detail actions and NBT rows when the HUD takes space.
+        if (bottomInset > 0 && height >= 300) minimumWorldHeight = 116;
         int commandHeight = Math.clamp(requestedCommandHeight, 0,
             Math.max(0, workspaceBottom - footerHeight - worldY - minimumWorldHeight - 3));
         int commandY = Math.max(worldY, workspaceBottom - footerHeight - commandHeight);

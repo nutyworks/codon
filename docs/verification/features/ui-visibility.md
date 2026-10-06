@@ -32,6 +32,10 @@ converted to Codon's scale; fitting does not rewrite saved panel widths. Recent
 chat may reduce the available command/world viewport on compact screens. Opening
 chat continues to suppress the passive debugger HUD.
 
+At narrow widths, an explicitly opened Details or Watches drawer uses the available
+workspace above the HUD; closing it restores Command. Taller layouts retain context
+detail actions and NBT rows by reducing Command height before removing those controls.
+
 HUD background opacity still follows the saved 0–100% preference. Modal forms,
 pickers, Details, breakpoint dialogs, Help and UI-scale settings keep an opaque
 reading surface and their dim scrim independently of that preference. Text alpha
