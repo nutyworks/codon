@@ -146,8 +146,8 @@ public final class CommandPanel {
         ExecutionFlowTrace flow = state.selectedExecutionFlow();
         CommandSnippet snippet = state.selectedCommand();
         if (flow != null && snippet != null && !(flow.location() instanceof SourceLocation.Player)
-            && previewRequests.needsRequest(snapshot, flow.location(), state.stagePreviews().get(flow.location()), snippet.text())
-            && ClientNetworking.requestStagePreview(state, flow.location())) previewRequests.requested(flow.location());
+            && previewRequests.needsRequestWithState(snapshot, flow.location(), state.stagePreviews(), snippet.text())
+            && ClientNetworking.requestAutomaticStagePreview(state, flow.location())) previewRequests.requested(flow.location());
 
         // The action row is anchored to the screen's bottom, independently of expansion.
         int actionY = Math.max(area.y() + 1, area.y() + area.height() - 20);

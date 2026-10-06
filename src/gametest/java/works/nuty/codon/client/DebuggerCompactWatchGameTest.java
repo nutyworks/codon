@@ -144,7 +144,11 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
             checkDetailsGeometry(client);
         });
         context.getInput().pressKey(InputConstants.KEY_TAB);
-        context.runOnClient(client -> require(screen(client).getFocused() == button(screen(client), text("codon.watch.details.retry")), "Collapsed Tab skips hidden Edit"));
+        context.runOnClient(client -> {
+            require(!button(screen(client), text("codon.watch.details.retry")).active, "Successful value disables Retry");
+            require(screen(client).getFocused() == button(screen(client), text("codon.watch.close")),
+                "Collapsed Tab skips hidden Edit and disabled Retry");
+        });
         context.runOnClient(client -> {
             fixture.state().applyPause(pause(fixture.state().snapshot(), 103, PauseReason.STEP));
             accept(fixture.state(), "-2147483648", true);
@@ -152,6 +156,8 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
                 && entry.result().status() == WatchResult.Status.ERROR), "Retry is exercised on a failed read");
         });
         context.waitTicks(3);
+        context.runOnClient(client -> require(button(screen(client), text("codon.watch.details.retry")).active,
+            "Failed read enables Retry"));
         click(context, "codon.watch.details.retry");
         context.runOnClient(client -> require(fixture.state().watches().drainQueries().stream().anyMatch(query -> query.spec().equals(NBT)), "Retry hitbox starts the same read-only query"));
         click(context, "codon.watch.close");

@@ -38,6 +38,7 @@ class WatchSaveRegistrationTest {
             verify(outbound).register(WatchSavePageAckPayload.TYPE, WatchSavePageAckPayload.CODEC);
             verify(outbound).register(WatchSaveSyncPayload.TYPE, WatchSaveSyncPayload.CODEC);
             verify(outbound).register(WatchRestoreFailedPayload.TYPE, WatchRestoreFailedPayload.CODEC);
+            verify(outbound).register(WatchChangesUnavailablePayload.TYPE, WatchChangesUnavailablePayload.CODEC);
         }
     }
 

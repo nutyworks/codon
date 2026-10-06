@@ -25,6 +25,9 @@ block pointing into an unconditional, always-active chain command block. Give th
 
 The controls must work from the cursor screen as well as the world view, follow
 remapped key hints and reject duplicate actions while a request is pending.
+UI Step waits for credited Watch reads. Missing replies cancel it with an explicit
+failure after five seconds, or after ten seconds for the complete capture; Resume
+can cancel the wait and remains available after failure. See [Watches and NBT](watches-and-nbt.md).
 World keyboard presses use the event's physical Ctrl modifier and consume the native
 key queue path; Ctrl+Into resolves only Out, even if Ctrl is released before the
 next tick. Key repeats are consumed without another request. Screens use the same
@@ -85,7 +88,7 @@ captures a selected row alongside a keyboard-focused, truncated action label.
 | Depth, chain boundaries and completion | `coreTest`: `StepControllerTest`, `CommandBlockSteppingTest`, `DebuggerEngineTest` |
 | Delayed controls and pause ID validation | `coreTest`: `DebuggerControlTest`; command transport: `DebuggerRequestTransportGameTest` |
 | Mailbox limits, concurrent admission, request/step order, recovery and shutdown completion | `test`: `DebuggerMailboxTest`, `DebuggerTaskQueueTest` |
-| Pending state, current/history separation | `clientTest`: `ClientDebuggerStateTest`, `ClientHistoricalCallStackTest`, `DebuggerStatusTest` |
+| Pending state, Watch read deadline/cancellation, current/history separation | `clientTest`: `ClientQuerySchedulerTest`, `ClientDebuggerStateTest`, `ClientHistoricalCallStackTest`, `DebuggerStatusTest` |
 | Native command-chain execution/stage recording | `DebuggerExecutionFlowGameTest` |
 | Stop after step/resume in a parked native command context | `DebuggerStopRoutingGameTest` |
 | Native conditional function chronology | `DebuggerConditionalFunctionFlowGameTest` |

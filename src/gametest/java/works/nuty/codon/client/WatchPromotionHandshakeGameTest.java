@@ -55,7 +55,28 @@ public final class WatchPromotionHandshakeGameTest implements FabricClientGameTe
                             .equals(List.of(EDIT));
                     } catch (java.io.IOException | RuntimeException missing) { return false; }
                 }, 200);
-                System.out.println("Promotion handshake native PASS: early edit rejected or retained; post-handshake owner save durable");
+                delayed.clear();
+                world.getServer().runOnServer(server -> {
+                    var original = server.getPlayerList().getPlayers().getFirst();
+                    var connection = original.connection;
+                    var respawned = server.getPlayerList().respawn(original, false,
+                        net.minecraft.world.entity.Entity.RemovalReason.KILLED);
+                    require(respawned != original && respawned.connection == connection,
+                        "26.3 respawn replaces ServerPlayer while retaining its connection");
+                });
+                context.waitTicks(5);
+                require(delayed.isEmpty(), "respawn must not resend one-time Watch initialization");
+                world.getServer().runOnServer(server -> server.getPlayerList().deop(
+                    server.getPlayerList().getPlayers().getFirst().nameAndId()));
+                context.waitTicks(3);
+                world.getServer().runOnServer(server -> server.getPlayerList().op(
+                    server.getPlayerList().getPlayers().getFirst().nameAndId(),
+                    Optional.of(LevelBasedPermissionSet.OWNER), Optional.empty()));
+                context.waitTicks(5);
+                require(delayed.isEmpty(), "re-promotion after respawn preserves one-time Watch initialization");
+                require(context.computeOnClient(client -> CodonClientMod.state().watches().definitions().equals(List.of(EDIT))),
+                    "respawn and re-promotion preserve the initialized definitions");
+                System.out.println("Promotion handshake native PASS: durable owner save; reused respawn connection; no repeated initialization after re-promotion");
             } finally {
                 context.runOnClient(client -> {
                     ClientPlayNetworking.unregisterReceiver(WatchDefinitionsSyncPayload.TYPE.id());

@@ -425,7 +425,9 @@ Transfers carry an identity and contiguous offsets and replace definitions only 
 incomplete, duplicate, or out-of-order chunks cannot partially overwrite the saved list.
 Updated peers use `codon:watch_save_v2` with one immutable page in flight. Only the
 exact transfer ID and next offset in `codon:watch_save_page_ack` release the next page;
-only the final durable-save response marks Saved. Timeout, rejection or disconnect
+only the final durable-save response marks Saved. The client UI and uploader share
+one fixed 30-second start instant before page validation/copying, with an expiry
+check before each page is sent. Timeout, rejection or disconnect
 releases pending work, with explicit user retry. A lost final reply means persistence
 is unconfirmed, because the server may already have saved. Legacy `codon:watch_save`
 uses the same bounded all-or-nothing assembly and may fail under mailbox overload.

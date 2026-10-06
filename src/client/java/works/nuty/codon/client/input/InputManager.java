@@ -159,9 +159,10 @@ public final class InputManager implements ClientTickEvents.EndTick {
     public void control(Control action) {
         Minecraft client = Minecraft.getInstance();
         var snapshot = state.snapshot();
-        if (client.player != null && snapshot != null && snapshot.pauseId() > 0 && state.beginControlRequest()) {
-            if (action != Control.RESUME) ClientNetworking.sendWatchQueries(client, state);
-            client.player.connection.sendCommand("codon " + action.command + " " + snapshot.pauseId());
+        if (client.player != null && snapshot != null && snapshot.pauseId() > 0
+            && (action == Control.RESUME || !state.watchReadsFailed())
+            && (action == Control.RESUME && state.controlAwaitingReads() || state.beginControlRequest())) {
+            ClientNetworking.requestControl(client, state, snapshot.pauseId(), action.command, action != Control.RESUME);
         }
     }
 

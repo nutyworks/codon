@@ -1,5 +1,12 @@
 # Execution flow
 
+Stage-preview requests now use a 30-second deadline from request creation. A dropped
+reply permits one automatic retry with a new request ID; the older reply cannot replace
+the retry. A second timeout stops automatic requests until explicit Source Reload or
+line re-selection starts a fresh attempt. `ClientFlowPreviewRequestsTest` covers the timed-out loading state and
+stale response guard. Native packet-loss and unobserved-stage presentation remain
+separate acceptance checks.
+
 ## User path and expected result
 
 The UI scaffold uses shared neutral surfaces and flat Contexts, call-path and Flow
