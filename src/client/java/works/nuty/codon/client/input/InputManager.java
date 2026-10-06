@@ -161,7 +161,8 @@ public final class InputManager implements ClientTickEvents.EndTick {
         var snapshot = state.snapshot();
         if (client.player != null && snapshot != null && snapshot.pauseId() > 0 && state.beginControlRequest()) {
             if (action != Control.RESUME) ClientNetworking.sendWatchQueries(client, state);
-            client.player.connection.sendCommand("codon " + action.command + " " + snapshot.pauseId());
+            client.player.connection.sendCommand("codon " + action.command + " " + snapshot.pauseId()
+                + " " + state.controlRequestId());
         }
     }
 

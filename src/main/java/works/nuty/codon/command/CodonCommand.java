@@ -5,6 +5,7 @@ import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.LongArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
@@ -19,6 +20,7 @@ import works.nuty.codon.core.model.BlockLocation;
 import works.nuty.codon.core.model.FunctionLocation;
 import works.nuty.codon.core.model.StepMode;
 import works.nuty.codon.core.service.DebuggerEngine;
+import works.nuty.codon.network.ControlRejectedPayload;
 
 /**
  * The {@code /codon} command tree: a thin driving adapter that maps Brigadier arguments to core
@@ -112,22 +114,35 @@ public final class CodonCommand {
     private static LiteralArgumentBuilder<CommandSourceStack> control(String name, DebuggerEngine engine, StepMode action) {
         return Commands.literal(name)
             // A deliberate manual/console command targets the pause present when it executes.
-            .executes(c -> control(c, engine, action, 0))
+            .executes(c -> control(c, engine, action, 0, 0))
             .then(Commands.argument("pauseId", LongArgumentType.longArg(1))
-                .executes(c -> control(c, engine, action, LongArgumentType.getLong(c, "pauseId"))));
+                .executes(c -> control(c, engine, action, LongArgumentType.getLong(c, "pauseId"), 0))
+                .then(Commands.argument("requestId", LongArgumentType.longArg(1))
+                    .executes(c -> control(c, engine, action, LongArgumentType.getLong(c, "pauseId"),
+                        LongArgumentType.getLong(c, "requestId")))));
     }
 
     private static int control(CommandContext<CommandSourceStack> context, DebuggerEngine engine,
-                               StepMode action, long expectedPauseId) {
+                               StepMode action, long expectedPauseId, long requestId) {
         var snapshot = engine.currentSnapshot();
         if (!engine.isPaused() || snapshot == null) {
             context.getSource().sendFailure(Component.translatable("command.codon.error.not_paused"));
+            reject(context.getSource(), expectedPauseId, requestId, ControlRejectedPayload.Reason.NOT_PAUSED);
             return 0;
         }
         if (!engine.control(action, expectedPauseId == 0 ? snapshot.pauseId() : expectedPauseId)) {
             context.getSource().sendFailure(Component.translatable("command.codon.error.stale_pause"));
+            reject(context.getSource(), expectedPauseId, requestId, ControlRejectedPayload.Reason.STALE_PAUSE);
             return 0;
         }
         return 1;
+    }
+
+    private static void reject(CommandSourceStack source, long pauseId, long requestId, ControlRejectedPayload.Reason reason) {
+        var player = source.getPlayer();
+        if (pauseId > 0 && requestId > 0 && player != null && player.connection.isAcceptingMessages()
+            && ServerPlayNetworking.canSend(player, ControlRejectedPayload.TYPE.id())) {
+            ServerPlayNetworking.send(player, new ControlRejectedPayload(pauseId, requestId, reason));
+        }
     }
 }

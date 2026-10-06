@@ -4,8 +4,18 @@
 
 Deleting from the condition modal waits for server acknowledgement before closing
 back to its existing parent (including Source). Pending, rejected and unavailable
-requests remain visible in the same modal. The Active breakpoint list now only
-navigates: its row overflow, toggle, condition, delete and Undo actions are removed.
+requests remain visible in the same modal.
+
+Inline toggle rejections additionally appear in a wrapped Codon toast without
+hovering the marker; the marker tooltip retains its detail. A missing edit reply
+after ten seconds reports that changes are unconfirmed, without changing the
+acknowledged definitions. Hidden markers also expire. Only the matching pending
+request may produce a rejection, so late/duplicate replies cannot release a retry.
+Notices disappear after six seconds. Save/Delete modal errors remain in the modal
+without a duplicate toast.
+
+The Active breakpoint list now only navigates: its row overflow, toggle, condition,
+delete and Undo actions are removed.
 Function entries open their original source line and matching stage; block entries
 open an exact matching recorded/static stage in the current pause's Flow. Matching
 uses location, stage identity and command fingerprint, never a guessed row index.
@@ -94,6 +104,7 @@ Screen; actual list navigation and focus remain a UI acceptance check.
 | --- | --- |
 | Definition/condition logic | `coreTest`: `BreakpointRegistryTest`, `BreakpointConditionEvaluatorTest`, `DebuggerEngineTest` |
 | Acknowledgement and pending UI state | `clientTest`: `ClientBreakpointStateTest` |
+| Non-hover inline rejection feedback (EN/KO), owner denial and unchanged definitions | `DebuggerRequestFeedbackGameTest` |
 | Persistence/preview codec | `test`: `WorldBreakpointPersistenceTest`, `BreakpointStagePreviewPayloadTest` |
 | Native editor input, modal details without screen replacement, server edits, wrapping and narrow layouts | `DebuggerBreakpointUiGameTest` |
 | Single-stage editor/Flow target, legacy toggle/clear and native first-occurrence stop | `SingleStageBreakpointGameTest` |
@@ -103,6 +114,15 @@ Screen; actual list navigation and focus remain a UI acceptance check.
 | Unauthorized command-block save does not acquire a chunk; authorized loaded edit succeeds | `DebuggerRequestTransportGameTest` |
 
 Example: `./gradlew runClientGameTest -PclientGameTest=DebuggerBreakpointUiGameTest`.
+`DebuggerRequestFeedbackGameTest` sends inline toggle requests for a deliberately
+stale native command-block fingerprint and after owner permission is revoked. Its
+EN/KO screenshots show the rejection toast with the pointer away from all markers;
+the refused target is never added to acknowledged definitions. The same server
+rejection is also rendered above Source and the vanilla command-block editor.
+Requests use the inline edit API; these captures do not assert marker click routing.
+Modal notice
+suppression and hidden-marker expiry use the focused client state tests.
+
 Inspect `*codon-breakpoint-*.png` in the shared screenshot directory. The UI test
 checks editing and transport; use the result test or manual trigger path to prove
 the execution actually pauses. Record manual world reload separately from the

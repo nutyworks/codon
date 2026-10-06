@@ -37,6 +37,8 @@ public final class ClientDebuggerState {
     private @Nullable UnobservedSelection unobservedSelection;
     private boolean controlPending;
     private long controlRequestedAt;
+    private long controlRequestId;
+    private final ClientRequestFeedback feedback;
     private final LongSupplier clock;
     private final ClientWatchState watches;
     private final ClientWatchEditorState watchEditor;
@@ -65,10 +67,12 @@ public final class ClientDebuggerState {
     public ClientDebuggerState(LongSupplier clock, DebuggerPreferences preferences) {
         this.clock = Objects.requireNonNull(clock);
         this.preferences = Objects.requireNonNull(preferences);
+        this.feedback = new ClientRequestFeedback(clock);
         this.watches = new ClientWatchState(clock);
         this.watchEditor = new ClientWatchEditorState(clock);
         this.nbt = new ClientNbtState(clock);
-        this.breakpoints = new ClientBreakpointState(clock);
+        this.breakpoints = new ClientBreakpointState(clock, result -> feedback.show("codon.ui.breakpoint_rejected",
+            "codon.breakpoint.error." + result.name().toLowerCase(java.util.Locale.ROOT)));
         this.stagePreviews = new ClientStagePreviewState();
         this.nbt.setEnabled(preferences.nbtExpanded());
         this.nbt.setEnabledListener(preferences::setNbtExpanded);
@@ -83,6 +87,7 @@ public final class ClientDebuggerState {
     }
 
     public void applyPause(PauseSnapshot snapshot) {
+        feedback.clear();
         unobservedSelection = null;
         watchEditor.invalidate();
         FlowSelectionHint previousFlow = currentFlowHint();
@@ -138,6 +143,7 @@ public final class ClientDebuggerState {
     }
 
     private void clearPause(boolean stepping) {
+        feedback.clear();
         unobservedSelection = null;
         if (stepping) watchEditor.invalidate();
         else watchEditor.cancel();
@@ -738,14 +744,29 @@ public final class ClientDebuggerState {
     /** Only a fresh server packet completes a control request; UI never fabricates a pause. */
     public boolean beginControlRequest() {
         if (!paused || snapshot == null || controlPending()) return false;
+        feedback.clear();
         controlPending = true;
+        controlRequestId = controlRequestId == Long.MAX_VALUE ? 1 : controlRequestId + 1;
         controlRequestedAt = clock.getAsLong();
         return true;
     }
 
     public boolean controlPending() {
-        if (controlPending && clock.getAsLong() - controlRequestedAt >= 2_000_000_000L) controlPending = false;
+        if (controlPending && clock.getAsLong() - controlRequestedAt >= 2_000_000_000L) {
+            controlPending = false;
+            feedback.show("codon.ui.control_timed_out", "codon.ui.control_timeout_detail");
+        }
         return controlPending;
+    }
+
+    public long controlRequestId() { return controlRequestId; }
+    public ClientRequestFeedback feedback() { return feedback; }
+
+    /** Ignore expired/replaced requests, even if another attempt targets the same pause. */
+    public void rejectControl(long pauseId, long requestId, String messageKey) {
+        if (!controlPending() || snapshot == null || snapshot.pauseId() != pauseId || controlRequestId != requestId) return;
+        controlPending = false;
+        feedback.show("codon.ui.control_rejected", messageKey);
     }
 
     /** Delay only the waiting label; controlPending() still disables actions immediately. */

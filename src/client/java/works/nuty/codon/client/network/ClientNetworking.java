@@ -18,6 +18,7 @@ import works.nuty.codon.network.BreakpointSyncPayload;
 import works.nuty.codon.network.BreakpointDefinitionsSyncPayload;
 import works.nuty.codon.network.BreakpointEditPayload;
 import works.nuty.codon.network.BreakpointEditResultPayload;
+import works.nuty.codon.network.ControlRejectedPayload;
 import works.nuty.codon.network.BreakpointStagePreviewRequestPayload;
 import works.nuty.codon.network.BreakpointStagePreviewSyncPayload;
 import works.nuty.codon.network.ExecutionFlowSyncPayload;
@@ -140,6 +141,9 @@ public final class ClientNetworking {
         ClientPlayNetworking.registerGlobalReceiver(BreakpointEditResultPayload.TYPE, (payload, context) ->
             context.client().execute(() -> state.breakpoints().finish(payload.requestId(),
                 ClientBreakpointState.Result.valueOf(payload.status().name()))));
+        ClientPlayNetworking.registerGlobalReceiver(ControlRejectedPayload.TYPE, (payload, context) ->
+            context.client().execute(() -> state.rejectControl(payload.pauseId(), payload.requestId(),
+                "command.codon.error." + payload.reason().name().toLowerCase(java.util.Locale.ROOT))));
         ClientPlayNetworking.registerGlobalReceiver(BreakpointStagePreviewSyncPayload.TYPE, (payload, context) ->
             context.client().execute(() -> state.stagePreviews().accept(payload.requestId(), payload.location(),
                 ClientStagePreviewState.Status.valueOf(payload.status().name()), payload.savedCommand(),

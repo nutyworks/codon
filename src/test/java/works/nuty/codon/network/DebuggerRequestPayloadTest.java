@@ -15,6 +15,20 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class DebuggerRequestPayloadTest {
     @Test
+    void controlRejectionsCarryBothCorrelationIdsAndABoundedReason() {
+        for (var reason : ControlRejectedPayload.Reason.values())
+            assertRoundTrip(ControlRejectedPayload.CODEC, new ControlRejectedPayload(10, 20, reason));
+        assertThrows(IllegalArgumentException.class, () -> new ControlRejectedPayload(0, 20, ControlRejectedPayload.Reason.NOT_PAUSED));
+        assertThrows(IllegalArgumentException.class, () -> new ControlRejectedPayload(10, 0, ControlRejectedPayload.Reason.STALE_PAUSE));
+        assertDecodeFails(ControlRejectedPayload.CODEC, buf -> {
+            buf.writeVarLong(-1); buf.writeVarLong(20); buf.writeEnum(ControlRejectedPayload.Reason.NOT_PAUSED);
+        });
+        assertDecodeFails(ControlRejectedPayload.CODEC, buf -> {
+            buf.writeVarLong(10); buf.writeVarLong(20); buf.writeVarInt(999);
+        });
+    }
+
+    @Test
     void roundTripsWatchQueriesForCapturedStorageAndLiteralScoreHolders() {
         UUID captured = UUID.randomUUID();
         assertRoundTrip(WatchQueryPayload.CODEC,

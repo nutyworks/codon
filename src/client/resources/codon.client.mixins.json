@@ -32,6 +32,7 @@
 		"SoundEngineMixin",
 		"SoundManagerAccessor",
 		"TimedNotificationMixin",
+		"ToastInstanceClockMixin",
 		"ToggleKeyMappingAccessor"
 	],
 	"injectors": {

@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -694,6 +695,103 @@ class ClientDebuggerStateTest {
         assertEquals(1002, state.selectedExecutionFlow().invocationId());
         assertEquals(next.pauseSources().getFirst(), state.selectedSource());
         assertEquals(0, state.selectedPauseSourceIndex());
+    }
+
+    @Test
+    void controlRejectionsRequireTheCurrentPauseAndAttemptWithoutFabricatingAnAcknowledgement() {
+        AtomicLong now = new AtomicLong();
+        ClientDebuggerState state = new ClientDebuggerState(now::get);
+        PauseSnapshot pause = controlPause(10);
+        state.applyPause(pause);
+        assertTrue(state.beginControlRequest());
+        long first = state.controlRequestId();
+        assertFalse(state.beginControlRequest());
+        state.rejectControl(9, first, "command.codon.error.stale_pause");
+        state.rejectControl(10, first + 1, "command.codon.error.not_paused");
+        assertTrue(state.controlPending());
+        assertNull(state.feedback().current());
+
+        state.rejectControl(10, first, "command.codon.error.stale_pause");
+        assertFalse(state.controlPending());
+        assertEquals("command.codon.error.stale_pause", state.feedback().current().messageKey());
+        assertSame(pause, state.snapshot());
+        assertTrue(state.isPaused());
+
+        assertTrue(state.beginControlRequest());
+        long retry = state.controlRequestId();
+        assertNotEquals(first, retry);
+        assertNull(state.feedback().current());
+        state.rejectControl(10, first, "command.codon.error.not_paused");
+        assertTrue(state.controlPending(), "a late response cannot release a replacement request");
+        state.rejectControl(10, retry, "command.codon.error.not_paused");
+        assertEquals("command.codon.error.not_paused", state.feedback().current().messageKey());
+        assertSame(pause, state.snapshot(), "rejection never impersonates Resume/Step sync");
+    }
+
+    @Test
+    void timeoutIsVisibleOnceAndLateRepliesCannotReplaceItOrReleaseARetry() {
+        AtomicLong now = new AtomicLong();
+        ClientDebuggerState state = new ClientDebuggerState(now::get);
+        PauseSnapshot pause = controlPause(10);
+        state.applyPause(pause);
+        assertTrue(state.beginControlRequest());
+        long expired = state.controlRequestId();
+        now.set(1_999_999_999L);
+        assertTrue(state.controlPending());
+        assertNull(state.feedback().current());
+        now.incrementAndGet();
+        // A late reply itself must expire the request, even before the next render/tick poll.
+        state.rejectControl(10, expired, "command.codon.error.stale_pause");
+        assertFalse(state.controlPending());
+        var timeout = state.feedback().current();
+        assertEquals("codon.ui.control_timeout_detail", timeout.messageKey());
+        assertSame(pause, state.snapshot());
+        assertTrue(state.isPaused());
+
+        now.addAndGet(5_999_999_999L);
+        assertSame(timeout, state.feedback().current());
+        now.incrementAndGet();
+        assertNull(state.feedback().current());
+        assertFalse(state.controlPending());
+        assertNull(state.feedback().current(), "polling cannot revive the expired notice");
+        assertTrue(state.beginControlRequest());
+        state.rejectControl(10, expired, "command.codon.error.not_paused");
+        assertTrue(state.controlPending());
+        assertNull(state.feedback().current());
+        state.applyStep(); // A late authoritative success is still allowed to advance the mirror.
+        assertFalse(state.isPaused());
+        assertFalse(state.controlPending());
+        assertNull(state.feedback().current());
+    }
+
+    @Test
+    void newPauseAndDisconnectDiscardOldFeedbackAndKeepRequestIdsDistinct() {
+        ClientDebuggerState state = new ClientDebuggerState();
+        state.applyPause(controlPause(10));
+        assertTrue(state.beginControlRequest());
+        long old = state.controlRequestId();
+        state.rejectControl(10, old, "command.codon.error.stale_pause");
+        state.applyPause(controlPause(11));
+        assertNull(state.feedback().current());
+        assertTrue(state.beginControlRequest());
+        state.rejectControl(10, old, "command.codon.error.stale_pause");
+        assertTrue(state.controlPending());
+        state.reset();
+        assertNull(state.feedback().current());
+        assertFalse(state.beginControlRequest());
+        state.rejectControl(11, state.controlRequestId(), "command.codon.error.not_paused");
+        assertNull(state.feedback().current());
+        state.applyPause(controlPause(10));
+        assertTrue(state.beginControlRequest());
+        assertNotEquals(old, state.controlRequestId());
+        state.rejectControl(10, old, "command.codon.error.stale_pause");
+        assertTrue(state.controlPending());
+    }
+
+    private static PauseSnapshot controlPause(long id) {
+        var fixture = snapshot(List.of(), 0);
+        return new PauseSnapshot(fixture.location(), fixture.command(), fixture.depth(), fixture.callStack(),
+            fixture.pauseSources(), fixture.executionFlows(), fixture.reason(), id);
     }
 
     private static PauseSnapshot snapshot(List<PauseSource> sources, int frameCount) {
