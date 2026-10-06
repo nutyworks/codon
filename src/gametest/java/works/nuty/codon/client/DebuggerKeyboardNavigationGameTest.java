@@ -341,6 +341,7 @@ public final class DebuggerKeyboardNavigationGameTest implements FabricClientGam
 
     private static int sourceIndex(DebuggerButton button, ClientDebuggerState state) {
         String label = button.getMessage().getString();
+        if (label.startsWith("+ ")) label = label.substring(2);
         // Dropped sources intentionally show a cross instead of an ordinal.
         if (label.startsWith("× ")) {
             for (int i = 0; i < state.displayedSources().size(); i++) {
