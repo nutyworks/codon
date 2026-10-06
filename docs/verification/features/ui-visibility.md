@@ -90,11 +90,30 @@ world projection and rendering remain separate acceptance checks.
 ./gradlew runClientGameTest -PclientGameTest=DebuggerOpacityGameTest
 ```
 
-`DebuggerOpacityGameTest` uses a synthetic pause and a temporary settings listener
-(not the real settings file) to count writes. It also scans the non-hover
-`codon-opacity-*` frames for header text pixels beside the slider; inspect them for
-the EN/KO default and compact percentage placement, the longest English status and
-the 0/100% endpoints. The idle badge has no slider, so it shows no percentage.
+`DebuggerOpacityGameTest` uses a synthetic pause (`pauseId` zero, so no server pause is
+queryable) and a temporary settings listener (not the real settings file) to count
+writes. It restores the window size, GUI scale, language and global theme afterwards.
+Its evidence has three separate parts:
+
+- **Direct-call sweeps** call the screen/slider methods for mouse preview and commit,
+  1- and 10-percent steps, both endpoints and write counts.
+- **A short actual keyboard dispatch sample** focuses the slider and sends Right, Left,
+  Shift+Right and Shift+Left through Minecraft's `KeyboardHandler`. Plain keys use
+  Fabric's `pressKey`; Shift arrows go to the same handler with the Shift modifier set,
+  because Fabric's synthetic key events carry no modifier bits. It checks 51→50 and
+  60→50, one write per effective press, and that the same screen is open with the
+  slider focused after each waited tick. It does not repeat the endpoint sweep.
+- **Header ink scan** covers only these frames: `codon-opacity-inline-100`, `-inline-50`,
+  `-all-zero`, `-all-one`, `-inline-compact-50` (asserted to be a 320×240 GUI whose
+  slider and percentage lie in the header panel's title row), and the eight
+  `codon-opacity-header-{en_us,ko_kr}-{1280,640}-{100,0}` frames (final-inspection
+  status at 0 and 100%, default and compact). `codon-opacity-hover-50` and the two
+  `codon-opacity-editor-*` frames are not scanned; inspect them by eye.
+
+The scan counts text-coloured pixels beside the slider, so it shows that something is
+drawn there but does not recognize the digits. Inspect the screenshots to verify the
+exact values; the eight header captures in [run 37504892284](https://github.com/nutyworks/codon/actions/runs/37504892284)
+showed the correct 0%/100% text. The idle badge has no slider, so it shows no percentage.
 
 Inspect the `codon-peek-*` screenshots: compare world and cursor-mode baselines,
 held/toggled hidden presentation, and restored UI. The peek fixture injects a client
