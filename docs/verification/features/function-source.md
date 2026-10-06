@@ -22,8 +22,8 @@ be checked. The viewer lists functions actually loaded by the current server.
    selecting a row or scrolling Source. Search, folder collapse and resizing
    clamp its position and remove the track when all rows fit.
    The header shows the datapack-relative
-   `data/<namespace>/function/<path>.mcfunction` path (hover for the full path,
-   provider and revision). Source is the first consumer of shared neutral workspace
+   `data/<namespace>/function/<path>.mcfunction` path (hover for the provider and revision;
+   the full path is added only when it is clipped). Source is the first consumer of shared neutral workspace
    colors in `DebuggerTheme`: its panel and code surface are opaque even when HUD
    background opacity is reduced. The compact header starts code at 79 logical
    pixels; removed condition controls no longer reserve a second row.
@@ -88,7 +88,8 @@ be checked. The viewer lists functions actually loaded by the current server.
 4. With execution resumed, change/reload the scratch datapack. Use **Refresh list**
    in the Functions header to update the server's loaded function list and **Reread file**
    above the code to reread the selected source from active server resources.
-   The English/Korean tooltips identify their targets; neither action runs `/reload`.
+   Their tooltips are one short line each: Refresh names its source (the server's
+   loaded functions) and Reread says it does not run `/reload`.
    In drawer mode, list refresh appears with the open drawer and file reread with the code.
    Removed
    functions and stale stage targets must be represented explicitly. Hover a changed,
@@ -111,7 +112,8 @@ be checked. The viewer lists functions actually loaded by the current server.
    Results include comments, retain original line numbers, and reveal matches past
    the horizontal viewport. Find retains and highlights the first 1,000 occurrences
    in source order and cycles within those results. An extra occurrence adds `+`
-   to the count; hover the count or Find field for the limit explanation. Narrow
+   to the count; hover the Find field for the limit explanation. The Find field and
+   horizontal scrollbar have no standing key-list tooltip; those keys are in Help > Controls. Narrow
    the query to reach later occurrences. A query with no matches shows `0/0` and disables result
    buttons. Query and viewport survive resizing and the compact drawer rebuild.
    When the query survives a function switch or Reload, the first new result is

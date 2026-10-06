@@ -29,6 +29,9 @@ final class WatchUi {
         return font.plainSubstrByWidth(value, width - font.width("…")) + "…";
     }
 
+    /** True when {@link #fit} would truncate {@code value}, so a hover tooltip adds the hidden text. */
+    static boolean clipped(Font font, String value, int width) { return font.width(value) > width; }
+
     static void line(GuiGraphicsExtractor graphics, Font font, String value, int x, int y, int width, int color) {
         graphics.text(font, fit(font, value, width), x, y, DebuggerTheme.foreground(color), false);
     }

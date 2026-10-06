@@ -472,8 +472,8 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
         context.runOnClient(client -> client.setLastInputType(net.minecraft.client.InputType.MOUSE));
         context.waitTicks(12);
         String pinHint = context.computeOnClient(client -> DebuggerTooltipGameTest.endObservation());
-        require(pinHint.contains("Left-click:") && pinHint.contains("Right-click:") && pinHint.contains(UUID_LEAF),
-            "node preview must not obscure pin click hints: " + pinHint);
+        require(pinHint.contains("Left-click:") && pinHint.contains("Right-click:") && !pinHint.contains(UUID_LEAF),
+            "pin hover shows the click hints without repeating the path of the row tooltip: " + pinHint);
         context.takeScreenshot("codon-nbt-pin-tooltip-" + sourceName);
         context.runOnClient(client -> {
             CodonScreen screen = codonScreen(client.gui.screen());
