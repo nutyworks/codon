@@ -77,8 +77,8 @@ world projection and rendering remain separate acceptance checks.
 | Concern | Existing tests |
 | --- | --- |
 | HUD/chat inset, modal backing and EN/KO compact/default readability | `clientTest`: `DebuggerLayoutTest`; `test`: `DebuggerThemeTest`, `UiScaleScreenRenderTest`; native: `DebuggerReadabilityGameTest`, `DebuggerOpacityGameTest`, `DebuggerPresentationGameTest`, `DebuggerNbtTreeGameTest`, `DebuggerUiScaleGameTest` |
-| Opacity percentage in the header, Shift steps, endpoints and commit counts | `clientTest`: `DebuggerHeaderLayoutTest`; native: `DebuggerOpacityGameTest` |
 | Short/long boundary, repeated events and cancellation | `clientTest`: `UiHideGestureTest` |
+| Opacity percentage in the header, Shift steps, endpoints and commit counts | `clientTest`: `DebuggerHeaderLayoutTest`; native: `DebuggerOpacityGameTest` |
 | Native keyboard/mouse dispatch, screen input, rebind, chat, missed mouse release, focus flag and rejoin | `DebuggerPeekUiGameTest` |
 | Real server breakpoint stays paused, then each command executes once after Resume | `DebuggerFreecamResumeGameTest` |
 | First hidden/restored frame and sustained holds in world/cursor mode at a real entity-context pause; running breakpoint outlines, unrelated gizmos, disconnect/rejoin | `DebuggerWorldMarkerVisibilityGameTest` |
