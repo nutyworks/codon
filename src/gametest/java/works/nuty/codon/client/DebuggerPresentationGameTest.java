@@ -80,6 +80,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
             checkVisibleClauseSelection(context, screen, state);
             checkHorizontalCallPath(context, screen, state);
             checkSourceColors(context, screen, state);
+            checkUuidCopyFeedback(context, screen, state);
             context.runOnClient(client -> {
                 DebuggerButton view = button(screen, value -> value.equals("View"));
                 click(screen, view);
@@ -192,6 +193,35 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
                 state.reset();
                 client.setScreenAndShow(null);
             });
+        }
+    }
+
+    private static void checkUuidCopyFeedback(ClientGameTestContext context, CodonScreen screen,
+                                               ClientDebuggerState state) {
+        String clipboard = context.computeOnClient(client -> client.keyboardHandler.getClipboard());
+        try {
+            String uuid = context.computeOnClient(client -> state.selectedSource().entity().uuid().toString());
+            context.runOnClient(client -> click(screen, button(screen, label -> label.startsWith("UUID: "))));
+            context.getInput().setCursorPos(0, 0);
+            context.waitTicks(2);
+            context.runOnClient(client -> {
+                DebuggerButton copied = button(screen, label -> label.startsWith("UUID: "));
+                require(client.keyboardHandler.getClipboard().equals(uuid), "Copy UUID writes the selected context UUID");
+                require(copied.icon() == DebuggerIcon.CONFIRM
+                    && copied.getMessage().getString().contains(Component.translatable("codon.ui.copied").getString()),
+                    "Copy UUID exposes a success icon and copied accessible name without hover");
+            });
+            context.takeScreenshot("codon-copy-uuid-confirmed");
+            context.runOnClient(client -> state.selectSource(1));
+            context.waitTicks(2);
+            context.runOnClient(client -> require(button(screen, label -> label.startsWith("UUID: ")).icon() == DebuggerIcon.COPY_UUID,
+                "Copied confirmation does not transfer to another context UUID"));
+            context.runOnClient(client -> state.applyPause(fixture(client)));
+            context.waitTicks(2);
+            context.runOnClient(client -> require(button(screen, label -> label.startsWith("UUID: ")).icon() == DebuggerIcon.COPY_UUID,
+                "A new pause clears copied confirmation even for the same UUID"));
+        } finally {
+            context.runOnClient(client -> client.keyboardHandler.setClipboard(clipboard));
         }
     }
 
