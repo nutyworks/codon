@@ -23,9 +23,14 @@ also provides the existing getting-started workflow with live binding labels.
 6. Resume and step normally: hiding does not send a debugger control request or change
    client/server pause snapshots. Visibility is session state and is not saved to settings.
 
-The running idle badge yields to the vanilla F3 debug screen. Paused panels and
-cursor mode keep their existing visibility; H remains the temporary/session hide
-gesture, with no additional saved idle-hide preference. The Command workspace
+The running idle badge (no screen, nothing paused) is shown by default and yields to
+the vanilla F3 debug screen even when its preference says visible. **View → Idle badge**,
+reached in cursor mode, saves `idleBadgeVisible` in `config/codon.json`: a missing field
+means shown, and a non-boolean value is rejected like the adjacent settings, leaving the
+file untouched. Hiding the badge changes nothing else: paused panels, cursor mode, world
+markers, execution state and the H gesture keep their existing visibility. The preference
+survives state reset, disconnect and restart; H remains the temporary session gesture and
+is never saved. The Command workspace
 reserves 60 vanilla GUI pixels above the hotbar/health and expands this inset to
 clear recent wrapped chat rows, honoring vanilla chat scale/spacing. The inset is
 converted to Codon's scale; fitting does not rewrite saved panel widths. Recent
@@ -60,6 +65,8 @@ world projection and rendering remain separate acceptance checks.
 - [InputManager](../../../src/client/java/works/nuty/codon/client/input/InputManager.java): binding, typing guard and lifecycle reset.
 - [DebugLevelRenderer](../../../src/client/java/works/nuty/codon/client/render/DebugLevelRenderer.java): submits Codon's markers at `BEFORE_GIZMOS`, before the current frame is finalized. Skipping submission when hidden leaves vanilla and other mods' gizmos intact.
 - [CodonScreen](../../../src/client/java/works/nuty/codon/client/ui/CodonScreen.java): hidden interaction suppression.
+- [DebuggerOverlay](../../../src/client/java/works/nuty/codon/client/ui/DebuggerOverlay.java): idle-badge condition (F3 and the saved preference) and the View menu row.
+- [ClientSettingsStore](../../../src/client/java/works/nuty/codon/client/config/ClientSettingsStore.java) and [DebuggerPreferences](../../../src/client/java/works/nuty/codon/client/state/DebuggerPreferences.java): `idleBadgeVisible` schema and change callback.
 - [Client mixins](../../../src/client/resources/codon.client.mixins.json): native keyboard/mouse events and screen transitions.
 
 ## Choose verification
@@ -71,10 +78,14 @@ world projection and rendering remain separate acceptance checks.
 | Native keyboard/mouse dispatch, screen input, rebind, chat, missed mouse release, focus flag and rejoin | `DebuggerPeekUiGameTest` |
 | Real server breakpoint stays paused, then each command executes once after Resume | `DebuggerFreecamResumeGameTest` |
 | First hidden/restored frame and sustained holds in world/cursor mode at a real entity-context pause; running breakpoint outlines, unrelated gizmos, disconnect/rejoin | `DebuggerWorldMarkerVisibilityGameTest` |
+| Idle-badge preference: default, old file, round trip, invalid types, change callback, state reset | `test`: `ClientSettingsStoreTest` |
+| Native View toggle, saved-file reload, idle shown/hidden/restored, F3, paused HUD and cursor mode with the badge hidden, 320×240 menu reach, EN/KO label | `DebuggerIdleBadgeGameTest` |
 
 ```sh
 ./gradlew clientTest --tests '*UiHideGestureTest'
+./gradlew test --tests '*ClientSettingsStoreTest'
 ./gradlew runClientGameTest -PclientGameTest=DebuggerPeekUiGameTest,DebuggerFreecamResumeGameTest,DebuggerWorldMarkerVisibilityGameTest
+./gradlew runClientGameTest -PclientGameTest=DebuggerIdleBadgeGameTest
 ```
 
 Inspect the `codon-peek-*` screenshots: compare world and cursor-mode baselines,
@@ -109,3 +120,15 @@ with an actual paused entity source; an injected flow fixture has no live NBT ex
 The fixture uses injected client snapshots, so use the real world-marker regression
 for H and server-pause safety. Inspect `codon-readable-*` images; this matrix does
 not establish arbitrary modded HUD placement or unusually many health rows.
+
+`DebuggerIdleBadgeGameTest` clicks the real View row at the smallest 320×240 viewport,
+writes a temporary settings file (never the live `config/codon.json`) and reloads it into
+a new settings/state instance. Inspect `codon-idle-badge-*`: default, hidden, hidden after
+reload, restored, F3 with a visible preference, the open View menu in both languages, and
+the `-synthetic-pause` HUD/cursor captures. Presence of the badge or paused header is
+asserted from dark panel pixels at their shared corner, with sky behind it; F3's own text
+and the screenshots themselves still need inspection. The test replaces the production HUD
+element while it runs, since that element would draw its own badge, then restores it. The
+paused captures inject a client snapshot: they do not prove a server breakpoint, and world
+markers remain the world-marker regression's concern (the renderer never reads the
+preference).

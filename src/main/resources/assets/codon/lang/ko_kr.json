@@ -96,6 +96,7 @@
   "codon.ui.offscreen": "보이는 월드 영역 밖",
   "codon.ui.other_dimension": "다른 차원에 있음",
   "codon.ui.command": "명령",
+  "codon.ui.idle_badge": "유휴 배지",
   "codon.ui.current_command": "현재 명령",
   "codon.ui.caller_command": "호출한 명령 (읽기 전용)",
   "codon.ui.current_frame": "현재 프레임",

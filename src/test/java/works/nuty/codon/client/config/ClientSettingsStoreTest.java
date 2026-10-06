@@ -142,6 +142,7 @@ class ClientSettingsStoreTest {
         first.setKeepFreecam(true);
         first.setWatchesVisible(false);
         first.setCommandVisible(false);
+        first.setIdleBadgeVisible(false);
         first.setBackgroundOpacity(37);
 
         DebuggerPreferences reloaded = ClientSettingsStore.open(file, exception -> { throw new AssertionError(exception); });
@@ -153,6 +154,7 @@ class ClientSettingsStoreTest {
         assertTrue(reloaded.keepFreecam());
         assertFalse(reloaded.watchesVisible());
         assertFalse(reloaded.commandVisible());
+        assertFalse(reloaded.idleBadgeVisible());
         assertEquals(37, reloaded.backgroundOpacity());
     }
 
@@ -168,7 +170,47 @@ class ClientSettingsStoreTest {
         assertFalse(preferences.keepFreecam());
         assertTrue(preferences.watchesVisible());
         assertTrue(preferences.commandVisible());
+        assertTrue(preferences.idleBadgeVisible());
         assertEquals(100, preferences.backgroundOpacity());
+    }
+
+    @Test
+    void idleBadgeIsOldFileCompatibleDurableAcrossStateResetAndStrictlyTyped() throws IOException {
+        Path file = temporaryDirectory.resolve("idle-badge.json");
+        Files.writeString(file, "{\"version\":1,\"inspectorTab\":\"STACK\"}");
+        DebuggerPreferences old = ClientSettingsStore.open(file, exception -> { throw new AssertionError(exception); });
+        assertTrue(old.idleBadgeVisible());
+        old.setIdleBadgeVisible(true);
+        assertFalse(Files.readString(file).contains("idleBadgeVisible"));
+
+        old.setIdleBadgeVisible(false);
+        assertTrue(Files.readString(file).contains("\"idleBadgeVisible\": false"));
+        ClientDebuggerState state = new ClientDebuggerState(old);
+        state.reset();
+        assertFalse(state.preferences().idleBadgeVisible());
+        DebuggerPreferences reloaded = ClientSettingsStore.open(file, exception -> { throw new AssertionError(exception); });
+        assertFalse(reloaded.idleBadgeVisible());
+        assertEquals(DebuggerPreferences.InspectorTab.STACK, reloaded.inspectorTab());
+
+        int[] changes = {0};
+        DebuggerPreferences observed = new DebuggerPreferences();
+        observed.setChangeListener(() -> changes[0]++);
+        observed.setIdleBadgeVisible(true);
+        observed.setIdleBadgeVisible(false);
+        observed.setIdleBadgeVisible(false);
+        observed.setIdleBadgeVisible(true);
+        assertEquals(2, changes[0]);
+
+        for (String value : List.of("\"false\"", "0", "null", "[]", "{}")) {
+            String invalid = "{\"version\":1,\"idleBadgeVisible\":" + value + "}";
+            Files.writeString(file, invalid);
+            List<Exception> errors = new ArrayList<>();
+            DebuggerPreferences damaged = ClientSettingsStore.open(file, errors::add);
+            assertEquals(1, errors.size(), value);
+            assertTrue(damaged.idleBadgeVisible(), value);
+            damaged.setIdleBadgeVisible(false);
+            assertEquals(invalid, Files.readString(file), value);
+        }
     }
 
     @Test
