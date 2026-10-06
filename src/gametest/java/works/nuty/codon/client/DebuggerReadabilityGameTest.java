@@ -22,9 +22,18 @@ public final class DebuggerReadabilityGameTest implements FabricClientGameTest {
         int oldScale = context.computeOnClient(client -> client.options.guiScale().get());
         String oldLanguage = context.computeOnClient(client -> client.getLanguageManager().getSelected());
         boolean oldDebug = context.computeOnClient(client -> client.debugEntries.isOverlayVisible());
+        double oldChatScale = context.computeOnClient(client -> client.options.chatScale().get());
+        double oldChatSpacing = context.computeOnClient(client -> client.options.chatLineSpacing().get());
+        double oldChatHeight = context.computeOnClient(client -> client.options.chatHeightUnfocused().get());
         try (TestSingleplayerContext world = context.worldBuilder().create()) {
             context.getInput().resizeWindow(1280, 720);
-            context.runOnClient(client -> { client.options.guiScale().set(2); client.resizeGui(); });
+            context.runOnClient(client -> {
+                client.options.guiScale().set(2);
+                client.options.chatScale().set(1.0);
+                client.options.chatLineSpacing().set(0.0);
+                client.options.chatHeightUnfocused().set(1.0);
+                client.resizeGui();
+            });
             world.getConnection().waitForChunksRender();
             world.getServer().runCommand("gamemode survival");
             var state = new ClientDebuggerState();
@@ -80,6 +89,56 @@ public final class DebuggerReadabilityGameTest implements FabricClientGameTest {
                         context.takeScreenshot("codon-readable-modal-ground-" + name);
                     }
                 }
+                int[][] chatCases = language.equals("en_us")
+                    ? new int[][]{{854, 480, 5}, {854, 480, 10}, {1280, 598, 3},
+                        {1280, 600, 3}, {1024, 576, 0}}
+                    : new int[][]{{854, 480, 10}};
+                for (int[] chatCase : chatCases) {
+                    context.getInput().resizeWindow(chatCase[0], chatCase[1]);
+                    context.runOnClient(client -> {
+                        state.preferences().setBackgroundOpacity(100);
+                        state.preferences().setInspectorVisible(chatCase[0] == 1024);
+                        state.applyPause(DebuggerPresentationGameTest.fixture(client));
+                        client.gui.hud.getChat().clearMessages(false);
+                        for (int row = 1; row <= chatCase[2]; row++)
+                            client.gui.hud.getChat().addClientSystemMessage(Component.literal("Chat " + row));
+                        client.setScreenAndShow(new CodonScreen(input, overlay));
+                    });
+                    context.waitTicks(3);
+                    context.runOnClient(client -> {
+                        var screen = (CodonScreen) client.gui.screen();
+                        int inset = DebuggerHudInsets.bottom(state.preferences());
+                        require(inset >= Math.max(60, 44 + 9 * chatCase[2]),
+                            "All requested recent chat rows are reserved by the production inset");
+                        var buttons = screen.children().stream().filter(DebuggerButton.class::isInstance)
+                            .map(DebuggerButton.class::cast).filter(button -> button.visible).toList();
+                        var command = buttons.stream()
+                            .filter(button -> button.getMessage().getString().contains("run function"))
+                            .findFirst().orElseThrow(() -> new AssertionError("Recent chat retains the selected clause"));
+                        require(command.getHeight() == 16 && command.getBottom() <= screen.height - inset,
+                            "The selected clause keeps its row above chat");
+                        var marker = buttons.stream().filter(button -> button.getMessage().getString()
+                            .equals(Component.translatable("codon.breakpoint.toggle").getString()))
+                            .findFirst().orElseThrow(() -> new AssertionError("Recent chat retains breakpoint markers"));
+                        require(marker.getWidth() == 18 && marker.getHeight() == 18
+                            && marker.getBottom() <= screen.height - inset, "Breakpoint targets retain their hit area");
+                        require(buttons.stream().anyMatch(button -> button.getMessage().getString().contains("demo:spawn_wave")),
+                            "Compressed Command keeps the selected call path");
+                        require(buttons.stream().anyMatch(button -> button.getMessage().getString()
+                            .equals(Component.translatable("codon.ui.expand_command").getString())),
+                            "Compressed Command keeps its actions");
+                        if (chatCase[0] == 1024) {
+                            var header = buttons.stream().filter(button -> button.getMessage().getString()
+                                .equals(Component.translatable("codon.nbt.current_pause").getString()))
+                                .findFirst().orElseThrow(() -> new AssertionError("Short inspector retains its NBT heading"));
+                            var inspector = DebuggerLayout.create(screen.width, screen.height, true, 104, 230, inset).inspector();
+                            require(header.getBottom() <= inspector.y() + inspector.height(),
+                                "The NBT heading is contained in its short inspector viewport");
+                        }
+                    });
+                    context.takeScreenshot("codon-readable-chat-" + language + "-" + chatCase[0]
+                        + "x" + chatCase[1] + "-rows-" + chatCase[2]);
+                }
                 context.runOnClient(client -> {
                     state.applyResume();
                     client.setScreenAndShow(null);
@@ -107,6 +166,9 @@ public final class DebuggerReadabilityGameTest implements FabricClientGameTest {
                 HudElementRegistry.removeElement(HUD);
                 client.debugEntries.setOverlayVisible(oldDebug);
                 client.options.guiScale().set(oldScale);
+                client.options.chatScale().set(oldChatScale);
+                client.options.chatLineSpacing().set(oldChatSpacing);
+                client.options.chatHeightUnfocused().set(oldChatHeight);
                 client.resizeGui();
                 DebuggerTheme.usePreferences(CodonClientMod.state().preferences());
             });

@@ -554,7 +554,8 @@ public final class DebuggerOverlay {
         }
         int detailHeight = Math.min(SOURCE_DETAILS_VIEWPORT_HEIGHT,
             Math.max(0, remainingHeight - nbtMinimum));
-        if (detailHeight < SOURCE_DETAILS_MIN_HEIGHT) detailHeight = 0;
+        if (detailHeight < SOURCE_DETAILS_MIN_HEIGHT
+            || hasNbt && remainingHeight - detailHeight < NBT_HEADER_VIEWPORT_HEIGHT) detailHeight = 0;
         int nbtHeight = Math.max(0, remainingHeight - detailHeight);
         navigationGroup = DebuggerNavigation.Group.SOURCES;
         renderSources(graphics, new Bounds(body.x(), body.y(), body.width(), listHeight), snapshot, headingInset);

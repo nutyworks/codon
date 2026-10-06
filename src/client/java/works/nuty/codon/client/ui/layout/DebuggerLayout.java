@@ -43,7 +43,14 @@ public record DebuggerLayout(Bounds header, Bounds controls, Bounds world, Bound
         int workspaceBottom = Math.max(worldY, height - margin - Math.max(0, bottomInset));
         int minimumWorldHeight = height < 180 ? 16 : height < 300 ? 42 : 80;
         // Retain a context row, detail actions and NBT rows when the HUD takes space.
-        if (bottomInset > 0 && height >= 300) minimumWorldHeight = 116;
+        if (bottomInset > 0) {
+            if (showInspector && height >= 300) minimumWorldHeight = 116;
+            // Chat may consume most of the workspace. Prefer one selectable Command
+            // row over world/detail space, without extending into the vanilla HUD.
+            int availableHeight = Math.max(0, workspaceBottom - worldY - 3);
+            minimumWorldHeight = Math.min(minimumWorldHeight,
+                Math.max(0, availableHeight - Math.min(requestedCommandHeight, 58)));
+        }
         int commandHeight = Math.clamp(requestedCommandHeight, 0,
             Math.max(0, workspaceBottom - footerHeight - worldY - minimumWorldHeight - 3));
         int commandY = Math.max(worldY, workspaceBottom - footerHeight - commandHeight);

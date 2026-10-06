@@ -29,13 +29,17 @@ gesture, with no additional saved idle-hide preference. The Command workspace
 reserves 60 vanilla GUI pixels above the hotbar/health and expands this inset to
 clear recent wrapped chat rows, honoring vanilla chat scale/spacing. The inset is
 converted to Codon's scale; fitting does not rewrite saved panel widths. Recent
-chat may reduce the available command/world viewport on compact screens. Opening
+chat first reduces the world/detail viewport to retain selectable Command rows.
+If fewer than 58 pixels remain, the call path shares the action row to preserve an
+18-pixel command/marker row in a 40-pixel panel. Opening
 chat continues to suppress the passive debugger HUD.
 
 At compact widths, explicitly opened Watches use the available workspace above the
 HUD; narrow Details drawers do the same, and closing them restores Command. Taller
 layouts retain context detail actions and NBT rows by reducing Command height before
-removing those controls.
+removing those controls. Short inspector viewports reserve the full NBT heading
+before source details; details disappear when they would push that heading outside
+the workspace.
 
 HUD background opacity still follows the saved 0–100% preference. Modal forms,
 pickers, Details, breakpoint dialogs, Help and UI-scale settings keep an opaque
