@@ -216,9 +216,10 @@ public final class DebuggerOverlay {
         int maximumInspectorWidth = DebuggerLayout.maximumInspectorWidth(graphics.guiWidth(), showWatches);
         int inspectorWidth = Math.min(maximumInspectorWidth,
             panelResizing.requestedWidth("inspector", preferences().inspectorWidth()));
-        // An explicitly opened narrow drawer owns the workspace until the user closes it.
+        // Explicit compact Watches and narrow Details use the workspace until closed.
         boolean showCommand = state.preferences().commandVisible()
-            && !(narrowAuxiliary && auxiliaryPanel != AuxiliaryPanel.NONE);
+            && !(narrowAuxiliary && auxiliaryPanel != AuxiliaryPanel.NONE
+                || compactAuxiliary && auxiliaryPanel == AuxiliaryPanel.WATCHES);
         DebuggerLayout layout = DebuggerLayout.create(graphics.guiWidth(), graphics.guiHeight(), reserveSide,
             showCommand
                 ? commandPanel.preferredHeight(graphics.guiWidth(), graphics.guiHeight(), snapshot) : 0,
