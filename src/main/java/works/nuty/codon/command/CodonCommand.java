@@ -4,6 +4,7 @@ import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.LongArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
+import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -11,17 +12,21 @@ import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
 import net.minecraft.commands.arguments.item.FunctionArgument;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.commands.FunctionCommand;
 import net.minecraft.server.permissions.Permissions;
 import works.nuty.codon.adapter.SourceMapper;
 import works.nuty.codon.adapter.FunctionSourceRepository;
 import works.nuty.codon.core.model.BlockLocation;
+import works.nuty.codon.core.model.BreakpointDefinition;
 import works.nuty.codon.core.model.FunctionLocation;
 import works.nuty.codon.core.model.BreakpointTarget;
 import works.nuty.codon.core.model.SourceLocation;
 import works.nuty.codon.core.model.StepMode;
 import works.nuty.codon.core.service.DebuggerEngine;
+
+import java.util.Comparator;
 
 /**
  * The {@code /codon} command tree: a thin driving adapter that maps Brigadier arguments to core
@@ -29,6 +34,16 @@ import works.nuty.codon.core.service.DebuggerEngine;
  */
 public final class CodonCommand {
     private static final int BREAKPOINT_COLOR = 0xFFFFAA00;
+    private static final Comparator<BreakpointDefinition> BLOCK_ORDER = Comparator
+        .comparing((BreakpointDefinition d) -> ((SourceLocation.Block) d.target().location()).block().dimension())
+        .thenComparingInt(d -> ((SourceLocation.Block) d.target().location()).block().x())
+        .thenComparingInt(d -> ((SourceLocation.Block) d.target().location()).block().y())
+        .thenComparingInt(d -> ((SourceLocation.Block) d.target().location()).block().z())
+        .thenComparingInt(d -> d.target().stageIndex());
+    private static final Comparator<BreakpointDefinition> FUNCTION_ORDER = Comparator
+        .comparing((BreakpointDefinition d) -> ((SourceLocation.Function) d.target().location()).location().function().toString())
+        .thenComparingInt(d -> ((SourceLocation.Function) d.target().location()).location().line())
+        .thenComparingInt(d -> d.target().stageIndex());
 
     private CodonCommand() {
     }
@@ -39,18 +54,33 @@ public final class CodonCommand {
             .then(Commands.literal("breakpoint")
                 .then(Commands.literal("list").executes(c -> listBreakpoints(c, engine)))
                 .then(Commands.literal("clear").executes(c -> clearBreakpoints(c, engine)))
-                .then(Commands.literal("function")
-                    .then(Commands.argument("function", FunctionArgument.functions()).suggests(FunctionCommand.SUGGEST_FUNCTION)
-                        .then(Commands.argument("line", IntegerArgumentType.integer(1))
-                            .executes(c -> toggleFunctionBreakpoint(c, engine)))))
-                .then(Commands.literal("block")
-                    .then(Commands.argument("pos", BlockPosArgument.blockPos())
-                        .executes(c -> toggleBlockBreakpoint(c, engine)))))
+                .then(Commands.literal("function").then(functionLine(engine)))
+                .then(Commands.literal("block").then(blockPos(engine))))
             .then(control("resume", engine, StepMode.NONE))
             .then(control("stepinto", engine, StepMode.INTO))
             .then(control("stepout", engine, StepMode.OUT))
             .then(control("stepover", engine, StepMode.OVER))
         );
+    }
+
+    private static RequiredArgumentBuilder<CommandSourceStack, ?> functionLine(DebuggerEngine engine) {
+        var line = Commands.argument("line", IntegerArgumentType.integer(1))
+            .executes(c -> toggleFunctionBreakpoint(c, engine));
+        BreakpointEditCommands.attach(line, c -> {
+            Identifier function = FunctionArgument.getFunctionOrTag(c, "function").getFirst();
+            return new SourceLocation.Function(new FunctionLocation(SourceMapper.toFunctionId(function),
+                IntegerArgumentType.getInteger(c, "line")));
+        }, engine);
+        return Commands.argument("function", FunctionArgument.functions()).suggests(FunctionCommand.SUGGEST_FUNCTION)
+            .then(line);
+    }
+
+    private static RequiredArgumentBuilder<CommandSourceStack, ?> blockPos(DebuggerEngine engine) {
+        var pos = Commands.argument("pos", BlockPosArgument.blockPos())
+            .executes(c -> toggleBlockBreakpoint(c, engine));
+        BreakpointEditCommands.attach(pos, c -> new SourceLocation.Block(SourceMapper.toBlockLocation(
+            BlockPosArgument.getBlockPos(c, "pos"), c.getSource().getLevel().dimension().identifier().toString())), engine);
+        return pos;
     }
 
     private static int toggleFunctionBreakpoint(CommandContext<CommandSourceStack> context, DebuggerEngine engine) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
@@ -109,16 +139,33 @@ public final class CodonCommand {
             return 0;
         }
         context.getSource().sendSuccess(() -> Component.translatable("command.codon.breakpoint.list.header"), false);
-        for (BlockLocation b : engine.blockBreakpoints()) {
-            String pos = "%d, %d, %d".formatted(b.x(), b.y(), b.z());
-            context.getSource().sendSuccess(() -> Component.translatable("command.codon.breakpoint.list.block", pos)
-                .withStyle(s -> s.withColor(BREAKPOINT_COLOR)), false);
-        }
-        for (FunctionLocation f : engine.functionBreakpoints()) {
-            context.getSource().sendSuccess(() -> Component.translatable("command.codon.breakpoint.list.function", f.function().toString(), f.line())
-                .withStyle(s -> s.withColor(BREAKPOINT_COLOR)), false);
-        }
+        var active = engine.breakpointDefinitions().stream().filter(BreakpointDefinition::enabled).toList();
+        active.stream().filter(d -> d.target().location() instanceof SourceLocation.Block)
+            .sorted(BLOCK_ORDER).forEach(d -> {
+                BlockLocation b = ((SourceLocation.Block) d.target().location()).block();
+                String pos = "%d, %d, %d".formatted(b.x(), b.y(), b.z());
+                sendListEntry(context, d, Component.translatable("command.codon.breakpoint.list.block", pos));
+            });
+        active.stream().filter(d -> d.target().location() instanceof SourceLocation.Function)
+            .sorted(FUNCTION_ORDER).forEach(d -> {
+                FunctionLocation f = ((SourceLocation.Function) d.target().location()).location();
+                sendListEntry(context, d, Component.translatable("command.codon.breakpoint.list.function",
+                    f.function().toString(), f.line()));
+            });
         return 1;
+    }
+
+    private static void sendListEntry(CommandContext<CommandSourceStack> context, BreakpointDefinition definition,
+                                      MutableComponent entry) {
+        BreakpointTarget target = definition.target();
+        if (!target.wholeCommand()) {
+            entry.append(Component.translatable("command.codon.breakpoint.list.stage", target.stageIndex() + 1));
+        }
+        if (definition.condition().isResultCondition()) {
+            entry.append(Component.translatable("command.codon.breakpoint.list.condition",
+                BreakpointEditCommands.conditionText(definition.condition())));
+        }
+        context.getSource().sendSuccess(() -> entry.withStyle(s -> s.withColor(BREAKPOINT_COLOR)), false);
     }
 
     private static int clearBreakpoints(CommandContext<CommandSourceStack> context, DebuggerEngine engine) {

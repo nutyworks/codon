@@ -92,8 +92,32 @@ to run ordinary level-2 commands is insufficient.
 Command alternatives are `/codon breakpoint block <x> <y> <z>`,
 `/codon breakpoint function <namespace:path> <line>` (one-based file line),
 `/codon breakpoint list`, `/codon breakpoint clear`, `/codon resume`,
-`/codon stepover`, `/codon stepinto` and `/codon stepout`. Stage breakpoints and
-conditions are edited in the UI. Clearing deletes all world breakpoint definitions.
+`/codon stepover`, `/codon stepinto` and `/codon stepout`. Clearing deletes all world
+breakpoint definitions.
+
+A `block` or `function` target accepts an optional stage and condition:
+
+```
+/codon breakpoint block <x> <y> <z> [stage <n>] [condition <condition>]
+/codon breakpoint function <namespace:path> <line> [stage <n>] [condition <condition>]
+```
+
+Without `condition` the command toggles the target, as before; with `stage <n>` it
+toggles that stage. `<n>` is the one-based stage number the editor shows, and the command
+must have more than one stage. `<condition>` is one of:
+
+- `clear` — remove the condition (the breakpoint must already exist);
+- `created`, `removed` or `changed` — stop when the stage created, removed or changed a context;
+- `input_count`, `output_count`, `created_count`, `removed_count` or `changed_count`
+  followed by `eq`, `ne`, `lt`, `le`, `gt` or `ge` and a non-negative number.
+
+Setting or clearing a condition enables the breakpoint, like Save in the editor, and
+creates it if needed. Result conditions apply to modifier stages (for example the
+`as` or `if` parts of `execute`), not the final command. Stage and condition edits need a loaded command
+block or readable function line, and are rejected with an explanation — leaving every
+definition unchanged — for an unknown stage, a stale or macro line, or an unreadable
+source. `/help codon breakpoint` shows the syntax; `/codon breakpoint list` includes each
+active stage and condition.
 
 A breakpoint parks the server thread, so world ticks, physics, AI and ordinary
 commands wait for resume across the server's worlds. The pause loop services
