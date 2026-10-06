@@ -5,6 +5,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.packs.resources.Resource;
 import works.nuty.codon.core.model.FunctionId;
+import works.nuty.codon.core.model.FunctionLocation;
 import works.nuty.codon.core.model.FunctionSourceDocument;
 
 import java.io.BufferedReader;
@@ -53,6 +54,31 @@ public final class FunctionSourceRepository {
      * invalid, no longer loaded, absent from the active resources, or cannot be read.
      */
     public static Optional<FunctionSourceDocument> read(MinecraftServer server, FunctionId id) {
+        Optional<Resource> resource = resource(server, id);
+        if (resource.isEmpty()) return Optional.empty();
+        try {
+            return Optional.of(readResource(id, resource.get()));
+        } catch (IOException unreadable) {
+            return Optional.empty();
+        }
+    }
+
+    public enum LineStatus { READY, INVALID, UNAVAILABLE }
+    public record CommandLine(LineStatus status, String command) { }
+
+    /** Validate a raw source line within the existing bounded document; omitted text is unknown. */
+    public static CommandLine commandLine(MinecraftServer server, FunctionLocation location) {
+        if (location.line() < 1) return new CommandLine(LineStatus.INVALID, "");
+        Optional<FunctionSourceDocument> document = read(server, location.function());
+        if (document.isEmpty()) return new CommandLine(LineStatus.UNAVAILABLE, "");
+        if (location.line() > document.get().lines().size())
+            return new CommandLine(document.get().truncated() ? LineStatus.UNAVAILABLE : LineStatus.INVALID, "");
+        String command = document.get().lines().get(location.line() - 1).trim();
+        return command.isEmpty() || command.startsWith("#")
+            ? new CommandLine(LineStatus.INVALID, "") : new CommandLine(LineStatus.READY, command);
+    }
+
+    private static Optional<Resource> resource(MinecraftServer server, FunctionId id) {
         Identifier functionId;
         try {
             functionId = Identifier.fromNamespaceAndPath(id.namespace(), id.path());
@@ -64,16 +90,7 @@ public final class FunctionSourceRepository {
         }
 
         Identifier file = FUNCTION_FILES.idToFile(functionId);
-        Optional<Resource> resource = server.getResourceManager().getResource(file);
-        if (resource.isEmpty()) {
-            return Optional.empty();
-        }
-
-        try {
-            return Optional.of(readResource(id, resource.get()));
-        } catch (IOException unreadable) {
-            return Optional.empty();
-        }
+        return server.getResourceManager().getResource(file);
     }
 
     private static FunctionSourceDocument readResource(FunctionId id, Resource resource) throws IOException {

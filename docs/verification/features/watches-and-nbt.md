@@ -65,7 +65,9 @@ No row outline is drawn. Native clipping/keyboard/appearance checks remain manua
 The nested NBT section uses only a top divider; value rows, pin controls and Retry
 share flat chrome instead of a box around every item. NBT and Watch pin icons are
 teal when present/fixed and muted otherwise; hover never changes that state color.
-NBT uses the Watches icon and Add/Remove Watch labels. The Watch pin separately
+NBT shows a muted pin icon on unpinned rows and a teal remove icon on pinned rows,
+without requiring hover. Its row and pin tooltips use the same 350 ms pointer delay.
+Add/Remove Watch labels retain the exact action. The Watch pin separately
 fixes its target or returns to following the selected executor. The NBT heading
 explicitly identifies a current-pause read, or labels retained values while a new
 read is pending. Retained rows keep their existing input-blocking guard. Historical
@@ -75,6 +77,11 @@ context which still maps to a live occurrence may show NBT, explicitly labeled a
 a current-pause read rather than a historical value. Query/occurrence matching is unchanged. Keyboard focus uses a filled corner
 caret, and the scrollbar is neutral. Foreground text/icons bypass panel opacity.
 NBT expansion, Watch-add/right-click actions, disabled states and hit bounds are unchanged.
+Watch add/update/duplicate/remove/copy notices replace the panel's title text for
+four seconds without changing the row viewport or its scroll offset; hovering the
+header retains the full notice when the visible text is clipped. Watch Details
+shows a translated Copied confirmation beside its title for four seconds after
+copying a value or path, preserving text scrolling and footer positions.
 Watch forms and details return to the existing originating screen, retaining its
 selection/search/scroll and restoring semantic widget or HUD-row focus. Returning
 from Edit in details restores the same expanded view and text offset.
@@ -231,7 +238,7 @@ search/footer wheel report. `WatchFormLayoutTest` and
 `DebuggerCompactWatchGameTest` uses six representative English/Korean cases at
 427x240, 320x240 and regular viewports, with following/custom scales. It checks
 native management and footer clicks, compact value right-edge click/tooltip hover,
-More/Less focus, row overflow and pending
+More/Less focus, row overflow, copy-feedback viewport stability and pending
 execution-control disabling, and captures `*codon-compact-watch-*.png` for visual
 inspection. This scenario and `WatchPanelLayoutTest` passed in the
 [UI validation run](../ui-polish-validation.md). Its injected observations establish

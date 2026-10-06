@@ -166,8 +166,11 @@ public final class WatchPanel {
             Math.max(0, panelHeight - bodyStart - BOTTOM_PADDING));
         graphics.fill(bounds.x(), bounds.y(), bounds.x() + bounds.width(), bounds.y() + bounds.height(), DebuggerTheme.color(PANEL));
         graphics.outline(bounds.x(), bounds.y(), bounds.width(), bounds.height(), DebuggerTheme.color(BORDER));
-        WatchUi.line(graphics, font, text("title").getString(),
-            bounds.x() + 7, bounds.y() + (HEADER - font.lineHeight) / 2 + 1, Math.max(0, bounds.width() - 74), TEXT);
+        // Reuse the header footprint so feedback never moves a scrolled Watch row.
+        boolean noticeVisible = System.nanoTime() < noticeUntil;
+        WatchUi.line(graphics, font, (noticeVisible ? notice : text("title")).getString(),
+            bounds.x() + 7, bounds.y() + (HEADER - font.lineHeight) / 2 + 1,
+            Math.max(0, bounds.width() - 74), noticeVisible ? TEAL : TEXT);
         button("watch-add", new Bounds(bounds.x() + bounds.width() - 23, bounds.y() + 3, 18, 17), Component.literal("+"),
             true, false, () -> {
                 navigation.requestFocus("watch-add");
@@ -335,7 +338,7 @@ public final class WatchPanel {
             graphics.fill(x, y, x + 2, y + thumb, DebuggerTheme.color(SCROLLBAR));
             scrollbars.add("watch", false, x, scrollBounds.y(), h, 2, thumb, offset, maximum, value -> offset = value);
         }
-        if (interactive && System.nanoTime() < noticeUntil && mouseX >= bounds.x()
+        if (interactive && noticeVisible && mouseX >= bounds.x()
             && mouseX < bounds.x() + bounds.width() - 48 && mouseY >= bounds.y() && mouseY < bounds.y() + HEADER)
             graphics.setTooltipForNextFrame(font, notice, mouseX, mouseY);
         buttons.keySet().retainAll(used);
@@ -540,7 +543,7 @@ public final class WatchPanel {
 
     private void copyValue(ClientWatchState.Entry entry) {
         Minecraft.getInstance().keyboardHandler.setClipboard(WatchFormatting.latestValue(entry, state.isPaused()).getString());
-        notice(text("details.copy_value"));
+        notice(Component.translatable("codon.ui.copied"));
     }
 
     private DebuggerButton button(String id, Bounds b, Component label, boolean active, boolean selected, Runnable action,

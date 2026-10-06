@@ -14,6 +14,10 @@ explanation; no world teleport or new block-source editor is implemented. Enable
 and disabled saved entries remain listed. Activation sends no breakpoint edits.
 Source/Flow context menus provide condition editing at the destination. List focus
 and scroll are retained on return; native behavior still needs manual verification.
+Rows sort by source identity with numeric function lines, coordinates and stage indices.
+Each row shows state, whole-command/stage identity and location on its first line,
+then the condition on a separate line; full location/condition and navigation availability
+remain in the tooltip. The narrow English/Korean list captures check this presentation.
 
 Use the [shared setup](../README.md#prepare-and-launch). In a disposable Creative
 world, obtain a command block with `/give @s minecraft:command_block`, place it,
@@ -72,6 +76,18 @@ viewport placement and the rendering checks.
 The command alternatives are `/codon breakpoint block <x> <y> <z>` and
 `/codon breakpoint function <namespace:path> <line>` (one-based file line).
 They toggle whole-command targets; use the UI for stage/condition editing.
+Explicit block-coordinate commands retain position-based targets, including future or
+unloaded locations, without acquiring a chunk. F10 uses the camera's centre ray up to
+20 blocks and shows a localized action-bar hint when that ray misses a block.
+Function commands validate new/enabled targets against current loaded raw-file lines:
+blank/comment and proven out-of-range lines are rejected, whole macro lines remain
+eligible. Missing source or lines beyond the bounded Source response are unknown:
+the CLI preserves its position-based toggle with a localized warning followed by the
+usual server result; UI edits still require verifiable source. Existing enabled entries can be disabled after
+their line changes. `CodonBreakpointCommandTest` verifies command dispatch and these
+adapter decisions with mocked server resources, including a real Minecraft-parsed
+20,001-command function returned by a mocked function manager. It does not execute a
+native loaded function or prove execution beyond the Source response limits.
 
 The active list retains widget identity only for currently rendered controls.
 Replacement authoritative snapshots, scrolling and empty/disconnected lists release
@@ -101,12 +117,18 @@ Screen; actual list navigation and focus remain a UI acceptance check.
 | Flow legacy/line isolation, exact condition attribution, rejected toggle feedback and pending action gating (presentation fixture) | `FlowLegacyConditionGameTest` |
 | Native execution and measured-zero result breakpoints | `DebuggerBreakpointResultGameTest` |
 | Unauthorized command-block save does not acquire a chunk; authorized loaded edit succeeds | `DebuggerRequestTransportGameTest` |
+| Raw function-line command validation, unavailable/truncated source, existing entry disabling and future coordinates | `test`: `CodonBreakpointCommandTest` |
+| Numeric line/stage/coordinate list order | `clientTest`: `BreakpointListOrderTest` |
 
 Example: `./gradlew runClientGameTest -PclientGameTest=DebuggerBreakpointUiGameTest`.
 Inspect `*codon-breakpoint-*.png` in the shared screenshot directory. The UI test
 checks editing and transport; use the result test or manual trigger path to prove
 the execution actually pauses. Record manual world reload separately from the
 file-adapter unit test.
+`SingleStageBreakpointGameTest` also presses native F10 toward empty sky and captures
+the no-target action-bar feedback without creating a definition. The UI test's narrow
+list captures inspect explicit whole-command/stage labels and separate condition lines,
+including `codon-breakpoint-disabled-list-ko-320x240.png` after a Korean resource reload.
 
 When chaining edits in a client GameTest, wait for both the server acknowledgement
 and the next control's enabled state. A received snapshot can precede the frame

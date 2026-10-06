@@ -463,6 +463,18 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
                 "Navigation-only list has two saved destinations and Close, without edit/delete/overflow actions");
             require(rows.stream().noneMatch(control -> control.active),
                 "Command-block destinations without a recorded Flow remain listed and unavailable");
+            require(list.width == 320 && list.height == 240, "Breakpoint readability fixture uses the narrow viewport");
+            for (var row : rows) {
+                String headline = (String) FunctionLineBreakpointGameTest.field(row, "headline");
+                String detail = (String) FunctionLineBreakpointGameTest.field(row, "detail");
+                boolean wholeRow = row.getMessage().getString().contains(BreakpointUi.target(whole))
+                    && !row.getMessage().getString().contains(BreakpointUi.target(stage));
+                String kind = Component.translatable(wholeRow ? "codon.breakpoint.whole_target" : "codon.breakpoint.stage_target", 1).getString();
+                require(headline.contains(kind) && client.font.width(headline) <= row.getWidth() - DebuggerButton.TEXT_ICON_INSET - 10,
+                    "Status, whole-command/stage identity and coordinates remain visible at 320x240");
+                require(detail.startsWith(BreakpointUi.condition(CodonClientMod.state().breakpoints().get(wholeRow ? whole : stage).condition())),
+                    "Condition has its own line before the dimension text");
+            }
             var before = CodonClientMod.state().breakpoints().definitions();
             var row = rows.getFirst();
             var event = new MouseButtonEvent(row.getX() + 2, row.getY() + 2,
@@ -495,6 +507,19 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             require(CodonClientMod.state().blockBreakpoints().isEmpty(), "disabled block has no world marker");
         });
         context.takeScreenshot("codon-breakpoint-disabled-list");
+        String language = context.computeOnClient(client -> client.getLanguageManager().getSelected());
+        var korean = context.computeOnClient(client -> {
+            client.getLanguageManager().setSelected("ko_kr");
+            return client.reloadResourcePacks();
+        });
+        context.waitFor(client -> korean.isDone() && client.gui.overlay() == null, 200);
+        context.waitTicks(2);
+        context.takeScreenshot("codon-breakpoint-disabled-list-ko-320x240");
+        var restored = context.computeOnClient(client -> {
+            client.getLanguageManager().setSelected(language);
+            return client.reloadResourcePacks();
+        });
+        context.waitFor(client -> restored.isDone() && client.gui.overlay() == null, 200);
         context.runOnClient(client -> {
             client.setScreenAndShow(null);
             var entity = (CommandBlockEntity) client.level.getBlockEntity(position);

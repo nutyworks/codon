@@ -7,6 +7,7 @@ import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
+import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.minecraft.client.InputType;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
@@ -57,6 +58,7 @@ public final class DebuggerUiScaleGameTest implements FabricClientGameTest {
                     "First custom selection retains exact game GUI dimensions");
             });
             context.takeScreenshot("codon-scale-first-custom-manual-3");
+            checkRepeatedPointerSteps(context, settings, state);
             click(context, settings, "+");
             context.runOnClient(client -> require(state.preferences().customUiScale() == 13, "Native plus increments by 0.25x"));
             context.takeScreenshot("codon-scale-settings-custom-3_25");
@@ -104,6 +106,7 @@ public final class DebuggerUiScaleGameTest implements FabricClientGameTest {
             context.takeScreenshot("codon-scale-tooltip-custom-2_25");
             checkHelpScroll(context, fixture);
             checkScreens(context, fixture);
+            checkIdleHint(context, fixture, "english");
             checkVanillaLayer(context, fixture);
 
             context.runOnClient(client -> {
@@ -190,9 +193,36 @@ public final class DebuggerUiScaleGameTest implements FabricClientGameTest {
         }
     }
 
+    private static void checkRepeatedPointerSteps(ClientGameTestContext context, UiScaleScreen settings,
+                                                  ClientDebuggerState state) {
+        context.runOnClient(client -> state.preferences().setCustomUiScale(4));
+        context.waitTicks(3);
+        hover(context, settings, buttonPosition(context, settings, "+"));
+        for (int step = 1; step <= 10; step++) {
+            context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_LEFT);
+            context.waitTicks(3);
+            int expected = 4 + step;
+            context.runOnClient(client -> require(state.preferences().customUiScale() == expected,
+                "Ten native plus clicks keep the same pointer position: step " + (expected - 4)));
+        }
+        context.takeScreenshot("codon-scale-ten-plus-fixed-pointer");
+        hover(context, settings, buttonPosition(context, settings, "−"));
+        for (int step = 1; step <= 10; step++) {
+            context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_LEFT);
+            context.waitTicks(3);
+            int expected = 14 - step;
+            context.runOnClient(client -> require(state.preferences().customUiScale() == expected,
+                "Ten native minus clicks keep the same pointer position: step " + (14 - expected)));
+        }
+        context.takeScreenshot("codon-scale-ten-minus-fixed-pointer");
+        context.runOnClient(client -> state.preferences().setCustomUiScale(12));
+        context.waitTicks(3);
+    }
+
     private static void checkKoreanText(ClientGameTestContext context, Fixture fixture) {
         // Match the manual defect: dense Help paragraphs, status/View labels and passive HUD.
         context.getInput().resizeWindow(1280, 800);
+        checkIdleHint(context, fixture, "korean");
         for (int request : new int[]{6, 8}) {
             context.runOnClient(client -> {
                 fixture.state().preferences().setCustomUiScale(request);
@@ -219,6 +249,32 @@ public final class DebuggerUiScaleGameTest implements FabricClientGameTest {
         context.runOnClient(client -> client.setScreenAndShow(null));
         context.waitTicks(3);
         context.takeScreenshot("codon-scale-korean-running-hud-narrow-6");
+    }
+
+    private static void checkIdleHint(ClientGameTestContext context, Fixture fixture, String language) {
+        var breakpoint = context.computeOnClient(client -> KeyMappingHelper.getBoundKeyOf(fixture.input().breakpointKey));
+        var cursor = context.computeOnClient(client -> KeyMappingHelper.getBoundKeyOf(fixture.input().menuKey));
+        int scale = fixture.state().preferences().customUiScale();
+        try {
+            context.runOnClient(client -> {
+                fixture.input().breakpointKey.setKey(InputConstants.Type.KEYBOARD.getOrCreate(InputConstants.KEY_J));
+                fixture.input().menuKey.setKey(InputConstants.Type.KEYBOARD.getOrCreate(InputConstants.KEY_N));
+                fixture.state().preferences().setCustomUiScale(6);
+                fixture.state().applyResume();
+                client.setScreenAndShow(fixture.screen());
+            });
+            context.waitTicks(3);
+            hover(context, fixture.screen(), new double[]{0, 0});
+            context.takeScreenshot("codon-idle-hint-" + language + "-remapped");
+        } finally {
+            context.runOnClient(client -> {
+                fixture.input().breakpointKey.setKey(breakpoint);
+                fixture.input().menuKey.setKey(cursor);
+                fixture.state().preferences().setCustomUiScale(scale);
+                fixture.state().applyPause(DebuggerPresentationGameTest.fixture(client));
+            });
+            context.waitTicks(2);
+        }
     }
 
     private static void checkHelpScroll(ClientGameTestContext context, Fixture fixture) {
