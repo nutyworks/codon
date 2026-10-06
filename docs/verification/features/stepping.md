@@ -47,7 +47,9 @@ pause appears in a wrapped Codon toast without opening chat. A missing reply two
 seconds after sending the control reports that the server outcome is unknown;
 waiting for pre-step Watch reads does not start that deadline. It does not mean rollback
 or fabricate an execution acknowledgement. Late/duplicate rejections cannot clear
-a newer pending request. Feedback expires after six seconds, and a new pause,
+a newer pending request. Feedback uses separate toast slots and renders above ordinary
+notifications, so a full, frozen vanilla toast queue cannot block it. Ordinary toast
+identities and paused lifetimes remain unchanged. Feedback expires after six seconds, and a new pause,
 authoritative advancement or disconnect clears it. These notices are separate from
 Watch-read status before a control is sent. Command-tree owner checks remain intact;
 denials before command execution and mailbox drops have no correlated reply and
@@ -99,7 +101,7 @@ captures a selected row alongside a keyboard-focused, truncated action label.
 | Delayed controls and pause ID validation | `coreTest`: `DebuggerControlTest`; command transport: `DebuggerRequestTransportGameTest` |
 | Mailbox limits, concurrent admission, request/step order, recovery and shutdown completion | `test`: `DebuggerMailboxTest`, `DebuggerTaskQueueTest` |
 | Pending state, Watch read deadline/cancellation, current/history separation | `clientTest`: `ClientQuerySchedulerTest`, `ClientDebuggerStateTest`, `ClientHistoricalCallStackTest`, `DebuggerStatusTest` |
-| Visible rejection/timeout, late replies and recovery | `DebuggerRequestFeedbackGameTest` |
+| Visible rejection/timeout with all ordinary toast slots occupied, late replies and recovery | `DebuggerRequestFeedbackGameTest` |
 | Native command-chain execution/stage recording | `DebuggerExecutionFlowGameTest` |
 | Stop after step/resume in a parked native command context | `DebuggerStopRoutingGameTest` |
 | Native conditional function chronology | `DebuggerConditionalFunctionFlowGameTest` |
@@ -119,8 +121,15 @@ receives the completed record with a selected Flow stage and inactive controls.
 earlier pause to provoke actual server rejections for all four UI controls. Its
 connection-local observer deliberately withholds rejection replies to reproduce
 post-send timeout, then delivers the same late reply. EN/KO screenshots show the
-wrapped toast and its automatic disappearance without hover. Current-stop Resume
-recovers and the score of 11 proves each block ran once. The test also observes a
+wrapped toast and its automatic disappearance without hover.
+The fixture first fills all five vanilla slots with real timed SystemToasts. It
+observes actual toast draw submissions while the world is paused: timeout and
+rejection feedback must render, expire normally, and leave the five ordinary
+toast identities and frozen lifetimes intact. The unmodified queued-feedback path
+fails after its notice expires without a draw. This does not clear or advance
+ordinary notifications in production; fixture cleanup belongs to the test client.
+
+Current-stop Resume recovers and the score of 11 proves each block ran once. The test also observes a
 real not-paused rejection after execution ends and resets connection-local state.
 For that deliberately stale client view, vanilla also pauses the integrated
 server; the test drains the mailbox on the server thread to receive its rejection.

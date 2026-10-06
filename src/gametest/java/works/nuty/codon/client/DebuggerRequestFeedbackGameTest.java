@@ -7,6 +7,8 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.permissions.LevelBasedPermissionSet;
 import net.minecraft.client.gui.screens.inventory.CommandBlockEditScreen;
+import net.minecraft.client.gui.components.toasts.SystemToast;
+import net.minecraft.network.chat.Component;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.entity.CommandBlockEntity;
 import works.nuty.codon.CodonMod;
@@ -17,7 +19,9 @@ import works.nuty.codon.client.state.ClientBreakpointState;
 import works.nuty.codon.client.state.ClientDebuggerState;
 import works.nuty.codon.client.ui.CodonScreen;
 import works.nuty.codon.client.ui.DebuggerOverlay;
+import works.nuty.codon.client.ui.DebuggerFeedbackToast;
 import works.nuty.codon.client.ui.FunctionSourceScreen;
+import works.nuty.codon.client.testmixin.ToastManagerTestAccessor;
 import works.nuty.codon.core.model.BlockLocation;
 import works.nuty.codon.core.model.BreakpointDefinition;
 import works.nuty.codon.core.model.BreakpointTarget;
@@ -26,6 +30,10 @@ import works.nuty.codon.core.model.SourceLocation;
 import works.nuty.codon.network.ControlRejectedPayload;
 
 import java.util.Optional;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -35,6 +43,17 @@ public final class DebuggerRequestFeedbackGameTest implements FabricClientGameTe
     private static final BlockLocation FIRST = new BlockLocation(4, 80, 0, "minecraft:overworld");
     private static final BlockLocation SECOND = new BlockLocation(5, 80, 0, "minecraft:overworld");
     private static final String OBJECTIVE = "request_feedback";
+    private static final Set<SystemToast> renderedToasts = new HashSet<>();
+    private static boolean observeDraws;
+    private static boolean feedbackRendered;
+
+    /** Test-only observer of the actual native toast rendering path. */
+    public static void observeToastDraw(SystemToast toast) {
+        if (!observeDraws) return;
+        renderedToasts.add(toast);
+        if (toast instanceof DebuggerFeedbackToast && toast.getWantedVisibility() == SystemToast.Visibility.SHOW)
+            feedbackRendered = true;
+    }
 
     @Override public void runTest(ClientGameTestContext context) {
         String oldLanguage = context.computeOnClient(client -> client.getLanguageManager().getSelected());
@@ -46,6 +65,24 @@ public final class DebuggerRequestFeedbackGameTest implements FabricClientGameTe
             AtomicReference<Runnable> delayedReply = new AtomicReference<>();
             var original = context.computeOnClient(client -> installObserver(suppress, delayedReply));
             try {
+                List<SystemToast> ordinary = context.computeOnClient(client -> {
+                    var manager = client.gui.toastManager();
+                    manager.clear(); // Isolated test-client fixture, before creating the five known notices.
+                    observeDraws = true;
+                    renderedToasts.clear();
+                    var toasts = new ArrayList<SystemToast>();
+                    for (int i = 0; i < 5; i++) {
+                        var toast = new SystemToast(new SystemToast.SystemToastId(),
+                            Component.literal("Ordinary toast " + (i + 1)), null);
+                        toasts.add(toast);
+                        manager.addToast(toast);
+                    }
+                    return List.copyOf(toasts);
+                });
+                waitToastAnimation(context);
+                context.runOnClient(client -> require(renderedToasts.containsAll(ordinary)
+                    && ((ToastManagerTestAccessor) client.gui.toastManager()).codon$occupiedSlots().cardinality() == 5,
+                    "five real ordinary toasts render and occupy every vanilla slot before the debugger pause"));
                 world.getServer().runCommand("setblock 3 80 0 minecraft:redstone_block");
                 awaitPause(context, FIRST);
                 PauseSnapshot first = context.computeOnClient(client -> state().snapshot());
@@ -63,6 +100,7 @@ public final class DebuggerRequestFeedbackGameTest implements FabricClientGameTe
                     suppress.set(true);
                     delayedReply.set(null);
                     context.runOnClient(client -> {
+                        feedbackRendered = false;
                         state().applyPause(first); // Reproduce a stale client view of a real previous stop.
                         CodonClientMod.input().control(InputManager.Control.RESUME);
                         long id = state().controlRequestId();
@@ -82,16 +120,24 @@ public final class DebuggerRequestFeedbackGameTest implements FabricClientGameTe
                             "the stale request never advances the current native stop");
                     });
                     waitToastAnimation(context);
+                    requireOrdinaryToasts(context, ordinary);
                     context.takeScreenshot("codon-control-timeout-" + locale);
                     context.waitFor(client -> state().feedback().current() == null, 200);
                     waitToastAnimation(context);
                     context.takeScreenshot("codon-control-timeout-expired-" + locale);
+                    requireOrdinaryToasts(context, ordinary);
+                    context.runOnClient(client -> {
+                        CodonMod.LOGGER.info("Occupied-toast feedback {}: slots=5, feedbackRendered={}, noticeExpired=true, ordinaryPreserved=true",
+                            locale, feedbackRendered);
+                        require(feedbackRendered, "timeout feedback must actually render before expiry with all five ordinary toast slots frozen");
+                    });
                     suppress.set(false);
                 }
 
                 language(context, "en_us");
                 for (var action : InputManager.Control.values()) {
                     context.runOnClient(client -> {
+                        feedbackRendered = false;
                         state().applyPause(first);
                         CodonClientMod.input().control(action);
                     });
@@ -101,6 +147,9 @@ public final class DebuggerRequestFeedbackGameTest implements FabricClientGameTe
                         "correlated stale rejection is visible and leaves the native stop unchanged: " + action));
                     if (action == InputManager.Control.RESUME) {
                         waitToastAnimation(context);
+                        requireOrdinaryToasts(context, ordinary);
+                        context.runOnClient(client -> require(feedbackRendered,
+                            "rejection feedback actually renders while all ordinary slots remain occupied"));
                         context.takeScreenshot("codon-control-rejected-en_us");
                     }
                 }
@@ -157,6 +206,9 @@ public final class DebuggerRequestFeedbackGameTest implements FabricClientGameTe
                 // Release the deliberate stale mirror before waiting for running-world cleanup.
                 context.runOnClient(client -> {
                     state().reset();
+                    observeDraws = false;
+                    renderedToasts.clear();
+                    client.gui.toastManager().clear(); // Reset the isolated test's notification fixture.
                     CodonClientMod.freecam().synchronize(client);
                     client.setScreenAndShow(null);
                 });
@@ -181,14 +233,18 @@ public final class DebuggerRequestFeedbackGameTest implements FabricClientGameTe
 
     private static void rejectInline(ClientGameTestContext context, BreakpointTarget target,
                                      ClientBreakpointState.Result result, String locale) {
-        context.runOnClient(client -> require(ClientNetworking.sendBreakpointEdit(state(), ClientBreakpointState.Action.TOGGLE,
-            BreakpointDefinition.plain(target)), "send actual inline edit"));
+        context.runOnClient(client -> {
+            feedbackRendered = false;
+            require(ClientNetworking.sendBreakpointEdit(state(), ClientBreakpointState.Action.TOGGLE,
+                BreakpointDefinition.plain(target)), "send actual inline edit");
+        });
         context.waitFor(client -> !state().breakpoints().pending(target) && state().breakpoints().error(target) == result
             && state().feedback().current() != null && state().feedback().current().messageKey().equals(
                 "codon.breakpoint.error." + result.name().toLowerCase(java.util.Locale.ROOT)), 200);
         context.runOnClient(client -> require(state().breakpoints().get(target) == null
             && state().breakpoints().error(target) == result, "rejected edit does not create a breakpoint"));
         waitToastAnimation(context);
+        context.runOnClient(client -> require(feedbackRendered, "inline rejection toast actually renders above the occupied slots"));
         context.takeScreenshot("codon-inline-rejected-" + result.name().toLowerCase(java.util.Locale.ROOT) + "-" + locale);
     }
 
@@ -257,6 +313,17 @@ public final class DebuggerRequestFeedbackGameTest implements FabricClientGameTe
         long started = System.nanoTime();
         context.waitFor(client -> System.nanoTime() - started >= 800_000_000L, 100);
         context.waitTicks(2);
+    }
+
+    private static void requireOrdinaryToasts(ClientGameTestContext context, List<SystemToast> ordinary) {
+        context.runOnClient(client -> {
+            var manager = client.gui.toastManager();
+            require(((ToastManagerTestAccessor) manager).codon$occupiedSlots().cardinality() == 5,
+                "feedback must not evict the five occupied ordinary toast slots");
+            for (var toast : ordinary) require(manager.getToast(SystemToast.class, toast.getToken()) == toast
+                && toast.getWantedVisibility() == SystemToast.Visibility.SHOW,
+                "ordinary toast identity and frozen lifetime remain unchanged during feedback");
+        });
     }
 
     private static ClientDebuggerState state() { return CodonClientMod.state(); }
