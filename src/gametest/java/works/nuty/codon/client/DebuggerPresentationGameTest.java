@@ -706,10 +706,14 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
         context.waitTicks(3);
         context.runOnClient(client -> {
             DebuggerButton label = worldLabelButton(screen, "#3 Changed");
+            DebuggerTooltipGameTest.beginObservation();
             client.setLastInputType(InputType.KEYBOARD_TAB);
             screen.setFocused(label);
         });
         context.waitTicks(2);
+        String changedTooltip = context.computeOnClient(client -> DebuggerTooltipGameTest.endObservation());
+        require(changedTooltip.contains("Context changed at this stage") && !changedTooltip.contains("#3 Changed"),
+            "A changed label's tooltip states the status without repeating its visible title: " + changedTooltip);
         context.takeScreenshot("codon-context-dot-keyboard-tooltip-en");
         context.runOnClient(client -> {
             state.setGizmoMode(ClientDebuggerState.GizmoMode.GROUPED);

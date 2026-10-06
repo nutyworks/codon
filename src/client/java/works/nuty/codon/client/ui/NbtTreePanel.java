@@ -229,7 +229,8 @@ public final class NbtTreePanel {
         String nodeId = nodeId(node);
         controls.button(idPrefix + "node-" + nodeId, content, label, node.expandable(), false,
             () -> toggleNode(pauseId, executor.uuid(), node.path())).withInputBlocked(!current)
-            .setTooltip(Tooltip.create(Component.literal(node.path()).append("\n").append(node.preview())));
+            // The row draws the name and preview (a clipped label is echoed by the button); the path is new.
+            .setTooltip(Tooltip.create(Component.literal(node.path())));
 
         Bounds pinBounds = new Bounds(bounds.x() + bounds.width() - 18, bounds.y(), 18, 16);
         WatchSpec spec = pinnableSpec(node, executor.uuid());
@@ -251,7 +252,7 @@ public final class NbtTreePanel {
             Component right = Component.translatable(allPinned ? "codon.nbt.click_all_remove" : "codon.nbt.click_all", all.size());
             pinTooltip = left.copy().append("\n").append(right);
         }
-        pin.setTooltip(Tooltip.create(pinTooltip.copy().append("\n").append(node.path())));
+        pin.setTooltip(Tooltip.create(pinTooltip));
     }
 
     private void toggleNode(long pauseId, UUID executor, String path) {
