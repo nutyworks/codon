@@ -59,6 +59,21 @@ obstacle rules remain. `GizmoLabelLayoutTest` covers 10,000 split-height sources
 input orders, plus grouping, selection, obstacle and visible-budget controls. Native
 world projection and rendering remain separate acceptance checks.
 
+`DebuggerIdleBadgeGameTest` clicks the real View row at the smallest 320×240 viewport,
+writes a temporary settings file (never the live `config/codon.json`) and reloads it into
+a new settings/state instance. Inspect `codon-idle-badge-*`: default, hidden, hidden after
+reload, restored, F3 with a visible preference, the open View menu in both languages, and
+the `-synthetic-pause` HUD/cursor captures. Presence of the badge or paused header is
+asserted from dark panel pixels at their shared corner, with sky behind it; F3's own text
+and the screenshots themselves still need inspection. The production HUD element would draw
+its own badge, so the test wraps it once in place with `HudElementRegistry.replaceElement`: the
+wrapper draws the test-owned HUD while the fixture is active. Fabric's registry keeps removed
+ids and rejects adding them again, so nothing is removed; after cleanup the wrapper stays
+registered but renders the original production element again, in its original id and order.
+The paused captures inject a client snapshot: they do not prove a server breakpoint, and world
+markers remain the world-marker regression's concern (the renderer never reads the
+preference).
+
 ## Code entry points
 
 - [UiHideGesture](../../../src/client/java/works/nuty/codon/client/input/UiHideGesture.java): monotonic press/release classification and cancelled gestures.
@@ -120,18 +135,3 @@ with an actual paused entity source; an injected flow fixture has no live NBT ex
 The fixture uses injected client snapshots, so use the real world-marker regression
 for H and server-pause safety. Inspect `codon-readable-*` images; this matrix does
 not establish arbitrary modded HUD placement or unusually many health rows.
-
-`DebuggerIdleBadgeGameTest` clicks the real View row at the smallest 320×240 viewport,
-writes a temporary settings file (never the live `config/codon.json`) and reloads it into
-a new settings/state instance. Inspect `codon-idle-badge-*`: default, hidden, hidden after
-reload, restored, F3 with a visible preference, the open View menu in both languages, and
-the `-synthetic-pause` HUD/cursor captures. Presence of the badge or paused header is
-asserted from dark panel pixels at their shared corner, with sky behind it; F3's own text
-and the screenshots themselves still need inspection. The production HUD element would draw
-its own badge, so the test wraps it once in place with `HudElementRegistry.replaceElement`: the
-wrapper draws the test-owned HUD while the fixture is active. Fabric's registry keeps removed
-ids and rejects adding them again, so nothing is removed; after cleanup the wrapper stays
-registered but renders the original production element again, in its original id and order.
-The paused captures inject a client snapshot: they do not prove a server breakpoint, and world
-markers remain the world-marker regression's concern (the renderer never reads the
-preference).
