@@ -83,13 +83,16 @@ be checked. The viewer lists functions actually loaded by the current server.
    stops at the selected location. Reopen Source at the pause and distinguish the
    actual stopped line from a manually inspected line/record. A live pause has an
    arrow and amber row; ordinary line selection uses a neutral line-number cue.
-   Use **Go to stop · line N** in the source status row to select and reveal the
+   Use **Go to stop · line N** in the Source header immediately after **Reread file** to select and reveal the
    live paused line, resetting horizontal scrolling to its beginning. The action
    supports normal Tab/Enter activation and leaves debugger frame/flow selection
    intact. It appears only for a ready document of the paused function with an
    in-range line whose command matches the live pause; pending debugger controls
    disable it. Loading, changed source commands and resumed records cannot supply
-   a live destination. A truncated-source warning remains alongside the action.
+   a live destination. Tight headers use an arrow with the full action/line tooltip;
+   Back and Close remain separate. Tab reaches the action immediately after Reread
+   file; hiding or disabling it releases its focus for code navigation. The status
+   row retains the execution status and truncated-source warning.
    Actual pause highlighting remains independent of that navigation position. After Continue, the retained
    location is labelled as a recorded line and has no live-pause arrow.
 4. With execution resumed, change/reload the scratch datapack. Use **Refresh list**
@@ -181,6 +184,7 @@ scroll settings. Synthetic callback input does not verify a physical trackpad.
 | Network payloads | `test`: `FunctionSourcePayloadTest`, `BreakpointStagePreviewPayloadTest` |
 | Line gutter, one-stage suppression, EN/KO/custom scale and hit boxes | `FunctionLineBreakpointGameTest` |
 | Real rendering, selection, resize and inline stage markers | `FunctionSourceScreenGameTest`, `FunctionSourceInteractionGameTest`, `FunctionSourceReviewGameTest` |
+| Header stop navigation, Reread/stop Tab order, focus lifecycle, EN/KO minimum and custom scales | `FunctionSourceScreenGameTest` |
 | Active stage readability, adjacent stages, horizontal clipping and representative scales | `FunctionSourceStageHighlightGameTest` |
 | Source toolbar icon, state styling, scale readability and native activation | `DebuggerSourceIconGameTest` |
 | F3/Shift+F3 press/repeat/release ownership and vanilla behavior outside Source | `FunctionSourceKeyboardGameTest` |
@@ -272,11 +276,14 @@ not installed in the server's datapack. It proves presentation/interaction, not
 server source discovery, permission enforcement or native function breakpoints.
 Use the manual loaded-function path for those acceptance criteria.
 
-The same GameTest verifies **Go to stop** with native mouse and keyboard activation,
-an independently inspected historical frame, pending-control and source-loading
-gates, stale command/resume changes between render and activation, and a truncated
-Korean source at minimum size. Inspect `go-to-stop-live` and
-`go-to-stop-korean-minimum`. These injected pause/source fixtures establish client
+The same GameTest verifies the header's **Go to stop** with native mouse and keyboard
+activation, adjacent Reread/stop Tab order, an independently inspected historical
+frame, pending-control and source-loading gates, stale command/resume changes
+between render and activation, and focus release/retention across state changes
+and resize. Back/Close remain separate in EN/KO minimum layouts and Korean 1.25×/4.50×
+views. Inspect `go-to-stop-live`, `go-to-stop-english-minimum`,
+`go-to-stop-korean-minimum`, `go-to-stop-korean-1.25x` and `go-to-stop-korean-4.5x`.
+These injected pause/source fixtures establish client
 navigation and presentation; they do not establish server breakpoint execution
 or unsolicited datapack revision detection.
 

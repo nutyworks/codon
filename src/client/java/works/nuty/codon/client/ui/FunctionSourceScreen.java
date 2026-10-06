@@ -152,17 +152,15 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                         new FunctionLocation(sources.selected(), selectedLine)));
             }));
         reread.setTooltip(Tooltip.create(Component.translatable("codon.source.reload_hint")));
+        goToStop = addRenderableWidget(WatchUi.button(reread.getRight() + 4, top + 5, 20, 18,
+            Component.empty(), this::goToStop));
+        goToStop.visible = goToStop.active = false;
         close = addRenderableWidget(WatchUi.button(left + panelWidth - 58, top + 5, 50, 18,
             Component.translatable("codon.breakpoint.close"), this::onClose));
         drawerButton = addRenderableWidget(WatchUi.button(left + 8, top + 5, 64, 18,
             Component.translatable("codon.source.functions"), () -> setDrawerOpen(!drawerOpen)));
         backButton = addRenderableWidget(WatchUi.button(left + panelWidth - 116, top + 5, 54, 18,
             Component.translatable("codon.source.back"), this::goBack));
-        goToStop = addRenderableWidget(WatchUi.button(sourceLeft + 4,
-            top + ClientFunctionSourceState.ScreenLayout.statusInset(compactSourceControls) - 2, 1, 12,
-            Component.empty(), this::goToStop).withFlatChrome().withTextPadding(8)
-            .withStatusColor(TEAL, TEAL_SURFACE));
-        goToStop.visible = goToStop.active = false;
         reread.visible = reread.active = sources.selected() != null;
         drawerButton.visible = drawerButton.active = drawerMode;
         backButton.visible = backButton.active = !drawerOpen && sources.canGoBack();
@@ -199,6 +197,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             }
         }
         rebuildEntries();
+        updateStopControl();
     }
 
     Screen parentScreen() { return parent; }
@@ -434,10 +433,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         }
         // Keep incomplete-source warnings visible even though revision details are secondary.
         String warning = document.truncated() ? tr("codon.source.truncated") + " · " : "";
-        if (goToStop.visible) {
-            if (!warning.isEmpty()) WatchUi.line(graphics, font, warning, sourceLeft + 6, statusY,
-                Math.max(1, goToStop.getX() - sourceLeft - 6), AMBER);
-        } else WatchUi.line(graphics, font, warning + executionStatus(selected), sourceLeft + 6, statusY,
+        WatchUi.line(graphics, font, warning + executionStatus(selected), sourceLeft + 6, statusY,
             sourceWidth - 12, document.truncated() ? AMBER : MUTED);
         int countX = sourceLeft + sourceWidth - 110;
         int countY = sourceSearch.getY() + 6;
@@ -845,16 +841,19 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         int line = actualStopLine();
         goToStop.visible = !drawerOpen && line > 0;
         goToStop.active = goToStop.visible && !CodonClientMod.state().controlPending();
+        if (!goToStop.active && getFocused() == goToStop) setFocused(null);
         if (!goToStop.visible) return;
-        String warning = sources.document().truncated() ? tr("codon.source.truncated") + " · " : "";
-        int x = sourceLeft() + 4 + font.width(warning);
+        int x = reread.getRight() + 4;
+        int right = (sources.canGoBack() ? backButton.getX() : close.getX()) - 4;
         Component label = Component.translatable("codon.source.go_to_stop", line);
-        int available = Math.max(1, Math.min(font.width(label) + 8, sourceLeft() + sourceWidth() - 6 - x));
-        goToStop.configure(x, top + ClientFunctionSourceState.ScreenLayout.statusInset(compactSourceControls) - 2,
-            available, 12, label, goToStop.active, false, false, false, this::goToStop);
-        goToStop.withFlatChrome().withTextPadding(8).withStatusColor(TEAL, TEAL_SURFACE);
-        goToStop.setTooltip(Tooltip.create(Component.translatable(goToStop.active
-            ? "codon.source.go_to_stop_hint" : "codon.ui.move_to_source.pending")));
+        int labelWidth = font.width(label) + 10;
+        boolean compact = labelWidth > right - x;
+        goToStop.configure(x, reread.getY(), compact ? 20 : labelWidth, reread.getHeight(),
+            label, goToStop.active, false, false, false, this::goToStop);
+        goToStop.withStatusColor(TEAL, TEAL_SURFACE);
+        if (compact) goToStop.withIcon(DebuggerIcon.HISTORY_NEXT);
+        goToStop.setTooltip(Tooltip.create(label.copy().append("\n").append(Component.translatable(goToStop.active
+            ? "codon.source.go_to_stop_hint" : "codon.ui.move_to_source.pending"))));
     }
 
     private void goToStop() {
@@ -1118,6 +1117,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
 
     @Override public boolean keyPressed(KeyEvent event) {
         if (ScreenLayers.get(this) != null) return true;
+        updateStopControl();
         if (event.key() == InputConstants.KEY_F10 && event.hasShiftDown() && parentOwnsContextKeys && docked)
             return parent.keyPressed(event);
         if (event.key() == InputConstants.KEY_F10 && event.hasShiftDown() && getFocused() == null && !drawerOpen) {

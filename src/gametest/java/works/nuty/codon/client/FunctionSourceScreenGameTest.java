@@ -27,6 +27,8 @@ import works.nuty.codon.client.ui.DebuggerOverlay;
 import works.nuty.codon.client.ui.FunctionSourceScreen;
 import works.nuty.codon.client.ui.ScaledCodonScreen;
 import works.nuty.codon.client.ui.DebuggerTheme;
+import works.nuty.codon.client.ui.DebuggerButton;
+import works.nuty.codon.client.ui.DebuggerIcon;
 import works.nuty.codon.client.ui.layout.SourceLineLayout;
 import works.nuty.codon.client.ui.layout.SourceSyntax;
 import works.nuty.codon.client.state.DebuggerPreferences;
@@ -212,7 +214,14 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
         ClientFunctionSourceState sources = context.computeOnClient(client -> {
             client.options.guiScale().set(2); client.resizeGui();
             var state = new ClientFunctionSourceState();
-            state.select(FUNCTION);
+            var caller = new FunctionId("codon_test", "caller");
+            state.open();
+            long listRequest = state.drainRequests().getFirst().requestId();
+            state.accept(new ClientFunctionSourceState.ListPage(listRequest, ClientFunctionSourceState.Status.READY,
+                0, true, List.of(caller, FUNCTION)));
+            state.select(caller);
+            state.drainRequests();
+            require(state.follow(FUNCTION), "fixture retains Back beside the stop control");
             long request = state.drainRequests().getFirst().requestId();
             state.accept(new ClientFunctionSourceState.SourcePage(request, ClientFunctionSourceState.Status.READY,
                 FUNCTION, "gametest", "go-to-stop", false, 0, true, lines));
@@ -228,6 +237,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             var screen = (ScaledCodonScreen) client.gui.screen();
             var button = stopButton(screen);
             require(button.visible && button.active, "matching live stop exposes an active navigation button");
+            assertStopHeader(screen);
             var window = client.getWindow();
             return new double[]{screen.uiScale().toGame(button.getX() + button.getWidth() / 2.0)
                     * window.getScreenWidth() / window.getGuiScaledWidth(),
@@ -259,6 +269,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             screen.keyPressed(new KeyEvent(InputConstants.KEY_END, 0, 0));
             var debugger = CodonClientMod.state();
             require(debugger.beginControlRequest(), "fixture begins a pending control");
+            screen.setFocused(button);
             debugger.deferControlForReads();
             button.onPress(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
             require(sources.browseView().selectedLine() == 30,
@@ -268,10 +279,12 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
         context.runOnClient(client -> {
             require(stopButton(client.gui.screen()).visible && !stopButton(client.gui.screen()).active,
                 "pending controls disable stop navigation");
+            require(client.gui.screen().getFocused() == null, "a disabled stop control releases focus");
             CodonClientMod.state().applyPause(pause);
         });
         context.waitTicks(2);
         context.runOnClient(client -> {
+            client.gui.screen().setFocused(stopButton(client.gui.screen()));
             CodonClientMod.state().applyPause(new PauseSnapshot(location, CommandSnippet.plain("say replaced"),
                 0, List.of(), List.of(), PauseReason.BREAKPOINT));
             stopButton(client.gui.screen()).onPress(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
@@ -280,28 +293,65 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
         context.waitTicks(2);
         context.runOnClient(client -> {
             require(!stopButton(client.gui.screen()).visible, "a changed command does not offer a false source destination");
+            require(client.gui.screen().getFocused() == null, "a mismatched source releases stop control focus");
             CodonClientMod.state().applyPause(pause);
         });
         context.waitTicks(2);
         context.runOnClient(client -> {
+            var screen = client.gui.screen();
+            screen.setFocused(searchBox(screen));
+            CodonClientMod.state().applyPause(new PauseSnapshot(location, CommandSnippet.plain("say replaced"),
+                0, List.of(), List.of(), PauseReason.BREAKPOINT));
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            require(client.gui.screen().getFocused() == searchBox(client.gui.screen()),
+                "hiding stop does not disturb another visible field's focus");
+            CodonClientMod.state().applyPause(pause);
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            var screen = client.gui.screen();
+            screen.setFocused(stopButton(screen));
             CodonClientMod.state().applyResume();
-            stopButton(client.gui.screen()).onPress(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
+            stopButton(screen).onPress(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
             require(sources.browseView().selectedLine() == 30, "resumed history does not become a live stop destination");
+            require(screen.keyPressed(new KeyEvent(InputConstants.KEY_HOME, 0, 0))
+                && screen.getFocused() == null && sources.browseView().selectedLine() == 1,
+                "Resume releases hidden focus before the next render and code navigation works immediately");
+            screen.keyPressed(new KeyEvent(InputConstants.KEY_END, 0, 0));
         });
         context.waitTicks(2);
         context.runOnClient(client -> {
             require(!stopButton(client.gui.screen()).visible, "a recorded line keeps its read-only status after resume");
             CodonClientMod.state().applyPause(pause);
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            client.gui.screen().setFocused(stopButton(client.gui.screen()));
             sources.refreshSource();
         });
         context.waitTicks(2);
         context.runOnClient(client -> {
             require(!stopButton(client.gui.screen()).visible, "a loading source cannot navigate to a stale destination");
+            require(client.gui.screen().getFocused() == null, "rereading source releases stop control focus");
             long request = sources.drainRequests().stream().filter(ClientFunctionSourceState.Request.ReadFunction.class::isInstance)
                 .map(ClientFunctionSourceState.Request.ReadFunction.class::cast).reduce((first, last) -> last).orElseThrow().requestId();
             sources.accept(new ClientFunctionSourceState.SourcePage(request, ClientFunctionSourceState.Status.READY,
                 FUNCTION, "gametest", "go-to-stop-truncated", true, 0, true, lines));
         });
+        context.waitTicks(2);
+        context.runOnClient(client -> client.gui.screen().setFocused(stopButton(client.gui.screen())));
+        context.getInput().resizeWindow(960, 720);
+        context.runOnClient(client -> { client.options.guiScale().set(3); client.resizeGui(); });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            var screen = client.gui.screen();
+            require(screen.width == 320 && screen.getFocused() == stopButton(screen),
+                "resizing retains focus on the current visible stop control");
+            assertStopHeader(screen);
+        });
+        assertStopLabelPixels(context, "codon-function-source-go-to-stop-english-minimum");
         String language = context.computeOnClient(client -> client.getLanguageManager().getSelected());
         var reload = context.computeOnClient(client -> {
             client.getLanguageManager().setSelected("ko_kr");
@@ -314,8 +364,9 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
         context.runOnClient(client -> {
             var screen = client.gui.screen();
             var button = stopButton(screen);
-            require(screen.width == 320 && button.visible && button.active && button.getWidth() > 80,
-                "the Korean minimum view retains stop navigation beside the truncated-source warning");
+            require(screen.width == 320 && button.visible && button.active && button.getWidth() == 20,
+                "the Korean minimum header retains the full action in a compact icon and tooltip");
+            assertStopHeader(screen);
             screen.setFocused(button);
             client.setLastInputType(InputType.KEYBOARD_TAB);
             screen.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
@@ -323,8 +374,22 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
         });
         context.waitTicks(2);
         assertStopLabelPixels(context, "codon-function-source-go-to-stop-korean-minimum");
+        context.getInput().resizeWindow(1920, 1080);
+        context.runOnClient(client -> {
+            var screen = (ScaledCodonScreen) client.gui.screen();
+            screen.uiPreferences().setCustomUiScale(5);
+            screen.uiPreferences().setUiScaleMode(DebuggerPreferences.UiScaleMode.CUSTOM);
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> assertStopHeader(client.gui.screen()));
+        assertStopLabelPixels(context, "codon-function-source-go-to-stop-korean-1.25x");
+        context.runOnClient(client -> ((ScaledCodonScreen) client.gui.screen()).uiPreferences().setCustomUiScale(18));
+        context.waitTicks(2);
+        context.runOnClient(client -> assertStopHeader(client.gui.screen()));
+        assertStopLabelPixels(context, "codon-function-source-go-to-stop-korean-4.5x");
         var restore = context.computeOnClient(client -> {
             client.getLanguageManager().setSelected(language);
+            ((ScaledCodonScreen) client.gui.screen()).uiPreferences().resetUiScale();
             CodonClientMod.state().applyResume();
             return client.reloadResourcePacks();
         });
@@ -332,11 +397,33 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
     }
 
     private static AbstractButton stopButton(Screen screen) {
+        return sourceButton(screen, "goToStop");
+    }
+
+    private static DebuggerButton sourceButton(Screen screen, String name) {
         try {
-            var field = FunctionSourceScreen.class.getDeclaredField("goToStop");
+            var field = FunctionSourceScreen.class.getDeclaredField(name);
             field.setAccessible(true);
-            return (AbstractButton) field.get(screen);
+            return (DebuggerButton) field.get(screen);
         } catch (ReflectiveOperationException error) { throw new AssertionError(error); }
+    }
+
+    private static void assertStopHeader(Screen screen) {
+        var button = sourceButton(screen, "goToStop");
+        var reread = sourceButton(screen, "reread");
+        var back = sourceButton(screen, "backButton");
+        var close = sourceButton(screen, "close");
+        require(button.visible && button.active && button.getX() == reread.getRight() + 4
+            && button.getY() == reread.getY() && button.getHeight() == reread.getHeight()
+            && button.getHeight() == 18 && button.getRight() <= (back.visible ? back.getX() : close.getX()) - 4,
+            "stop control shares the Reread header row without overlapping Back or Close");
+        var focused = screen.getFocused();
+        screen.setFocused(reread);
+        screen.keyPressed(new KeyEvent(InputConstants.KEY_TAB, 0, 0));
+        require(screen.getFocused() == button, "Tab visits stop immediately after Reread");
+        screen.keyPressed(new KeyEvent(InputConstants.KEY_TAB, 0, 1));
+        require(screen.getFocused() == reread, "Shift+Tab returns directly to Reread");
+        screen.setFocused(focused);
     }
 
     private static void assertStopLabelPixels(ClientGameTestContext context, String name) {
@@ -344,7 +431,8 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             Screen screen = client.gui.screen();
             AbstractButton button = stopButton(screen);
             return new int[]{screen.width, screen.height, button.getX(), button.getY(),
-                button.getWidth(), button.getHeight(), client.font.width(button.getMessage())};
+                button.getWidth(), button.getHeight(), ((DebuggerButton) button).icon() == null
+                    ? client.font.width(button.getMessage()) : DebuggerIcon.SIZE};
         });
         try {
             var image = javax.imageio.ImageIO.read(context.takeScreenshot(name).toFile());
@@ -356,7 +444,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
                         first = Math.min(first, x); last = Math.max(last, x);
                     }
             require(last - first + 1 >= (geometry[6] - 4) * sx,
-                name + ": native text spans the full stop label instead of an ellipsis, ink="
+                name + ": native button retains the full label or compact arrow, ink="
                     + (last - first + 1) + ", expected=" + (geometry[6] - 4) * sx);
         } catch (java.io.IOException error) { throw new AssertionError(error); }
     }
