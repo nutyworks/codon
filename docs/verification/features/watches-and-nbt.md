@@ -6,6 +6,12 @@ edge, with no inline management controls. `WatchPanelLayoutTest` covers the same
 name/value layout at narrow and wide widths; `DebuggerCompactWatchGameTest`
 exercises the actual screen events and Details actions.
 
+Watch Details uses localized kind prefixes and literal objective/storage/path identifiers.
+`CodonLabelsTest` checks EN/KO key and placeholder parity and all three Watch kinds,
+including `Health` and `Pos[0]`. `CodonLabelsGameTest` captures their actual English/Korean
+Details rendering and the localized yaw/pitch labels at normal and 320×240 logical
+viewports. These use presentation fixtures and do not establish server read execution.
+
 ## User path and expected result
 
 Regular Watches default to 280 logical pixels (previously 360), bounded by the same

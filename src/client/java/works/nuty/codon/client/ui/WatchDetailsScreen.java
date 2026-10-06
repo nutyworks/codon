@@ -122,7 +122,7 @@ public final class WatchDetailsScreen extends ScaledCodonScreen {
         retry.active = !entry.automatic();
         edit.active = expanded;
         add(WatchUi.text("details.expression"), TEAL);
-        add(Component.literal(expression(entry.spec())), TEXT);
+        add(expression(entry.spec()), TEXT);
         blank();
         add(WatchUi.text("details.binding"), TEAL);
         if (entry.spec().kind() == WatchSpec.Kind.STORAGE_NBT) add(WatchUi.text("details.storage"), TEXT);
@@ -146,12 +146,14 @@ public final class WatchDetailsScreen extends ScaledCodonScreen {
         return WatchUi.text("details.fixed", name + entry.spec().executor()).getString();
     }
 
-    private static String expression(WatchSpec spec) {
-        return switch (spec.kind()) {
-            case SCORE -> "score: " + spec.target();
-            case ENTITY_NBT -> "entity NBT: " + spec.path();
-            case STORAGE_NBT -> "storage NBT: " + spec.target() + " / " + spec.path();
+    private static Component expression(WatchSpec spec) {
+        String value = switch (spec.kind()) {
+            case SCORE -> spec.target();
+            case ENTITY_NBT -> spec.path();
+            case STORAGE_NBT -> spec.target() + " / " + spec.path();
         };
+        return WatchUi.text("kind." + spec.kind().name().toLowerCase(java.util.Locale.ROOT))
+            .copy().append(": ").append(Component.literal(value));
     }
 
     private static String value(WatchResult result) {

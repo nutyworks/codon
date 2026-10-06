@@ -57,7 +57,7 @@ public final class CodonCommand {
         try {
             enabled = engine.toggleFunctionBreakpoint(new FunctionLocation(SourceMapper.toFunctionId(funcId), line));
         } catch (works.nuty.codon.core.service.BreakpointRegistry.LimitExceeded limit) {
-            context.getSource().sendFailure(Component.literal("Breakpoint limit reached"));
+            context.getSource().sendFailure(Component.translatable("command.codon.breakpoint.error.limit"));
             return 0;
         }
         String key = enabled
@@ -74,7 +74,7 @@ public final class CodonCommand {
         try {
             enabled = engine.toggleBlockBreakpoint(SourceMapper.toBlockLocation(pos, dimension));
         } catch (works.nuty.codon.core.service.BreakpointRegistry.LimitExceeded limit) {
-            context.getSource().sendFailure(Component.literal("Breakpoint limit reached"));
+            context.getSource().sendFailure(Component.translatable("command.codon.breakpoint.error.limit"));
             return 0;
         }
         String key = enabled

@@ -4,7 +4,7 @@
 
 Deleting from the condition modal waits for server acknowledgement before closing
 back to its existing parent (including Source). Pending, rejected and unavailable
-requests remain visible in the same modal. The Active breakpoint list now only
+requests remain visible in the same modal. The breakpoint list now only
 navigates: its row overflow, toggle, condition, delete and Undo actions are removed.
 Function entries open their original source line and matching stage; block entries
 open an exact matching recorded/static stage in the current pause's Flow. Matching
@@ -47,8 +47,12 @@ appear on hover/focus; disabled markers also appear only on hover/focus, while
 enabled breakpoints remain visible. Flow keeps both saved disabled markers and unset breakpoint-capable stage affordances
 visible as neutral hollow circles/diamonds, including run and terminal function stages.
 Rendering an unset affordance does not create a saved breakpoint. The
-list retains enabled and disabled definitions with an explicit state label. The toolbar count and source stage summaries
-still count enabled breakpoints. Disabling preserves the saved condition; use the
+list retains enabled and disabled definitions with an explicit state label. Its header
+shows the total definitions and enabled count. The toolbar's short count and source
+stage summaries still count enabled breakpoints; the toolbar tooltip explicitly shows
+enabled and total counts. `CodonLabelsGameTest` checks enabled-only, disabled-only and
+mixed snapshots in English/Korean at normal and 320×240 logical viewports, including
+the maximum-count header width. Disabling preserves the saved condition; use the
 list to navigate to its source, then hover/focus its original marker to enable it again. The whole-command
 marker at the front of the command-block editor is always visible, including when
 unused or disabled. Text selection in the
@@ -73,7 +77,7 @@ The command alternatives are `/codon breakpoint block <x> <y> <z>` and
 `/codon breakpoint function <namespace:path> <line>` (one-based file line).
 They toggle whole-command targets; use the UI for stage/condition editing.
 
-The active list retains widget identity only for currently rendered controls.
+The breakpoint list retains widget identity only for currently rendered controls.
 Replacement authoritative snapshots, scrolling and empty/disconnected lists release
 obsolete labels, tooltips and actions; unchanged visible targets retain widget identity
 and focus restoration. `BreakpointListCacheTest` exercises 100 acknowledged replacement
