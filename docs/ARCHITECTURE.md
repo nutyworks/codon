@@ -263,8 +263,9 @@ During the NBT grace period, toggles and pins retain their appearance and keyboa
 is blocked independently. Button identity and scroll position follow the executor UUID across pauses
 and context reordering. A pending NBT row has no transient disabled Refresh button.
 Editor invalidation across a step preserves only the short display hold; closing, resuming, and
-disconnecting clear it. The server-control waiting label uses the same grace period, while control
-actions lock immediately. Flow `...` counts still mean unmeasured data, not an asynchronous loading state.
+disconnecting clear it. The server-control waiting label replaces the whole status text, so it waits
+a separate 1 s (`CONTROL_WAITING_LABEL_NANOS`) and ordinary round trips keep the current status, while
+control actions lock immediately. Flow `...` counts still mean unmeasured data, not an asynchronous loading state.
 
 Every continuous step also captures automatic changes, whether or not their fields were added to Watch.
 The server compares NBT leaves and all score objectives for current and previously observed execution

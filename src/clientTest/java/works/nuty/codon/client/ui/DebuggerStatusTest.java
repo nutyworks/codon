@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class DebuggerStatusTest {
     @Test
-    void controlPendingDisablesImmediatelyButDelaysTheWaitingLabelUntilTheGraceBoundary() {
+    void controlPendingDisablesImmediatelyButDelaysTheWaitingLabelUntilItsOwnBoundary() {
         AtomicLong now = new AtomicLong();
         ClientDebuggerState state = new ClientDebuggerState(now::get);
         assertEquals("codon.ui.running", DebuggerStatus.translationKey(state));
@@ -25,14 +25,17 @@ class DebuggerStatusTest {
         assertFalse(state.displayControlWaiting());
         assertEquals("codon.ui.execution_complete", DebuggerStatus.translationKey(state));
 
-        now.set(PendingDisplay.GRACE_NANOS - 1);
+        now.set(PendingDisplay.GRACE_NANOS);
+        assertEquals("codon.ui.execution_complete", DebuggerStatus.translationKey(state),
+            "the shorter display hold does not swap the status text for a slow-ish reply");
+        now.set(ClientDebuggerState.CONTROL_WAITING_LABEL_NANOS - 1);
         assertEquals("codon.ui.execution_complete", DebuggerStatus.translationKey(state));
         state.applyPause(snapshot(PauseReason.BREAKPOINT));
         assertEquals("codon.ui.breakpoint_hit", DebuggerStatus.translationKey(state),
             "a response before the boundary replaces the old status directly");
 
         assertTrue(state.beginControlRequest());
-        now.addAndGet(PendingDisplay.GRACE_NANOS);
+        now.addAndGet(ClientDebuggerState.CONTROL_WAITING_LABEL_NANOS);
         assertTrue(state.displayControlWaiting());
         assertEquals("codon.ui.waiting", DebuggerStatus.translationKey(state));
         state.applyPause(snapshot(PauseReason.STEP));

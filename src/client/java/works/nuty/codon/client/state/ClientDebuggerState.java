@@ -22,6 +22,9 @@ import java.util.function.LongSupplier;
  * stage, and occurrence ids; entity UUIDs are presentation data and never establish lineage.
  */
 public final class ClientDebuggerState {
+    /** How long a control request may stay unanswered before the status text becomes the waiting label. */
+    public static final long CONTROL_WAITING_LABEL_NANOS = 1_000_000_000L;
+
     private volatile boolean paused;
     private volatile boolean stepping;
     private volatile boolean continuing;
@@ -748,9 +751,13 @@ public final class ClientDebuggerState {
         return controlPending;
     }
 
-    /** Delay only the waiting label; controlPending() still disables actions immediately. */
+    /**
+     * Delay only the waiting label; controlPending() still disables actions immediately. The label
+     * replaces the whole status text, so an ordinary round trip keeps the current status instead of
+     * flashing a different phrase for a moment.
+     */
     public boolean displayControlWaiting() {
-        return controlPending() && clock.getAsLong() - controlRequestedAt >= PendingDisplay.GRACE_NANOS;
+        return controlPending() && clock.getAsLong() - controlRequestedAt >= CONTROL_WAITING_LABEL_NANOS;
     }
 
     public void reset() {
