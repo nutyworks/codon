@@ -6,8 +6,8 @@ margin at every edge. The common boundary is `CodonGuiGraphics` and
 `CodonTooltips`; inline controls in vanilla command editors also use the shared
 positioner through `DebuggerButton` and `WrappedCommandEditBox`.
 
-Tooltips drawn directly by a panel (clipped labels, Source path/Find count/gutter/
-navigation track, Watch notice, form errors, picker rows, condition fragment and the
+Tooltips drawn directly by a panel (clipped labels, Source path/Find count/gutter,
+Watch notice, form errors, picker rows, condition fragment and the
 inline command marker) wait for the same 350 ms hover delay as `DebuggerButton`
 through `HoverDelay`; keyboard focus stays immediate and only the opacity slider
 readout is shown at once. Panel resize edges and the Source splitter have no tooltip:
@@ -35,18 +35,18 @@ surface has passed manual acceptance. Record run-specific evidence separately.
 
 | Surface | Content and hover review | Runtime coverage / remaining manual check |
 | --- | --- | --- |
-| Source path and Find limit (the splitter has no tooltip) | Direct text wraps after the shared hover delay; row/track hit regions remain separate | `DebuggerTooltipGameTest` tests actual Source saved-line hover and its delay; inspect path/Find manually |
+| Source path and Find limit (the splitter has no tooltip) | Direct text wraps after the shared hover delay; the path tooltip adds provider/revision and repeats the path only when clipped; the Find field has a tooltip only for the match limit; Refresh/Reread are one short line each | `DebuggerTooltipGameTest` tests actual Source saved-line hover and its delay; inspect path/Find manually |
 | Source saved line, stage summary, stale/preview hints | Exact line condition and both mouse actions are separate localized lines; a distinct stage count never aliases the gutter target | `DebuggerTooltipGameTest`: English/Korean, enabled/disabled whole-line definition, separate legacy stage count and modal suppression |
-| Source inline stage and navigation track | Direct stage/condition and existing wrapped navigation help share viewport placement | Existing `FunctionSourceScreenGameTest`; manually inspect an offscreen/long stage condition |
+| Source inline stage | Direct stage/condition text shares viewport placement; the horizontal scrollbar has no key-list tooltip (keys are in Help) | Existing `FunctionSourceScreenGameTest`; manually inspect an offscreen/long stage condition |
 | Flow breadcrumbs, clauses, markers and observations | Clause tooltips carry only the stop marker, an unobserved reason or a warning/error reason (plus the stage counts when the row is too short to draw them); the detail band has a tooltip only for such a reason; frame tooltips show location and command without the invocation id | `FlowLegacyConditionGameTest` (no definition, legend, clause echo or `#id` in any Flow tooltip), `DebuggerPresentationGameTest`; long details and paused real execution remain manual |
 | Watches values, executor/grouping and row actions | A healthy, unclipped row has no tooltip; a failed read, changed executor/availability or clipped name/value shows the full status, value and target; a collapsed group header shows its note only when something changed or failed to read | `DebuggerCompactWatchGameTest`, `DebuggerWatchPinGameTest`; unusual long value diagnostics and the collapsed-header note remain manual |
 | Watches grouping menu and notices | Menu items have no tooltip (the trigger keeps its icon-only label); covered row controls/direct text cannot hover under menu; uncover resets button hover delay | `DebuggerWatchGroupingGameTest` (no item tooltip); shared covered/uncovered regression; actual grouping-menu overlap remains manual |
-| NBT node path/preview and pin | Separate component-list API uses shared wrapper; node preview excludes pin area so click hints retain priority | `DebuggerNbtTreeGameTest`: native pin click/right-click/path hover assertion and screenshot; shared component-list/long-identifier regression; manually inspect a long generated path |
+| NBT node path and pin | Row tooltip is the path (a clipped label is echoed by the button); the pin tooltip lists click hints without repeating the path; the row tooltip excludes the pin area so click hints retain priority | `DebuggerNbtTreeGameTest`: native pin click/right-click/path hover assertion and screenshot; shared component-list/long-identifier regression; manually inspect a long generated path |
 | Toolbar, View menu, world-source controls | Icons retain labels/keys; covered controls cannot hover below View menu | `DebuggerPresentationGameTest`, `DebuggerUiScaleGameTest`; actual View overlap remains manual |
-| Inspector context values and detail icons | Only clipped values echo; full diagnostic text preserved and wrapped | Shared native direct-text regression; inspect retained-entity/long-name details manually |
-| Breakpoint list and condition layer | Action hints, clipped fragment and count field share wrapper; existing modal/dropdown suppression retained | `DebuggerBreakpointUiGameTest`; shared native Source modal check |
+| Contexts rows, world labels, inspector values and detail icons | Context rows/labels show only status (changed) and a differing dimension, never the visible title; only clipped values echo; the camera icon explains only its unavailable states; full diagnostic text preserved and wrapped | Shared native direct-text regression; inspect retained-entity/long-name details manually |
+| Breakpoint list and condition layer | List rows have a tooltip only when clipped or navigation is unavailable; action hints, clipped fragment and count field share wrapper; existing modal/dropdown suppression retained | `DebuggerBreakpointUiGameTest` (unavailable-row hover); shared native Source modal check |
 | Command-block inline marker | Existing width wrapping retained; mouse/focus placement now clamps to viewport | `DebuggerBreakpointUiGameTest`; vanilla editor scale remains independent of custom Codon scale |
-| Watch editor and picker | Field labels, invalid values, option detail and unavailable choices share wrapper | `DebuggerWatchFormLayoutGameTest`, `DebuggerWatchPickerLayoutGameTest`; inspect localized validation errors manually |
+| Watch editor and picker | Fields and Browse/Choose carry no label echo; invalid-value and submit-reason tooltips appear only when the visible line is clipped; the NBT picker search has no placeholder echo; option detail and unavailable choices share wrapper | `DebuggerWatchFormLayoutGameTest`, `DebuggerWatchPickerLayoutGameTest`; inspect localized validation errors manually |
 | Help, UI-scale settings and Watch detail screen | Button labels use common delayed/clipped-label behavior; detail text already has a scrollable view | `DebuggerUiScaleGameTest`; no wording redesign |
 | Opacity slider | Short localized percentage text shares native wrapper | `DebuggerOpacityGameTest`; slider hover remains mouse-only |
 

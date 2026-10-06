@@ -166,7 +166,6 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         sourceSearch = addRenderableWidget(new DebuggerEditBox(font, sourceLeft + 5, findY,
             Math.max(1, sourceWidth - 117), 20, Component.translatable("codon.source.find")));
         sourceSearch.setHint(Component.translatable("codon.source.find"));
-        sourceSearch.setTooltip(Tooltip.create(Component.translatable("codon.source.find_hint")));
         sourceSearch.setMaxLength(128);
         sourceSearch.setValue(sourceSearchValue);
         sourceSearch.setResponder(ignored -> { matchIndex = -1; rebuildMatches(); });
@@ -409,10 +408,16 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         WatchUi.line(graphics, font, path, sourceLeft + 6, pathY, sourceWidth - 12, TEXT);
         if (mouseX >= sourceLeft + 6 && mouseX < sourceLeft + sourceWidth - 6 && mouseY >= pathY && mouseY < pathY + 10
             && HoverDelay.elapsed("source.path")) {
-            String details = path;
-            if (document != null) details += "\n" + (document.provider().isEmpty() ? "" : document.provider() + " · ")
-                + document.revision().substring(0, Math.min(12, document.revision().length()));
-            graphics.setTooltipForNextFrame(font, font.split(Component.literal(details), Math.min(360, width - 24)), mouseX, mouseY);
+            // Show the full path only when it is clipped; provider and revision are never drawn elsewhere.
+            List<String> details = new ArrayList<>();
+            if (WatchUi.clipped(font, path, sourceWidth - 12)) details.add(path);
+            if (document != null) {
+                String revision = document.revision().substring(0, Math.min(12, document.revision().length()));
+                String origin = (document.provider().isEmpty() ? "" : document.provider() + " · ") + revision;
+                if (!origin.isEmpty()) details.add(origin);
+            }
+            if (!details.isEmpty())
+                graphics.setTooltipForNextFrame(font, font.split(Component.literal(String.join("\n", details)), Math.min(360, width - 24)), mouseX, mouseY);
         }
         if (document == null) {
             WatchUi.line(graphics, font, sourceStatus(), sourceLeft + 6, statusY, sourceWidth - 12,
@@ -520,9 +525,6 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         renderHorizontalScrollbar(graphics, sourceLeft, sourceWidth);
         renderVerticalScrollbar(graphics, "source", sourceLeft + sourceWidth - 7, lineTop, rows * ROW_HEIGHT,
             lineOffset, maximumLineOffset(), rows, value -> { lineOffset = value; clearSourceHits(); rememberView(); });
-        if (mouseX >= codeLeft && mouseX < codeRight() && mouseY >= horizontalTrackY() - 2 && mouseY < horizontalTrackY() + 8
-            && HoverDelay.elapsed("source.navigation"))
-            graphics.setTooltipForNextFrame(font, font.split(Component.translatable("codon.source.navigation_hint"), Math.min(240, width - 24)), mouseX, mouseY);
     }
 
     private Map<Integer, StageCounts> stageBreakpointCounts(FunctionId function, ClientDebuggerState debugger) {
@@ -696,10 +698,9 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             : SourceSyntax.find(sources.document().lines(), sourceSearch.getValue());
         matches = results.matches();
         matchesLimited = results.hasMore();
-        if (sourceSearch != null) sourceSearch.setTooltip(Tooltip.create(matchesLimited
-            ? Component.translatable("codon.source.find_hint").append("\n")
-                .append(Component.translatable("codon.source.find_limit", SourceSyntax.MAX_MATCHES))
-            : Component.translatable("codon.source.find_hint")));
+        // The key list lives in Help; only the cap on listed matches is not visible in the field.
+        if (sourceSearch != null) sourceSearch.setTooltip(matchesLimited
+            ? Tooltip.create(Component.translatable("codon.source.find_limit", SourceSyntax.MAX_MATCHES)) : null);
         matchesByLine.clear();
         for (SourceSyntax.Match match : matches) matchesByLine.computeIfAbsent(match.line(), ignored -> new ArrayList<>()).add(match);
         matchIndex = previous == null ? -1 : matches.indexOf(previous);

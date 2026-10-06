@@ -80,8 +80,8 @@ public final class WatchPickerScreen extends ScaledCodonScreen {
         Component searchHint = mode == WatchEditorQuery.Mode.NBT
             ? WatchUi.text("picker.filter_page") : WatchUi.text("picker.search");
         search.setHint(searchHint);
-        search.setTooltip(Tooltip.create(mode == WatchEditorQuery.Mode.NBT
-            ? WatchUi.text("picker.filter_page") : WatchUi.text("picker.search_hint")));
+        // The NBT placeholder already says "Filter current page"; only the server search needs a hint.
+        if (mode != WatchEditorQuery.Mode.NBT) search.setTooltip(Tooltip.create(WatchUi.text("picker.search_hint")));
         search.setValue(searchText);
         search.setResponder(ignored -> {
             searchText = ignored;
