@@ -190,6 +190,8 @@
   "codon.source.read_failed": "Could not read source",
   "codon.source.record_unavailable": "Execution record unavailable",
   "codon.source.actual_stop": "Actual stop · line %s",
+  "codon.source.go_to_stop": "Go to stop · line %s",
+  "codon.source.go_to_stop_hint": "Select and reveal the live paused line in this source.",
   "codon.source.record_in_stack": "Execution record available in call stack",
   "codon.source.find": "Find in source",
   "codon.source.find_limit": "Showing the first %s matches. Narrow the search to reach later results.",

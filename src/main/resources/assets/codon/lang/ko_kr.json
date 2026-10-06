@@ -190,6 +190,8 @@
   "codon.source.read_failed": "소스를 읽지 못했습니다",
   "codon.source.record_unavailable": "실행 기록 없음",
   "codon.source.actual_stop": "실제 정지 위치 · %s번째 줄",
+  "codon.source.go_to_stop": "정지 위치로 이동 · %s번째 줄",
+  "codon.source.go_to_stop_hint": "이 소스에서 현재 정지한 줄을 선택하고 표시합니다.",
   "codon.source.record_in_stack": "호출 스택에 실행 기록 있음",
   "codon.source.find": "소스 내 검색",
   "codon.source.find_limit": "처음 %s개 결과를 표시합니다. 뒤쪽 결과를 찾으려면 검색어를 구체화하세요.",

@@ -78,7 +78,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
     private final List<FunctionHit> functionHits = new ArrayList<>();
     private EditBox search, sourceSearch;
     private DebuggerButton previousMatch, nextMatch;
-    private DebuggerButton refresh, close, reread, drawerButton, backButton;
+    private DebuggerButton refresh, close, reread, drawerButton, backButton, goToStop;
 
 
     private sealed interface Entry permits Entry.Group, Entry.Function {
@@ -158,6 +158,11 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             Component.translatable("codon.source.functions"), () -> setDrawerOpen(!drawerOpen)));
         backButton = addRenderableWidget(WatchUi.button(left + panelWidth - 116, top + 5, 54, 18,
             Component.translatable("codon.source.back"), this::goBack));
+        goToStop = addRenderableWidget(WatchUi.button(sourceLeft + 4,
+            top + ClientFunctionSourceState.ScreenLayout.statusInset(compactSourceControls) - 2, 1, 12,
+            Component.empty(), this::goToStop).withFlatChrome().withTextPadding(8)
+            .withStatusColor(TEAL, TEAL_SURFACE));
+        goToStop.visible = goToStop.active = false;
         reread.visible = reread.active = sources.selected() != null;
         drawerButton.visible = drawerButton.active = drawerMode;
         backButton.visible = backButton.active = !drawerOpen && sources.canGoBack();
@@ -327,6 +332,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         updateCodeCache();
         revealBreakpoint();
         updateInlineLayout();
+        updateStopControl();
         sourceSearch.visible = sourceSearch.active = !drawerOpen && sources.document() != null;
         previousMatch.visible = nextMatch.visible = sourceSearch.visible;
         previousMatch.active = nextMatch.active = !matches.isEmpty();
@@ -427,9 +433,12 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             return;
         }
         // Keep incomplete-source warnings visible even though revision details are secondary.
-        String status = (document.truncated() ? tr("codon.source.truncated") + " · " : "") + executionStatus(selected);
-        WatchUi.line(graphics, font, status, sourceLeft + 6, statusY, sourceWidth - 12,
-            document.truncated() ? AMBER : MUTED);
+        String warning = document.truncated() ? tr("codon.source.truncated") + " · " : "";
+        if (goToStop.visible) {
+            if (!warning.isEmpty()) WatchUi.line(graphics, font, warning, sourceLeft + 6, statusY,
+                Math.max(1, goToStop.getX() - sourceLeft - 6), AMBER);
+        } else WatchUi.line(graphics, font, warning + executionStatus(selected), sourceLeft + 6, statusY,
+            sourceWidth - 12, document.truncated() ? AMBER : MUTED);
         int countX = sourceLeft + sourceWidth - 110;
         int countY = sourceSearch.getY() + 6;
         WatchUi.line(graphics, font, matches.isEmpty() ? "0/0"
@@ -814,6 +823,49 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         if (state == null || !state.isPaused() || state.snapshot() == null) return false;
         return state.snapshot().location() instanceof SourceLocation.Function location
             && location.location().function().equals(function) && location.location().line() == line;
+    }
+
+    /** Navigation may use only the acknowledged live location in the matching loaded source. */
+    private int actualStopLine() {
+        ClientDebuggerState state = CodonClientMod.state();
+        FunctionSourceDocument document = sources.document();
+        if (state == null || !state.isPaused() || state.snapshot() == null
+            || state.snapshot().reason() == PauseReason.EXECUTION_COMPLETE
+            || sources.sourceStatus() != ClientFunctionSourceState.Status.READY || document == null
+            || !Objects.equals(document.id(), sources.selected())
+            || !(state.snapshot().location() instanceof SourceLocation.Function location)
+            || !location.location().function().equals(document.id())) return -1;
+        int line = location.location().line();
+        if (line < 1 || line > document.lines().size()
+            || !document.lines().get(line - 1).trim().equals(state.snapshot().command().text())) return -1;
+        return line;
+    }
+
+    private void updateStopControl() {
+        int line = actualStopLine();
+        goToStop.visible = !drawerOpen && line > 0;
+        goToStop.active = goToStop.visible && !CodonClientMod.state().controlPending();
+        if (!goToStop.visible) return;
+        String warning = sources.document().truncated() ? tr("codon.source.truncated") + " · " : "";
+        int x = sourceLeft() + 4 + font.width(warning);
+        Component label = Component.translatable("codon.source.go_to_stop", line);
+        int available = Math.max(1, Math.min(font.width(label) + 8, sourceLeft() + sourceWidth() - 6 - x));
+        goToStop.configure(x, top + ClientFunctionSourceState.ScreenLayout.statusInset(compactSourceControls) - 2,
+            available, 12, label, goToStop.active, false, false, false, this::goToStop);
+        goToStop.withFlatChrome().withTextPadding(8).withStatusColor(TEAL, TEAL_SURFACE);
+        goToStop.setTooltip(Tooltip.create(Component.translatable(goToStop.active
+            ? "codon.source.go_to_stop_hint" : "codon.ui.move_to_source.pending")));
+    }
+
+    private void goToStop() {
+        int line = actualStopLine();
+        if (line < 1 || CodonClientMod.state().controlPending()) return;
+        selectLine(line);
+        lineOffset = Math.clamp(line - 1, 0, maximumLineOffset());
+        horizontalOffset = 0;
+        parentOwnsContextKeys = false;
+        setFocused(null);
+        rememberView();
     }
 
     private String executionStatus(FunctionId function) {

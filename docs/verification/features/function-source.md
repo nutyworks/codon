@@ -83,6 +83,13 @@ be checked. The viewer lists functions actually loaded by the current server.
    stops at the selected location. Reopen Source at the pause and distinguish the
    actual stopped line from a manually inspected line/record. A live pause has an
    arrow and amber row; ordinary line selection uses a neutral line-number cue.
+   Use **Go to stop · line N** in the source status row to select and reveal the
+   live paused line, resetting horizontal scrolling to its beginning. The action
+   supports normal Tab/Enter activation and leaves debugger frame/flow selection
+   intact. It appears only for a ready document of the paused function with an
+   in-range line whose command matches the live pause; pending debugger controls
+   disable it. Loading, changed source commands and resumed records cannot supply
+   a live destination. A truncated-source warning remains alongside the action.
    Actual pause highlighting remains independent of that navigation position. After Continue, the retained
    location is labelled as a recorded line and has no live-pause arrow.
 4. With execution resumed, change/reload the scratch datapack. Use **Refresh list**
@@ -264,6 +271,14 @@ remain visible. This GameTest injects a source document, breakpoint definitions 
 not installed in the server's datapack. It proves presentation/interaction, not
 server source discovery, permission enforcement or native function breakpoints.
 Use the manual loaded-function path for those acceptance criteria.
+
+The same GameTest verifies **Go to stop** with native mouse and keyboard activation,
+an independently inspected historical frame, pending-control and source-loading
+gates, stale command/resume changes between render and activation, and a truncated
+Korean source at minimum size. Inspect `go-to-stop-live` and
+`go-to-stop-korean-minimum`. These injected pause/source fixtures establish client
+navigation and presentation; they do not establish server breakpoint execution
+or unsolicited datapack revision detection.
 
 For search rebuilds, enter a query that excludes another known function, resize
 the window, and open the compact Functions drawer. The query and filtered list
