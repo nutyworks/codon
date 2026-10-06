@@ -311,12 +311,20 @@ predicate tokens, unsupported target kinds and incomplete arguments. The lexical
 viewer does not validate item/slot registry entries or execute these conditions.
 
 Source gutter markers now read, toggle and edit only the exact whole-line target.
-They do not alias a saved legacy stage-zero target into the line control. A stage
+They do not alias a saved legacy stage-zero target into the line toggle. On a
+confirmed single-stage command, an existing matching stage-zero definition adds
+explicit **Saved stage 1 · Disable/Enable** and **Saved stage 1 · Options** entries
+to the line's right-click/Shift+F10 menu. Its breakpoint-list destination focuses
+that sole line without exposing a new stage marker. The normal Condition entry
+still edits the exact line. A stage
 marker edits its own stage index/fingerprint, and the condition editor retains that
 target through Save/Delete/Cancel. Existing saved definitions are not migrated or
 deleted by display/navigation. `BreakpointTargetPolicyTest`,
 `FunctionLineBreakpointGameTest` and `SingleStageBreakpointGameTest` check the exact
 target mapping while retaining separate legacy definitions.
+`SingleStageLegacyManagementTest` covers exact saved actions and unavailable/stale
+guards; `SingleStageLegacyManagementGameTest` verifies list navigation and individual
+disable/delete through the actual loaded function, server ACK and subsequent execution.
 
 An inactive line/stage marker stays visible for the entire condition edit, including after
 the pointer leaves and while a selector menu is open. Only the edited marker is retained;

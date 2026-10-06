@@ -535,6 +535,8 @@
   "codon.breakpoint.disabled": "Disabled",
   "codon.breakpoint.enable_short": "Enable",
   "codon.breakpoint.disable_short": "Disable",
+  "codon.breakpoint.saved_stage_toggle": "Saved stage %s · %s",
+  "codon.breakpoint.saved_stage_options": "Saved stage %s · Options",
   "codon.nbt.current_pause": "NBT · current pause",
   "codon.watch.group.summary": "Δ %s changed · ! %s read issues. Observation continues while collapsed.",
   "codon.nbt.refreshing_previous": "NBT · refreshing (previous values)",

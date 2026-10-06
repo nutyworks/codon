@@ -14,6 +14,7 @@
       "works.nuty.codon.client.FlowLegacyConditionGameTest",
       "works.nuty.codon.client.FunctionLineBreakpointGameTest",
       "works.nuty.codon.client.SingleStageBreakpointGameTest",
+      "works.nuty.codon.client.SingleStageLegacyManagementGameTest",
       "works.nuty.codon.client.FunctionSourceReviewGameTest",
       "works.nuty.codon.client.FunctionSourceKeyboardGameTest",
       "works.nuty.codon.client.FunctionSourceTextInputGameTest",
