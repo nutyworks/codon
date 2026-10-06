@@ -34,9 +34,13 @@ enter `say codon breakpoint check`, save with Done, and attach a button.
    `execute as @a if entity @e[tag=codon_verify_absent] run say unreachable`.
    Ensure no entity has that tag. Hover a stage boundary and click its marker;
    right-click the marker to edit its condition in a modal layer above the current
-   screen. The original editor/source/list stays visible; Save, Cancel, Escape or
-   an outside click dismisses only the layer, preserving the underlying input and
-   navigation state. Mouse and keyboard input must not reach the screen below.
+   screen. The original editor/source/list stays visible. A clean Cancel, Escape or
+   outside click dismisses only the layer, preserving the underlying input and
+   navigation state. Unsaved condition changes instead require **Discard** or
+   **Keep editing**; Escape in that confirmation resumes editing, and outside
+   clicks leave it open. Pending Save/Delete blocks edits and dismissal until ACK
+   or failure; acknowledged success closes directly. Mouse and keyboard input
+   must not reach the screen below.
    On the `if` stage, choose output
    count equal to zero. Disable the whole-command/other stage breakpoints to isolate
    this case. Trigger the block: it stops after the filter records zero output,
@@ -122,7 +126,7 @@ Screen; actual list navigation and focus remain a UI acceptance check.
 | Definition/condition logic | `coreTest`: `BreakpointRegistryTest`, `BreakpointConditionEvaluatorTest`, `DebuggerEngineTest` |
 | Acknowledgement and pending UI state | `clientTest`: `ClientBreakpointStateTest` |
 | Persistence/preview codec | `test`: `WorldBreakpointPersistenceTest`, `BreakpointStagePreviewPayloadTest` |
-| Native editor input, modal details without screen replacement, server edits, wrapping and narrow layouts | `DebuggerBreakpointUiGameTest` |
+| Native editor input, modal details without screen replacement, draft discard/cancel, pending/rejected saves, server edits, wrapping and narrow layouts | `DebuggerBreakpointUiGameTest` |
 | Single-stage editor/Flow target, legacy toggle/clear and native first-occurrence stop | `SingleStageBreakpointGameTest` |
 | Inactive condition marker retention, menus/Cancel and server-acknowledged Save enabling | `BreakpointConditionVisibilityGameTest`, `DebuggerBreakpointUiGameTest` |
 | Flow legacy/line isolation, exact condition attribution, rejected toggle feedback and pending action gating (presentation fixture) | `FlowLegacyConditionGameTest` |
@@ -175,7 +179,8 @@ leaves both for 220 ms. Re-entering the selector after that automatic close must
 open it again, including before another render observes the outside pointer.
 Clicking an option applies it to the draft and closes the
 menu; Save still waits for server acknowledgement. Escape closes an open menu
-first, then the layer. Tab closes the menu and continues through the form.
+first, then requests closing the layer (with discard confirmation for a dirty
+draft). Tab closes the menu and continues through the form.
 
 The exact edited marker remains visible while the layer or its menus are open. Opening
 and cancelling preserve its saved enabled state; Save always enables the exact definition
