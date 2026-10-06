@@ -48,7 +48,9 @@ final class BreakpointContextMenu {
                             if (latest == null || state.breakpoints().pending(latest.target())) return;
                             ScreenLayers.open(parent, new BreakpointConditionScreen(parent, state, latest, target,
                                 new BreakpointConditionScreen.Anchor(anchor.x(), anchor.y(), anchor.width(), anchor.height()))
-                                    .withContextGuard(current).withRestoreFocus(restoreFocus));
+                                    .withContextGuard(() -> current.getAsBoolean()
+                                        && savedSingleStage(state, target, command, stageCount) != null)
+                                    .withRestoreFocus(restoreFocus));
                         }));
                 }
                 return items;

@@ -66,6 +66,8 @@ class SingleStageLegacyManagementTest {
                 network.verifyNoMoreInteractions();
                 state.breakpoints().reset();
                 state.breakpoints().acceptPage(2, 0, true, List.of(BreakpointDefinition.plain(whole)));
+                call(editor, "save", new Class<?>[0]);
+                layers.verify(() -> ScreenLayers.close(editor));
                 choices.get(1).action().run();
                 choices.get(2).action().run();
                 assertEquals(1, items(menu).size());
