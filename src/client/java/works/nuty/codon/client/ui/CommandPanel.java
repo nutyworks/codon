@@ -43,6 +43,8 @@ import static works.nuty.codon.client.ui.layout.CommandFlowLayout.CELL_HORIZONTA
 public final class CommandPanel {
     private static final Bounds EMPTY = new Bounds(0, 0, 0, 0);
     private static final int DETAIL_HEIGHT = 26;
+    private static final int MARKER_SIZE = 18;
+    private static final int MARKER_SLOT = MARKER_SIZE + 1;
     static final int MAX_WARNING_TEXT = 8_192;
     private static final int WARNING_COMMAND_EXCERPT = 256;
     private record SelectionDetail(String title, String values, String explanation, int color) { }
@@ -146,8 +148,8 @@ public final class CommandPanel {
         ExecutionFlowTrace flow = state.selectedExecutionFlow();
         CommandSnippet snippet = state.selectedCommand();
         if (flow != null && snippet != null && !(flow.location() instanceof SourceLocation.Player)
-            && previewRequests.needsRequest(snapshot, flow.location(), state.stagePreviews().get(flow.location()), snippet.text())
-            && ClientNetworking.requestStagePreview(state, flow.location())) previewRequests.requested(flow.location());
+            && previewRequests.needsRequestWithState(snapshot, flow.location(), state.stagePreviews(), snippet.text())
+            && ClientNetworking.requestAutomaticStagePreview(state, flow.location())) previewRequests.requested(flow.location());
 
         // The action row stays at the panel's bottom, independently of expansion.
         int actionY = Math.max(area.y() + 1, area.y() + area.height() - 20);
@@ -183,10 +185,10 @@ public final class CommandPanel {
             ExecutionFlowStage stage = state.selectedExecutionFlowStage();
             boolean warning = stage != null && hasFlowWarning();
             int summaryX = area.x() + 8;
-            if (warning && actionLeft - summaryX >= 17) {
+            if (warning && actionLeft - summaryX >= MARKER_SLOT) {
                 navigationGroup = DebuggerNavigation.Group.ACTIONS;
-                warningButton("flow-warning", new Bounds(summaryX, actionY, 16, 14), stage);
-                summaryX += 18;
+                warningButton("flow-warning", new Bounds(summaryX, actionY, MARKER_SIZE, MARKER_SIZE), stage);
+                summaryX += MARKER_SLOT;
             }
             String footer = stage == null ? "" : conditionSummary(stage);
             if (hasFlowWarning()) footer = (footer.isEmpty() ? "" : footer + " · ")
@@ -360,7 +362,7 @@ public final class CommandPanel {
 
     private void renderClauses(GuiGraphicsExtractor graphics, Bounds body, PauseSnapshot snapshot) {
         navigationGroup = DebuggerNavigation.Group.COMMAND;
-        if (body.height() < 15 || body.width() < 10) return;
+        if (body.height() < MARKER_SIZE || body.width() < 10) return;
         CommandSnippet snippet = state.selectedCommand();
         if (snippet == null) return;
         ExecutionFlowTrace flow = state.selectedExecutionFlow();
@@ -374,7 +376,7 @@ public final class CommandPanel {
         // The parser (or conclusive recorded evidence) decides single versus multi-stage.
         // A multi-stage command has a separate whole-command marker before its first part.
         boolean commandMarker = editableSource && stageCount(flow, snippet.text()) > 1;
-        int rowHeight = body.height() < 30 ? 17 : 30;
+        int rowHeight = body.height() < 30 ? MARKER_SIZE : 30;
         var preview = state.stagePreviews().get(flow.location());
         FlowText text = flowText.get(snippet, flow, preview, client.font, Language.getInstance(), body.width(), rowHeight, fontOptions(),
             () -> layoutFlow(snippet, flow, preview, body.width(), rowHeight, editableSource, commandMarker));
@@ -420,17 +422,15 @@ public final class CommandPanel {
                 // Counts occupy their own line. Breakpoint/warning icons belong only to
                 // the command line and are already included by leadingInset below.
                 if (stage < 0 || rowHeight < 30) return 0;
-                return client.font.width(counts(flow.stages().get(stage))) + CELL_HORIZONTAL_PADDING
-                    + (hasWarning(flow.stages().get(stage)) ? 17 : 0);
+                return client.font.width(counts(flow.stages().get(stage))) + CELL_HORIZONTAL_PADDING;
             };
         java.util.function.IntUnaryOperator leadingInset = index -> {
             int stage = displayed.get(index).stageIndex();
-            int iconInset = stage >= 0 && rowHeight < 30 && hasWarning(flow.stages().get(stage))
-                ? DebuggerButton.TEXT_ICON_INSET : 0;
+            int iconInset = stage >= 0 && hasWarning(flow.stages().get(stage)) ? MARKER_SLOT : 0;
             boolean stageMarker = editableSource && BreakpointTargetPolicy.target(flow.location(),
                 displayed.get(index).targetStageIndex(), snippet.text(), stageCount(flow, snippet.text())) != null;
-            return iconInset + (stageMarker ? 15 : 0)
-                + (commandMarker && index == 0 ? 15 : 0);
+            return iconInset + (stageMarker ? MARKER_SLOT : 0)
+                + (commandMarker && index == 0 ? MARKER_SLOT : 0);
         };
         CommandFlowLayout.Layout layout = CommandFlowLayout.layout(layoutParts, width - 4,
             client.font::width, minimumWidth, leadingInset);
@@ -465,7 +465,7 @@ public final class CommandPanel {
                 }
                 navigation.add("clause-" + flow.invocationId() + "-" + stage.index() + "-" + cell.row(),
                     navigationGroup, cell.row(), column++, reveal);
-                if (cell.first() && rowHeight >= 30 && hasWarning(stage)) {
+                if (cell.first() && hasWarning(stage)) {
                     navigation.add("warning-" + flow.invocationId() + "-" + stage.index(),
                         navigationGroup, cell.row(), column, reveal);
                 }
@@ -496,9 +496,9 @@ public final class CommandPanel {
             }
             if (commandMarker && cell.partIndex() == 0 && cell.first()) {
                 renderCommandMarker(flow, snippet.text(), x, y);
-                x += 15;
-                cell = new CommandFlowLayout.Cell(cell.partIndex(), cell.row(), cell.x() + 15,
-                    Math.max(1, cell.width() - 15), cell.text(), cell.first());
+                x += MARKER_SLOT;
+                cell = new CommandFlowLayout.Cell(cell.partIndex(), cell.row(), cell.x() + MARKER_SLOT,
+                    Math.max(1, cell.width() - MARKER_SLOT), cell.text(), cell.first());
             }
             if (stageIndex < 0 && part.targetStageIndex() >= 0) {
                 renderUnobservedClause(graphics, flow, part, cell, x, y, rowHeight, editableSource,
@@ -514,7 +514,7 @@ public final class CommandPanel {
                     BreakpointDefinition definition = state.breakpoints().get(target);
                     String focusId = breakpointFocusId(flow, target);
                     DebuggerButton breakpoint = button(focusId,
-                        new Bounds(x, y, 14, 16), Component.translatable("codon.breakpoint.toggle"),
+                        new Bounds(x, y, MARKER_SIZE, MARKER_SIZE), Component.translatable("codon.breakpoint.toggle"),
                         state.breakpoints().ready() && !state.breakpoints().pending(target), false, () -> {
                             if (state.selectedExecutionFlow() != flow) return;
                             toggleExact(target);
@@ -533,9 +533,11 @@ public final class CommandPanel {
                             + (definition == null ? "" : " · " + BreakpointUi.condition(definition.condition()))
                             + (error == null ? "" : "\n" + tr("codon.breakpoint.error."
                                 + error.name().toLowerCase(java.util.Locale.ROOT))))));
-                    clauseX += 15;
-                    clauseWidth = Math.max(1, clauseWidth - 15);
+                    clauseX += MARKER_SLOT;
+                    clauseWidth = Math.max(1, clauseWidth - MARKER_SLOT);
                 }
+                boolean warning = cell.first() && hasWarning(stage);
+                if (warning) clauseWidth = Math.max(1, clauseWidth - MARKER_SLOT);
                 DebuggerButton clause = button("clause-" + flow.invocationId() + "-" + stage.index() + "-" + cell.row(),
                     new Bounds(clauseX, y, clauseWidth, 16), Component.literal(cell.text()), true,
                     stageIndex == state.selectedFlowStageIndex(), () -> {
@@ -553,13 +555,12 @@ public final class CommandPanel {
                 if (editableSource && target != null) conditionMenu(clause,
                     "clause-" + flow.invocationId() + "-" + stage.index() + "-" + cell.row(),
                     flow, target, stage.command().text(), false);
-                if (cell.first() && rowHeight < 30 && hasWarning(stage)) clause.withTextIcon(DebuggerIcon.WARNING);
+                if (warning) warningButton("warning-" + flow.invocationId() + "-" + stage.index(),
+                    new Bounds(clauseX + clauseWidth + 1, y, MARKER_SIZE, MARKER_SIZE), stage);
                 if (cell.first() && rowHeight >= 30) {
                     String count = counts(stage);
                     drawText(graphics, count, x + CELL_HORIZONTAL_PADDING / 2, y + 20,
-                        cell.width() - CELL_HORIZONTAL_PADDING - (hasWarning(stage) ? 17 : 0), stopped ? AMBER : MUTED);
-                    if (hasWarning(stage)) warningButton("warning-" + flow.invocationId() + "-" + stage.index(),
-                        new Bounds(x + cell.width() - 17, y + 16, 16, 14), stage);
+                        cell.width() - CELL_HORIZONTAL_PADDING, stopped ? AMBER : MUTED);
                 }
             } else {
                 if (stageIndex == -2) drawText(graphics, cell.text(), x, y + 4, cell.width(), MUTED);
@@ -588,10 +589,10 @@ public final class CommandPanel {
             state.selectUnobservedExecutionFlowStage(part.targetStageIndex());
             changed();
         };
-        int inset = cell.first() && editableSource ? 15 : 0;
+        int inset = cell.first() && editableSource ? MARKER_SLOT : 0;
         if (inset > 0) {
             String focusId = breakpointFocusId(flow, target);
-            DebuggerButton marker = button(focusId, new Bounds(x, y, 14, 16),
+            DebuggerButton marker = button(focusId, new Bounds(x, y, MARKER_SIZE, MARKER_SIZE),
                 Component.translatable("codon.breakpoint.toggle"), !state.breakpoints().pending(target), false, () -> {
                     if (state.snapshot() != expected || state.selectedExecutionFlow() != flow
                         || state.stagePreviews().get(flow.location()) != preview) return;
@@ -635,7 +636,7 @@ public final class CommandPanel {
         BreakpointTarget target = BreakpointTarget.whole(flow.location());
         BreakpointDefinition definition = state.breakpoints().get(target);
         String id = breakpointFocusId(flow, target);
-        DebuggerButton marker = button(id, new Bounds(x, y, 14, 16), Component.literal(BreakpointUi.target(target)),
+        DebuggerButton marker = button(id, new Bounds(x, y, MARKER_SIZE, MARKER_SIZE), Component.literal(BreakpointUi.target(target)),
             state.breakpoints().ready() && !state.breakpoints().pending(target), false, () -> {
                 if (state.selectedExecutionFlow() == flow) toggleExact(target);
             }).withoutChrome().withSmallIcon(BreakpointUi.icon(definition));
@@ -755,16 +756,14 @@ public final class CommandPanel {
         String scope = tr(state.isViewingCurrentCommand() ? "codon.ui.flow_detail.stop" : "codon.ui.flow_detail.history");
         String title = tr("codon.ui.flow_detail.title", scope, stage.index() + 1, tr("codon.ui.flow_detail." + status));
         String values = stage.terminal()
-            ? tr("codon.ui.flow_detail.results", detailCount(stage.inputCount()), detailCount(stage.executionCount()),
-                detailCount(stage.successCount()))
-            : tr("codon.ui.flow_detail.contexts", detailCount(stage.inputCount()),
-                detailCount(stage.complete() ? stage.outputCount() : ExecutionFlowStage.UNMEASURED),
-                detailCount(stage.complete() && stage.outputCount() >= 0 ? stage.droppedCount() : ExecutionFlowStage.UNMEASURED));
+            ? tr("codon.ui.flow_detail.results", measuredCount(stage.inputCount()), measuredCount(stage.executionCount()),
+                measuredCount(stage.successCount()))
+            : tr("codon.ui.flow_detail.contexts", measuredCount(stage.inputCount()),
+                measuredCount(stage.complete() ? stage.outputCount() : ExecutionFlowStage.UNMEASURED),
+                measuredCount(stage.complete() && stage.outputCount() >= 0 ? stage.droppedCount() : ExecutionFlowStage.UNMEASURED));
         return new SelectionDetail(title, values, stageDetails(stage) + "\n" + tr("codon.ui.flow_detail.count_hint"),
             error ? RED : incomplete ? AMBER : state.isViewingCurrentCommand() ? AMBER : TEAL);
     }
-
-    private static String detailCount(int count) { return count < 0 ? "?" : Integer.toString(count); }
 
     private String conditionSummary(ExecutionFlowStage stage) {
         BreakpointTarget target = selectedBreakpoint();

@@ -12,7 +12,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.LongSupplier;
 
-/** Client-thread stop-and-wait upload; each returned page must be sent exactly once. */
+/** Client-thread stop-and-wait upload; send each returned page at most once while its transfer is active. */
 public final class ClientWatchUploadState {
     public record Page(long transferId, int offset, boolean last, List<WatchSpec> definitions) {
         public Page { definitions = List.copyOf(definitions); }
@@ -36,6 +36,11 @@ public final class ClientWatchUploadState {
      * The caller supplies wire-validated pages and strictly increasing IDs, including after reset.
      */
     public Page begin(long id, List<List<WatchSpec>> sourcePages) {
+        return begin(id, sourcePages, clock.getAsLong());
+    }
+
+    /** Uses the UI save's start instant so page validation/copying cannot extend its deadline. */
+    public Page begin(long id, List<List<WatchSpec>> sourcePages, long saveStartedAt) {
         if (id <= lastTransferId) throw new IllegalArgumentException("watch transfer ID must increase");
         if (sourcePages.isEmpty() || sourcePages.size() > TransferBudget.MAX_PAGES) {
             throw new IllegalArgumentException("invalid watch upload page count");
@@ -58,7 +63,7 @@ public final class ClientWatchUploadState {
         }
         pages = List.copyOf(snapshot);
         transferId = lastTransferId = id;
-        startedAt = clock.getAsLong();
+        startedAt = saveStartedAt;
         timedOutTransferId = 0;
         pageIndex = offset = 0;
         return currentPage();

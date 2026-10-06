@@ -13,6 +13,7 @@ import org.jspecify.annotations.NonNull;
 import works.nuty.codon.client.input.InputManager;
 import works.nuty.codon.client.state.ClientDebuggerState;
 import works.nuty.codon.core.model.BlockLocation;
+import works.nuty.codon.core.model.BreakpointTarget;
 import works.nuty.codon.core.model.ExecutionFlowContext;
 import works.nuty.codon.core.model.ExecutionFlowEdge;
 import works.nuty.codon.core.model.ExecutionFlowStage;
@@ -28,6 +29,7 @@ import java.util.Map;
 /** Draws debugger markers above terrain, preserving their exact execution coordinates. */
 public final class DebugLevelRenderer implements LevelRenderEvents.BeforeGizmos {
     private static final int BREAKPOINT_RED = ARGB.color(0.9f, 0xFC8C8C);
+    private static final int CONDITIONAL_PURPLE = ARGB.color(0.9f, 0xD3AAFF);
     private static final int PAUSED_AMBER = ARGB.color(1.0f, 0xF3C171);
     private static final int SOURCE_TEAL = ARGB.color(0.95f, 0x75DFD6);
     private static final int MUTED_TEAL = ARGB.color(0.28f, 0x567C7B);
@@ -38,6 +40,7 @@ public final class DebugLevelRenderer implements LevelRenderEvents.BeforeGizmos 
     private static final int FLOW_TEAL = ARGB.color(0.7f, 0x75DFD6);
 
     private static final float BREAKPOINT_WIDTH = 1.0f;
+    private static final float CONDITIONAL_WIDTH = 2.0f;
     private static final float PAUSED_WIDTH = 3.0f;
     private static final float SOURCE_WIDTH = 1.25f;
     private static final float SELECTED_WIDTH = 2.5f;
@@ -67,7 +70,10 @@ public final class DebugLevelRenderer implements LevelRenderEvents.BeforeGizmos 
         BlockLocation pausedBlock = pausedBlock(snapshot, dimension);
         for (BlockLocation breakpoint : state.blockBreakpoints()) {
             if (breakpoint.dimension().equals(dimension) && !breakpoint.equals(pausedBlock)) {
-                Gizmos.cuboid(blockPos(breakpoint), GizmoStyle.stroke(BREAKPOINT_RED, BREAKPOINT_WIDTH)).setAlwaysOnTop();
+                var definition = state.breakpoints().get(BreakpointTarget.whole(new SourceLocation.Block(breakpoint)));
+                boolean conditional = definition != null && definition.enabled() && definition.condition().isResultCondition();
+                Gizmos.cuboid(blockPos(breakpoint), GizmoStyle.stroke(conditional ? CONDITIONAL_PURPLE : BREAKPOINT_RED,
+                    conditional ? CONDITIONAL_WIDTH : BREAKPOINT_WIDTH)).setAlwaysOnTop();
             }
         }
         if (pausedBlock != null) {

@@ -42,7 +42,6 @@ public final class WatchScreen extends ScaledCodonScreen {
     private final Map<String, EditBox> fields = new LinkedHashMap<>();
     private final Map<String, WatchEditorQuery.Mode> fieldModes = new LinkedHashMap<>();
     private final List<AbstractWidget> tabOrder = new ArrayList<>();
-    private final List<AbstractWidget> browseControls = new ArrayList<>();
     private final List<DebuggerButton> inlineSuggestions = new ArrayList<>();
     private WatchSpec.Kind kind;
     private DebuggerButton submit;
@@ -88,7 +87,6 @@ public final class WatchScreen extends ScaledCodonScreen {
         fields.clear();
         fieldModes.clear();
         tabOrder.clear();
-        browseControls.clear();
         inlineSuggestions.clear();
         layout = WatchFormLayout.create(width, height);
         panelWidth = layout.panel().width();
@@ -120,23 +118,22 @@ public final class WatchScreen extends ScaledCodonScreen {
             DebuggerButton choice = addRenderableWidget(WatchUi.button(0, 0, 1, 1, Component.empty(), () -> { }));
             choice.visible = choice.active = false;
             inlineSuggestions.add(choice);
-            tabOrder.add(choice);
         }
         var submitBounds = layout.submit();
         submit = addRenderableWidget(WatchUi.button(submitBounds.x(), submitBounds.y(), submitBounds.width(), submitBounds.height(),
             text(editId > 0 ? "editor.save" : "add"), () -> submit(false)));
         tabOrder.add(submit);
-        tabOrder.addAll(browseControls);
         var retryBounds = layout.retry();
         retry = addRenderableWidget(WatchUi.button(retryBounds.x(), retryBounds.y(), retryBounds.width(), retryBounds.height(),
             text("retry"), () -> state.watchEditor().retry()));
         retry.visible = retry.active = false;
-        tabOrder.add(retry);
         var closeBounds = layout.close();
         DebuggerButton close = addRenderableWidget(WatchUi.button(closeBounds.x(), closeBounds.y(), closeBounds.width(), closeBounds.height(),
             text("close"), this::onClose));
-        tabOrder.addAll(types);
         tabOrder.add(close);
+        tabOrder.addAll(inlineSuggestions);
+        tabOrder.add(retry);
+        tabOrder.addAll(types);
         for (int i = 0; i < tabOrder.size(); i++) tabOrder.get(i).setTabOrderGroup(i);
         state.watchEditor().cancel();
         setFocused(primary());
@@ -163,7 +160,7 @@ public final class WatchScreen extends ScaledCodonScreen {
         DebuggerButton browse = addRenderableWidget(WatchUi.button(browseBounds.x(), browseBounds.y(), browseBounds.width(), browseBounds.height(),
             text(id.equals("entity") ? "editor.choose" : "editor.browse"), () -> browse(mode, id)));
         browse.setTooltip(Tooltip.create(text("editor.browse_hint")));
-        browseControls.add(browse);
+        tabOrder.add(browse);
     }
 
     @Override protected void setInitialFocus() { setFocused(primary()); }
@@ -348,6 +345,14 @@ public final class WatchScreen extends ScaledCodonScreen {
         });
         if (!renderInlineSuggestions(graphics, errors)) renderPreview(graphics, errors.isEmpty());
         if (!feedback.isEmpty()) WatchUi.line(graphics, font, feedback, left + 8, layout.feedbackY(), panelWidth - 16, feedbackColor);
+        if (!errors.isEmpty()) {
+            Component reason = errors.values().iterator().next();
+            var bounds = layout.submitReason();
+            WatchUi.line(graphics, font, reason.getString(), bounds.x(),
+                bounds.y() + (bounds.height() - font.lineHeight) / 2 + 1, bounds.width(), AMBER);
+            if (bounds.contains(mouseX, mouseY) || submit.isMouseOver(mouseX, mouseY))
+                graphics.setTooltipForNextFrame(font, reason, mouseX, mouseY);
+        }
         WatchUi.line(graphics, font, text(editId > 0 ? "editor.edit_keys" : "editor.keys").getString(),
             left + 8, layout.keysY(), panelWidth - 16, MUTED);
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);

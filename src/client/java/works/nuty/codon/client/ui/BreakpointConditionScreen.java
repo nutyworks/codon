@@ -49,6 +49,9 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     private DebuggerButton deleteButton;
     private DebuggerButton kindButton;
     private DebuggerButton comparisonButton;
+    private DebuggerButton cancelButton;
+    private DebuggerButton discardButton;
+    private boolean confirmingDiscard;
     private final List<DebuggerButton> kinds = new ArrayList<>();
     private final List<DebuggerButton> comparisons = new ArrayList<>();
     private boolean saving;
@@ -99,7 +102,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
 
     private boolean validContext() {
         if (contextCurrent.getAsBoolean()) return true;
-        onClose();
+        ScreenLayers.close(this);
         return false;
     }
 
@@ -131,6 +134,16 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
             top = below + panelHeight <= height - 6 ? below
                 : above >= 6 ? above : Math.clamp(top, 6, height - panelHeight - 6);
         }
+        if (confirmingDiscard) {
+            DebuggerButton keep = addRenderableWidget(WatchUi.button(left + 8, top + panelHeight - 28,
+                (panelWidth - 20) / 2, 20, Component.translatable("codon.breakpoint.keep_editing"), this::keepEditing));
+            discardButton = addRenderableWidget(WatchUi.button(keep.getRight() + 4, keep.getY(),
+                panelWidth - 20 - keep.getWidth(), 20, Component.translatable("codon.breakpoint.discard"), () -> {
+                    if (validContext() && !state.breakpoints().pending(original.target())) ScreenLayers.close(this);
+                })).withStatusColor(RED, RED_SURFACE);
+            setFocused(keep);
+            return;
+        }
         if (!previewRequested) {
             var preview = state.stagePreviews().get(original.target().location());
             // An exact READY stage preview already validates these offsets. Keeping
@@ -153,7 +166,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
         saveButton = addRenderableWidget(WatchUi.button(left + panelWidth - 60, top, 52, 20,
             Component.translatable("codon.breakpoint.save"), this::save));
         saveButton.withStatusColor(TEAL, TEAL_SURFACE);
-        addRenderableWidget(WatchUi.button(left + panelWidth - 28, top + 5, 20, 20,
+        cancelButton = addRenderableWidget(WatchUi.button(left + panelWidth - 28, top + 5, 20, 20,
             Component.translatable("codon.breakpoint.cancel"), this::onClose)).withIcon(DebuggerIcon.REMOVE);
         deleteButton = addRenderableWidget(WatchUi.button(left + 8, top, 28, 20,
             Component.translatable("codon.breakpoint.delete"), this::delete))
@@ -221,6 +234,11 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     }
 
     private void refreshControls() {
+        boolean pending = state.breakpoints().pending(original.target());
+        if (confirmingDiscard) {
+            discardButton.active = !pending;
+            return;
+        }
         for (var value : BreakpointCondition.Kind.values()) kinds.get(value.ordinal()).setSelected(kind == value);
         for (var value : BreakpointCondition.Comparison.values()) {
             comparisons.get(value.ordinal()).setSelected(comparison == value);
@@ -230,8 +248,11 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
         kindButton.setWidth(panelWidth - (kind.isCount() ? 128 : 16));
         kindButton.withHorizontalViewport(0, kindButton.getWidth());
         comparisonButton.setMessage(Component.translatable("codon.breakpoint.compare_select", symbol(comparison)));
-        comparisonButton.visible = comparisonButton.active = kind.isCount();
-        threshold.visible = threshold.active = kind.isCount();
+        kindButton.active = !pending;
+        cancelButton.active = !pending;
+        comparisonButton.visible = threshold.visible = kind.isCount();
+        comparisonButton.active = threshold.active = kind.isCount() && !pending;
+        if (pending) closeMenu();
         if (saveButton != null) saveButton.active = validCount() && supportedCondition() && state.breakpoints().ready()
             && !state.breakpoints().pending(original.target());
         if (deleteButton != null) {
@@ -255,6 +276,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     private int selectedOption() { return menu == Menu.KIND ? kind.ordinal() : comparison.ordinal(); }
 
     private void openMenu(Menu value, boolean keyboard) {
+        if (!trigger(value).active) return;
         if (menu != Menu.NONE) closeMenu();
         menu = value;
         menuOpenedAt = System.nanoTime();
@@ -391,31 +413,38 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     }
 
     private int contentHeight() {
+        if (confirmingDiscard) return Math.min(height - 12, 94 + textHeight(tr("codon.breakpoint.discard_prompt")));
         return Math.min(height - 12, 120 + textHeight(hint()) + (feedback().isEmpty() ? 0 : textHeight(feedback()) + 4));
     }
 
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         if (!validContext()) return;
         refreshControls();
-        updateMenuHover(mouseX, mouseY);
+        if (!confirmingDiscard) updateMenuHover(mouseX, mouseY);
         if (deleting && state.breakpoints().ready() && !state.breakpoints().pending(original.target())
             && state.breakpoints().error(original.target()) == null && state.breakpoints().get(original.target()) == null) {
-            onClose();
+            ScreenLayers.close(this);
             return;
         }
         if (saving && validCount() && !state.breakpoints().pending(original.target())
             && state.breakpoints().error(original.target()) == null) {
             BreakpointDefinition saved = state.breakpoints().get(original.target());
-            if (saved != null && saved.enabled() && saved.condition().equals(draft())) { onClose(); return; }
+            if (saved != null && saved.enabled() && saved.condition().equals(draft())) { ScreenLayers.close(this); return; }
         }
         graphics.fill(0, 0, width, height, DebuggerTheme.modalColor(0x70000000));
         graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.modalColor(PANEL));
         graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.modalColor(BORDER));
-        WatchUi.line(graphics, font, tr("codon.breakpoint.condition_title"), left + 8, top + 10, panelWidth - 44, TEXT);
+        WatchUi.line(graphics, font, tr(confirmingDiscard ? "codon.breakpoint.discard_title"
+            : "codon.breakpoint.condition_title"), left + 8, top + 10, panelWidth - (confirmingDiscard ? 16 : 44), TEXT);
         WatchUi.line(graphics, font, BreakpointUi.target(original.target()), left + 8, top + 29,
             panelWidth - 16, MUTED);
         String fragment = commandFragment();
         WatchUi.line(graphics, font, fragment, left + 8, top + 42, panelWidth - 16, MUTED);
+        if (confirmingDiscard) {
+            drawLines(graphics, tr("codon.breakpoint.discard_prompt"), top + 58, AMBER);
+            super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+            return;
+        }
         if (menu == Menu.NONE && font.width(fragment) > panelWidth - 16
             && mouseX >= left + 8 && mouseX < left + panelWidth - 8
             && mouseY >= top + 41 && mouseY < top + 52)
@@ -450,6 +479,11 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
 
     @Override public boolean keyPressed(KeyEvent event) {
         if (!validContext()) return true;
+        if (state.breakpoints().pending(original.target())) return true;
+        if (confirmingDiscard) {
+            if (event.key() == InputConstants.KEY_ESCAPE) { keepEditing(); return true; }
+            return super.keyPressed(event);
+        }
         if (menu != Menu.NONE) {
             if (event.key() == InputConstants.KEY_ESCAPE) { closeMenu(); return true; }
             if (event.key() == InputConstants.KEY_UP || event.key() == InputConstants.KEY_DOWN) {
@@ -478,12 +512,18 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     }
 
     @Override public boolean charTyped(CharacterEvent event) {
+        if (!validContext() || confirmingDiscard || state.breakpoints().pending(original.target())) return true;
         closeMenu();
         return super.charTyped(event);
     }
 
     @Override public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         if (!validContext()) return true;
+        if (state.breakpoints().pending(original.target())) return true;
+        if (confirmingDiscard) {
+            super.mouseClicked(event, doubleClick);
+            return true;
+        }
         if (menu != Menu.NONE) {
             if (overMenu(event.x(), event.y())) {
                 for (var option : options()) if (option.visible && option.mouseClicked(event, doubleClick)) return true;
@@ -507,6 +547,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     }
 
     @Override public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
+        if (confirmingDiscard || state.breakpoints().pending(original.target())) return true;
         if (menu == Menu.NONE) return super.mouseScrolled(x, y, scrollX, scrollY);
         if (overMenu(x, y) && scrollY != 0) {
             menuScroll = Math.clamp(menuScroll + (scrollY > 0 ? -1 : 1), 0, options().size() - menuRows);
@@ -516,7 +557,24 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
         return true;
     }
 
-    @Override public void onClose() { ScreenLayers.close(this); }
+    private boolean dirty() {
+        var condition = original.condition();
+        return kind != condition.kind() || kind.isCount() && (comparison != condition.comparison()
+            || !thresholdText.equals(Integer.toString(condition.threshold())));
+    }
+
+    private void keepEditing() {
+        confirmingDiscard = false;
+        rebuildWidgets();
+    }
+
+    @Override public void onClose() {
+        if (!validContext() || state.breakpoints().pending(original.target())) return;
+        if (!dirty()) { ScreenLayers.close(this); return; }
+        confirmingDiscard = true;
+        closeMenu();
+        rebuildWidgets();
+    }
 
     @Override public void removed() {
         super.removed();

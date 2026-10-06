@@ -14,6 +14,10 @@ explanation; no world teleport or new block-source editor is implemented. Enable
 and disabled saved entries remain listed. Activation sends no breakpoint edits.
 Source/Flow context menus provide condition editing at the destination. List focus
 and scroll are retained on return; native behavior still needs manual verification.
+Rows sort by source identity with numeric function lines, coordinates and stage indices.
+Each row shows state, whole-command/stage identity and location on its first line,
+then the condition on a separate line; full location/condition and navigation availability
+remain in the tooltip. The narrow English/Korean list captures check this presentation.
 
 Use the [shared setup](../README.md#prepare-and-launch). In a disposable Creative
 world, obtain a command block with `/give @s minecraft:command_block`, place it,
@@ -30,9 +34,13 @@ enter `say codon breakpoint check`, save with Done, and attach a button.
    `execute as @a if entity @e[tag=codon_verify_absent] run say unreachable`.
    Ensure no entity has that tag. Hover a stage boundary and click its marker;
    right-click the marker to edit its condition in a modal layer above the current
-   screen. The original editor/source/list stays visible; Save, Cancel, Escape or
-   an outside click dismisses only the layer, preserving the underlying input and
-   navigation state. Mouse and keyboard input must not reach the screen below.
+   screen. The original editor/source/list stays visible. A clean Cancel, Escape or
+   outside click dismisses only the layer, preserving the underlying input and
+   navigation state. Unsaved condition changes instead require **Discard** or
+   **Keep editing**; Escape in that confirmation resumes editing, and outside
+   clicks leave it open. Pending Save/Delete blocks edits and dismissal until ACK
+   or failure; acknowledged success closes directly. Mouse and keyboard input
+   must not reach the screen below.
    On the `if` stage, choose output
    count equal to zero. Disable the whole-command/other stage breakpoints to isolate
    this case. Trigger the block: it stops after the filter records zero output,
@@ -71,7 +79,29 @@ on separate localized lines; see [tooltip coverage](tooltips.md) for wrapping,
 viewport placement and the rendering checks.
 The command alternatives are `/codon breakpoint block <x> <y> <z>` and
 `/codon breakpoint function <namespace:path> <line>` (one-based file line).
-They toggle whole-command targets; use the UI for stage/condition editing.
+Alone they toggle whole-command targets. Both accept `[stage <n>] [condition <condition>]`
+(see the [README](../../../README.md) for the syntax): `stage <n>` uses the editor's one-based
+stage number and is refused for single-stage commands; `condition` sets, updates (`created`,
+`removed`, `changed`, or a `*_count` with `eq|ne|lt|le|gt|ge <n>`) or removes (`clear`) a condition
+and, like the editor's Save, enables the breakpoint. These edits use the editor's server-side
+target validation (`BreakpointTargetValidator`): a missing/unloaded command block, unreadable or
+macro source, unparsable command, unknown stage, or result condition on the final stage is reported
+and changes no definition. `/codon breakpoint list` includes each enabled stage and condition.
+Explicit block-coordinate commands retain position-based targets, including future or
+unloaded locations, without acquiring a chunk. F10 uses the camera's centre ray up to
+20 blocks and shows a localized action-bar hint when that ray misses a block.
+Function commands validate new/enabled targets against current loaded raw-file lines:
+blank/comment and proven out-of-range lines are rejected, whole macro lines remain
+eligible. Missing source or lines beyond the bounded Source response are unknown:
+the CLI preserves its position-based toggle with a localized warning followed by the
+usual server result; UI edits still require verifiable source. Existing enabled entries can be disabled after
+their line changes. `CodonBreakpointCommandTest` verifies command dispatch and these
+adapter decisions with mocked server resources, including a real Minecraft-parsed
+20,001-command function returned by a mocked function manager. It also covers stage and
+condition creation/update/clear, rejected input leaving definitions unchanged, the owner
+requirement, the loaded command-block path, `list` output and `/help` usage, with a tiny
+test-registered `execute` tree instead of vanilla's. It does not execute a
+native loaded function or prove execution beyond the Source response limits.
 
 The active list retains widget identity only for currently rendered controls.
 Replacement authoritative snapshots, scrolling and empty/disconnected lists release
@@ -87,6 +117,7 @@ Screen; actual list navigation and focus remain a UI acceptance check.
 - [BreakpointConditionScreen](../../../src/client/java/works/nuty/codon/client/ui/BreakpointConditionScreen.java), [ScreenLayers](../../../src/client/java/works/nuty/codon/client/ui/ScreenLayers.java), [ClientBreakpointState](../../../src/client/java/works/nuty/codon/client/state/ClientBreakpointState.java): modal options, input isolation, pending edits and acknowledgement.
 - [BreakpointRegistry](../../../src/core/java/works/nuty/codon/core/service/BreakpointRegistry.java), [BreakpointConditionEvaluator](../../../src/core/java/works/nuty/codon/core/service/BreakpointConditionEvaluator.java), [DebuggerEngine](../../../src/core/java/works/nuty/codon/core/service/DebuggerEngine.java): definition and stop semantics.
 - [WorldBreakpointPersistence](../../../src/main/java/works/nuty/codon/persistence/WorldBreakpointPersistence.java): world storage.
+- [CodonCommand](../../../src/main/java/works/nuty/codon/command/CodonCommand.java), [BreakpointEditCommands](../../../src/main/java/works/nuty/codon/command/BreakpointEditCommands.java), [BreakpointTargetValidator](../../../src/main/java/works/nuty/codon/adapter/BreakpointTargetValidator.java): command syntax, stage/condition edits and the target rules shared with the editor's network handler.
 
 ## Choose verification
 
@@ -95,18 +126,24 @@ Screen; actual list navigation and focus remain a UI acceptance check.
 | Definition/condition logic | `coreTest`: `BreakpointRegistryTest`, `BreakpointConditionEvaluatorTest`, `DebuggerEngineTest` |
 | Acknowledgement and pending UI state | `clientTest`: `ClientBreakpointStateTest` |
 | Persistence/preview codec | `test`: `WorldBreakpointPersistenceTest`, `BreakpointStagePreviewPayloadTest` |
-| Native editor input, modal details without screen replacement, server edits, wrapping and narrow layouts | `DebuggerBreakpointUiGameTest` |
+| Native editor input, modal details without screen replacement, draft discard/cancel, pending/rejected saves, server edits, wrapping and narrow layouts | `DebuggerBreakpointUiGameTest` |
 | Single-stage editor/Flow target, legacy toggle/clear and native first-occurrence stop | `SingleStageBreakpointGameTest` |
 | Inactive condition marker retention, menus/Cancel and server-acknowledged Save enabling | `BreakpointConditionVisibilityGameTest`, `DebuggerBreakpointUiGameTest` |
 | Flow legacy/line isolation, exact condition attribution, rejected toggle feedback and pending action gating (presentation fixture) | `FlowLegacyConditionGameTest` |
-| Native execution and measured-zero result breakpoints | `DebuggerBreakpointResultGameTest` |
+| Native execution and measured-zero result breakpoints, created through `/codon breakpoint ... stage 2 condition ...` | `DebuggerBreakpointResultGameTest` |
 | Unauthorized command-block save does not acquire a chunk; authorized loaded edit succeeds | `DebuggerRequestTransportGameTest` |
+| Raw function-line command validation, unavailable/truncated source, existing entry disabling, future coordinates, command stage/condition edits and `list`/help output | `test`: `CodonBreakpointCommandTest` |
+| Numeric line/stage/coordinate list order | `clientTest`: `BreakpointListOrderTest` |
 
 Example: `./gradlew runClientGameTest -PclientGameTest=DebuggerBreakpointUiGameTest`.
 Inspect `*codon-breakpoint-*.png` in the shared screenshot directory. The UI test
 checks editing and transport; use the result test or manual trigger path to prove
 the execution actually pauses. Record manual world reload separately from the
 file-adapter unit test.
+`SingleStageBreakpointGameTest` also presses native F10 toward empty sky and captures
+the no-target action-bar feedback without creating a definition. The UI test's narrow
+list captures inspect explicit whole-command/stage labels and separate condition lines,
+including `codon-breakpoint-disabled-list-ko-320x240.png` after a Korean resource reload.
 
 When chaining edits in a client GameTest, wait for both the server acknowledgement
 and the next control's enabled state. A received snapshot can precede the frame
@@ -142,7 +179,8 @@ leaves both for 220 ms. Re-entering the selector after that automatic close must
 open it again, including before another render observes the outside pointer.
 Clicking an option applies it to the draft and closes the
 menu; Save still waits for server acknowledgement. Escape closes an open menu
-first, then the layer. Tab closes the menu and continues through the form.
+first, then requests closing the layer (with discard confirmation for a dirty
+draft). Tab closes the menu and continues through the form.
 
 The exact edited marker remains visible while the layer or its menus are open. Opening
 and cancelling preserve its saved enabled state; Save always enables the exact definition
@@ -225,6 +263,25 @@ Authoritative Source/Flow marker mapping:
 
 The matching server parse preview supplies the stage count; conclusive recorded
 evidence is the existing fallback. The code does not classify multi-stage commands
-by the literal `execute` name. A 14-pixel root marker and 15-pixel inset are added
+by the literal `execute` name. An 18×18 root target and 19-pixel inset are added
 before the first displayed part of a multi-stage command. Its unset/disabled
 affordance remains visible, like the stage controls, without creating a definition.
+
+Flow reserves separate 18×18 targets for whole-command/stage markers and warnings,
+including compact rows. Warning targets sit beside their clause, with their own
+reserved width. Source's whole-line gutter target is 18×18; its right and bottom
+edges are half-open, so adjacent line-number and next-row clicks cannot toggle it.
+On an actual stopped line the amber `>` cue is excluded from that target: clicking it
+only selects the line. `FunctionLineBreakpointGameTest` checks both the cue and marker.
+The visible breakpoint artwork keeps its existing size. `FlowBreakpointInteractionGameTest`
+checks target bounds and non-overlap at 320×240; `FunctionLineBreakpointGameTest`
+checks the expanded gutter corner and adjacent excluded edges, including the
+obsolete-stage warning tooltip and click region. These client
+fixtures do not establish actual server breakpoint execution.
+
+World outlines still include only enabled whole-block breakpoints. Plain outlines
+are thin red; conditional outlines are thicker purple. Disabled and stage-only
+breakpoints remain outside this legacy whole-block marker list; an active stop
+keeps its amber outline and center point. `DebuggerWorldMarkerVisibilityGameTest`
+checks the acknowledged marker list and conditional color in native frames while
+paused and running, alongside the existing H-hide and unrelated-gizmo checks.

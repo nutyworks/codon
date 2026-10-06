@@ -42,6 +42,7 @@ public final class SingleStageBreakpointGameTest implements FabricClientGameTest
             });
             var server = world.getServer().computeOnServer(value -> value);
             context.waitFor(client -> client.level.getBlockEntity(position) instanceof CommandBlockEntity, 200);
+            verifyNoTargetFeedback(context);
             var location = context.computeOnClient(client -> new SourceLocation.Block(new BlockLocation(position.getX(), position.getY(),
                 position.getZ(), client.level.dimension().identifier().toString())));
             var whole = BreakpointTarget.whole(location);
@@ -198,6 +199,22 @@ public final class SingleStageBreakpointGameTest implements FabricClientGameTest
                 context.runOnClient(client -> client.setScreenAndShow(null));
             }
         }
+    }
+
+    private static void verifyNoTargetFeedback(ClientGameTestContext context) {
+        float pitch = context.computeOnClient(client -> client.player.getXRot());
+        context.runOnClient(client -> client.player.setXRot(-90));
+        context.waitTicks(2);
+        context.getInput().pressKey(InputConstants.KEY_F10);
+        context.waitFor(client -> {
+            var message = (net.minecraft.network.chat.Component)
+                FunctionLineBreakpointGameTest.field(client.gui.hud, "overlayMessageString");
+            return message != null && message.equals(net.minecraft.network.chat.Component.translatable("codon.breakpoint.no_block_target"));
+        }, 100);
+        context.runOnClient(client -> check(CodonClientMod.state().breakpoints().definitions().isEmpty(),
+            "F10 on empty sky shows feedback without creating a coordinate breakpoint"));
+        context.takeScreenshot("codon-breakpoint-no-target-feedback");
+        context.runOnClient(client -> client.player.setXRot(pitch));
     }
     private static void check(boolean condition, String message) { if (!condition) throw new AssertionError(message); }
 }

@@ -45,6 +45,7 @@ public record WatchFormLayout(Bounds panel) {
     public int previewValueY() { return previewY() + 16; }
     public Bounds retry() { return new Bounds(contentRight() - 54, previewValueY() - 6, 54, 20); }
     public Bounds submit() { return new Bounds(contentRight() - 72, panel.y() + panel.height() - 35, 72, 20); }
+    public Bounds submitReason() { return new Bounds(contentX(), submit().y(), Math.max(1, submit().x() - contentX() - 8), submit().height()); }
     public Bounds close() { return new Bounds(contentRight() - 46, panel.y() + 4, 46, 18); }
     public int feedbackY() { return panel.y() + panel.height() - 49; }
     public int keysY() { return panel.y() + panel.height() - 11; }

@@ -10,6 +10,7 @@ import works.nuty.codon.client.state.ClientBreakpointState;
 import works.nuty.codon.client.state.ClientStagePreviewState;
 import works.nuty.codon.client.state.ClientPauseEffects;
 import works.nuty.codon.client.state.ClientWatchState;
+import works.nuty.codon.client.state.ClientQueryScheduler;
 import works.nuty.codon.client.state.ClientWatchUploadState;
 import works.nuty.codon.core.model.TransferBudget;
 import works.nuty.codon.network.WatchSaveV2Payload;
@@ -27,6 +28,7 @@ import works.nuty.codon.network.StepSyncPayload;
 import works.nuty.codon.network.ContinueSyncPayload;
 import works.nuty.codon.network.WatchSyncPayload;
 import works.nuty.codon.network.WatchChangesSyncPayload;
+import works.nuty.codon.network.WatchChangesUnavailablePayload;
 import works.nuty.codon.network.WatchDefinitionsSyncPayload;
 import works.nuty.codon.network.WatchRestoreFailedPayload;
 import works.nuty.codon.network.NbtTreeSyncPayload;
@@ -50,6 +52,7 @@ public final class ClientNetworking {
     private static final ClientWatchUploadState watchUpload = new ClientWatchUploadState(System::nanoTime);
     private static long acknowledgedTransferId;
     private static long legacyTransferId;
+    private static final ClientQueryScheduler queryScheduler = new ClientQueryScheduler(System::nanoTime);
     private ClientNetworking() {
     }
 
@@ -72,7 +75,10 @@ public final class ClientNetworking {
             sendWatchQueries(client, state);
         });
         ClientPlayNetworking.registerGlobalReceiver(WatchEditorSyncPayload.TYPE, (payload, context) ->
-            context.client().execute(() -> state.watchEditor().accept(payload.pauseId(), payload.requestId(), payload.page())));
+            context.client().execute(() -> {
+                queryScheduler.editorReply(payload.pauseId(), payload.requestId());
+                state.watchEditor().accept(payload.pauseId(), payload.requestId(), payload.page());
+            }));
         ClientPlayNetworking.registerGlobalReceiver(WatchSaveSyncPayload.TYPE, (payload, context) ->
             context.client().execute(() -> {
                 boolean saved = payload.status() == WatchSaveSyncPayload.Status.SAVED;
@@ -87,16 +93,26 @@ public final class ClientNetworking {
                 expireWatchUpload();
             }));
         ClientPlayNetworking.registerGlobalReceiver(WatchSyncPayload.TYPE, (payload, context) ->
-            context.client().execute(() -> state.watches().accept(payload.pauseId(), payload.requestId(), payload.result())));
+            context.client().execute(() -> {
+                queryScheduler.watchReply(payload.pauseId(), payload.requestId());
+                state.watches().accept(payload.pauseId(), payload.requestId(), payload.result());
+            }));
         ClientPlayNetworking.registerGlobalReceiver(WatchChangesSyncPayload.TYPE, (payload, context) ->
             context.client().execute(() -> state.watches().acceptChanges(payload.pauseId(), payload.offset(), payload.last(), payload.changes())));
+        ClientPlayNetworking.registerGlobalReceiver(WatchChangesUnavailablePayload.TYPE, (payload, context) ->
+            context.client().execute(() -> state.watches().acceptUnavailableChanges(payload.pauseId(),
+                payload.reason() == WatchChangesUnavailablePayload.Reason.TOO_LARGE)));
         ClientPlayNetworking.registerGlobalReceiver(NbtTreeSyncPayload.TYPE, (payload, context) ->
-            context.client().execute(() -> state.nbt().accept(payload.pauseId(), payload.requestId(), payload.page())));
+            context.client().execute(() -> {
+                queryScheduler.nbtReply(payload.pauseId(), payload.requestId());
+                state.nbt().accept(payload.pauseId(), payload.requestId(), payload.page());
+            }));
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             joinedDefinitions.reset();
             watchUpload.reset();
             saveState = null;
             acknowledgedTransferId = legacyTransferId = 0;
+            queryScheduler.reset();
             state.watches().endConnection();
             state.reset();
             freecam.synchronize(client);
@@ -169,7 +185,8 @@ public final class ClientNetworking {
         if (watches == null) return;
         Minecraft client = Minecraft.getInstance();
         long transferId = nextTransferId();
-        watches.saveStarted(transferId, TransferBudget.TIMEOUT_NANOS);
+        long startedAt = System.nanoTime();
+        watches.saveStarted(transferId, TransferBudget.TIMEOUT_NANOS, startedAt);
         watchUpload.reset();
         acknowledgedTransferId = legacyTransferId = 0;
         if (client.player == null) {
@@ -180,11 +197,12 @@ public final class ClientNetworking {
             var pages = WatchDefinitions.validatedPages(definitions);
             if (ClientPlayNetworking.canSend(WatchSaveV2Payload.TYPE.id())) {
                 acknowledgedTransferId = transferId;
-                sendWatchPage(watchUpload.begin(transferId, pages));
+                sendWatchPage(watchUpload.begin(transferId, pages, startedAt));
             } else if (ClientPlayNetworking.canSend(WatchSavePayload.TYPE.id())) {
                 legacyTransferId = transferId;
                 int offset = 0;
                 for (int index = 0; index < pages.size(); index++) {
+                    if (watches.saveStatus() != ClientWatchState.SaveStatus.SAVING) return;
                     var page = pages.get(index);
                     ClientPlayNetworking.send(new WatchSavePayload(transferId, offset, index == pages.size() - 1, page));
                     offset += page.size();
@@ -197,6 +215,10 @@ public final class ClientNetworking {
     }
 
     private static void sendWatchPage(ClientWatchUploadState.Page page) {
+        if (watchUpload.transferId() != page.transferId()) {
+            expireWatchUpload();
+            return;
+        }
         ClientPlayNetworking.send(new WatchSaveV2Payload(page.transferId(), page.offset(), page.last(), page.definitions()));
     }
 
@@ -223,32 +245,56 @@ public final class ClientNetworking {
     }
 
     public static boolean requestStagePreview(ClientDebuggerState state,
-                                              works.nuty.codon.core.model.SourceLocation location) {
+                                             works.nuty.codon.core.model.SourceLocation location) {
+        return requestStagePreview(state, location, false);
+    }
+
+    public static boolean requestAutomaticStagePreview(ClientDebuggerState state,
+                                             works.nuty.codon.core.model.SourceLocation location) {
+        return requestStagePreview(state, location, true);
+    }
+
+    private static boolean requestStagePreview(ClientDebuggerState state,
+                                             works.nuty.codon.core.model.SourceLocation location, boolean automatic) {
         if (!StagePreviewLocation.supported(location)) return false;
         Minecraft client = Minecraft.getInstance();
         if (client.player == null || !ClientPlayNetworking.canSend(BreakpointStagePreviewRequestPayload.TYPE.id()))
             return false;
-        long requestId = state.stagePreviews().begin(location);
+        long requestId = automatic ? state.stagePreviews().beginAutomatic(location) : state.stagePreviews().begin(location);
+        if (requestId == 0) return false;
         ClientPlayNetworking.send(new BreakpointStagePreviewRequestPayload(requestId, location));
         return true;
     }
 
-    /** Enqueue reads before a step command so even immediate input retains its before-step capture. */
+    /** Send only credited reads; a pending step waits for every Watch from its pause. */
     public static void sendWatchQueries(Minecraft client, ClientDebuggerState state) {
         if (client.player == null) return;
-        for (var query : state.watchEditor().drainQueries()) {
-            ClientPlayNetworking.send(new WatchEditorQueryPayload(query.pauseId(), query.requestId(),
-                query.sourceIndex(), query.query()));
-        }
-        if (!state.isPaused()) return;
-        for (var query : state.watches().drainQueries()) {
-            var spec = query.spec();
-            if (query.capturedEntity() != null) spec = spec.withExecutor(query.capturedEntity());
-            ClientPlayNetworking.send(new WatchQueryPayload(query.pauseId(), query.requestId(), query.sourceIndex(), spec));
-        }
-        for (var query : state.nbt().drainQueries()) {
-            ClientPlayNetworking.send(new NbtTreeQueryPayload(query.pauseId(), query.requestId(), query.sourceIndex(),
-                query.offset(), query.path()));
-        }
+        queryScheduler.pump(state, sender(client));
+    }
+
+    public static void requestControl(Minecraft client, ClientDebuggerState state, long pauseId,
+                                      String command, boolean readBeforeStep) {
+        if (client.player == null) return;
+        queryScheduler.requestControl(state, pauseId, command, readBeforeStep, sender(client));
+    }
+
+    private static ClientQueryScheduler.Sender sender(Minecraft client) {
+        return new ClientQueryScheduler.Sender() {
+            @Override public void editor(works.nuty.codon.client.state.ClientWatchEditorState.Query query) {
+                ClientPlayNetworking.send(new WatchEditorQueryPayload(query.pauseId(), query.requestId(),
+                    query.sourceIndex(), query.query()));
+            }
+            @Override public void watch(ClientWatchState.Query query) {
+                var spec = query.capturedEntity() == null ? query.spec() : query.spec().withExecutor(query.capturedEntity());
+                ClientPlayNetworking.send(new WatchQueryPayload(query.pauseId(), query.requestId(), query.sourceIndex(), spec));
+            }
+            @Override public void nbt(works.nuty.codon.client.state.ClientNbtState.Query query) {
+                ClientPlayNetworking.send(new NbtTreeQueryPayload(query.pauseId(), query.requestId(), query.sourceIndex(),
+                    query.offset(), query.path()));
+            }
+            @Override public void control(long pauseId, String command) {
+                if (client.player != null) client.player.connection.sendCommand("codon " + command + " " + pauseId);
+            }
+        };
     }
 }
