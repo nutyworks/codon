@@ -127,8 +127,11 @@ a new settings/state instance. Inspect `codon-idle-badge-*`: default, hidden, hi
 reload, restored, F3 with a visible preference, the open View menu in both languages, and
 the `-synthetic-pause` HUD/cursor captures. Presence of the badge or paused header is
 asserted from dark panel pixels at their shared corner, with sky behind it; F3's own text
-and the screenshots themselves still need inspection. The test replaces the production HUD
-element while it runs, since that element would draw its own badge, then restores it. The
-paused captures inject a client snapshot: they do not prove a server breakpoint, and world
+and the screenshots themselves still need inspection. The production HUD element would draw
+its own badge, so the test wraps it once in place with `HudElementRegistry.replaceElement`: the
+wrapper draws the test-owned HUD while the fixture is active. Fabric's registry keeps removed
+ids and rejects adding them again, so nothing is removed; after cleanup the wrapper stays
+registered but renders the original production element again, in its original id and order.
+The paused captures inject a client snapshot: they do not prove a server breakpoint, and world
 markers remain the world-marker regression's concern (the renderer never reads the
 preference).

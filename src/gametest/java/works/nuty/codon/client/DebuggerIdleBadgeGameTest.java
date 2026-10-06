@@ -31,21 +31,26 @@ import works.nuty.codon.core.model.PauseSnapshot;
 /**
  * Native HUD, cursor-mode and View-menu check of the saved idle-badge preference in the smallest
  * supported viewport, using a temporary settings file and a test-owned state. The production HUD
- * element is replaced while the test runs, because it would draw its own idle badge at the same
- * place. The paused phases inject a client pause snapshot: they do not exercise a server
- * breakpoint, and world markers are covered by {@link DebuggerWorldMarkerVisibilityGameTest}.
+ * element would draw its own idle badge at the same place, so it is replaced once, in its own
+ * id and order, by a wrapper that draws the active test fixture and otherwise delegates to the
+ * original production element. Fabric's HUD registry keeps removed ids and rejects adding them
+ * again, so the test never removes or re-adds an element: the wrapper stays registered after
+ * cleanup, but then only renders the original production element. The paused phases inject a
+ * client pause snapshot: they do not exercise a server breakpoint, and world markers are covered
+ * by {@link DebuggerWorldMarkerVisibilityGameTest}.
  */
 @SuppressWarnings("UnstableApiUsage")
 public final class DebuggerIdleBadgeGameTest implements FabricClientGameTest {
-    private static final Identifier HUD = Identifier.fromNamespaceAndPath("codon", "idle_badge_test");
     private static final Identifier PRODUCTION_HUD = Identifier.fromNamespaceAndPath("codon", "debug_overlay");
     private static final String SAVED_HIDDEN = "\"idleBadgeVisible\": false";
     private static final String SAVED_SHOWN = "\"idleBadgeVisible\": true";
 
     private record Fixture(DebuggerPreferences preferences, ClientDebuggerState state, InputManager input,
-                           DebuggerOverlay overlay) { }
+                           DebuggerOverlay overlay, DebugHudElement hud) { }
 
     @Override public void runTest(ClientGameTestContext context) {
+        int[] oldWindowSize = context.computeOnClient(client ->
+            new int[]{client.getWindow().getScreenWidth(), client.getWindow().getScreenHeight()});
         int oldScale = context.computeOnClient(client -> client.options.guiScale().get());
         String oldLanguage = context.computeOnClient(client -> client.getLanguageManager().getSelected());
         boolean oldDebug = context.computeOnClient(client -> client.debugEntries.isOverlayVisible());
@@ -53,18 +58,15 @@ public final class DebuggerIdleBadgeGameTest implements FabricClientGameTest {
         try { directory = Files.createTempDirectory("codon-idle-badge"); }
         catch (IOException exception) { throw new UncheckedIOException(exception); }
         Path file = directory.resolve("codon.json");
-        boolean[] replacedProduction = new boolean[1];
+        Fixture[] activeFixture = new Fixture[1];
         try (TestSingleplayerContext world = context.worldBuilder().create()) {
             try {
-                check(context, world, file, replacedProduction);
+                check(context, world, file, activeFixture);
             } finally {
                 context.runOnClient(client -> {
+                    // First, so the wrapper renders the original production element again even if a later step throws.
+                    activeFixture[0] = null;
                     client.setScreenAndShow(null);
-                    if (replacedProduction[0]) {
-                        HudElementRegistry.removeElement(HUD);
-                        HudElementRegistry.addLast(PRODUCTION_HUD,
-                            new DebugHudElement(new DebuggerOverlay(CodonClientMod.state()), CodonClientMod.input()));
-                    }
                     client.debugEntries.setOverlayVisible(oldDebug);
                     client.options.guiScale().set(oldScale);
                     client.resizeGui();
@@ -72,6 +74,8 @@ public final class DebuggerIdleBadgeGameTest implements FabricClientGameTest {
                 });
             }
         } finally {
+            // Fabric's resizeWindow writes the game window and framebuffer dimensions together.
+            context.getInput().resizeWindow(oldWindowSize[0], oldWindowSize[1]);
             language(context, oldLanguage);
             try {
                 Files.deleteIfExists(file);
@@ -81,7 +85,7 @@ public final class DebuggerIdleBadgeGameTest implements FabricClientGameTest {
     }
 
     private static void check(ClientGameTestContext context, TestSingleplayerContext world, Path file,
-                              boolean[] replacedProduction) {
+                              Fixture[] activeFixture) {
         context.getInput().resizeWindow(640, 480);
         context.runOnClient(client -> {
             // The smallest viewport Codon supports (320x240 GUI pixels), whatever the display density.
@@ -102,9 +106,10 @@ public final class DebuggerIdleBadgeGameTest implements FabricClientGameTest {
         });
 
         Fixture first = context.computeOnClient(client -> {
-            HudElementRegistry.removeElement(PRODUCTION_HUD);
-            replacedProduction[0] = true;
-            return install(client, ClientSettingsStore.open(file, exception -> { throw new AssertionError(exception); }), false);
+            // Composed lazily every frame: `production` is the real prior element, and no id is ever removed or re-added.
+            HudElementRegistry.replaceElement(PRODUCTION_HUD, production -> (graphics, tracker) ->
+                (activeFixture[0] == null ? production : activeFixture[0].hud()).extractRenderState(graphics, tracker));
+            return install(client, ClientSettingsStore.open(file, exception -> { throw new AssertionError(exception); }), activeFixture);
         });
         context.waitTicks(3);
         context.runOnClient(client -> require(client.gui.screen() == null && !first.state().isPaused()
@@ -142,7 +147,7 @@ public final class DebuggerIdleBadgeGameTest implements FabricClientGameTest {
             require(!first.preferences().idleBadgeVisible(), "State reset retains the preference");
         });
         Fixture reloaded = context.computeOnClient(client ->
-            install(client, ClientSettingsStore.open(file, exception -> { throw new AssertionError(exception); }), true));
+            install(client, ClientSettingsStore.open(file, exception -> { throw new AssertionError(exception); }), activeFixture));
         context.waitTicks(3);
         context.runOnClient(client -> require(!reloaded.preferences().idleBadgeVisible(), "The saved file restores the hidden preference"));
         badge(context, "codon-idle-badge-hidden-after-reload", false, "A new settings instance still hides the badge");
@@ -212,14 +217,14 @@ public final class DebuggerIdleBadgeGameTest implements FabricClientGameTest {
         require(read(file).contains(SAVED_HIDDEN), "The Korean toggle was saved");
     }
 
-    private static Fixture install(Minecraft client, DebuggerPreferences preferences, boolean replace) {
+    private static Fixture install(Minecraft client, DebuggerPreferences preferences, Fixture[] activeFixture) {
         var state = new ClientDebuggerState(preferences);
         var input = DebuggerPresentationGameTest.input(client, state);
         var overlay = new DebuggerOverlay(state);
         DebuggerTheme.usePreferences(preferences);
-        if (replace) HudElementRegistry.removeElement(HUD);
-        HudElementRegistry.addLast(HUD, new DebugHudElement(overlay, input));
-        return new Fixture(preferences, state, input, overlay);
+        var fixture = new Fixture(preferences, state, input, overlay, new DebugHudElement(overlay, input));
+        activeFixture[0] = fixture;
+        return fixture;
     }
 
     /**
