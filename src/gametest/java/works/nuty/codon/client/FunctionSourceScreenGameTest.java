@@ -437,16 +437,36 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
         try {
             var image = javax.imageio.ImageIO.read(context.takeScreenshot(name).toFile());
             double sx = (double) image.getWidth() / geometry[0], sy = (double) image.getHeight() / geometry[1];
-            int first = image.getWidth(), last = -1;
-            for (int x = (int) Math.ceil(geometry[2] * sx); x < (int) Math.floor((geometry[2] + geometry[4]) * sx); x++)
-                for (int y = (int) Math.ceil(geometry[3] * sy); y < (int) Math.floor((geometry[3] + geometry[5]) * sy); y++)
-                    if ((image.getRGB(x, y) & 0xFFFFFF) == (DebuggerTheme.TEAL & 0xFFFFFF)) {
-                        first = Math.min(first, x); last = Math.max(last, x);
-                    }
-            require(last - first + 1 >= (geometry[6] - 4) * sx,
+            int left = (int) Math.ceil((geometry[2] + 2) * sx);
+            int top = (int) Math.ceil((geometry[3] + 2) * sy);
+            int right = (int) Math.floor((geometry[2] + geometry[4] - 2) * sx);
+            int bottom = (int) Math.floor((geometry[3] + geometry[5] - 2) * sy);
+            var ink = image.getSubimage(left, top, right - left, bottom - top);
+            double required = (geometry[6] - 4) * sx;
+            require(stopInkSpan(ink) >= required,
                 name + ": native button retains the full label or compact arrow, ink="
-                    + (last - first + 1) + ", expected=" + (geometry[6] - 4) * sx);
+                    + stopInkSpan(ink) + ", expected=" + required);
+            var missing = new java.awt.image.BufferedImage(ink.getWidth(), ink.getHeight(), java.awt.image.BufferedImage.TYPE_INT_RGB);
+            require(stopInkSpan(missing) == 0, name + ": neutral background cannot supply label ink");
+            for (int x = 0; x < ink.getWidth() / 2; x++)
+                for (int y = 0; y < ink.getHeight(); y++) missing.setRGB(x, y, ink.getRGB(x, y));
+            require(stopInkSpan(missing) < required, name + ": a label clipped to half the button fails the same span threshold");
         } catch (java.io.IOException error) { throw new AssertionError(error); }
+    }
+
+    private static int stopInkSpan(java.awt.image.BufferedImage image) {
+        int first = image.getWidth(), last = -1;
+        // Fractional font sampling blends teal glyphs with the neutral surface. Inspect
+        // cyan ink inside the chrome, retaining the same full-label/arrow span requirement.
+        for (int x = 0; x < image.getWidth(); x++)
+            for (int y = 0; y < image.getHeight(); y++) {
+                int pixel = image.getRGB(x, y);
+                int red = pixel >> 16 & 255, green = pixel >> 8 & 255, blue = pixel & 255;
+                if (green - red >= 20 && blue - red >= 20 && Math.abs(green - blue) <= 16) {
+                    first = Math.min(first, x); last = Math.max(last, x);
+                }
+            }
+        return Math.max(0, last - first + 1);
     }
 
     private static void verifyFilteredSelection(Screen screen, ClientFunctionSourceState sources) {
