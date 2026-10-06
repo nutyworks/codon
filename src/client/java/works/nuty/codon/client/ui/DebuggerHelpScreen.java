@@ -98,7 +98,8 @@ public final class DebuggerHelpScreen extends ScaledCodonScreen {
                 entry("gizmo", DebuggerIcon.GIZMO_GROUPED, TEAL);
                 entry("labels", DebuggerIcon.GIZMO_LABELS, TEAL);
                 entry("details", DebuggerIcon.DETAILS_OPEN, TEAL);
-                entry("opacity", null, TEAL, keybind(Component.literal("← / →")));
+                entry("opacity", null, TEAL, keybind(Component.literal("← / →")),
+                    keybind(Component.literal("Shift+← / →")));
             }
             case 2 -> {
                 entry("source", null, TEAL);

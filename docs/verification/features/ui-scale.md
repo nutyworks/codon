@@ -110,5 +110,5 @@ does not automatically resolve small-screen Watch/status clipping.
 
 For compact Watch/status and Details footer changes, use
 `DebuggerCompactWatchGameTest` and the [Watch guide](watches-and-nbt.md). The header
-reserves its key hint and opacity control, then gives live state priority over the
-CODON prefix when the translated state needs more room.
+reserves its key hint, opacity slider and always-visible opacity percentage, then
+gives live state priority over the CODON prefix when the translated state needs more room.

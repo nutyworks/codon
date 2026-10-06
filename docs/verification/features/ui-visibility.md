@@ -45,7 +45,17 @@ HUD background opacity still follows the saved 0–100% preference. Modal forms,
 pickers, Details, breakpoint dialogs, Help and UI-scale settings keep an opaque
 reading surface and their dim scrim independently of that preference. Text alpha
 is not the cause of low-opacity world contrast. English/Korean Help describes this
-boundary; slider behavior is unchanged.
+boundary.
+
+The header's opacity slider always shows its current percentage to the right of the
+track, without hover, in English and Korean at 0 and 100%. The title row spans the
+header panel and keeps its 18-pixel height; the menu key and toolbar stay clear, and
+the percentage is reserved before live status, which still takes priority over the
+CODON prefix. A focused slider uses Left/Right for 1 percent and Shift+Left/Right for
+10 percent, clamped to 0–100; an adjustment at an endpoint writes no settings. Mouse
+click and drag still preview live and write once when the gesture ends. English/Korean
+usage narration and Help describe both steps. In very narrow GUIs (roughly under 255
+pixels wide) a long status can be ellipsized earlier than before; hover shows its full text.
 
 Gizmo collision cells retain at most 128 exact candidates before becoming a spatial
 aggregate, including cells whose rectangles have no common intersection. Coarse groups
@@ -67,6 +77,7 @@ world projection and rendering remain separate acceptance checks.
 | Concern | Existing tests |
 | --- | --- |
 | HUD/chat inset, modal backing and EN/KO compact/default readability | `clientTest`: `DebuggerLayoutTest`; `test`: `DebuggerThemeTest`, `UiScaleScreenRenderTest`; native: `DebuggerReadabilityGameTest`, `DebuggerOpacityGameTest`, `DebuggerPresentationGameTest`, `DebuggerNbtTreeGameTest`, `DebuggerUiScaleGameTest` |
+| Opacity percentage in the header, Shift steps, endpoints and commit counts | `clientTest`: `DebuggerHeaderLayoutTest`; native: `DebuggerOpacityGameTest` |
 | Short/long boundary, repeated events and cancellation | `clientTest`: `UiHideGestureTest` |
 | Native keyboard/mouse dispatch, screen input, rebind, chat, missed mouse release, focus flag and rejoin | `DebuggerPeekUiGameTest` |
 | Real server breakpoint stays paused, then each command executes once after Resume | `DebuggerFreecamResumeGameTest` |
@@ -74,8 +85,16 @@ world projection and rendering remain separate acceptance checks.
 
 ```sh
 ./gradlew clientTest --tests '*UiHideGestureTest'
+./gradlew clientTest --tests '*DebuggerHeaderLayoutTest'
 ./gradlew runClientGameTest -PclientGameTest=DebuggerPeekUiGameTest,DebuggerFreecamResumeGameTest,DebuggerWorldMarkerVisibilityGameTest
+./gradlew runClientGameTest -PclientGameTest=DebuggerOpacityGameTest
 ```
+
+`DebuggerOpacityGameTest` uses a synthetic pause and a temporary settings listener
+(not the real settings file) to count writes. It also scans the non-hover
+`codon-opacity-*` frames for header text pixels beside the slider; inspect them for
+the EN/KO default and compact percentage placement, the longest English status and
+the 0/100% endpoints. The idle badge has no slider, so it shows no percentage.
 
 Inspect the `codon-peek-*` screenshots: compare world and cursor-mode baselines,
 held/toggled hidden presentation, and restored UI. The peek fixture injects a client

@@ -10,6 +10,8 @@ import works.nuty.codon.client.state.DebuggerPreferences;
 
 /** Live background preview with one settings write per drag gesture. */
 public final class BackgroundOpacitySlider extends DebuggerButton {
+    private static final int STEP = 1;
+    private static final int SHIFT_STEP = 10;
     private final DebuggerPreferences preferences;
     private int dragStartOpacity = -1;
 
@@ -74,7 +76,8 @@ public final class BackgroundOpacitySlider extends DebuggerButton {
     public boolean keyPressed(KeyEvent event) {
         if (event.key() != InputConstants.KEY_LEFT && event.key() != InputConstants.KEY_RIGHT) return false;
         commitPreview();
-        preferences.setBackgroundOpacity(preferences.backgroundOpacity() + (event.key() == InputConstants.KEY_LEFT ? -1 : 1));
+        int step = event.hasShiftDown() ? SHIFT_STEP : STEP;
+        preferences.setBackgroundOpacity(preferences.backgroundOpacity() + (event.key() == InputConstants.KEY_LEFT ? -step : step));
         setMessage(label());
         return true;
     }
