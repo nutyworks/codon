@@ -268,17 +268,18 @@ public final class WatchPanel {
                     headingY, headingWidth, headingColor);
                 WatchUi.line(graphics, font, count, countX, headingY, font.width(count), row.issueCount() > 0 ? RED : row.changedCount() > 0 ? AMBER : MUTED);
                 // The header draws its name and counts. Hover explains only a clipped name, or a collapsed
-                // group that changed or failed to read while hidden; the full label is also the narration.
+                // group that changed or failed to read while hidden. The label is the narration, so it names
+                // any changes or read issues even while the group is expanded and hover stays quiet.
                 Component action = text(collapsed ? "group.expand" : "group.collapse", row.heading().getString(), row.groupSize());
                 Component summary = text("group.summary", row.changedCount(), row.issueCount());
-                boolean hiddenActivity = collapsed && (row.changedCount() > 0 || row.issueCount() > 0);
-                Component label = hiddenActivity ? action.copy().append("\n").append(summary) : action;
+                boolean activity = row.changedCount() > 0 || row.issueCount() > 0;
+                Component label = activity ? action.copy().append("\n").append(summary) : action;
                 var toggle = button(id, header, label, true, false, () -> {
                     if (!collapsedHeadings.add(row.key())) collapsedHeadings.remove(row.key());
                     navigation.requestFocus(id);
                 }, navigation, offset + index, 0).asHitSurface();
                 if (font.width(row.heading().getString()) > headingWidth) toggle.setTooltip(Tooltip.create(label));
-                else if (hiddenActivity) toggle.setTooltip(Tooltip.create(summary));
+                else if (collapsed && activity) toggle.setTooltip(Tooltip.create(summary));
                 continue;
             }
             var entry = row.entry();
