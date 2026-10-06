@@ -1,4 +1,9 @@
 {
+  "codon.breakpoint.no_block_target": "Aim at a block within 20 blocks to toggle its breakpoint.",
+  "command.codon.breakpoint.function.invalid_line": "Function %s has no command at line %s.",
+  "command.codon.breakpoint.function.source_unavailable": "Function %s line %s: source unavailable or beyond Source limits; toggled by line position.",
+  "codon.breakpoint.whole_target": "Whole command",
+  "codon.breakpoint.line_target": "line %s",
   "codon.pause.snapshot_too_large": "Codon is paused, but this snapshot is too large to display. Use /codon resume to continue.",
   "codon.ui.background_opacity.usage": "Use Left and Right to adjust panel opacity.",
   "codon.ui.background_opacity": "Panel opacity: %s%%",
