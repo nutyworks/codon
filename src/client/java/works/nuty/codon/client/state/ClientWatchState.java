@@ -533,11 +533,16 @@ public final class ClientWatchState {
     public void saveStarted(long transferId) { saveStarted(transferId, TIMEOUT_NANOS); }
 
     public void saveStarted(long transferId, long timeoutNanos) {
+        saveStarted(transferId, timeoutNanos, clock.getAsLong());
+    }
+
+    /** Shares the upload's start instant, including time spent preparing its pages. */
+    public void saveStarted(long transferId, long timeoutNanos, long startedAt) {
         if (initialRestoreFailed) return;
         if (timeoutNanos <= 0) throw new IllegalArgumentException("invalid save timeout");
         saveTimeoutNanos = timeoutNanos;
         saveTransferId = transferId;
-        saveStartedAt = clock.getAsLong();
+        saveStartedAt = startedAt;
         saveStatus = SaveStatus.SAVING;
     }
 

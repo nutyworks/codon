@@ -185,7 +185,8 @@ public final class ClientNetworking {
         if (watches == null) return;
         Minecraft client = Minecraft.getInstance();
         long transferId = nextTransferId();
-        watches.saveStarted(transferId, TransferBudget.TIMEOUT_NANOS);
+        long startedAt = System.nanoTime();
+        watches.saveStarted(transferId, TransferBudget.TIMEOUT_NANOS, startedAt);
         watchUpload.reset();
         acknowledgedTransferId = legacyTransferId = 0;
         if (client.player == null) {
@@ -196,11 +197,12 @@ public final class ClientNetworking {
             var pages = WatchDefinitions.validatedPages(definitions);
             if (ClientPlayNetworking.canSend(WatchSaveV2Payload.TYPE.id())) {
                 acknowledgedTransferId = transferId;
-                sendWatchPage(watchUpload.begin(transferId, pages));
+                sendWatchPage(watchUpload.begin(transferId, pages, startedAt));
             } else if (ClientPlayNetworking.canSend(WatchSavePayload.TYPE.id())) {
                 legacyTransferId = transferId;
                 int offset = 0;
                 for (int index = 0; index < pages.size(); index++) {
+                    if (watches.saveStatus() != ClientWatchState.SaveStatus.SAVING) return;
                     var page = pages.get(index);
                     ClientPlayNetworking.send(new WatchSavePayload(transferId, offset, index == pages.size() - 1, page));
                     offset += page.size();
@@ -213,6 +215,10 @@ public final class ClientNetworking {
     }
 
     private static void sendWatchPage(ClientWatchUploadState.Page page) {
+        if (watchUpload.transferId() != page.transferId()) {
+            expireWatchUpload();
+            return;
+        }
         ClientPlayNetworking.send(new WatchSaveV2Payload(page.transferId(), page.offset(), page.last(), page.definitions()));
     }
 

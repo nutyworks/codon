@@ -269,6 +269,10 @@ final acknowledgement leaves persistence unconfirmed, since the server may alrea
 have committed. Legacy peers use the existing bounded all-or-nothing transfer and
 can fail explicitly under overload. `ClientWatchUploadStateTest` includes 8,192
 entries across 1,024 acknowledged pages and stale, duplicate and unsolicited replies.
+The client UI and uploader share the same fixed 30-second start instant, before
+page validation and copying. Once the UI times out, no further v2 page can advance;
+unsent v2/legacy pages are checked again before dispatch. `ClientWatchSaveDeadlineTest`
+covers validation/copy delays, exact-boundary ACKs, final replies and connection replacement.
 
 The first completed owner watch sync merges the still-present local definitions
 with saved server definitions by canonical identity. Local row IDs, expressions,
