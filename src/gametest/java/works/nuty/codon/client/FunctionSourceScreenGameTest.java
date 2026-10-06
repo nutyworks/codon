@@ -186,6 +186,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             context.takeScreenshot("codon-function-source-filtered-drawer");
             context.runOnClient(client -> verifyFilteredSelection(client.gui.screen(), sourceState));
             verifySearchScrollReset(context);
+            verifyCollapsedTreeFollowsNormalizedSearch(context);
             verifyInlineStagesBetweenSourceRows(context);
             verifyFinalRowAtMinimumHeight(context);
             verifyNestedFunctionLinks(context);
@@ -239,6 +240,94 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
         context.runOnClient(client -> require(clickTreeRow(client.gui.screen(), 1)
             && new FunctionId("codon_test", "match_00").equals(sources.selected()),
             "query change stays at the first filtered result after resizing; selected=" + sources.selected()));
+    }
+
+    private static void verifyCollapsedTreeFollowsNormalizedSearch(ClientGameTestContext context) {
+        context.getInput().resizeWindow(1280, 720);
+        context.getInput().setCursorPos(0, 0);
+        FunctionId packTick = new FunctionId("pack", "util/tick"), zetaTick = new FunctionId("zeta", "tick");
+        ClientFunctionSourceState sources = context.computeOnClient(client -> {
+            client.options.guiScale().set(2);
+            client.resizeGui();
+            var state = new ClientFunctionSourceState();
+            state.open();
+            long request = state.drainRequests().getFirst().requestId();
+            state.accept(new ClientFunctionSourceState.ListPage(request, ClientFunctionSourceState.Status.READY, 0, true,
+                List.of(new FunctionId("pack", "main"), new FunctionId("pack", "util/clean"), packTick, zetaTick)));
+            client.setScreenAndShow(new FunctionSourceScreen(new Screen(Component.empty()) { }, state));
+            return state;
+        });
+        context.waitTicks(2);
+        // Expanded rows are pack, main, util, clean, tick, zeta, tick. Collapse the folder, then its namespace.
+        context.runOnClient(client -> {
+            require(clickTreeRow(client.gui.screen(), 2) && clickTreeRow(client.gui.screen(), 0)
+                && sources.selected() == null, "native clicks collapse the folder and namespace without selecting");
+        });
+        context.waitTicks(2);
+        var collapsed = treeRows(context, "codon-function-source-tree-collapsed-blank");
+        String[] names = {"whitespace", "unicode-whitespace"}, blanks = {"   ", "　  "};
+        for (int index = 0; index < blanks.length; index++) {
+            String blank = blanks[index];
+            context.runOnClient(client -> searchBox(client.gui.screen()).setValue(blank));
+            context.waitTicks(2);
+            // The old '+'/'-' glyph read the raw search text, so whitespace drew the collapsed namespace open.
+            int differing = differingPixels(collapsed, treeRows(context, "codon-function-source-tree-collapsed-" + names[index]));
+            require(differing == 0, names[index] + " input must render the same collapsed '+' rows as blank input, "
+                + differing + " pixels differ");
+        }
+        context.runOnClient(client -> searchBox(client.gui.screen()).setValue("PACK  tick"));
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            Screen screen = client.gui.screen();
+            // Filtered rows are pack, util, tick. Group rows do nothing and the rest of the old list is gone.
+            for (int row : new int[]{0, 1})
+                require(clickTreeRow(screen, row) && sources.selected() == null, "filtered group row " + row + " is not selectable");
+            for (int row : new int[]{3, 4, 5, 6})
+                require(!clickTreeRow(screen, row) && sources.selected() == null, "nonmatching row " + row + " is not selectable");
+            require(clickTreeRow(screen, 2) && packTick.equals(sources.selected()),
+                "the multi-term filter expands the collapsed folders and selects the real matching function");
+        });
+        context.waitTicks(2);
+        var filtered = treeRows(context, "codon-function-source-tree-multi-term-filter");
+        require(differingPixels(firstRow(collapsed), firstRow(filtered)) > 0,
+            "an open '-' namespace row is pixel-distinct from the collapsed '+' row, so the comparison can detect the old glyph");
+        context.runOnClient(client -> searchBox(client.gui.screen()).setValue(""));
+        context.waitTicks(2);
+        int cleared = differingPixels(collapsed, treeRows(context, "codon-function-source-tree-cleared-collapsed"));
+        require(cleared == 0, "clearing the filter returns to the collapsed rows, " + cleared + " pixels differ");
+        context.runOnClient(client -> {
+            Screen screen = client.gui.screen();
+            // Expanding the namespace shows pack, main, util(+), zeta, tick: util stayed collapsed through filtering.
+            require(clickTreeRow(screen, 0) && clickTreeRow(screen, 4) && zetaTick.equals(sources.selected()),
+                "the folder collapse state survives filtering and clearing");
+        });
+    }
+
+    private static java.awt.image.BufferedImage treeRows(ClientGameTestContext context, String name) {
+        int[] box = context.computeOnClient(client -> {
+            Screen screen = client.gui.screen();
+            EditBox search = searchBox(screen);
+            // The list starts five pixels below the search box; three 18-pixel rows hold the collapsed fixture.
+            return new int[]{screen.width, screen.height, search.getX(), search.getBottom() + 5, search.getWidth(), 3 * 18};
+        });
+        try {
+            var image = javax.imageio.ImageIO.read(context.takeScreenshot(name).toFile());
+            double sx = (double) image.getWidth() / box[0], sy = (double) image.getHeight() / box[1];
+            return image.getSubimage((int) Math.round(box[2] * sx), (int) Math.round(box[3] * sy),
+                (int) Math.round(box[4] * sx), (int) Math.round(box[5] * sy));
+        } catch (java.io.IOException error) { throw new AssertionError(error); }
+    }
+
+    private static java.awt.image.BufferedImage firstRow(java.awt.image.BufferedImage rows) {
+        return rows.getSubimage(0, 0, rows.getWidth(), rows.getHeight() / 3);
+    }
+
+    private static int differingPixels(java.awt.image.BufferedImage expected, java.awt.image.BufferedImage actual) {
+        if (expected.getWidth() != actual.getWidth() || expected.getHeight() != actual.getHeight()) return Integer.MAX_VALUE;
+        int differing = 0;
+        for (int x = 0; x < expected.getWidth(); x++)
+            for (int y = 0; y < expected.getHeight(); y++) if (expected.getRGB(x, y) != actual.getRGB(x, y)) differing++;
+        return differing;
     }
 
     private static void verifyInlineStagesBetweenSourceRows(ClientGameTestContext context) {

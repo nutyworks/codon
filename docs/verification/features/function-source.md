@@ -17,6 +17,12 @@ be checked. The viewer lists functions actually loaded by the current server.
 1. Press `V`, then the toolbar's **Source** (`</>`) icon. Search by namespace/path, expand
    folders and select the function. Its source appears read-only; browsing does
    not require executing it.
+   Search treats whitespace-separated terms (any Java whitespace) as literal,
+   case-insensitive text that must all occur in `namespace:path`, in any order:
+   `pack tick` finds `pack:util/tick`. A single term, including `:` and `/`, keeps
+   its substring meaning; blank or whitespace-only input is no filter. A filter
+   shows matching folders open without changing the folders you collapsed, and
+   clearing it returns to them.
    The Functions tree shows a separate scrollbar only while its expanded or
    filtered rows overflow. Click its track or drag its thumb to navigate without
    selecting a row or scrolling Source. Search, folder collapse and resizing
@@ -174,6 +180,7 @@ scroll settings. Synthetic callback input does not verify a physical trackpad.
 | Network payloads | `test`: `FunctionSourcePayloadTest`, `BreakpointStagePreviewPayloadTest` |
 | Line gutter, one-stage suppression, EN/KO/custom scale and hit boxes | `FunctionLineBreakpointGameTest` |
 | Real rendering, selection, resize and inline stage markers | `FunctionSourceScreenGameTest`, `FunctionSourceInteractionGameTest`, `FunctionSourceReviewGameTest` |
+| Functions search: literal case-insensitive all-terms matching, whitespace-only as no filter, collapsed `+` rows, filter expansion and clearing | `clientTest`: `SourceInteractionTest`; `FunctionSourceScreenGameTest` |
 | Active stage readability, adjacent stages, horizontal clipping and representative scales | `FunctionSourceStageHighlightGameTest` |
 | Source toolbar icon, state styling, scale readability and native activation | `DebuggerSourceIconGameTest` |
 | F3/Shift+F3 press/repeat/release ownership and vanilla behavior outside Source | `FunctionSourceKeyboardGameTest` |
@@ -273,6 +280,20 @@ After each rebuild, click the remaining result and the row where the excluded
 function used to appear: only the matching function may be selected. With a long
 list, scroll down, enter a new query, then resize; the first filtered result must
 still be at the top instead of restoring the old scroll position.
+
+`SourceInteractionTest` covers the query value: every Java-whitespace code point
+agrees with `String.isBlank`, mixed separators, all terms in any order, `Locale.ROOT`
+folding under a Turkish default locale, and literal `namespace:path`/punctuation
+text without pattern semantics. `FunctionSourceScreenGameTest` then collapses a
+namespace and folder with native clicks and compares the first three tree rows of
+`codon-function-source-tree-collapsed-*` captures: blank, ASCII-whitespace and
+Unicode-whitespace input must leave identical pixels. A comparison on the state alone
+would miss the old defect, where the raw text drew the collapsed namespace open
+with its children hidden. `PACK  tick` (`codon-function-source-tree-multi-term-filter`)
+opens the preserved folders, group and nonmatching rows cannot be selected and only
+`pack:util/tick` is; clearing (`codon-function-source-tree-cleared-collapsed`) restores
+the collapsed rows and folder state. The function list is an injected fixture, not
+real server discovery.
 
 `FunctionSourceInteractionGameTest` exercises Minecraft's native horizontal callback,
 fractional X accumulation, Shift+vertical/native-X precedence, native vertical wheel
