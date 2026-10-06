@@ -91,13 +91,13 @@ public final class DebuggerReadabilityGameTest implements FabricClientGameTest {
                 }
                 int[][] chatCases = language.equals("en_us")
                     ? new int[][]{{854, 480, 5}, {854, 480, 10}, {1280, 598, 3},
-                        {1280, 600, 3}, {1024, 576, 0}}
+                        {1280, 600, 3}}
                     : new int[][]{{854, 480, 10}};
                 for (int[] chatCase : chatCases) {
                     context.getInput().resizeWindow(chatCase[0], chatCase[1]);
                     context.runOnClient(client -> {
                         state.preferences().setBackgroundOpacity(100);
-                        state.preferences().setInspectorVisible(chatCase[0] == 1024);
+                        state.preferences().setInspectorVisible(false);
                         state.applyPause(DebuggerPresentationGameTest.fixture(client));
                         client.gui.hud.getChat().clearMessages(false);
                         for (int row = 1; row <= chatCase[2]; row++)
@@ -127,14 +127,7 @@ public final class DebuggerReadabilityGameTest implements FabricClientGameTest {
                         require(buttons.stream().anyMatch(button -> button.getMessage().getString()
                             .equals(Component.translatable("codon.ui.expand_command").getString())),
                             "Compressed Command keeps its actions");
-                        if (chatCase[0] == 1024) {
-                            var header = buttons.stream().filter(button -> button.getMessage().getString()
-                                .equals(Component.translatable("codon.nbt.current_pause").getString()))
-                                .findFirst().orElseThrow(() -> new AssertionError("Short inspector retains its NBT heading"));
-                            var inspector = DebuggerLayout.create(screen.width, screen.height, true, 104, 230, inset).inspector();
-                            require(header.getBottom() <= inspector.y() + inspector.height(),
-                                "The NBT heading is contained in its short inspector viewport");
-                        }
+
                     });
                     context.takeScreenshot("codon-readable-chat-" + language + "-" + chatCase[0]
                         + "x" + chatCase[1] + "-rows-" + chatCase[2]);

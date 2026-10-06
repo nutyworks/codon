@@ -66,7 +66,7 @@ world projection and rendering remain separate acceptance checks.
 
 | Concern | Existing tests |
 | --- | --- |
-| HUD/chat inset, modal backing and EN/KO compact/default readability | `clientTest`: `DebuggerLayoutTest`; `test`: `DebuggerThemeTest`; native: `DebuggerReadabilityGameTest`, `DebuggerOpacityGameTest`, `DebuggerPresentationGameTest` |
+| HUD/chat inset, modal backing and EN/KO compact/default readability | `clientTest`: `DebuggerLayoutTest`; `test`: `DebuggerThemeTest`; native: `DebuggerReadabilityGameTest`, `DebuggerOpacityGameTest`, `DebuggerPresentationGameTest`, `DebuggerNbtTreeGameTest` |
 | Short/long boundary, repeated events and cancellation | `clientTest`: `UiHideGestureTest` |
 | Native keyboard/mouse dispatch, screen input, rebind, chat, missed mouse release, focus flag and rejoin | `DebuggerPeekUiGameTest` |
 | Real server breakpoint stays paused, then each command executes once after Resume | `DebuggerFreecamResumeGameTest` |
@@ -103,6 +103,9 @@ physical focus changes, a separate dedicated server, or the original packaged VM
 survival health/hotbar at 854×480 and 1280×720, EN/KO, default/zero opacity. Modal
 screenshots face bright sky and dark terrain for each combination. Additional
 captures show idle/no-F3, idle/F3, paused/F3 and open chat in both languages. The
-fixture uses injected client snapshots, so use the real world-marker regression
+Targeted captures also check five/ten recent chat rows and the 299/300-pixel height
+boundary. `DebuggerNbtTreeGameTest` checks heading containment in a 64-pixel inspector
+with an actual paused entity source; an injected flow fixture has no live NBT executor.
+The fixture uses injected client snapshots, so use the real world-marker regression
 for H and server-pause safety. Inspect `codon-readable-*` images; this matrix does
 not establish arbitrary modded HUD placement or unusually many health rows.
