@@ -180,12 +180,12 @@ scroll settings. Synthetic callback input does not verify a physical trackpad.
 | Network payloads | `test`: `FunctionSourcePayloadTest`, `BreakpointStagePreviewPayloadTest` |
 | Line gutter, one-stage suppression, EN/KO/custom scale and hit boxes | `FunctionLineBreakpointGameTest` |
 | Real rendering, selection, resize and inline stage markers | `FunctionSourceScreenGameTest`, `FunctionSourceInteractionGameTest`, `FunctionSourceReviewGameTest` |
-| Functions search: literal case-insensitive all-terms matching, whitespace-only as no filter, collapsed `+` rows, filter expansion and clearing | `clientTest`: `SourceInteractionTest`; `FunctionSourceScreenGameTest` |
 | Active stage readability, adjacent stages, horizontal clipping and representative scales | `FunctionSourceStageHighlightGameTest` |
 | Source toolbar icon, state styling, scale readability and native activation | `DebuggerSourceIconGameTest` |
 | F3/Shift+F3 press/repeat/release ownership and vanilla behavior outside Source | `FunctionSourceKeyboardGameTest` |
 | Exact gutter target with missing/loading/stale previews, direct marker editor/cancel, parsed as/at/run/function marker targets | `FunctionLineBreakpointGameTest`, `FlowBreakpointInteractionGameTest` |
 | Focused Find/function-list Search key press before character input, bound/unbound/remapped cursor-mode keys, parent shortcuts and focus navigation | `FunctionSourceTextInputGameTest` |
+| Functions search: literal case-insensitive all-terms matching, whitespace-only as no filter, collapsed `+` rows, filter expansion and clearing | `clientTest`: `SourceInteractionTest`; `FunctionSourceScreenGameTest` |
 
 Example: `./gradlew runClientGameTest -PclientGameTest=FunctionSourceScreenGameTest`.
 
