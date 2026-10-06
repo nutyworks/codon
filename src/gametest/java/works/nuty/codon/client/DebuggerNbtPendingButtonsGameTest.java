@@ -57,7 +57,29 @@ public final class DebuggerNbtPendingButtonsGameTest implements FabricClientGame
             context.waitTicks(1);
             loadCompound(context, state);
             context.waitTicks(2);
+            context.getInput().setCursorPos(1275, 5);
+            context.waitTicks(1);
+            context.runOnClient(client -> require(pinAt(screen, button(screen, "▾ compound: {}")).icon() == DebuggerIcon.PIN,
+                "An unpinned row advertises its pin action before hover"));
             context.takeScreenshot("codon-nbt-buttons-loaded");
+            double[] rowPointer = context.computeOnClient(client -> {
+                DebuggerButton compound = button(screen, "▾ compound: {}");
+                client.setLastInputType(InputType.MOUSE);
+                DebuggerTooltipGameTest.beginObservation();
+                return new double[]{screen.uiScale().toGame(compound.getX() + compound.getWidth() / 2.0)
+                        * client.getWindow().getScreenWidth() / client.getWindow().getGuiScaledWidth(),
+                    screen.uiScale().toGame(compound.getY() + compound.getHeight() / 2.0)
+                        * client.getWindow().getScreenHeight() / client.getWindow().getGuiScaledHeight()};
+            });
+            context.getInput().setCursorPos(rowPointer[0], rowPointer[1]);
+            context.waitTicks(1);
+            require(context.computeOnClient(client -> DebuggerTooltipGameTest.endObservation()).isEmpty(),
+                "Moving onto an NBT row starts the standard tooltip delay");
+            context.runOnClient(client -> DebuggerTooltipGameTest.beginObservation());
+            context.waitTicks(12);
+            require(context.computeOnClient(client -> DebuggerTooltipGameTest.endObservation()).contains("compound"),
+                "The NBT row path appears after the tooltip delay");
+            context.takeScreenshot("codon-nbt-row-tooltip-delayed");
 
             context.runOnClient(client -> {
                 click(screen, pinAt(screen, button(screen, "▾ compound: {}")), InputConstants.MOUSE_BUTTON_LEFT);
@@ -67,6 +89,8 @@ public final class DebuggerNbtPendingButtonsGameTest implements FabricClientGame
             ClientNbtQuery pendingRoot = context.computeOnClient(client -> {
                 require(before.compoundPin().getMessage().getString().equals(Component.translatable("codon.nbt.unpin", state.selectedSource().entity().name()).getString()),
                     "The selected NBT pin is visibly retained before refresh");
+                require(before.compoundPin().icon() == DebuggerIcon.REMOVE && before.listPin().icon() == DebuggerIcon.PIN,
+                    "Pinned removal and unpinned addition have distinct icons");
                 client.setLastInputType(InputType.KEYBOARD_TAB);
                 screen.setFocused(before.compound());
                 require(screen.getFocused() == before.compound(), "Compound toggle owns keyboard focus before refresh");
@@ -186,7 +210,8 @@ public final class DebuggerNbtPendingButtonsGameTest implements FabricClientGame
 
     private static DebuggerButton pinAt(CodonScreen screen, DebuggerButton node) {
         return screen.children().stream().filter(DebuggerButton.class::isInstance).map(DebuggerButton.class::cast)
-            .filter(button -> button.icon() == DebuggerIcon.WATCHES && button.getY() == node.getY()).findFirst()
+            .filter(button -> (button.icon() == DebuggerIcon.PIN || button.icon() == DebuggerIcon.REMOVE)
+                && button.getY() == node.getY()).findFirst()
             .orElseThrow(() -> new AssertionError("NBT node pin button is rendered"));
     }
 

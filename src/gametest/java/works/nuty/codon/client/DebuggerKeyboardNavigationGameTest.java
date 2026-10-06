@@ -255,11 +255,11 @@ public final class DebuggerKeyboardNavigationGameTest implements FabricClientGam
         context.runOnClient(client -> {
             require(focusedLabel(screen).startsWith("▸ field11:"), "Down reveals hidden NBT rows in the same column");
             press(client, screen, InputConstants.KEY_RIGHT, InputConstants.KEYCODE_RIGHT, 0, InputType.KEYBOARD_ARROW);
-            require(focused(screen).icon() == DebuggerIcon.WATCHES, "Right visits the NBT Watch action within the same container");
+            require(isNbtPin(focused(screen)), "Right visits the NBT Watch action within the same container");
             press(client, screen, InputConstants.KEY_UP, InputConstants.KEYCODE_UP, 0, InputType.KEYBOARD_ARROW);
         });
         context.waitTicks(2);
-        context.runOnClient(client -> require(focused(screen).icon() == DebuggerIcon.WATCHES, "NBT Up preserves the Watch action column"));
+        context.runOnClient(client -> require(isNbtPin(focused(screen)), "NBT Up preserves the Watch action column"));
         context.takeScreenshot("codon-keyboard-nbt-hidden-row");
     }
 
@@ -377,6 +377,10 @@ public final class DebuggerKeyboardNavigationGameTest implements FabricClientGam
         } catch (ReflectiveOperationException exception) {
             throw new AssertionError("Help scroll offset is inspectable", exception);
         }
+    }
+
+    private static boolean isNbtPin(DebuggerButton button) {
+        return button.icon() == DebuggerIcon.PIN || button.icon() == DebuggerIcon.REMOVE;
     }
 
     private static void require(boolean condition, String message) {

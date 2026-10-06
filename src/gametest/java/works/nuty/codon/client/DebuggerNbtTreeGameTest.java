@@ -478,9 +478,7 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
         context.runOnClient(client -> {
             CodonScreen screen = codonScreen(client.gui.screen());
             DebuggerButton leaf = button(screen, message -> message.startsWith("  [0]:"));
-            DebuggerButton pin = screen.children().stream().filter(DebuggerButton.class::isInstance).map(DebuggerButton.class::cast)
-                .filter(button -> button.icon() == DebuggerIcon.WATCHES && button.getY() == leaf.getY()).findFirst()
-                .orElseThrow(() -> new AssertionError("UUID leaf pin is visible for source " + sourceName));
+            DebuggerButton pin = pinBeside(screen, leaf);
             click(screen, pin, rightClick ? InputConstants.MOUSE_BUTTON_RIGHT : InputConstants.MOUSE_BUTTON_LEFT);
             WatchSpec expected = new WatchSpec(WatchSpec.Kind.ENTITY_NBT, "", UUID_LEAF, executor);
             require(CodonClientMod.state().watches().entries().stream().anyMatch(entry -> entry.spec().equals(expected)),
@@ -550,15 +548,15 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
         context.runOnClient(client -> {
             CodonScreen screen = codonScreen(client.gui.screen());
             DebuggerButton leaf = button(screen, message -> message.startsWith("  [0]:"));
-            DebuggerButton pin = screen.children().stream().filter(DebuggerButton.class::isInstance).map(DebuggerButton.class::cast)
-                .filter(button -> button.icon() == DebuggerIcon.WATCHES && button.getY() == leaf.getY()).findFirst().orElseThrow();
+            DebuggerButton pin = pinBeside(screen, leaf);
             click(screen, pin);
         });
     }
 
     private static DebuggerButton pinBeside(CodonScreen screen, DebuggerButton field) {
         return screen.children().stream().filter(DebuggerButton.class::isInstance).map(DebuggerButton.class::cast)
-            .filter(button -> button.icon() == DebuggerIcon.WATCHES && button.getY() == field.getY()).findFirst().orElseThrow();
+            .filter(button -> (button.icon() == DebuggerIcon.PIN || button.icon() == DebuggerIcon.REMOVE)
+                && button.getY() == field.getY()).findFirst().orElseThrow();
     }
 
     private static boolean pinsReady(UUID first, UUID second) {
