@@ -17,6 +17,7 @@ import works.nuty.codon.client.input.InputManager;
 import works.nuty.codon.client.network.ClientNetworking;
 import works.nuty.codon.client.state.ClientBreakpointState;
 import works.nuty.codon.client.state.ClientDebuggerState;
+import works.nuty.codon.client.state.ClientRequestFeedback;
 import works.nuty.codon.client.ui.CodonScreen;
 import works.nuty.codon.client.ui.DebuggerOverlay;
 import works.nuty.codon.client.ui.DebuggerFeedbackToast;
@@ -28,6 +29,7 @@ import works.nuty.codon.core.model.BreakpointTarget;
 import works.nuty.codon.core.model.PauseSnapshot;
 import works.nuty.codon.core.model.SourceLocation;
 import works.nuty.codon.network.ControlRejectedPayload;
+import works.nuty.codon.network.BreakpointEditResultPayload;
 
 import java.util.Optional;
 import java.util.ArrayList;
@@ -178,8 +180,7 @@ public final class DebuggerRequestFeedbackGameTest implements FabricClientGameTe
                 rejectInline(context, staleTarget, ClientBreakpointState.Result.NO_PERMISSION, "ko_kr");
                 setOwner(context, server, true);
 
-                context.runOnClient(client -> CodonClientMod.input().control(InputManager.Control.RESUME));
-                context.waitFor(client -> !state().isPaused() && !state().isContinuing(), 200);
+                resumeAfterInlineRejection(context, staleTarget);
                 world.getServer().runOnServer(value -> {
                     var player = value.getPlayerList().getPlayers().getFirst();
                     var score = value.getScoreboard().getPlayerScoreInfo(player, value.getScoreboard().getObjective(OBJECTIVE));
@@ -246,6 +247,46 @@ public final class DebuggerRequestFeedbackGameTest implements FabricClientGameTe
         waitToastAnimation(context);
         context.runOnClient(client -> require(feedbackRendered, "inline rejection toast actually renders above the occupied slots"));
         context.takeScreenshot("codon-inline-rejected-" + result.name().toLowerCase(java.util.Locale.ROOT) + "-" + locale);
+    }
+
+    /** Send a real control in the edit reply's client frame, before its feedback can draw. */
+    @SuppressWarnings("unchecked")
+    private static void resumeAfterInlineRejection(ClientGameTestContext context, BreakpointTarget target) {
+        AtomicReference<ClientRequestFeedback.Notice> rejection = new AtomicReference<>();
+        var original = context.computeOnClient(client -> {
+            var receiver = (ClientPlayNetworking.PlayPayloadHandler<BreakpointEditResultPayload>)
+                ClientPlayNetworking.unregisterReceiver(BreakpointEditResultPayload.TYPE.id());
+            require(receiver != null, "normal breakpoint result receiver exists");
+            require(ClientPlayNetworking.registerReceiver(BreakpointEditResultPayload.TYPE, (payload, networkContext) -> {
+                receiver.receive(payload, networkContext);
+                networkContext.client().execute(() -> {
+                    var notice = state().feedback().current();
+                    require(notice != null && notice.messageKey().equals("codon.breakpoint.error.stale_source"),
+                        "the actual edit rejection arrives before the control");
+                    rejection.set(notice);
+                    feedbackRendered = false;
+                    CodonClientMod.input().control(InputManager.Control.RESUME);
+                    require(state().controlPending() && state().feedback().current() == notice,
+                        "sending a control cannot erase the rejected edit before its first draw");
+                });
+            }), "install connection-local edit/control ordering observer");
+            return receiver;
+        });
+        try {
+            context.runOnClient(client -> require(ClientNetworking.sendBreakpointEdit(state(),
+                ClientBreakpointState.Action.TOGGLE, BreakpointDefinition.plain(target)), "send real rejected edit before Resume"));
+            context.waitFor(client -> rejection.get() != null && !state().isPaused() && !state().isContinuing(), 200);
+            waitToastAnimation(context);
+            context.runOnClient(client -> require(state().feedback().current() == rejection.get() && feedbackRendered,
+                "breakpoint rejection remains visible after actual authoritative advancement"));
+            context.takeScreenshot("codon-inline-rejected-after-continue-ko_kr");
+            CodonMod.LOGGER.info("Edit/control ordering PASS: native edit rejection, same-frame Resume send, authoritative advancement, feedback rendered");
+        } finally {
+            context.runOnClient(client -> {
+                ClientPlayNetworking.unregisterReceiver(BreakpointEditResultPayload.TYPE.id());
+                require(ClientPlayNetworking.registerReceiver(BreakpointEditResultPayload.TYPE, original), "restore breakpoint result receiver");
+            });
+        }
     }
 
     private static void configure(TestSingleplayerContext world) {

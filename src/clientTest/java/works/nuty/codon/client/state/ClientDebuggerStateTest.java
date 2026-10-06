@@ -2,6 +2,8 @@ package works.nuty.codon.client.state;
 
 import org.junit.jupiter.api.Test;
 import works.nuty.codon.core.model.BlockLocation;
+import works.nuty.codon.core.model.BreakpointDefinition;
+import works.nuty.codon.core.model.BreakpointTarget;
 import works.nuty.codon.core.model.CallFrame;
 import works.nuty.codon.core.model.CommandSnippet;
 import works.nuty.codon.core.model.EntityRef;
@@ -786,6 +788,62 @@ class ClientDebuggerStateTest {
         assertNotEquals(old, state.controlRequestId());
         state.rejectControl(10, old, "command.codon.error.stale_pause");
         assertTrue(state.controlPending());
+    }
+
+    @Test
+    void breakpointRejectionSurvivesUnrelatedControlSendAndAcknowledgement() {
+        for (var acknowledgement : List.<java.util.function.Consumer<ClientDebuggerState>>of(
+                ClientDebuggerState::applyStep, ClientDebuggerState::applyResume, ClientDebuggerState::applyContinue)) {
+            AtomicLong now = new AtomicLong();
+            ClientDebuggerState state = new ClientDebuggerState(now::get);
+            state.applyPause(controlPause(10));
+            var target = BreakpointTarget.whole(state.snapshot().location());
+            var edit = state.breakpoints().begin(ClientBreakpointState.Action.TOGGLE, BreakpointDefinition.plain(target));
+            assertNotNull(edit);
+            assertTrue(state.beginControlRequest());
+            state.controlSent();
+            state.breakpoints().finish(edit.requestId(), ClientBreakpointState.Result.STALE_SOURCE);
+            var rejection = state.feedback().current();
+            assertNotNull(rejection);
+
+            acknowledgement.accept(state);
+            assertFalse(state.isPaused());
+            assertFalse(state.controlPending());
+            assertSame(rejection, state.feedback().current(), "advancement does not acknowledge the rejected breakpoint edit");
+            state.applyPause(controlPause(11));
+            assertSame(rejection, state.feedback().current(), "a new stop does not erase unrelated edit feedback");
+            assertTrue(state.beginControlRequest());
+            assertSame(rejection, state.feedback().current(), "sending another control does not erase edit feedback");
+            now.set(5_999_999_999L);
+            assertSame(rejection, state.feedback().current());
+            now.incrementAndGet();
+            assertNull(state.feedback().current(), "advancement cannot extend the six-second lifetime");
+            assertEquals(ClientBreakpointState.Result.STALE_SOURCE, state.breakpoints().error(target));
+
+            edit = state.breakpoints().begin(ClientBreakpointState.Action.TOGGLE, BreakpointDefinition.plain(target));
+            assertNotNull(edit);
+            state.breakpoints().finish(edit.requestId(), ClientBreakpointState.Result.STALE_SOURCE);
+            assertNotNull(state.feedback().current());
+            state.reset();
+            assertNull(state.feedback().current(), "disconnect clears every notice");
+        }
+    }
+
+    @Test
+    void authoritativeAdvancementStillClearsControlTimeoutFeedback() {
+        for (var acknowledgement : List.<java.util.function.Consumer<ClientDebuggerState>>of(
+                ClientDebuggerState::applyStep, ClientDebuggerState::applyResume, ClientDebuggerState::applyContinue)) {
+            AtomicLong now = new AtomicLong();
+            ClientDebuggerState state = new ClientDebuggerState(now::get);
+            state.applyPause(controlPause(10));
+            assertTrue(state.beginControlRequest());
+            state.controlSent();
+            now.set(2_000_000_000L);
+            assertFalse(state.controlPending());
+            assertNotNull(state.feedback().current());
+            acknowledgement.accept(state);
+            assertNull(state.feedback().current(), "an authoritative response resolves control uncertainty");
+        }
     }
 
     private static PauseSnapshot controlPause(long id) {

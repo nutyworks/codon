@@ -49,8 +49,10 @@ waiting for pre-step Watch reads does not start that deadline. It does not mean 
 or fabricate an execution acknowledgement. Late/duplicate rejections cannot clear
 a newer pending request. Feedback uses separate toast slots and renders above ordinary
 notifications, so a full, frozen vanilla toast queue cannot block it. Ordinary toast
-identities and paused lifetimes remain unchanged. Feedback expires after six seconds, and a new pause,
-authoritative advancement or disconnect clears it. These notices are separate from
+identities and paused lifetimes remain unchanged. Feedback expires after six seconds.
+A new control, pause or authoritative advancement clears control feedback; those
+execution events do not acknowledge independent breakpoint edits, whose notices
+retain their original deadline. Disconnect clears every notice. These notices are separate from
 Watch-read status before a control is sent. Command-tree owner checks remain intact;
 denials before command execution and mailbox drops have no correlated reply and
 therefore use the same unknown-outcome timeout.
@@ -131,6 +133,11 @@ ordinary notifications in production; fixture cleanup belongs to the test client
 
 Current-stop Resume recovers and the score of 11 proves each block ran once. The test also observes a
 real not-paused rejection after execution ends and resets connection-local state.
+Before recovery, a real breakpoint rejection triggers Resume in the same client
+frame, before the notice's first draw. The Korean capture after authoritative
+advancement must retain that rejection; controls cannot erase unrelated edit
+feedback. The state regression covers Step/Resume/Continue, the next pause, a
+new control request, six-second expiry and disconnect without extending the clock.
 For that deliberately stale client view, vanilla also pauses the integrated
 server; the test drains the mailbox on the server thread to receive its rejection.
 This is an integrated-server check, not a dedicated-server or real packet-loss test.
