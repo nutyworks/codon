@@ -74,6 +74,11 @@ The paused captures inject a client snapshot: they do not prove a server breakpo
 markers remain the world-marker regression's concern (the renderer never reads the
 preference).
 
+```sh
+./gradlew test --tests '*ClientSettingsStoreTest'
+./gradlew runClientGameTest -PclientGameTest=DebuggerIdleBadgeGameTest
+```
+
 ## Code entry points
 
 - [UiHideGesture](../../../src/client/java/works/nuty/codon/client/input/UiHideGesture.java): monotonic press/release classification and cancelled gestures.
@@ -98,9 +103,7 @@ preference).
 
 ```sh
 ./gradlew clientTest --tests '*UiHideGestureTest'
-./gradlew test --tests '*ClientSettingsStoreTest'
 ./gradlew runClientGameTest -PclientGameTest=DebuggerPeekUiGameTest,DebuggerFreecamResumeGameTest,DebuggerWorldMarkerVisibilityGameTest
-./gradlew runClientGameTest -PclientGameTest=DebuggerIdleBadgeGameTest
 ```
 
 Inspect the `codon-peek-*` screenshots: compare world and cursor-mode baselines,
