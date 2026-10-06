@@ -122,8 +122,14 @@ execute as @e[type=minecraft:armor_stand,tag=codon_verify] at @s if entity @s[ta
    measured zero output and no terminal execution. For nested/conditional function
    cases, use the native fixture tests below and inspect their chronology.
 
-Created contexts are green, removed contexts are red, and changed contexts are
-purple in both the inspector and world markers. Incomplete or
+Created contexts are green with a `+` prefix, removed contexts are red with `×`,
+and changed contexts are purple with a neutral dot in the Contexts list and world labels.
+The dot is drawn at 4 logical pixels in diameter, with a 4-pixel gap before the label;
+it does not depend on font glyphs. Hover or keyboard focus explains the changed state,
+and narration includes it. Only changed labels opt in; Watch rows are unaffected.
+The indicator describes the named member of a group; expand it to inspect other members.
+Indicators share the existing text budget, preserving label slots, grouping, source indices,
+and the 150-pixel world-label cap. Three-dimensional marker shapes are unchanged. Incomplete or
 truncated lineage must retain its warning/unknown state. Do not infer edges from
 similar UUIDs/positions or replay a command to reconstruct its effects.
 
@@ -185,7 +191,7 @@ continues execution. This does not truncate or remap source indices.
 | Native `if function` / `unless function` chronology | `DebuggerConditionalFunctionFlowGameTest` |
 | Flow options/markers for never-observed stages, rejection feedback, recovered previews, then first-occurrence terminal and conditional stops | `DebuggerUnobservedFlowBreakpointGameTest`; `clientTest`: `ClientUnobservedFlowSelectionTest`, `ClientFlowPreviewRequestsTest`, `CommandFlowLayoutTest` |
 | Continuations and incomplete-record warnings | `DebuggerContinuationRecordingGameTest` |
-| Rendered command/context UI with injected data | `DebuggerPresentationGameTest` |
+| Rendered context indicators, stable selection/grouping, dot size at 1.00/1.50/2.25 scales, EN/KO hover/focus explanations | `DebuggerPresentationGameTest`; `clientTest`: `GizmoLabelLayoutTest`; `test`: `DebuggerButtonTest` (narration and reused-button cleanup) |
 
 Example: `./gradlew runClientGameTest -PclientGameTest=DebuggerExecutionFlowGameTest`.
 The conditional-function test concerns Minecraft function conditions; conditional

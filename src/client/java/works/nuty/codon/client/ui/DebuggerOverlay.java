@@ -447,6 +447,7 @@ public final class DebuggerOverlay {
             // A transition's output prefix is exactly the current stage's inputs; appended drops
             // are historical markers, not live inspector/Watch/NBT indices.
             if (index < inspectorSourceCount) visibleSources.add(index);
+            // Status glyphs share the existing text budget; grouping and label slots stay fixed.
             int labelWidth = Math.min(150,
                 client.font.width(sourceLabel(source, index, state.isWorldSourceDropped(index))) + 14);
             anchors.add(new Anchor(index, x, y, labelWidth));
@@ -463,7 +464,8 @@ public final class DebuggerOverlay {
             int statusIndex = group && !selected && indices.stream()
                 .anyMatch(member -> worldSourceColor(member, TEXT) != worldSourceColor(index, TEXT)) ? -1 : index;
             Bounds bounds = label.bounds();
-            String sourceTitle = sourceLabel(displayedSources.get(index), index, state.isWorldSourceDropped(index));
+            String sourceTitle = sourceLabel(displayedSources.get(index), index, state.isWorldSourceDropped(index),
+                state.isWorldSourceCreated(index));
             Component title;
             if (group) {
                 String count = "  +" + (indices.size() - 1);
@@ -474,7 +476,7 @@ public final class DebuggerOverlay {
             leader(graphics, (int) label.anchorX(), (int) label.anchorY(),
                 bounds.x() + bounds.width() / 2, bounds.y() + bounds.height(), worldSourceColor(statusIndex, selected ? TEAL : MUTED));
             int groupId = indices.stream().mapToInt(Integer::intValue).min().orElse(index);
-            colorWorldSourceButton(button("label-" + groupId, bounds, title, true, selected, false, false, () -> {
+            DebuggerButton sourceButton = colorWorldSourceButton(button("label-" + groupId, bounds, title, true, selected, false, false, () -> {
                 if (state.snapshot() != snapshot) return;
                 state.selectWorldSource(index);
                 if (group) {
@@ -487,7 +489,10 @@ public final class DebuggerOverlay {
                 if (compactAuxiliary) auxiliaryPanel = AuxiliaryPanel.INSPECTOR;
                 else state.preferences().setInspectorVisible(true);
                 state.preferences().setInspectorTab(InspectorTab.SOURCES);
-            }), statusIndex).setTooltip(Tooltip.create(group ? title : worldSourceTooltip(title, index)));
+            }), statusIndex);
+            // A group names its representative; its status remains available even in a mixed group.
+            if (state.isWorldSourceChanged(index)) sourceButton.withChangedDot(component("codon.ui.flow_changed"));
+            sourceButton.setTooltip(Tooltip.create(worldSourceTooltip(title, index)));
         }
 
     }
@@ -610,7 +615,8 @@ public final class DebuggerOverlay {
         for (int row = 0; row < rows && sourceOffset + row < indices.size(); row++) {
             int index = indices.get(sourceOffset + row);
             PauseSource source = state.displayedSources().get(index);
-            String name = sourceLabel(source, index, state.isDisplayedSourceDropped(index));
+            String name = sourceLabel(source, index, state.isDisplayedSourceDropped(index),
+                state.isDisplayedSourceCreated(index));
             Component title = Component.literal(name);
             Component tooltip = sourceTooltip(title, index);
             if (!source.dimension().equals(dimension())) tooltip = tooltip.copy().append("\n" + shortDimension(source.dimension()));
@@ -695,7 +701,8 @@ public final class DebuggerOverlay {
             iconX -= 18;
         }
         text(graphics, copied ? tr("codon.ui.copied")
-            : sourceLabel(source, state.selectedSourceIndex(), state.selectedSourceDropped()),
+            : sourceLabel(source, state.selectedSourceIndex(), state.selectedSourceDropped(),
+                state.selectedSourceCreated()),
             area.x() + 7 + headingInset, y, iconX + 16 - area.x() - 9 - headingInset, accent);
         y += 16;
         ExecutionFlowContext parent = state.selectedSourceDropped() ? null : state.selectedFlowParent();
@@ -770,18 +777,19 @@ public final class DebuggerOverlay {
     }
 
     private Component worldSourceTooltip(Component title, int index) {
-        return title;
+        return state.isWorldSourceChanged(index) ? title.copy().append("\n").append(component("codon.ui.flow_changed")) : title;
     }
 
     private DebuggerButton colorSourceButton(DebuggerButton button, int index) {
         if (state.isDisplayedSourceDropped(index)) return button.withStatusColor(RED, RED_SURFACE);
         if (state.isDisplayedSourceCreated(index)) return button.withStatusColor(GREEN, GREEN_SURFACE);
-        if (state.isDisplayedSourceChanged(index)) return button.withStatusColor(PURPLE, PURPLE_SURFACE);
+        if (state.isDisplayedSourceChanged(index)) return button.withStatusColor(PURPLE, PURPLE_SURFACE)
+            .withChangedDot(component("codon.ui.flow_changed"));
         return button;
     }
 
     private Component sourceTooltip(Component title, int index) {
-        return title;
+        return state.isDisplayedSourceChanged(index) ? title.copy().append("\n").append(component("codon.ui.flow_changed")) : title;
     }
 
     public boolean scroll(double x, double y, double scrollX, double amount) {
@@ -916,6 +924,10 @@ public final class DebuggerOverlay {
     private static String sourceLabel(PauseSource source, int index, boolean dropped) {
         String prefix = dropped ? "× " : source.entity() == null ? "[" + (index + 1) + "] " : "#" + (index + 1) + " ";
         return prefix + name(source);
+    }
+
+    private static String sourceLabel(PauseSource source, int index, boolean dropped, boolean created) {
+        return (dropped ? "" : created ? "+ " : "") + sourceLabel(source, index, dropped);
     }
 
     private static String name(PauseSource source) {
