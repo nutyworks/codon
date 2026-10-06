@@ -7,6 +7,7 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
+import net.minecraft.client.gui.narration.NarratedElementType;
 import net.minecraft.client.gui.screens.inventory.tooltip.BelowOrAboveWidgetTooltipPositioner;
 import net.minecraft.client.input.InputWithModifiers;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -16,6 +17,8 @@ import org.jspecify.annotations.Nullable;
 /** Standard keyboard/narration behavior with Codon's compact, high-contrast chrome. */
 public class DebuggerButton extends AbstractButton {
     public static final int TEXT_ICON_INSET = DebuggerIcon.SIZE + 2;
+    public static final int CHANGED_DOT_DIAMETER = 4;
+    public static final int CHANGED_DOT_GAP = 4;
     private Runnable action = () -> { };
     private @Nullable Runnable secondaryAction;
     private boolean selected;
@@ -45,6 +48,7 @@ public class DebuggerButton extends AbstractButton {
     private int iconOffsetY;
     private @Nullable Tooltip tooltip;
     private @Nullable Component singleLineTooltip;
+    private @Nullable Component changedDotDescription;
     private int foregroundColor = DebuggerTheme.TEXT;
     private int accentColor = DebuggerTheme.TEAL;
     private int selectedSurface = DebuggerTheme.TEAL_SURFACE;
@@ -63,6 +67,7 @@ public class DebuggerButton extends AbstractButton {
         setMessage(label);
         setTooltip(null);
         this.singleLineTooltip = null;
+        this.changedDotDescription = null;
         this.active = active;
         this.inputBlocked = false;
         this.selected = selected;
@@ -100,6 +105,14 @@ public class DebuggerButton extends AbstractButton {
     public DebuggerButton withOpaqueColors() { opaqueColors = true; return this; }
 
     public int foregroundColor() { return foregroundColor; }
+
+    /** Opt-in context status; the neutral dot is drawn independently of the selected font. */
+    public DebuggerButton withChangedDot(Component description) {
+        this.changedDotDescription = description;
+        return this;
+    }
+
+    public boolean hasChangedDot() { return changedDotDescription != null; }
 
     public void setSelected(boolean selected) { this.selected = selected; }
 
@@ -267,13 +280,22 @@ public class DebuggerButton extends AbstractButton {
         }
         var font = client.font;
         String full = getMessage().getString();
-        int inset = iconWithText ? TEXT_ICON_INSET : 0;
+        int dotInset = hasChangedDot() ? CHANGED_DOT_DIAMETER + CHANGED_DOT_GAP : 0;
+        int inset = (iconWithText ? TEXT_ICON_INSET : 0) + dotInset;
         int available = Math.max(0, contentWidth - textPadding - inset);
         String text = font.width(full) <= available ? full
             : font.plainSubstrByWidth(full, Math.max(0, available - font.width("…"))) + "…";
         graphics.enableScissor(getX() + 2, getY(), getRight() - 2, getBottom());
-        graphics.text(font, text, leftAligned ? getX() - contentOffset + textPadding / 2 + inset
-            : getX() - contentOffset + inset + (contentWidth - inset - font.width(text)) / 2,
+        int textX = leftAligned ? getX() - contentOffset + textPadding / 2 + inset
+            : getX() - contentOffset + inset + (contentWidth - inset - font.width(text)) / 2;
+        if (hasChangedDot()) {
+            int dotX = textX - dotInset;
+            int dotY = getY() + (height - CHANGED_DOT_DIAMETER) / 2;
+            graphics.fill(dotX + 1, dotY, dotX + 3, dotY + 1, DebuggerTheme.TEXT);
+            graphics.fill(dotX, dotY + 1, dotX + 4, dotY + 3, DebuggerTheme.TEXT);
+            graphics.fill(dotX + 1, dotY + 3, dotX + 3, dotY + 4, DebuggerTheme.TEXT);
+        }
+        graphics.text(font, text, textX,
             getY() + (height - font.lineHeight) / 2 + 1, DebuggerTheme.foreground(foreground), false);
         graphics.disableScissor();
         if (keyboardFocus) DebuggerTheme.focusMark(graphics, getX() + 1, getY() + 1);
@@ -302,7 +324,8 @@ public class DebuggerButton extends AbstractButton {
         }
         boolean iconOnly = icon != null && !iconWithText;
         boolean clipped = !hitSurface && client.font.width(getMessage()) > Math.max(0,
-            width - textPadding - (iconWithText ? TEXT_ICON_INSET : 0));
+            width - textPadding - (iconWithText ? TEXT_ICON_INSET : 0)
+                - (hasChangedDot() ? CHANGED_DOT_DIAMETER + CHANGED_DOT_GAP : 0));
         var label = Tooltip.splitTooltip(client, getMessage());
         var lines = new java.util.ArrayList<net.minecraft.util.FormattedCharSequence>();
         if (iconOnly || clipped) lines.addAll(label);
@@ -341,5 +364,6 @@ public class DebuggerButton extends AbstractButton {
     @Override
     protected void updateWidgetNarration(NarrationElementOutput output) {
         defaultButtonNarrationText(output);
+        if (changedDotDescription != null) output.add(NarratedElementType.HINT, changedDotDescription);
     }
 }

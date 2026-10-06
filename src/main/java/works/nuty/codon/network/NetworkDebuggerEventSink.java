@@ -13,6 +13,7 @@ import works.nuty.codon.core.model.BreakpointDefinition;
 import works.nuty.codon.core.model.ExecutionFlowTrace;
 import works.nuty.codon.core.model.PauseSnapshot;
 import works.nuty.codon.core.model.WatchChange;
+import works.nuty.codon.core.model.TransferBudget;
 import works.nuty.codon.core.port.DebuggerEventSink;
 
 import java.util.List;
@@ -32,6 +33,7 @@ public final class NetworkDebuggerEventSink implements DebuggerEventSink {
     private static final AtomicLong nextBreakpointTransferId = new AtomicLong();
     private long changesPauseId;
     private List<WatchChange> changes = List.of();
+    private WatchChangesUnavailablePayload.Reason changesFailure;
 
     public NetworkDebuggerEventSink(Supplier<MinecraftServer> server) {
         this.server = server;
@@ -42,13 +44,20 @@ public final class NetworkDebuggerEventSink implements DebuggerEventSink {
         MinecraftServer s = server.get();
         changesPauseId = snapshot.pauseId();
         changes = List.of();
+        changesFailure = null;
         if (!ClientboundLimits.supports(snapshot)) {
             resetWatchChanges();
         } else if (s != null) {
             try {
                 changes = watchChanges.capture(s, snapshot);
+                if (!fitsChangeBudget(changes)) {
+                    changesFailure = WatchChangesUnavailablePayload.Reason.TOO_LARGE;
+                    changes = List.of();
+                }
             } catch (RuntimeException failure) {
                 watchChanges.reset();
+                changesFailure = WatchChangesUnavailablePayload.Reason.CAPTURE_FAILED;
+                changes = List.of();
                 CodonMod.LOGGER.warn("Could not capture pause watch changes", failure);
             }
         }
@@ -73,8 +82,22 @@ public final class NetworkDebuggerEventSink implements DebuggerEventSink {
 
     public void sendWatchChanges(ServerPlayer player, long pauseId) {
         if (pauseId <= 0 || pauseId != changesPauseId
-            || !authorized(player)
-            || !ServerPlayNetworking.canSend(player, WatchChangesSyncPayload.TYPE.id())) return;
+            || !authorized(player)) return;
+        if (changesFailure != null) {
+            if (ServerPlayNetworking.canSend(player, WatchChangesUnavailablePayload.TYPE.id())) {
+                ServerPlayNetworking.send(player, new WatchChangesUnavailablePayload(pauseId, changesFailure));
+            } else {
+                // Older peers cannot decode the new outcome, so provide a visible fallback.
+                String key = changesFailure == WatchChangesUnavailablePayload.Reason.TOO_LARGE
+                    ? "codon.watch.changes.too_large" : "codon.watch.changes.unavailable";
+                String fallback = changesFailure == WatchChangesUnavailablePayload.Reason.TOO_LARGE
+                    ? "Automatic Watch changes were too large to display at this pause."
+                    : "Automatic Watch changes are unavailable at this pause.";
+                player.sendSystemMessage(Component.translatableWithFallback(key, fallback));
+            }
+            return;
+        }
+        if (!ServerPlayNetworking.canSend(player, WatchChangesSyncPayload.TYPE.id())) return;
         for (int offset = 0; ; offset += WatchChangesSyncPayload.PAGE_SIZE) {
             int end = Math.min(changes.size(), offset + WatchChangesSyncPayload.PAGE_SIZE);
             boolean last = end == changes.size();
@@ -83,9 +106,23 @@ public final class NetworkDebuggerEventSink implements DebuggerEventSink {
         }
     }
 
+    static boolean fitsChangeBudget(List<WatchChange> rows) {
+        if (rows.size() > TransferBudget.WATCH_CHANGES.entries()) return false;
+        long remaining = TransferBudget.WATCH_CHANGES.characters();
+        for (WatchChange row : rows) {
+            long characters = TransferBudget.characters(row.spec())
+                + TransferBudget.characters(row.before()) + TransferBudget.characters(row.after());
+            if (characters > remaining) return false;
+            remaining -= characters;
+        }
+        // The row cap also limits 32-row pages to 128, below MAX_PAGES.
+        return true;
+    }
+
     public void resetWatchChanges() {
         watchChanges.reset();
         changes = List.of();
+        changesFailure = null;
         changesPauseId = 0;
     }
 
@@ -100,6 +137,7 @@ public final class NetworkDebuggerEventSink implements DebuggerEventSink {
     public void continued() {
         // A later breakpoint in this execution still compares against the preceding stop.
         changes = List.of();
+        changesFailure = null;
         changesPauseId = 0;
         MinecraftServer s = server.get();
         if (s == null) return;
@@ -115,6 +153,7 @@ public final class NetworkDebuggerEventSink implements DebuggerEventSink {
     @Override
     public void stepping() {
         changes = List.of();
+        changesFailure = null;
         changesPauseId = 0;
         MinecraftServer s = server.get();
         if (s == null) return;

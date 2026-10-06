@@ -11,13 +11,10 @@ import works.nuty.codon.adapter.FunctionSourceRepository;
 import works.nuty.codon.adapter.BreakpointStageParser;
 import works.nuty.codon.core.model.BreakpointDefinition;
 import works.nuty.codon.core.model.BreakpointTarget;
-import works.nuty.codon.core.model.FunctionSourceDocument;
 import works.nuty.codon.core.model.SourceLocation;
 import works.nuty.codon.core.service.DebuggerEngine;
 import works.nuty.codon.core.service.BreakpointRegistry;
 import works.nuty.codon.core.service.ExecutionFlowRecorder;
-
-import java.util.Optional;
 
 /** Validates targets against the current world/source before applying a client edit. */
 final class BreakpointEditHandler {
@@ -94,15 +91,14 @@ final class BreakpointEditHandler {
                 savedCommand = entity.getCommandBlock().getCommand();
             }
             case SourceLocation.Function function -> {
-                Optional<FunctionSourceDocument> document = FunctionSourceRepository.read(server,
-                    function.location().function());
-                if (document.isEmpty() || function.location().line() < 1
-                    || function.location().line() > document.get().lines().size())
+                var line = FunctionSourceRepository.commandLine(server, function.location());
+                if (line.status() == FunctionSourceRepository.LineStatus.UNAVAILABLE)
+                    return BreakpointEditResultPayload.Status.FAILED;
+                if (line.status() == FunctionSourceRepository.LineStatus.INVALID)
                     return BreakpointEditResultPayload.Status.INVALID_TARGET;
-                savedCommand = document.get().lines().get(function.location().line() - 1).trim();
-                if (savedCommand.isEmpty() || savedCommand.startsWith("#")
-                    || (savedCommand.startsWith("$")
-                        && (!target.wholeCommand() || definition.condition().isResultCondition())))
+                savedCommand = line.command();
+                if (savedCommand.startsWith("$")
+                    && (!target.wholeCommand() || definition.condition().isResultCondition()))
                     return BreakpointEditResultPayload.Status.INVALID_TARGET;
             }
             case SourceLocation.Player ignored -> {

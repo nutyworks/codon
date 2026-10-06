@@ -127,8 +127,9 @@ public final class DebuggerWatchEditorGameTest implements FabricClientGameTest {
                 "typing a printable key never triggers a debugger shortcut from an editor field");
             client.setLastInputType(InputType.KEYBOARD_TAB);
             editor.keyPressed(new KeyEvent(InputConstants.KEY_TAB, InputConstants.KEYCODE_TAB, 0));
-            require(editor.getFocused() instanceof EditBox || focusedLabel(editor).equals("Add"),
-                "Tab advances across visible editor fields before leaving the form");
+            int pathY = path.getY();
+            require(editor.getFocused() == buttons(editor).stream().filter(button -> button.getY() == pathY).findFirst().orElseThrow(),
+                "Tab reaches Browse immediately after the focused expression field");
             editor.setFocused(path);
             editor.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, InputConstants.KEYCODE_RETURN, InputConstants.MOD_CONTROL));
             require(client.gui.screen() instanceof WatchScreen && state.watches().definitions().size() == beforeInvalid + 1,
@@ -251,11 +252,6 @@ public final class DebuggerWatchEditorGameTest implements FabricClientGameTest {
         return screen.children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast)
             .filter(EditBox::isVisible).filter(value -> value.getMessage().getString().equals(label)).findFirst()
             .orElseThrow(() -> new AssertionError("Required Watch field is visible: " + label));
-    }
-
-    private static String focusedLabel(Screen screen) {
-        if (!(screen.getFocused() instanceof DebuggerButton button)) return "";
-        return button.getMessage().getString();
     }
 
     private static void click(Screen screen, DebuggerButton button) {

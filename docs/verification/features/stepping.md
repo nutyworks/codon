@@ -25,6 +25,9 @@ block pointing into an unconditional, always-active chain command block. Give th
 
 The controls must work from the cursor screen as well as the world view, follow
 remapped key hints and reject duplicate actions while a request is pending.
+UI Step waits for credited Watch reads. Missing replies cancel it with an explicit
+failure after five seconds, or after ten seconds for the complete capture; Resume
+can cancel the wait and remains available after failure. See [Watches and NBT](watches-and-nbt.md).
 World keyboard presses use the event's physical Ctrl modifier and consume the native
 key queue path; Ctrl+Into resolves only Out, even if Ctrl is released before the
 next tick. Key repeats are consumed without another request. Screens use the same
@@ -40,8 +43,9 @@ must not advance a newer stop, including an execution-complete inspection stop.
 Explicit `/codon resume`, `stepinto`, `stepover` and `stepout` commands without an
 ID retain their manual/console behavior and target the stop present at execution.
 UI controls also send a request ID. A rejection for that exact pending request and
-pause appears in a wrapped Codon toast without opening chat. A missing reply after
-two seconds reports that the server outcome is unknown; it does not mean rollback
+pause appears in a wrapped Codon toast without opening chat. A missing reply two
+seconds after sending the control reports that the server outcome is unknown;
+waiting for pre-step Watch reads does not start that deadline. It does not mean rollback
 or fabricate an execution acknowledgement. Late/duplicate rejections cannot clear
 a newer pending request. Feedback expires after six seconds, and a new pause,
 authoritative advancement or disconnect clears it. These notices are separate from
@@ -94,7 +98,7 @@ captures a selected row alongside a keyboard-focused, truncated action label.
 | Depth, chain boundaries and completion | `coreTest`: `StepControllerTest`, `CommandBlockSteppingTest`, `DebuggerEngineTest` |
 | Delayed controls and pause ID validation | `coreTest`: `DebuggerControlTest`; command transport: `DebuggerRequestTransportGameTest` |
 | Mailbox limits, concurrent admission, request/step order, recovery and shutdown completion | `test`: `DebuggerMailboxTest`, `DebuggerTaskQueueTest` |
-| Pending state, current/history separation | `clientTest`: `ClientDebuggerStateTest`, `ClientHistoricalCallStackTest`, `DebuggerStatusTest` |
+| Pending state, Watch read deadline/cancellation, current/history separation | `clientTest`: `ClientQuerySchedulerTest`, `ClientDebuggerStateTest`, `ClientHistoricalCallStackTest`, `DebuggerStatusTest` |
 | Visible rejection/timeout, late replies and recovery | `DebuggerRequestFeedbackGameTest` |
 | Native command-chain execution/stage recording | `DebuggerExecutionFlowGameTest` |
 | Stop after step/resume in a parked native command context | `DebuggerStopRoutingGameTest` |

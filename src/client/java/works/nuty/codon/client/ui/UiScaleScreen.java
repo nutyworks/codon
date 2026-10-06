@@ -1,11 +1,14 @@
 package works.nuty.codon.client.ui;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
+import org.jspecify.annotations.Nullable;
 import works.nuty.codon.client.state.DebuggerPreferences;
 import works.nuty.codon.client.ui.layout.UiScale;
 
@@ -17,6 +20,8 @@ public final class UiScaleScreen extends ScaledCodonScreen {
     private final Map<String, DebuggerButton> buttons = new LinkedHashMap<>();
     private String focusKey = "follow";
     private int left, top, panelWidth;
+    private record PointerAnchor(String key, double x, double y, double fractionX, double fractionY) { }
+    private @Nullable PointerAnchor pointerAnchor;
 
     public UiScaleScreen(Screen parent, DebuggerPreferences preferences) {
         super(text("title"), preferences);
@@ -31,10 +36,21 @@ public final class UiScaleScreen extends ScaledCodonScreen {
         panelWidth = Math.min(310, width - 12);
         left = (width - panelWidth) / 2;
         top = Math.max(6, (height - 218) / 2);
+        if (pointerAnchor != null) {
+            // Preserve the pressed point in framebuffer pixels across the scale change.
+            // Keeping the step controls near the center also leaves room for the panel to grow.
+            double buttonX = panelWidth / 2 + (pointerAnchor.key().equals("plus") ? 5 : -35);
+            double scale = uiScale().effective();
+            left = Math.clamp((int) Math.round(pointerAnchor.x() / scale - buttonX - pointerAnchor.fractionX() * 30),
+                6, Math.max(6, width - panelWidth - 6));
+            top = Math.clamp((int) Math.round(pointerAnchor.y() / scale - 100 - pointerAnchor.fractionY() * 20),
+                6, Math.max(6, height - 218 - 6));
+            pointerAnchor = null;
+        }
         add("follow", left + 8, top + 28, panelWidth - 16, text("follow"), () -> uiPreferences().setUiScaleMode(DebuggerPreferences.UiScaleMode.FOLLOW_GAME));
         add("custom", left + 8, top + 52, panelWidth - 16, text("custom"), () -> uiPreferences().selectCustomUiScale(minecraft.getWindow().getGuiScale()));
-        add("minus", left + 8, top + 78, 30, Component.literal("−"), () -> uiPreferences().setCustomUiScale(requestedScale() - 1));
-        add("plus", left + panelWidth - 38, top + 78, 30, Component.literal("+"), () -> uiPreferences().setCustomUiScale(requestedScale() + 1));
+        add("minus", left + panelWidth / 2 - 35, top + 100, 30, Component.literal("−"), () -> uiPreferences().setCustomUiScale(requestedScale() - 1));
+        add("plus", left + panelWidth / 2 + 5, top + 100, 30, Component.literal("+"), () -> uiPreferences().setCustomUiScale(requestedScale() + 1));
         int half = (panelWidth - 20) / 2;
         add("reset", left + 8, top + 190, half, text("reset"), uiPreferences()::resetUiScale);
         add("done", left + 12 + half, top + 190, half, Component.translatable("gui.done"), this::onClose);
@@ -59,6 +75,24 @@ public final class UiScaleScreen extends ScaledCodonScreen {
             : DebuggerPreferences.gameUiScaleRequest(minecraft.getWindow().getGuiScale());
     }
 
+    @Override public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
+            for (String key : new String[]{"minus", "plus"}) {
+                DebuggerButton button = buttons.get(key);
+                if (button.active && button.isMouseOver(event.x(), event.y())) {
+                    double scale = uiScale().effective();
+                    pointerAnchor = new PointerAnchor(key, event.x() * scale, event.y() * scale,
+                        (event.x() - button.getX()) / button.getWidth(), (event.y() - button.getY()) / button.getHeight());
+                    break;
+                }
+            }
+        }
+        boolean handled = super.mouseClicked(event, doubleClick);
+        // A capped request can change without changing the effective viewport, so no resize follows.
+        if (!handled || width == uiScale().width() && height == uiScale().height()) pointerAnchor = null;
+        return handled;
+    }
+
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int x, int y, float delta) {
         buttons.forEach((key, button) -> { if (getFocused() == button) focusKey = key; });
         boolean custom = uiPreferences().uiScaleMode() == DebuggerPreferences.UiScaleMode.CUSTOM;
@@ -72,7 +106,7 @@ public final class UiScaleScreen extends ScaledCodonScreen {
         graphics.text(font, title, left + 8, top + 10, color(TEAL), false);
         graphics.centeredText(font, text("requested", number(requestedScale() / 4.0)),
             left + panelWidth / 2, top + 84, color(custom ? TEXT : MUTED));
-        int lineY = top + 106;
+        int lineY = top + 128;
         for (var line : font.split(text("units"), panelWidth - 16)) {
             graphics.text(font, line, left + 8, lineY, color(MUTED), false);
             lineY += font.lineHeight + 2;

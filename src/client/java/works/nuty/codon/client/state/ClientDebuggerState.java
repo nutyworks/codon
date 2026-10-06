@@ -36,6 +36,8 @@ public final class ClientDebuggerState {
     private int selectedFlowStageIndex = -1;
     private @Nullable UnobservedSelection unobservedSelection;
     private boolean controlPending;
+    private boolean controlAwaitingReads;
+    private boolean watchReadsFailed;
     private long controlRequestedAt;
     private long controlRequestId;
     private final ClientRequestFeedback feedback;
@@ -88,6 +90,8 @@ public final class ClientDebuggerState {
 
     public void applyPause(PauseSnapshot snapshot) {
         feedback.clear();
+        boolean repeatedPause = paused && this.snapshot != null && this.snapshot.pauseId() == snapshot.pauseId();
+        boolean interruptedReads = repeatedPause && (controlAwaitingReads || watchReadsFailed);
         unobservedSelection = null;
         watchEditor.invalidate();
         FlowSelectionHint previousFlow = currentFlowHint();
@@ -101,6 +105,8 @@ public final class ClientDebuggerState {
         this.stepping = false;
         this.continuing = false;
         this.controlPending = false;
+        this.controlAwaitingReads = false;
+        this.watchReadsFailed = interruptedReads;
         this.selectedFrameIndex = 0;
         this.displayedCallStack = snapshot.callStack();
         this.selectedCallFrameIndex = displayedCallStack.isEmpty() ? -1 : 0;
@@ -161,6 +167,8 @@ public final class ClientDebuggerState {
         this.selectedFlowIndex = -1;
         this.selectedFlowStageIndex = -1;
         this.controlPending = false;
+        this.controlAwaitingReads = false;
+        this.watchReadsFailed = false;
     }
 
     /** Server-confirmed advancement: discard the old pause but retain the freecam session. */
@@ -219,6 +227,8 @@ public final class ClientDebuggerState {
         selectedSourceIndex = displayedSources().isEmpty() ? -1 : 0;
         if (previousFlow != null) restoreFlow(previousFlow, completed);
         controlPending = false;
+        controlAwaitingReads = false;
+        watchReadsFailed = false;
     }
 
     public List<BlockLocation> blockBreakpoints() {
@@ -751,8 +761,27 @@ public final class ClientDebuggerState {
         return true;
     }
 
+    public void deferControlForReads() { controlAwaitingReads = true; }
+
+    /** Resume remains available if a deferred step cannot obtain a reply. */
+    public boolean controlAwaitingReads() { return controlPending && controlAwaitingReads; }
+
+    public boolean watchReadsFailed() { return watchReadsFailed; }
+
+    /** Reads failed without advancing the live pause; controls remain available. */
+    public void failWatchReads() {
+        controlPending = false;
+        controlAwaitingReads = false;
+        watchReadsFailed = true;
+    }
+
+    public void controlSent() {
+        controlAwaitingReads = false;
+        controlRequestedAt = clock.getAsLong();
+    }
+
     public boolean controlPending() {
-        if (controlPending && clock.getAsLong() - controlRequestedAt >= 2_000_000_000L) {
+        if (controlPending && !controlAwaitingReads && clock.getAsLong() - controlRequestedAt >= 2_000_000_000L) {
             controlPending = false;
             feedback.show("codon.ui.control_timed_out", "codon.ui.control_timeout_detail");
         }

@@ -16,8 +16,11 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.server.commands.FunctionCommand;
 import net.minecraft.server.permissions.Permissions;
 import works.nuty.codon.adapter.SourceMapper;
+import works.nuty.codon.adapter.FunctionSourceRepository;
 import works.nuty.codon.core.model.BlockLocation;
 import works.nuty.codon.core.model.FunctionLocation;
+import works.nuty.codon.core.model.BreakpointTarget;
+import works.nuty.codon.core.model.SourceLocation;
 import works.nuty.codon.core.model.StepMode;
 import works.nuty.codon.core.service.DebuggerEngine;
 import works.nuty.codon.network.ControlRejectedPayload;
@@ -55,13 +58,29 @@ public final class CodonCommand {
     private static int toggleFunctionBreakpoint(CommandContext<CommandSourceStack> context, DebuggerEngine engine) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         Identifier funcId = FunctionArgument.getFunctionOrTag(context, "function").getFirst();
         int line = IntegerArgumentType.getInteger(context, "line");
+        FunctionLocation location = new FunctionLocation(SourceMapper.toFunctionId(funcId), line);
+        BreakpointTarget target = BreakpointTarget.whole(new SourceLocation.Function(location));
+        boolean disabling = engine.breakpointDefinitions().stream()
+            .anyMatch(definition -> definition.target().equals(target) && definition.enabled());
+        boolean unverified = false;
+        if (!disabling) {
+            var sourceLine = FunctionSourceRepository.commandLine(context.getSource().getServer(), location);
+            if (sourceLine.status() == FunctionSourceRepository.LineStatus.INVALID) {
+                context.getSource().sendFailure(Component.translatable("command.codon.breakpoint.function.invalid_line",
+                    Component.translationArg(funcId), line));
+                return 0;
+            }
+            unverified = sourceLine.status() == FunctionSourceRepository.LineStatus.UNAVAILABLE;
+        }
         boolean enabled;
         try {
-            enabled = engine.toggleFunctionBreakpoint(new FunctionLocation(SourceMapper.toFunctionId(funcId), line));
+            enabled = engine.toggleFunctionBreakpoint(location);
         } catch (works.nuty.codon.core.service.BreakpointRegistry.LimitExceeded limit) {
             context.getSource().sendFailure(Component.literal("Breakpoint limit reached"));
             return 0;
         }
+        if (unverified) context.getSource().sendSuccess(() -> Component.translatable(
+            "command.codon.breakpoint.function.source_unavailable", Component.translationArg(funcId), line), false);
         String key = enabled
             ? "command.codon.breakpoint.function.success.set"
             : "command.codon.breakpoint.function.success.disabled";

@@ -8,6 +8,7 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import works.nuty.codon.core.model.PauseSnapshot;
 import works.nuty.codon.core.service.DebuggerEngine;
 import works.nuty.codon.persistence.WorldWatchPersistence;
@@ -39,6 +40,7 @@ public final class CodonNetworking {
         PayloadTypeRegistry.clientboundPlay().register(PauseSyncPayload.TYPE, PauseSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(WatchSyncPayload.TYPE, WatchSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(WatchChangesSyncPayload.TYPE, WatchChangesSyncPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(WatchChangesUnavailablePayload.TYPE, WatchChangesUnavailablePayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(NbtTreeSyncPayload.TYPE, NbtTreeSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(WatchDefinitionsSyncPayload.TYPE, WatchDefinitionsSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(WatchRestoreFailedPayload.TYPE, WatchRestoreFailedPayload.CODEC);
@@ -77,7 +79,7 @@ public final class CodonNetworking {
     }
 
     public static void registerJoinSync(DebuggerEngine engine, WorldWatchPersistence watches, NetworkDebuggerEventSink eventSink) {
-        Map<ServerPlayer, Set<CustomPacketPayload.Type<?>>> synchronizedOwners = new IdentityHashMap<>();
+        Map<ServerGamePacketListenerImpl, Set<CustomPacketPayload.Type<?>>> synchronizedOwners = new IdentityHashMap<>();
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
             ServerPlayer player = handler.getPlayer();
             synchronizeOwner(player, engine, watches, eventSink, synchronizedOwners);
@@ -89,7 +91,7 @@ public final class CodonNetworking {
             }
         });
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
-            synchronizedOwners.remove(handler.getPlayer());
+            synchronizedOwners.remove(handler);
             watches.resetTransfer(handler.getPlayer().getUUID());
         });
         ServerLifecycleEvents.SERVER_STOPPED.register(server -> synchronizedOwners.clear());
@@ -97,15 +99,16 @@ public final class CodonNetworking {
 
     private static void synchronizeOwner(ServerPlayer player, DebuggerEngine engine,
                                           WorldWatchPersistence watches, NetworkDebuggerEventSink eventSink,
-                                          Map<ServerPlayer, Set<CustomPacketPayload.Type<?>>> synchronizedOwners) {
+                                          Map<ServerGamePacketListenerImpl, Set<CustomPacketPayload.Type<?>>> synchronizedOwners) {
+        var connection = player.connection;
         if (!NetworkDebuggerEventSink.authorized(player)) {
-            var sent = synchronizedOwners.get(player);
+            var sent = synchronizedOwners.get(connection);
             // Preserve completed or rejected restores through re-promotion; neither may replace
             // local edits or retry the same oversized snapshot on every tick.
             if (sent != null) sent.retainAll(Set.of(WatchDefinitionsSyncPayload.TYPE, WatchRestoreFailedPayload.TYPE));
             return;
         }
-        var sent = synchronizedOwners.computeIfAbsent(player, ignored -> new HashSet<>());
+        var sent = synchronizedOwners.computeIfAbsent(connection, ignored -> new HashSet<>());
         // Unsupported channels stay pending without resending other handshakes on each tick.
         if (!sent.contains(WatchDefinitionsSyncPayload.TYPE)
             && !sent.contains(WatchRestoreFailedPayload.TYPE)

@@ -159,10 +159,10 @@ public final class InputManager implements ClientTickEvents.EndTick {
     public void control(Control action) {
         Minecraft client = Minecraft.getInstance();
         var snapshot = state.snapshot();
-        if (client.player != null && snapshot != null && snapshot.pauseId() > 0 && state.beginControlRequest()) {
-            if (action != Control.RESUME) ClientNetworking.sendWatchQueries(client, state);
-            client.player.connection.sendCommand("codon " + action.command + " " + snapshot.pauseId()
-                + " " + state.controlRequestId());
+        if (client.player != null && snapshot != null && snapshot.pauseId() > 0
+            && (action == Control.RESUME || !state.watchReadsFailed())
+            && (action == Control.RESUME && state.controlAwaitingReads() || state.beginControlRequest())) {
+            ClientNetworking.requestControl(client, state, snapshot.pauseId(), action.command, action != Control.RESUME);
         }
     }
 
@@ -233,6 +233,8 @@ public final class InputManager implements ClientTickEvents.EndTick {
         if (hit instanceof BlockHitResult block && hit.getType() == HitResult.Type.BLOCK) {
             BlockPos pos = block.getBlockPos();
             client.player.connection.sendCommand("codon breakpoint block %d %d %d".formatted(pos.getX(), pos.getY(), pos.getZ()));
+        } else {
+            client.player.sendOverlayMessage(Component.translatable("codon.breakpoint.no_block_target"));
         }
     }
 

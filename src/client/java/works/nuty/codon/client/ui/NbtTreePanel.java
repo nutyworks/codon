@@ -114,7 +114,7 @@ public final class NbtTreePanel {
                 if (previous.kind() == row.kind() && previous.path().equals(row.path())
                     && previous.depth() == row.depth() && previous.status() == row.status()) continue;
             }
-            renderRow(graphics, bounds, mouseX, mouseY, controls, row, pauseId, selectedSource.executor(), idPrefix, hidden,
+            renderRow(graphics, bounds, controls, row, pauseId, selectedSource.executor(), idPrefix, hidden,
                 currentPaths.contains(row.path()));
         }
         int maximumOffset = maximumOffset(rows.size(), visibleRows);
@@ -205,14 +205,14 @@ public final class NbtTreePanel {
             : Math.max(fullPageMaximum, Math.clamp(offset, 0, Math.max(0, rowCount - 1)));
     }
 
-    private void renderRow(GuiGraphicsExtractor graphics, Bounds bounds, int mouseX, int mouseY, Controls controls,
+    private void renderRow(GuiGraphicsExtractor graphics, Bounds bounds, Controls controls,
                            ClientNbtState.Row row, long pauseId, EntityRef executor, String idPrefix, int hidden, boolean current) {
         int indent = Math.min(8, Math.max(0, row.depth())) * 8;
         int pinWidth = 18;
         int contentWidth = Math.max(1, bounds.width() - indent - pinWidth - 2);
         Bounds content = new Bounds(bounds.x() + indent, bounds.y(), contentWidth, bounds.height());
         switch (row.kind()) {
-            case NODE -> renderNode(graphics, bounds, content, mouseX, mouseY, controls, row, pauseId, executor, idPrefix, current);
+            case NODE -> renderNode(bounds, content, controls, row, pauseId, executor, idPrefix, current);
             case STATUS -> renderStatus(graphics, content, controls, row, pauseId, executor.uuid(), idPrefix, 0);
             case PLACEHOLDER -> renderStatus(graphics, content, controls, row, pauseId, executor.uuid(),
                 idPrefix + "slot-" + bounds.y() + "-", hidden);
@@ -220,19 +220,16 @@ public final class NbtTreePanel {
         }
     }
 
-    private void renderNode(GuiGraphicsExtractor graphics, Bounds bounds, Bounds content, int mouseX, int mouseY,
-                            Controls controls, ClientNbtState.Row row, long pauseId, EntityRef executor, String idPrefix, boolean current) {
+    private void renderNode(Bounds bounds, Bounds content, Controls controls, ClientNbtState.Row row,
+                            long pauseId, EntityRef executor, String idPrefix, boolean current) {
         NbtPage.Node node = row.node();
         if (node == null) return;
         String prefix = node.expandable() ? (row.expanded() ? "▾ " : "▸ ") : "  ";
         Component label = Component.literal(prefix + node.name() + ": " + node.preview());
         String nodeId = nodeId(node);
         controls.button(idPrefix + "node-" + nodeId, content, label, node.expandable(), false,
-            () -> toggleNode(pauseId, executor.uuid(), node.path())).withInputBlocked(!current);
-        if (content.contains(mouseX, mouseY)) {
-            graphics.setComponentTooltipForNextFrame(Minecraft.getInstance().font,
-                List.of(Component.literal(node.path()), Component.literal(node.preview())), mouseX, mouseY);
-        }
+            () -> toggleNode(pauseId, executor.uuid(), node.path())).withInputBlocked(!current)
+            .setTooltip(Tooltip.create(Component.literal(node.path()).append("\n").append(node.preview())));
 
         Bounds pinBounds = new Bounds(bounds.x() + bounds.width() - 18, bounds.y(), 18, 16);
         WatchSpec spec = pinnableSpec(node, executor.uuid());
@@ -243,7 +240,8 @@ public final class NbtTreePanel {
         DebuggerButton pin = controls.button(idPrefix + "pin-" + nodeId, pinBounds, pinLabel, active, present,
             () -> togglePin(pauseId, executor.uuid(), node.path())).withInputBlocked(!current);
         pin.withoutChrome().withStatusColor(present ? TEAL : MUTED, TEAL_SURFACE)
-            .withIcon(DebuggerIcon.WATCHES).withSecondaryAction(() -> toggleAllPins(pauseId, executor.uuid(), node.path()));
+            .withIcon(present ? DebuggerIcon.REMOVE : DebuggerIcon.PIN)
+            .withSecondaryAction(() -> toggleAllPins(pauseId, executor.uuid(), node.path()));
         Component pinTooltip;
         if (spec == null) pinTooltip = Component.translatable("codon.nbt.path_unavailable");
         else {
@@ -253,7 +251,6 @@ public final class NbtTreePanel {
             Component right = Component.translatable(allPinned ? "codon.nbt.click_all_remove" : "codon.nbt.click_all", all.size());
             pinTooltip = left.copy().append("\n").append(right);
         }
-        if (!present) pin.revealOnHover(bounds.x(), bounds.y(), bounds.width(), bounds.height());
         pin.setTooltip(Tooltip.create(pinTooltip.copy().append("\n").append(node.path())));
     }
 

@@ -202,8 +202,13 @@ public final class ClientNbtState {
         return (end == null ? virtual.size() : end) - index;
     }
 
-    public List<Query> drainQueries() {
-        if (pauseId <= 0) return List.of();
+    public List<Query> drainQueries() { return drainQueries(4); }
+
+    /** Only claim requests for pages that can be sent within the current read budget. */
+    public List<Query> drainQueries(int limit) {
+        if (limit < 0) throw new IllegalArgumentException("negative query limit");
+        if (pauseId <= 0 || limit == 0) return List.of();
+        limit = Math.min(limit, 4);
         List<Query> queries = new ArrayList<>();
         for (EntitySource source : entitySources) {
             UUID uuid = source.executor().uuid();
@@ -216,7 +221,7 @@ public final class ClientNbtState {
                     pending.requestId = ++nextRequest;
                     pending.requestedAt = clock.getAsLong();
                     queries.add(new Query(pauseId, pending.requestId, source.index(), uuid, entry.getKey(), pending.offset));
-                    if (queries.size() == 4) return List.copyOf(queries);
+                    if (queries.size() == limit) return List.copyOf(queries);
                 }
             }
         }

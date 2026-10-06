@@ -40,6 +40,7 @@ public final class WatchDetailsScreen extends ScaledCodonScreen {
     private WatchDetailsLayout layout;
     /** Rows open a compact summary first; full wrapping is available for long NBT values. */
     private boolean expanded;
+    private long copiedUntil;
 
     public WatchDetailsScreen(InputManager input, ClientDebuggerState state, DebuggerOverlay overlay, long entryId) {
         super(WatchUi.text("details.title"), state.preferences());
@@ -86,7 +87,10 @@ public final class WatchDetailsScreen extends ScaledCodonScreen {
 
     private void copyValue() {
         ClientWatchState.Entry entry = entry();
-        if (entry != null) Minecraft.getInstance().keyboardHandler.setClipboard(value(entry.displayedResult()));
+        if (entry != null) {
+            Minecraft.getInstance().keyboardHandler.setClipboard(value(entry.displayedResult()));
+            copiedUntil = System.nanoTime() + 4_000_000_000L;
+        }
     }
 
     private void copyPath() {
@@ -94,6 +98,7 @@ public final class WatchDetailsScreen extends ScaledCodonScreen {
         if (entry != null) {
             WatchSpec spec = entry.spec();
             Minecraft.getInstance().keyboardHandler.setClipboard(spec.kind() == WatchSpec.Kind.SCORE ? spec.target() : spec.path());
+            copiedUntil = System.nanoTime() + 4_000_000_000L;
         }
     }
 
@@ -119,7 +124,7 @@ public final class WatchDetailsScreen extends ScaledCodonScreen {
             return;
         }
         copyValue.active = copyPath.active = true;
-        retry.active = !entry.automatic();
+        retry.active = !entry.automatic() && !state.watchReadsFailed() && state.watches().canRetry(entryId);
         edit.active = expanded;
         add(WatchUi.text("details.expression"), TEAL);
         add(Component.literal(expression(entry.spec())), TEXT);
@@ -179,7 +184,12 @@ public final class WatchDetailsScreen extends ScaledCodonScreen {
         graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.color(PANEL));
         graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.color(BORDER));
         graphics.fill(left, top, left + 2, top + 24, DebuggerTheme.color(TEAL));
-        WatchUi.line(graphics, font, title.getString(), left + 8, top + 9, panelWidth - 16, TEXT);
+        boolean copied = System.nanoTime() < copiedUntil;
+        String confirmation = Component.translatable("codon.ui.copied").getString();
+        int confirmationWidth = copied ? font.width(confirmation) + 12 : 0;
+        WatchUi.line(graphics, font, title.getString(), left + 8, top + 9, panelWidth - 16 - confirmationWidth, TEXT);
+        if (copied) WatchUi.line(graphics, font, confirmation,
+            left + panelWidth - 8 - font.width(confirmation), top + 9, font.width(confirmation), TEAL);
         graphics.enableScissor(left + 8, top + 29, left + panelWidth - 8, layout.textBottom());
         for (int row = 0; row < visibleLines() && offset + row < lines.size(); row++) {
             Line line = lines.get(offset + row);

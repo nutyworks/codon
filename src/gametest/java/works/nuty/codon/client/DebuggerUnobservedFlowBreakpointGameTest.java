@@ -317,7 +317,7 @@ public final class DebuggerUnobservedFlowBreakpointGameTest implements FabricCli
 
     private static DebuggerButton marker(Screen screen, DebuggerButton clause) {
         return screen.children().stream().filter(DebuggerButton.class::isInstance).map(DebuggerButton.class::cast)
-            .filter(button -> button.getY() == clause.getY() && button.getX() == clause.getX() - 15 && button.getWidth() == 14)
+            .filter(button -> button.getY() == clause.getY() && button.getX() == clause.getX() - 19 && button.getWidth() == 18)
             .findFirst().orElseThrow(() -> new AssertionError("Flow stage marker missing"));
     }
 

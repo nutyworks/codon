@@ -90,8 +90,16 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
             + scenario.gameScale() + "-custom-" + scenario.customScale();
         context.runOnClient(client -> checkWatchGeometry(client, fixture));
         capture(context, name);
+        var beforeCopyBounds = context.computeOnClient(client -> fixture.overlay().watchPanel().scrollBounds());
+        int beforeCopyOffset = context.computeOnClient(client -> fixture.overlay().watchPanel().offset());
         watchAction(context, SCORE, "codon.watch.details.copy_value");
-        context.runOnClient(client -> require(client.keyboardHandler.getClipboard().equals("-2147483648"), "Copy hitbox reaches the current value"));
+        context.runOnClient(client -> {
+            require(client.keyboardHandler.getClipboard().equals("-2147483648"), "Copy hitbox reaches the current value");
+            require(fixture.overlay().watchPanel().scrollBounds().equals(beforeCopyBounds)
+                && fixture.overlay().watchPanel().offset() == beforeCopyOffset,
+                "Visible copy feedback preserves the Watch viewport and scroll position");
+        });
+        capture(context, name + "-copied");
         watchAction(context, SCORE, "codon.watch.pin");
         context.runOnClient(client -> require(fixture.state().watches().definitions().getFirst().isPinned(), "Pin hitbox remains accessible"));
         watchAction(context, SCORE, "codon.watch.unpin");
@@ -121,6 +129,7 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
         context.runOnClient(client -> require(client.keyboardHandler.getClipboard().equals(LONG_VALUE), "Full inspection copies the entire shortened value"));
         click(context, "codon.watch.details.copy_path");
         context.runOnClient(client -> require(client.keyboardHandler.getClipboard().equals(NBT.path()), "Copy path retains the full shortened name"));
+        capture(context, name + "-details-copied");
         click(context, "codon.watch.details.more");
         context.runOnClient(client -> {
             require(screen(client).getFocused() == button(screen(client), text("codon.watch.details.less")), "More retains focus on Less after rebuilding");
@@ -144,7 +153,11 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
             checkDetailsGeometry(client);
         });
         context.getInput().pressKey(InputConstants.KEY_TAB);
-        context.runOnClient(client -> require(screen(client).getFocused() == button(screen(client), text("codon.watch.details.retry")), "Collapsed Tab skips hidden Edit"));
+        context.runOnClient(client -> {
+            require(!button(screen(client), text("codon.watch.details.retry")).active, "Successful value disables Retry");
+            require(screen(client).getFocused() == button(screen(client), text("codon.watch.close")),
+                "Collapsed Tab skips hidden Edit and disabled Retry");
+        });
         context.runOnClient(client -> {
             fixture.state().applyPause(pause(fixture.state().snapshot(), 103, PauseReason.STEP));
             accept(fixture.state(), "-2147483648", true);
@@ -152,11 +165,14 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
                 && entry.result().status() == WatchResult.Status.ERROR), "Retry is exercised on a failed read");
         });
         context.waitTicks(3);
+        context.runOnClient(client -> require(button(screen(client), text("codon.watch.details.retry")).active,
+            "Failed read enables Retry"));
         click(context, "codon.watch.details.retry");
         context.runOnClient(client -> require(fixture.state().watches().drainQueries().stream().anyMatch(query -> query.spec().equals(NBT)), "Retry hitbox starts the same read-only query"));
         click(context, "codon.watch.close");
         watchAction(context, SCORE, "codon.watch.menu.delete");
         context.runOnClient(client -> require(fixture.state().watches().findId(SCORE) < 0, "Delete hitbox removes its own row"));
+        capture(context, name + "-removed");
         click(context, "codon.watch.undo_deleted");
         context.runOnClient(client -> require(fixture.state().watches().findId(SCORE) >= 0, "Undo restores the removed row"));
         clickLabel(context, "+");

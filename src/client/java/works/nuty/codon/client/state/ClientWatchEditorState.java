@@ -59,13 +59,16 @@ public final class ClientWatchEditorState {
     }
 
     public List<Query> drainQueries() {
+        expire();
         if (unsent == null) return List.of();
         Query request = unsent;
         unsent = null;
+        requestedAt = clock.getAsLong();
         return List.of(request);
     }
 
     public void accept(long pauseId, long requestId, WatchEditorPage result) {
+        expire();
         if (!waiting || current == null || current.pauseId() != pauseId || current.requestId() != requestId) return;
         page = result;
         waiting = false;

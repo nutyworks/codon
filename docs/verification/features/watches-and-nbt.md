@@ -1,5 +1,16 @@
 # Watches and NBT
 
+Automatic pause changes use the same 4,096-row and 2,097,152-character aggregate
+budget on send and receive. Oversized changes and failed captures send explicit
+unavailable outcomes instead of partial rows or an empty success; older peers receive
+a system notice.
+The Watch panel displays an unavailable warning for rejected transfers. Details
+enables Retry for server-reported `ERROR` or `UNAVAILABLE`, never for a local
+timeout. A late reply after an attempted Retry cannot bypass the failed pause.
+Entity option ellipses preserve UTF-16 surrogate pairs. Focused checks are
+`DebuggerRecipientAuthorizationTest`, `ClientWatchStateTest`,
+`WatchChangesUnavailablePayloadTest`, and `WatchEditorCompactTest`.
+
 The compact Watch regression uses row context menus for Copy, Pin, Edit and
 Delete. It checks a single full-row inspection target, including the value's right
 edge, with no inline management controls. `WatchPanelLayoutTest` covers the same
@@ -54,7 +65,9 @@ No row outline is drawn. Native clipping/keyboard/appearance checks remain manua
 The nested NBT section uses only a top divider; value rows, pin controls and Retry
 share flat chrome instead of a box around every item. NBT and Watch pin icons are
 teal when present/fixed and muted otherwise; hover never changes that state color.
-NBT uses the Watches icon and Add/Remove Watch labels. The Watch pin separately
+NBT shows a muted pin icon on unpinned rows and a teal remove icon on pinned rows,
+without requiring hover. Its row and pin tooltips use the same 350 ms pointer delay.
+Add/Remove Watch labels retain the exact action. The Watch pin separately
 fixes its target or returns to following the selected executor. The NBT heading
 explicitly identifies a current-pause read, or labels retained values while a new
 read is pending. Retained rows keep their existing input-blocking guard. Historical
@@ -64,6 +77,11 @@ context which still maps to a live occurrence may show NBT, explicitly labeled a
 a current-pause read rather than a historical value. Query/occurrence matching is unchanged. Keyboard focus uses a filled corner
 caret, and the scrollbar is neutral. Foreground text/icons bypass panel opacity.
 NBT expansion, Watch-add/right-click actions, disabled states and hit bounds are unchanged.
+Watch add/update/duplicate/remove/copy notices replace the panel's title text for
+four seconds without changing the row viewport or its scroll offset; hovering the
+header retains the full notice when the visible text is clipped. Watch Details
+shows a translated Copied confirmation beside its title for four seconds after
+copying a value or path, preserving text scrolling and footer positions.
 Watch forms and details return to the existing originating screen, retaining its
 selection/search/scroll and restoring semantic widget or HUD-row focus. Returning
 from Edit in details restores the same expanded view and text offset.
@@ -100,7 +118,10 @@ data modify storage codon:verify counter set value 0
    and Korean at normal and 320x240 GUI viewports. Labels sit above their fields;
    field actions share row height and the right column. Recommendations leave a
    gap before the next label, validation remains readable, and Retry sits beside
-   the preview value. Use native clicks and Tab to check Browse, Retry, Add/Save
+   the preview value. Before submitting an empty form, the first validation reason
+   is visible beside disabled Add/Save. Tab visits each field followed by its
+   Browse/Choose action, then Add/Save and Close; reverse Tab retraces that order.
+   Use native clicks and Tab to check Browse, Retry, Add/Save
    and focus after returning from the picker. Also check an independent Codon UI
    scale when that option is available.
 8. Open both Browse/Choose buttons. In Objectives, check a blank search with two
@@ -133,11 +154,28 @@ data modify storage codon:verify counter set value 0
    to check menu layering and that Source-covered pixels cannot retarget it.
    In Details at 320x240, the footer wraps to two rows clear of the scrollable text.
    Check Copy value/path, Retry, Edit and Close hitboxes. More/Less retains focus on
-   the same toggle; Tab then reaches Edit when expanded and Retry when collapsed.
+   the same toggle; Tab then reaches Edit when expanded, or skips hidden Edit and
+   disabled Retry to reach Close for a successful value. A failed read enables Retry.
 
 Queries while paused must remain read-only and must not cause an extra execution
 step. Keep previous/current comparison tied to observed pauses. A brief retained
 display during a pending reply must not enable actions on stale data.
+
+On a pause with many Watches, the client sends at most 12 Watch reads, one editor
+read and three NBT reads concurrently. It sends later Watch reads as replies
+arrive. Step is sent only after all Watch reads for that pause have replied. A
+five-second Watch timeout, or ten seconds waiting for the full pre-step capture,
+cancels Step without advancing execution. The remaining rows show UNAVAILABLE,
+the status explains the failure, and no more reads are sent for that pause.
+Transport credit is not recycled on a local timeout because the server may still
+hold the request. Resume remains available, and a new pause starts a fresh window.
+Editor requests waiting for a credit also expire after five seconds; an explicit
+Retry cannot remain loading indefinitely behind a lost reply.
+This ten-second bound can cancel an otherwise healthy, very large Watch list.
+Verify 33 Watches and 17 Entity NBT Watches at a paused breakpoint, including
+Watch values before step, editor/NBT responsiveness, and explicit failure plus
+Resume after a lost reply. The per-connection mailbox also receives other Codon requests, so
+the reserved 16 slots are not an absolute guarantee under concurrent traffic.
 
 For cold Storage history, persist `changed:0,removed:1,unchanged:7`, save/close the
 world, then reopen before any Storage query. Pause before changing the values and
@@ -161,6 +199,7 @@ the repaired values and establish a complete baseline.
 
 - [WatchReader](../../../src/main/java/works/nuty/codon/adapter/WatchReader.java), [NbtTreeReader](../../../src/main/java/works/nuty/codon/adapter/NbtTreeReader.java): server-side reads.
 - [ClientWatchState](../../../src/client/java/works/nuty/codon/client/state/ClientWatchState.java), [ClientNbtState](../../../src/client/java/works/nuty/codon/client/state/ClientNbtState.java): requests, values and selected target.
+- [ClientQueryScheduler](../../../src/client/java/works/nuty/codon/client/state/ClientQueryScheduler.java): bounded paused-read dispatch and step ordering.
 - [WatchPanel](../../../src/client/java/works/nuty/codon/client/ui/WatchPanel.java), [WatchScreen](../../../src/client/java/works/nuty/codon/client/ui/WatchScreen.java), [NbtTreePanel](../../../src/client/java/works/nuty/codon/client/ui/NbtTreePanel.java): user interaction.
 - [WatchFormLayout](../../../src/client/java/works/nuty/codon/client/ui/layout/WatchFormLayout.java): shared form columns and vertical slots.
 - [DebuggerContextMenu](../../../src/client/java/works/nuty/codon/client/ui/DebuggerContextMenu.java): shared modal dropdown hosted by ScreenLayers; Watch retains its existing guarded actions, row switching and keyboard/pointer handling.
@@ -173,6 +212,7 @@ the repaired values and establish a complete baseline.
 | --- | --- |
 | Values, changes, pin identity | `clientTest`: `ClientWatchStateTest`, `ClientWatchChangesTest`, `ClientWatchPinTest` |
 | Pending/paged data | `clientTest`: `ClientNbtStateTest`, `ClientNbtDisplayDelayTest`, `ClientWatchDisplayDelayTest` |
+| Paused Watch bursts and step ordering | `clientTest`: `ClientQuerySchedulerTest`, `ClientWatchBurstProbeTest`; `test`: `DebuggerMailboxTest` |
 | Files and transfer | `test`: `WorldWatchPersistenceTest`, `WatchDefinitionTransferTest`, `WatchSaveV2PayloadTest`; `clientTest`: `ClientWatchUploadStateTest`, `ClientTransferLimitsTest` |
 | Delayed initial owner sync and local edits | `clientTest`: `ClientWatchInitializationTest`; `test`: `ClientWatchInitializationBudgetTest`; `WatchPromotionHandshakeGameTest`, `DebuggerWatchPinGameTest` |
 | Registered v2 and legacy save routes | `WatchSaveProtocolGameTest`: held/duplicate page ACK, durable final ACK, fixed timeout, stale ACK, retry, legacy multipage and invalid gap |
@@ -201,7 +241,7 @@ search/footer wheel report. `WatchFormLayoutTest` and
 `DebuggerCompactWatchGameTest` uses six representative English/Korean cases at
 427x240, 320x240 and regular viewports, with following/custom scales. It checks
 native management and footer clicks, compact value right-edge click/tooltip hover,
-More/Less focus, row overflow and pending
+More/Less focus, row overflow, copy-feedback viewport stability and pending
 execution-control disabling, and captures `*codon-compact-watch-*.png` for visual
 inspection. This scenario and `WatchPanelLayoutTest` passed in the
 [UI validation run](../ui-polish-validation.md). Its injected observations establish
@@ -239,6 +279,10 @@ final acknowledgement leaves persistence unconfirmed, since the server may alrea
 have committed. Legacy peers use the existing bounded all-or-nothing transfer and
 can fail explicitly under overload. `ClientWatchUploadStateTest` includes 8,192
 entries across 1,024 acknowledged pages and stale, duplicate and unsolicited replies.
+The client UI and uploader share the same fixed 30-second start instant, before
+page validation and copying. Once the UI times out, no further v2 page can advance;
+unsent v2/legacy pages are checked again before dispatch. `ClientWatchSaveDeadlineTest`
+covers validation/copy delays, exact-boundary ACKs, final replies and connection replacement.
 
 The first completed owner watch sync merges the still-present local definitions
 with saved server definitions by canonical identity. Local row IDs, expressions,
