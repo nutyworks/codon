@@ -224,6 +224,7 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
                 require(button(screen, "Save").getBottom() - button(screen, "Cancel").getY() <= 137,
                     "compact condition panel fits within 150 GUI pixels vertically");
             });
+            verifyDraftDismissal(context, world, parent, position, first);
             AbstractButton kindTrigger = context.computeOnClient(client -> button(conditionLayer(parent), "Always ▾"));
             nativeHover(context, parent, kindTrigger.getX() + 3, kindTrigger.getY() + 3);
             context.waitFor(client -> button(conditionLayer(parent), "Context created").visible, 100);
@@ -355,6 +356,164 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             verifyDisabledMarkersAfterReopen(context, position, location, first);
             context.runOnClient(client -> client.setScreenAndShow(null));
         }
+    }
+
+    private static void verifyDraftDismissal(ClientGameTestContext context, TestSingleplayerContext world,
+                                             Screen parent, BlockPos position, BreakpointTarget target) {
+        var saved = context.computeOnClient(client -> CodonClientMod.state().breakpoints().get(target));
+        WrappedCommandEditBox editor = context.computeOnClient(client -> commandBox(parent));
+        int cursor = context.computeOnClient(client -> editor.getCursorPosition());
+        context.getInput().pressKey(InputConstants.KEY_ESCAPE);
+        context.runOnClient(client -> require(ScreenLayers.get(parent) == null,
+            "Escape closes a clean condition draft without confirmation"));
+        reopenCondition(context, parent, target);
+        nativeButton(context, parent, "Cancel");
+        context.runOnClient(client -> require(ScreenLayers.get(parent) == null,
+            "Cancel closes a clean condition draft without confirmation"));
+        reopenCondition(context, parent, target);
+        context.runOnClient(client -> selectKind(conditionLayer(parent), BreakpointCondition.Kind.CREATED));
+        nativeClick(context, parent, 0, 0, InputConstants.MOUSE_BUTTON_LEFT);
+        context.runOnClient(client -> {
+            Screen layer = conditionLayer(parent);
+            require(button(layer, "Keep editing").visible && button(layer, "Discard").visible,
+                "outside click requests explicit discard of a changed kind");
+            require(layer.getFocused() == button(layer, "Keep editing"), "confirmation defaults to retaining the draft");
+            require(client.gui.screen() == parent && commandBox(parent) == editor
+                && editor.getCursorPosition() == cursor && COMMAND.equals(editor.getValue()),
+                "discard confirmation retains the original screen, command input and cursor");
+            require(saved.equals(CodonClientMod.state().breakpoints().get(target))
+                && !CodonClientMod.state().breakpoints().pending(target), "dismissal does not send a server edit");
+            for (var control : controls(layer)) require(control.getX() >= 0 && control.getY() >= 0
+                && control.getRight() <= layer.width && control.getBottom() <= layer.height,
+                "discard confirmation controls fit the 320x240 viewport");
+        });
+        context.takeScreenshot("codon-breakpoint-draft-discard-en-320x240");
+        String language = context.computeOnClient(client -> client.getLanguageManager().getSelected());
+        var korean = context.computeOnClient(client -> {
+            client.getLanguageManager().setSelected("ko_kr");
+            return client.reloadResourcePacks();
+        });
+        context.waitFor(client -> korean.isDone() && client.gui.overlay() == null, 200);
+        context.runOnClient(client -> require(button(conditionLayer(parent), "계속 편집").visible
+            && button(conditionLayer(parent), "버리기").visible, "Korean confirmation offers the same discard choices"));
+        context.takeScreenshot("codon-breakpoint-draft-discard-ko-320x240");
+        var restored = context.computeOnClient(client -> {
+            client.getLanguageManager().setSelected(language);
+            return client.reloadResourcePacks();
+        });
+        context.waitFor(client -> restored.isDone() && client.gui.overlay() == null, 200);
+        nativeClick(context, parent, 0, 0, InputConstants.MOUSE_BUTTON_LEFT);
+        context.getInput().typeChars("99");
+        context.runOnClient(client -> require(button(conditionLayer(parent), "Keep editing").visible
+            && COMMAND.equals(editor.getValue()), "repeated outside click and typing cannot discard or reach the parent"));
+        // Enter activates the safe, initially focused choice.
+        context.getInput().pressKey(InputConstants.KEY_RETURN);
+        context.runOnClient(client -> require(button(conditionLayer(parent), "Context created ▾").visible,
+            "cancelling discard preserves the changed kind"));
+        nativeHover(context, parent, 0, 0);
+        context.getInput().pressKey(InputConstants.KEY_ESCAPE);
+        context.runOnClient(client -> require(button(conditionLayer(parent), "Keep editing").visible,
+            "Escape requests discard of a dirty draft"));
+        context.getInput().pressKey(InputConstants.KEY_ESCAPE);
+        context.runOnClient(client -> {
+            require(button(conditionLayer(parent), "Context created ▾").visible,
+                "Escape cancels discard and preserves the draft");
+            selectKind(conditionLayer(parent), BreakpointCondition.Kind.ALWAYS);
+        });
+        nativeClick(context, parent, 0, 0, InputConstants.MOUSE_BUTTON_LEFT);
+        context.runOnClient(client -> require(ScreenLayers.get(parent) == null,
+            "reverting to the original condition restores clean dismissal"));
+        reopenCondition(context, parent, target);
+        context.runOnClient(client -> {
+            Screen layer = conditionLayer(parent);
+            selectKind(layer, BreakpointCondition.Kind.INPUT_COUNT);
+            layer.setFocused(button(layer, "= ▾"));
+            layer.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
+            for (int i = 0; i < BreakpointCondition.Comparison.GT.ordinal(); i++)
+                layer.keyPressed(new KeyEvent(InputConstants.KEY_DOWN, 0, 0));
+            layer.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
+            countBox(layer).setValue("");
+            require(!button(layer, "Save").active, "invalid draft count cannot be saved");
+        });
+        nativeClick(context, parent, 0, 0, InputConstants.MOUSE_BUTTON_LEFT);
+        nativeButton(context, parent, "Keep editing");
+        context.runOnClient(client -> {
+            Screen layer = conditionLayer(parent);
+            require(countBox(layer).getValue().isEmpty() && button(layer, "> ▾").visible,
+                "cancelling discard preserves even an invalid count and comparison");
+            countBox(layer).setValue("3");
+        });
+        // A real server rejection exercises the Save/ACK path, while the client
+        // still holds the old stage preview. Restore the disposable block afterward.
+        world.getServer().runOnServer(server -> ((CommandBlockEntity) server.getPlayerList().getPlayers()
+            .getFirst().level().getBlockEntity(position)).getCommandBlock().setCommand(COMMAND + " changed"));
+        context.runOnClient(client -> {
+            Screen layer = conditionLayer(parent);
+            click(layer, button(layer, "Save"));
+            require(CodonClientMod.state().breakpoints().pending(target), "Save waits for server acknowledgement");
+            layer.keyPressed(new KeyEvent(InputConstants.KEY_ESCAPE, 0, 0));
+            layer.mouseClicked(new MouseButtonEvent(0, 0,
+                new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0)), false);
+            layer.setFocused(countBox(layer));
+            layer.charTyped(new net.minecraft.client.input.CharacterEvent('9'));
+            require(ScreenLayers.get(parent) == layer && !button(layer, "Cancel").active
+                && !button(layer, "Save").active && !button(layer, "Delete").active
+                && countBox(layer).getValue().equals("3"), "pending ACK blocks dismissal and changes to the submitted draft");
+        });
+        context.waitFor(client -> !CodonClientMod.state().breakpoints().pending(target)
+            && CodonClientMod.state().breakpoints().error(target) == ClientBreakpointState.Result.STALE_SOURCE, 200);
+        context.runOnClient(client -> require(countBox(conditionLayer(parent)).getValue().equals("3")
+            && saved.equals(CodonClientMod.state().breakpoints().get(target)), "failed Save retains the draft and acknowledged definition"));
+        context.takeScreenshot("codon-breakpoint-draft-save-rejected-320x240");
+        nativeHover(context, parent, 0, 0);
+        context.getInput().pressKey(InputConstants.KEY_ESCAPE);
+        nativeButton(context, parent, "Keep editing");
+        context.runOnClient(client -> require(countBox(conditionLayer(parent)).getValue().equals("3")
+            && button(conditionLayer(parent), "> ▾").visible, "cancelling discard after Save rejection retains the draft"));
+        nativeButton(context, parent, "Cancel");
+        nativeButton(context, parent, "Discard");
+        context.runOnClient(client -> require(ScreenLayers.get(parent) == null && client.gui.screen() == parent
+            && saved.equals(CodonClientMod.state().breakpoints().get(target))
+            && !CodonClientMod.state().breakpoints().pending(target), "confirmed discard closes without mutating the server definition"));
+        world.getServer().runOnServer(server -> ((CommandBlockEntity) server.getPlayerList().getPlayers()
+            .getFirst().level().getBlockEntity(position)).getCommandBlock().setCommand(COMMAND));
+        reopenCondition(context, parent, target);
+        context.runOnClient(client -> require(button(conditionLayer(parent), "Always ▾").visible
+            && COMMAND.equals(editor.getValue()) && editor.getCursorPosition() == cursor,
+            "reopening after discard restores the acknowledged condition and original parent input"));
+        context.getInput().pressKey(InputConstants.KEY_ESCAPE);
+        context.runOnClient(client -> require(ScreenLayers.get(parent) == null,
+            "the reopened acknowledged condition is clean despite the previous failed Save"));
+        reopenCondition(context, parent, target);
+    }
+
+    private static void reopenCondition(ClientGameTestContext context, Screen parent, BreakpointTarget target) {
+        context.runOnClient(client -> BreakpointUi.openCondition(parent, CodonClientMod.state(), target, COMMAND, 3, null));
+        context.waitFor(client -> ScreenLayers.get(parent) instanceof BreakpointConditionScreen, 100);
+        nativeHover(context, parent, 0, 0);
+    }
+
+    private static void selectKind(Screen layer, BreakpointCondition.Kind kind) {
+        AbstractButton trigger = controls(layer).stream().filter(control -> control.visible
+            && control.getMessage().getString().endsWith(" ▾") && control.getWidth() > 40).findFirst().orElseThrow();
+        layer.setFocused(trigger);
+        layer.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
+        for (int i = 0; i < BreakpointCondition.Kind.values().length
+            && !((AbstractButton) layer.getFocused()).getMessage().getString().equals(BreakpointUi.kindLabel(kind)); i++)
+            layer.keyPressed(new KeyEvent(InputConstants.KEY_DOWN, 0, 0));
+        require(((AbstractButton) layer.getFocused()).getMessage().getString().equals(BreakpointUi.kindLabel(kind)),
+            "keyboard can reach the requested condition kind");
+        layer.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
+    }
+
+    private static EditBox countBox(Screen layer) {
+        return layer.children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast)
+            .filter(box -> box.visible).findFirst().orElseThrow();
+    }
+
+    private static void nativeButton(ClientGameTestContext context, Screen parent, String label) {
+        AbstractButton control = context.computeOnClient(client -> button(conditionLayer(parent), label));
+        nativeClick(context, parent, control.getX() + 3, control.getY() + 2, InputConstants.MOUSE_BUTTON_LEFT);
     }
 
     /** Uses native dispatch for delayed toggles and same-turn dispatch for the immediate guard. */
