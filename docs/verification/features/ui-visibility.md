@@ -4,6 +4,9 @@
 
 Use the [shared setup](../README.md#prepare-and-launch) and pause at a breakpoint.
 The default binding is `H`; the same gesture works in world and debugger cursor mode.
+While running, the empty inspector explains how to set a command-block or Source
+line breakpoint and enter cursor mode using the current key bindings. Help → Basics
+also provides the existing getting-started workflow with live binding labels.
 
 1. Press the binding: debugger panels, HUD labels and world markers disappear immediately.
    The vanilla game HUD remains visible. Hidden panels cannot receive pointer or focused-button actions.

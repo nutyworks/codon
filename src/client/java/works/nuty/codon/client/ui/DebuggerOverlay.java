@@ -64,6 +64,8 @@ public final class DebuggerOverlay {
     private final Set<String> usedButtons = new HashSet<>();
     private final Set<Integer> visibleSources = new HashSet<>();
     private @Nullable PauseSnapshot lastSnapshot;
+    private @Nullable String copiedUuid;
+    private long copiedUuidUntil;
     private List<Integer> expandedGroup = List.of();
     private int sourceOffset;
     private int maxSourceOffset;
@@ -166,6 +168,7 @@ public final class DebuggerOverlay {
             expandedGroup = List.of();
             sourceOffset = Math.max(0, state.selectedSourceIndex());
             lastSnapshot = snapshot;
+            copiedUuid = null;
         }
         Font font = client.font;
         if ((!state.isPaused() || snapshot == null) && !interactive) {
@@ -226,7 +229,7 @@ public final class DebuggerOverlay {
         navigationGroup = DebuggerNavigation.Group.WORLD;
         if (!narrowAuxiliary || auxiliaryPanel == AuxiliaryPanel.NONE)
             renderWorldLabels(graphics, layout.world(), snapshot);
-        if (showInspector) renderInspector(graphics, auxiliaryBounds, snapshot);
+        if (showInspector) renderInspector(graphics, auxiliaryBounds, snapshot, input);
         if (interactive && !compactAuxiliary) {
             if (showInspector) panelResizing.add("inspector", auxiliaryBounds, false,
                 MIN_INSPECTOR_WIDTH, maximumInspectorWidth, preferences()::setInspectorWidth);
@@ -490,11 +493,13 @@ public final class DebuggerOverlay {
         watchSummaryBounds = watchPanel.bounds();
     }
 
-    private void renderInspector(GuiGraphicsExtractor graphics, Bounds area, @Nullable PauseSnapshot snapshot) {
+    private void renderInspector(GuiGraphicsExtractor graphics, Bounds area, @Nullable PauseSnapshot snapshot, InputManager input) {
         panel(graphics, area);
         if (area.height() < 40) return;
         if (snapshot == null) {
-            wrapped(graphics, component("codon.ui.no_snapshot"), new Bounds(area.x() + 8, area.y() + 9,
+            wrapped(graphics, Component.translatable("codon.ui.idle_hint",
+                keybind(input.breakpointKey.getTranslatedKeyMessage()), component("codon.source.title"),
+                keybind(input.menuKey.getTranslatedKeyMessage())), new Bounds(area.x() + 8, area.y() + 9,
                 area.width() - 16, area.height() - 18), MUTED);
             return;
         }
@@ -652,11 +657,17 @@ public final class DebuggerOverlay {
             .withoutChrome()
             .setTooltip(Tooltip.create(component("codon.ui.move_to_source." + status)));
         iconX -= 18;
+        boolean copied = source.entity() != null && source.entity().uuid().toString().equals(copiedUuid)
+            && System.nanoTime() < copiedUuidUntil;
         if (source.entity() != null) {
             String uuid = source.entity().uuid().toString();
             iconButton("copy-uuid", new Bounds(iconX, y - 3, 16, 16),
-                Component.literal("UUID: " + uuid + "\n" + tr("codon.ui.copy")), DebuggerIcon.COPY_UUID,
-                true, () -> client.keyboardHandler.setClipboard(uuid)).withoutChrome();
+                Component.literal("UUID: " + uuid + "\n" + tr(copied ? "codon.ui.copied" : "codon.ui.copy")),
+                copied ? DebuggerIcon.CONFIRM : DebuggerIcon.COPY_UUID, true, () -> {
+                    client.keyboardHandler.setClipboard(uuid);
+                    copiedUuid = uuid;
+                    copiedUuidUntil = System.nanoTime() + 4_000_000_000L;
+                }).withoutChrome();
             iconX -= 18;
         }
         if (!visibleSources.contains(state.selectedSourceIndex())) {
@@ -673,7 +684,8 @@ public final class DebuggerOverlay {
                 component(dropped ? "codon.ui.flow_removed" : created ? "codon.ui.flow_created" : "codon.ui.flow_changed"));
             iconX -= 18;
         }
-        text(graphics, sourceLabel(source, state.selectedSourceIndex(), state.selectedSourceDropped()),
+        text(graphics, copied ? tr("codon.ui.copied")
+            : sourceLabel(source, state.selectedSourceIndex(), state.selectedSourceDropped()),
             area.x() + 7 + headingInset, y, iconX + 16 - area.x() - 9 - headingInset, accent);
         y += 16;
         ExecutionFlowContext parent = state.selectedSourceDropped() ? null : state.selectedFlowParent();
