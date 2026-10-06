@@ -18,6 +18,10 @@ import works.nuty.codon.client.input.UiHideGesture;
 import works.nuty.codon.client.ui.CodonScreen;
 import works.nuty.codon.client.ui.DebuggerOverlay;
 import works.nuty.codon.core.model.BlockLocation;
+import works.nuty.codon.core.model.BreakpointCondition;
+import works.nuty.codon.core.model.BreakpointDefinition;
+import works.nuty.codon.core.model.BreakpointTarget;
+import works.nuty.codon.core.model.SourceLocation;
 import works.nuty.codon.core.model.PauseSnapshot;
 
 import java.util.List;
@@ -28,6 +32,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @SuppressWarnings("UnstableApiUsage")
 public final class DebuggerWorldMarkerVisibilityGameTest implements FabricClientGameTest {
     private static final BlockLocation BLOCK = new BlockLocation(4, 80, 0, "minecraft:overworld");
+    private static final BlockLocation CONDITIONAL = new BlockLocation(0, 80, 0, "minecraft:overworld");
+    private static final BlockLocation DISABLED = new BlockLocation(1, 80, 0, "minecraft:overworld");
+    private static final BlockLocation STAGE_ONLY = new BlockLocation(2, 80, 0, "minecraft:overworld");
     private static boolean sentinelEnabled;
     private static boolean sentinelRegistered;
 
@@ -38,6 +45,12 @@ public final class DebuggerWorldMarkerVisibilityGameTest implements FabricClient
             world.getConnection().waitForChunksRender();
             var server = world.getServer().computeOnServer(value -> value);
             configure(world);
+            context.waitFor(client -> CodonClientMod.state().breakpoints().definitions().size() == 4
+                && CodonClientMod.state().blockBreakpoints().contains(CONDITIONAL), 200);
+            context.runOnClient(client -> require(CodonClientMod.state().blockBreakpoints().size() == 2
+                && !CodonClientMod.state().blockBreakpoints().contains(DISABLED)
+                && !CodonClientMod.state().blockBreakpoints().contains(STAGE_ONLY),
+                "Only enabled whole-block definitions receive world outlines"));
             context.waitFor(client -> client.player.getY() > 80 && client.player.getZ() > 8, 200);
             world.getConnection().waitForChunksRender();
             context.waitTicks(4);
@@ -170,6 +183,8 @@ public final class DebuggerWorldMarkerVisibilityGameTest implements FabricClient
         for (var frame : frames) {
             require(frame.hidden() == hidden, phase + " visibility: " + frame);
             require(hidden ? frame.markers() == 0 : frame.markers() > 0, phase + " geometry: " + frame);
+            require(hidden ? frame.conditional() == 0 : frame.conditional() > 0,
+                phase + " conditional breakpoint has its distinct outline color: " + frame);
             require(frame.sentinel() > 0, phase + " preserves unrelated gizmos: " + frame);
         }
     }
@@ -180,11 +195,16 @@ public final class DebuggerWorldMarkerVisibilityGameTest implements FabricClient
             server.getPlayerList().op(player.nameAndId(), Optional.of(LevelBasedPermissionSet.OWNER), Optional.empty());
             CodonMod.engine().clearBreakpoints();
             CodonMod.engine().toggleBlockBreakpoint(BLOCK);
+            CodonMod.engine().saveBreakpoint(BreakpointDefinition.plain(BreakpointTarget.whole(new SourceLocation.Block(CONDITIONAL)))
+                .withCondition(BreakpointCondition.count(BreakpointCondition.Kind.OUTPUT_COUNT, BreakpointCondition.Comparison.EQ, 0)));
+            CodonMod.engine().saveBreakpoint(BreakpointDefinition.plain(BreakpointTarget.whole(new SourceLocation.Block(DISABLED))).withEnabled(false));
+            CodonMod.engine().saveBreakpoint(BreakpointDefinition.plain(BreakpointTarget.stage(new SourceLocation.Block(STAGE_ONLY), 0, "say unused")));
         });
         world.getServer().runCommand("scoreboard objectives add marker_visibility dummy");
         world.getServer().runCommand("scoreboard players set result marker_visibility 0");
         world.getServer().runCommand("gamemode creative @a");
         world.getServer().runCommand("fill -4 79 -2 6 79 9 minecraft:stone");
+        world.getServer().runCommand("fill 0 80 0 2 80 0 minecraft:command_block{Command:\"say unused\",auto:0b}");
         world.getServer().runCommand("tp @a 0 81 8 180 18");
         world.getServer().runCommand("summon minecraft:armor_stand 2.0 80 0.0 {Tags:[\"marker_target\"],NoGravity:1b}");
         world.getServer().runCommand("setblock 4 80 0 minecraft:command_block{Command:\"execute as @e[tag=marker_target,limit=1] at @s run scoreboard players add result marker_visibility 1\",auto:0b}");

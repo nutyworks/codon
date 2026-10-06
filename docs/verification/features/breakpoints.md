@@ -247,6 +247,25 @@ Authoritative Source/Flow marker mapping:
 
 The matching server parse preview supplies the stage count; conclusive recorded
 evidence is the existing fallback. The code does not classify multi-stage commands
-by the literal `execute` name. A 14-pixel root marker and 15-pixel inset are added
+by the literal `execute` name. An 18×18 root target and 19-pixel inset are added
 before the first displayed part of a multi-stage command. Its unset/disabled
 affordance remains visible, like the stage controls, without creating a definition.
+
+Flow reserves separate 18×18 targets for whole-command/stage markers and warnings,
+including compact rows. Warning targets sit beside their clause, with their own
+reserved width. Source's whole-line gutter target is 18×18; its right and bottom
+edges are half-open, so adjacent line-number and next-row clicks cannot toggle it.
+On an actual stopped line the amber `>` cue is excluded from that target: clicking it
+only selects the line. `FunctionLineBreakpointGameTest` checks both the cue and marker.
+The visible breakpoint artwork keeps its existing size. `FlowBreakpointInteractionGameTest`
+checks target bounds and non-overlap at 320×240; `FunctionLineBreakpointGameTest`
+checks the expanded gutter corner and adjacent excluded edges, including the
+obsolete-stage warning tooltip and click region. These client
+fixtures do not establish actual server breakpoint execution.
+
+World outlines still include only enabled whole-block breakpoints. Plain outlines
+are thin red; conditional outlines are thicker purple. Disabled and stage-only
+breakpoints remain outside this legacy whole-block marker list; an active stop
+keeps its amber outline and center point. `DebuggerWorldMarkerVisibilityGameTest`
+checks the acknowledged marker list and conditional color in native frames while
+paused and running, alongside the existing H-hide and unrelated-gizmo checks.
