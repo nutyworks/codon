@@ -900,6 +900,22 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         rememberView();
     }
 
+    private void goToLine(int line) {
+        FunctionSourceDocument document = sources.document();
+        if (sources.sourceStatus() != ClientFunctionSourceState.Status.READY || document == null
+            || !Objects.equals(document.id(), sources.selected()) || line < 1 || line > document.lines().size()) return;
+        revealTarget = focusedBreakpoint = null;
+        selectedLine = line;
+        selectedStageIndex = -1;
+        lineOffset = Math.clamp(line - 1, 0, Math.max(0, document.lines().size() - sourceRows()));
+        horizontalOffset = 0;
+        parentOwnsContextKeys = false;
+        clearSourceHits();
+        rememberView();
+        if (drawerOpen) setDrawerOpen(false);
+        setFocused(null);
+    }
+
     private String executionStatus(FunctionId function) {
         ClientDebuggerState state = CodonClientMod.state();
         if (state == null || state.inspectionSnapshot() == null) return tr("codon.source.record_unavailable");
@@ -1166,6 +1182,13 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                     : new Bounds(stage.x(), stage.y(), stage.width(), stage.height()), focusedBreakpoint != null);
                 return true;
             }
+        }
+        if (event.key() == InputConstants.KEY_G && event.hasControlDownWithQuirk()) {
+            FunctionSourceDocument document = sources.document();
+            if (sources.sourceStatus() == ClientFunctionSourceState.Status.READY && document != null
+                && Objects.equals(document.id(), sources.selected()) && !document.lines().isEmpty())
+                ScreenLayers.open(this, new SourceLineJumpScreen(this, sources, document, selectedLine, this::goToLine));
+            return true;
         }
         if (event.key() == InputConstants.KEY_F && event.hasControlDownWithQuirk() && sourceSearch.visible) {
             focusedBreakpoint = null;
