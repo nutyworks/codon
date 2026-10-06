@@ -563,6 +563,7 @@
   "codon.ui.flow_detail.contexts": "In %s → Out %s · Excluded %s",
   "codon.ui.flow_detail.trace_warning": "Trace: %s",
   "codon.watch.menu.title": "Watch actions",
+  "codon.watch.menu.hint": "Right-click or Shift+F10: Watch actions",
   "codon.watch.menu.add_watch": "Add to Watches",
   "codon.watch.menu.delete": "Delete Watch"
 }

@@ -550,10 +550,15 @@ public final class CommandPanel {
                 var clauseDetails = new ArrayList<String>();
                 if (stopped) clauseDetails.add(tr("codon.ui.flow_detail.stop") + " · #" + (stage.index() + 1));
                 // The counts line under the clause already says this when the row is tall enough to draw it.
-                if (rowHeight < 30) clauseDetails.add(stageSummary(stage));
+                boolean countsDrawn = rowHeight >= 30;
+                if (!countsDrawn) clauseDetails.add(stageSummary(stage));
                 String warnings = stageDetails(stage);
                 if (!warnings.isEmpty()) clauseDetails.add(warnings);
                 if (!clauseDetails.isEmpty()) clause.setTooltip(Tooltip.create(Component.literal(String.join("\n", clauseDetails))));
+                // Drawn counts are not spoken with the clause, so narrate them even though hover stays quiet.
+                var spoken = new ArrayList<>(clauseDetails);
+                if (countsDrawn) spoken.add(stageSummary(stage));
+                clause.withNarrationHint(Component.literal(String.join("\n", spoken)));
                 if (editableSource && target != null) conditionMenu(clause,
                     "clause-" + flow.invocationId() + "-" + stage.index() + "-" + cell.row(),
                     flow, target, stage.command().text(), false);

@@ -563,6 +563,7 @@
   "codon.ui.flow_detail.contexts": "입력 %s → 출력 %s · 제외 %s",
   "codon.ui.flow_detail.trace_warning": "전체 기록: %s",
   "codon.watch.menu.title": "감시 항목 관리",
+  "codon.watch.menu.hint": "우클릭 또는 Shift+F10: 감시 항목 관리",
   "codon.watch.menu.add_watch": "감시 항목에 추가",
   "codon.watch.menu.delete": "감시 항목 삭제"
 }

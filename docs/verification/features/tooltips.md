@@ -17,7 +17,9 @@ A tooltip appears only when it adds what the screen does not already show. Flow 
 detail-band and call-frame tooltips never repeat the context definition, the count
 legend (both live in Help), the clause text, the counts drawn under the clause or an
 invocation id. Healthy, fully drawn Watch rows have no tooltip, and grouping menu items
-have none.
+have none. A quiet hover does not silence narration: `DebuggerButton.withNarrationHint`
+keeps a Watch row's scope and actions hint and a Flow clause's counts in speech, in place of
+the tooltip text (`DebuggerButtonTest`).
 
 Source line breakpoints show their exact condition, click toggle hint and right-click
 condition hint on separate English/Korean lines. Long unbroken paths wrap too.

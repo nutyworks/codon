@@ -30,6 +30,25 @@ class DebuggerButtonTest {
     }
 
     @Test
+    void narrationHintIsSpokenInPlaceOfTheTooltipAndClearedOnReuse() {
+        DebuggerButton button = new DebuggerButton();
+        Component hint = Component.literal("Fixed · pin-b");
+        button.configure(0, 0, 80, 17, Component.literal("Inspect watch"), true, false, true, false, () -> { });
+        button.withNarrationHint(hint);
+        // Whichever order the owner sets them in, the tooltip must not take the hint slot.
+        Component tooltip = Component.literal("Full value");
+        button.setTooltip(net.minecraft.client.gui.components.Tooltip.create(tooltip));
+        NarrationElementOutput output = mock(NarrationElementOutput.class);
+        button.updateNarration(output);
+        verify(output).add(NarratedElementType.HINT, hint);
+        verify(output, never()).add(NarratedElementType.HINT, tooltip);
+        button.configure(0, 0, 80, 17, Component.literal("Inspect watch"), true, false, true, false, () -> { });
+        NarrationElementOutput reused = mock(NarrationElementOutput.class);
+        button.updateWidgetNarration(reused);
+        verify(reused, never()).add(eq(NarratedElementType.HINT), any(Component.class));
+    }
+
+    @Test
     void reusedButtonClearsChangedIndicatorAndNarration() {
         DebuggerButton button = new DebuggerButton();
         button.withChangedDot(Component.literal("Changed"));

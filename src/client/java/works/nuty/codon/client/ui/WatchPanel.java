@@ -324,6 +324,9 @@ public final class WatchPanel {
             Component inspectionLabel = text("inspect", WatchFormatting.specification(entry.spec()).getString());
             // A healthy, fully drawn row is its own description; hover only adds what it hides.
             Tooltip inspectionTooltip = clipped || WatchFormatting.needsExplanation(entry) ? rowTooltip(entry) : null;
+            // Hover stays quiet, but two rows of the same watch bound to different executors must still
+            // be told apart, and the actions menu discovered, by speech.
+            Component narration = Component.literal(scope(entry) + "\n").append(text("menu.hint"));
             for (int line = 0; line < inspectionBounds.size(); line++) {
                 button((line == 0 ? "watch-row-" : "watch-value-") + entry.id(), inspectionBounds.get(line),
                     inspectionLabel, true, entry.id() == selectedId,
@@ -334,6 +337,7 @@ public final class WatchPanel {
                     },
                     navigation, offset + index, 0).asHitSurface()
                     .withSecondaryAction(() -> openContextMenu(entry.id(), rowArea, input, overlay))
+                    .withNarrationHint(narration)
                     .setTooltip(inspectionTooltip);
             }
         }
