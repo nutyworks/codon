@@ -58,9 +58,13 @@ Rendering an unset affordance does not create a saved breakpoint. The
 list retains enabled and disabled definitions with an explicit state label. Its header
 shows the total definitions and enabled count. The toolbar's short count and source
 stage summaries still count enabled breakpoints; the toolbar tooltip explicitly shows
-enabled and total counts. `CodonLabelsGameTest` checks enabled-only, disabled-only and
-mixed snapshots in English/Korean at normal and 320×240 logical viewports, including
-the maximum-count header width. Disabling preserves the saved condition; use the
+enabled and total counts. `CodonLabelsTest` checks enabled-only, disabled-only, mixed
+and filtered captions in English/Korean, alongside all Watch-kind prefix permutations.
+`CodonLabelsGameTest` retains one mixed snapshot per language at the 320×240 logical
+viewport, including the maximum-count header width, representative Watch Details
+and rotation. This produces eight screenshots rather than repeating every permutation.
+Limit failures retain client translation keys with a readable English fallback for
+console/RCON sources without client language assets. Disabling preserves the saved condition; use the
 list to navigate to its source, then hover/focus its original marker to enable it again. The whole-command
 marker at the front of the command-block editor is always visible, including when
 unused or disabled. Text selection in the

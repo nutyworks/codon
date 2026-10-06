@@ -78,5 +78,7 @@ class CodonCommandLabelsTest {
         verify(source).sendFailure(message.capture());
         var contents = assertInstanceOf(TranslatableContents.class, message.getValue().getContents());
         assertEquals("command.codon.breakpoint.error.limit", contents.getKey());
+        assertEquals("Breakpoint limit reached", message.getValue().getString(),
+            "A server without Codon's client language assets still receives readable text");
     }
 }
