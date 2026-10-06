@@ -75,7 +75,14 @@ on separate localized lines; see [tooltip coverage](tooltips.md) for wrapping,
 viewport placement and the rendering checks.
 The command alternatives are `/codon breakpoint block <x> <y> <z>` and
 `/codon breakpoint function <namespace:path> <line>` (one-based file line).
-They toggle whole-command targets; use the UI for stage/condition editing.
+Alone they toggle whole-command targets. Both accept `[stage <n>] [condition <condition>]`
+(see the [README](../../../README.md) for the syntax): `stage <n>` uses the editor's one-based
+stage number and is refused for single-stage commands; `condition` sets, updates (`created`,
+`removed`, `changed`, or a `*_count` with `eq|ne|lt|le|gt|ge <n>`) or removes (`clear`) a condition
+and, like the editor's Save, enables the breakpoint. These edits use the editor's server-side
+target validation (`BreakpointTargetValidator`): a missing/unloaded command block, unreadable or
+macro source, unparsable command, unknown stage, or result condition on the final stage is reported
+and changes no definition. `/codon breakpoint list` includes each enabled stage and condition.
 Explicit block-coordinate commands retain position-based targets, including future or
 unloaded locations, without acquiring a chunk. F10 uses the camera's centre ray up to
 20 blocks and shows a localized action-bar hint when that ray misses a block.
@@ -86,7 +93,10 @@ the CLI preserves its position-based toggle with a localized warning followed by
 usual server result; UI edits still require verifiable source. Existing enabled entries can be disabled after
 their line changes. `CodonBreakpointCommandTest` verifies command dispatch and these
 adapter decisions with mocked server resources, including a real Minecraft-parsed
-20,001-command function returned by a mocked function manager. It does not execute a
+20,001-command function returned by a mocked function manager. It also covers stage and
+condition creation/update/clear, rejected input leaving definitions unchanged, the owner
+requirement, the loaded command-block path, `list` output and `/help` usage, with a tiny
+test-registered `execute` tree instead of vanilla's. It does not execute a
 native loaded function or prove execution beyond the Source response limits.
 
 The active list retains widget identity only for currently rendered controls.
@@ -103,6 +113,7 @@ Screen; actual list navigation and focus remain a UI acceptance check.
 - [BreakpointConditionScreen](../../../src/client/java/works/nuty/codon/client/ui/BreakpointConditionScreen.java), [ScreenLayers](../../../src/client/java/works/nuty/codon/client/ui/ScreenLayers.java), [ClientBreakpointState](../../../src/client/java/works/nuty/codon/client/state/ClientBreakpointState.java): modal options, input isolation, pending edits and acknowledgement.
 - [BreakpointRegistry](../../../src/core/java/works/nuty/codon/core/service/BreakpointRegistry.java), [BreakpointConditionEvaluator](../../../src/core/java/works/nuty/codon/core/service/BreakpointConditionEvaluator.java), [DebuggerEngine](../../../src/core/java/works/nuty/codon/core/service/DebuggerEngine.java): definition and stop semantics.
 - [WorldBreakpointPersistence](../../../src/main/java/works/nuty/codon/persistence/WorldBreakpointPersistence.java): world storage.
+- [CodonCommand](../../../src/main/java/works/nuty/codon/command/CodonCommand.java), [BreakpointEditCommands](../../../src/main/java/works/nuty/codon/command/BreakpointEditCommands.java), [BreakpointTargetValidator](../../../src/main/java/works/nuty/codon/adapter/BreakpointTargetValidator.java): command syntax, stage/condition edits and the target rules shared with the editor's network handler.
 
 ## Choose verification
 
@@ -115,9 +126,9 @@ Screen; actual list navigation and focus remain a UI acceptance check.
 | Single-stage editor/Flow target, legacy toggle/clear and native first-occurrence stop | `SingleStageBreakpointGameTest` |
 | Inactive condition marker retention, menus/Cancel and server-acknowledged Save enabling | `BreakpointConditionVisibilityGameTest`, `DebuggerBreakpointUiGameTest` |
 | Flow legacy/line isolation, exact condition attribution, rejected toggle feedback and pending action gating (presentation fixture) | `FlowLegacyConditionGameTest` |
-| Native execution and measured-zero result breakpoints | `DebuggerBreakpointResultGameTest` |
+| Native execution and measured-zero result breakpoints, created through `/codon breakpoint ... stage 2 condition ...` | `DebuggerBreakpointResultGameTest` |
 | Unauthorized command-block save does not acquire a chunk; authorized loaded edit succeeds | `DebuggerRequestTransportGameTest` |
-| Raw function-line command validation, unavailable/truncated source, existing entry disabling and future coordinates | `test`: `CodonBreakpointCommandTest` |
+| Raw function-line command validation, unavailable/truncated source, existing entry disabling, future coordinates, command stage/condition edits and `list`/help output | `test`: `CodonBreakpointCommandTest` |
 | Numeric line/stage/coordinate list order | `clientTest`: `BreakpointListOrderTest` |
 
 Example: `./gradlew runClientGameTest -PclientGameTest=DebuggerBreakpointUiGameTest`.
