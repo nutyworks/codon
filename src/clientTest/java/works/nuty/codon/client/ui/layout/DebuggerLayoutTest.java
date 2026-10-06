@@ -11,6 +11,31 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DebuggerLayoutTest {
     @Test
+    void reservesVanillaHudAndRecentChatWithoutChangingRequestedSizes() {
+        for (Size size : List.of(new Size(320, 240), new Size(427, 240), new Size(640, 360))) {
+            for (int inset : List.of(60, 80, 134)) {
+                var layout = DebuggerLayout.create(size.width(), size.height(), true, 112, 190, inset);
+                assertInScreen(layout.command(), size);
+                assertInScreen(layout.world(), size);
+                assertInScreen(layout.inspector(), size);
+                assertTrue(layout.command().y() + layout.command().height() <= size.height() - inset);
+                assertTrue(layout.inspector().y() + layout.inspector().height() <= size.height() - inset);
+                assertFalse(overlaps(layout.command(), layout.controls()));
+                assertFalse(overlaps(layout.command(), layout.world()));
+                if (inset <= 80) {
+                    assertTrue(layout.command().height() >= 58,
+                        "Compact recent chat retains room for a selectable command row");
+                    assertTrue(layout.world().height() >= 42,
+                        "Compact chat keeps the context inspector's existing viewport minimum");
+                }
+                assertEquals(DebuggerLayout.create(size.width(), size.height(), true, 112, 190),
+                    DebuggerLayout.create(size.width(), size.height(), true, 112, 190, 0),
+                    "Removing the inset restores the same requested layout");
+            }
+        }
+    }
+
+    @Test
     void keepsMajorRegionsOnScreenAndSeparateAtSupportedGuiSizes() {
         for (Size size : List.of(new Size(320, 180), new Size(480, 270), new Size(640, 360), new Size(1024, 576))) {
             for (boolean inspectorOpen : List.of(false, true)) {

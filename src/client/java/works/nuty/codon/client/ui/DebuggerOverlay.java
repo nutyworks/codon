@@ -169,17 +169,19 @@ public final class DebuggerOverlay {
         }
         Font font = client.font;
         if ((!state.isPaused() || snapshot == null) && !interactive) {
-            Component text = Component.literal("CODON · " + statusText() + " ")
-                .append(keybind(Component.literal("[").append(input.menuKey.getTranslatedKeyMessage()).append("]")));
-            Bounds header = DebuggerLayout.create(graphics.guiWidth(), graphics.guiHeight(), false).header();
-            Bounds badge = new Bounds(header.x(), header.y(),
-                Math.min(graphics.guiWidth() - 2 * header.x(), font.width(text) + 14), header.height());
-            graphics.fill(badge.x(), badge.y(), badge.x() + badge.width(), badge.y() + badge.height(), PANEL);
-            graphics.outline(badge.x(), badge.y(), badge.width(), badge.height(), BORDER);
-            graphics.enableScissor(header.x() + 7, header.y(),
-                header.x() + Math.max(7, badge.width() - 7), header.y() + header.height());
-            graphics.text(font, text, header.x() + 7, header.y() + 5, MUTED, false);
-            graphics.disableScissor();
+            if (!client.gui.hud.getDebugOverlay().showDebugScreen()) {
+                Component text = Component.literal("CODON · " + statusText() + " ")
+                    .append(keybind(Component.literal("[").append(input.menuKey.getTranslatedKeyMessage()).append("]")));
+                Bounds header = DebuggerLayout.create(graphics.guiWidth(), graphics.guiHeight(), false).header();
+                Bounds badge = new Bounds(header.x(), header.y(),
+                    Math.min(graphics.guiWidth() - 2 * header.x(), font.width(text) + 14), header.height());
+                graphics.fill(badge.x(), badge.y(), badge.x() + badge.width(), badge.y() + badge.height(), PANEL);
+                graphics.outline(badge.x(), badge.y(), badge.width(), badge.height(), BORDER);
+                graphics.enableScissor(header.x() + 7, header.y(),
+                    header.x() + Math.max(7, badge.width() - 7), header.y() + header.height());
+                graphics.text(font, text, header.x() + 7, header.y() + 5, MUTED, false);
+                graphics.disableScissor();
+            }
             buttonCache.clear();
             navigation.endFrame();
             scrollbars.endFrame();
@@ -206,7 +208,7 @@ public final class DebuggerOverlay {
         DebuggerLayout layout = DebuggerLayout.create(graphics.guiWidth(), graphics.guiHeight(), reserveSide,
             state.preferences().commandVisible()
                 ? commandPanel.preferredHeight(graphics.guiWidth(), graphics.guiHeight(), snapshot) : 0,
-            inspectorWidth);
+            inspectorWidth, DebuggerHudInsets.bottom(preferences()));
         Bounds auxiliaryBounds = narrowAuxiliary
             ? new Bounds(layout.world().x(), layout.world().y(),
                 Math.min(240, Math.max(0, layout.world().width() - 32)), layout.world().height())

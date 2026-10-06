@@ -67,21 +67,21 @@ public final class UiScaleScreen extends ScaledCodonScreen {
         buttons.get("minus").active = custom && requestedScale() > DebuggerPreferences.MIN_UI_SCALE;
         var window = minecraft.getWindow();
         buttons.get("plus").active = custom && requestedScale() < UiScale.maximumRequest(window.getWidth(), window.getHeight(), minecraft.isEnforceUnicode());
-        graphics.fill(left, top, left + panelWidth, top + 218, color(PANEL));
-        graphics.outline(left, top, panelWidth, 218, color(BORDER));
-        graphics.text(font, title, left + 8, top + 10, color(TEAL), false);
+        graphics.fill(left, top, left + panelWidth, top + 218, modalColor(PANEL));
+        graphics.outline(left, top, panelWidth, 218, modalColor(BORDER));
+        graphics.text(font, title, left + 8, top + 10, modalColor(TEAL), false);
         graphics.centeredText(font, text("requested", number(requestedScale() / 4.0)),
-            left + panelWidth / 2, top + 84, color(custom ? TEXT : MUTED));
+            left + panelWidth / 2, top + 84, modalColor(custom ? TEXT : MUTED));
         int lineY = top + 106;
         for (var line : font.split(text("units"), panelWidth - 16)) {
-            graphics.text(font, line, left + 8, lineY, color(MUTED), false);
+            graphics.text(font, line, left + 8, lineY, modalColor(MUTED), false);
             lineY += font.lineHeight + 2;
         }
         var scale = uiScale();
         boolean limited = custom && scale.effective() < uiPreferences().customUiScale() / 4.0;
         Component applied = limited ? text("limited", number(scale.effective())) : text("applied", number(scale.effective()));
         for (var line : font.split(applied, panelWidth - 16)) {
-            graphics.text(font, line, left + 8, lineY + 4, color(limited ? AMBER : MUTED), false);
+            graphics.text(font, line, left + 8, lineY + 4, modalColor(limited ? AMBER : MUTED), false);
             lineY += font.lineHeight + 2;
         }
         super.extractRenderState(graphics, x, y, delta);

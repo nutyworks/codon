@@ -149,17 +149,20 @@ public final class CommandPanel {
             && previewRequests.needsRequest(snapshot, flow.location(), state.stagePreviews().get(flow.location()), snippet.text())
             && ClientNetworking.requestStagePreview(state, flow.location())) previewRequests.requested(flow.location());
 
-        // The action row is anchored to the screen's bottom, independently of expansion.
+        // The action row stays at the panel's bottom, independently of expansion.
         int actionY = Math.max(area.y() + 1, area.y() + area.height() - 20);
         int actionLeft = renderActions(new Bounds(area.x() + 4, actionY, area.width() - 8, 17));
         if (area.height() >= 40) {
-            int y = area.y() + 3;
+            // Recent chat can leave a short panel: retain path, selected clause and actions.
+            boolean shortPanel = area.height() < 65;
+            int y = area.y() + (shortPanel ? 1 : 3);
             renderPath(graphics, new Bounds(area.x() + 4, y, area.width() - 8, 17), snapshot);
-            y += 19;
+            y += shortPanel ? 18 : 19;
             // Fixed full-width detail band: selected state never changes clause widths or action positions.
-            int detailHeight = Math.min(DETAIL_HEIGHT, Math.max(0, actionY - y - 21));
-            int detailY = actionY - 4 - detailHeight;
-            Bounds body = new Bounds(area.x() + 5, y, area.width() - 12, Math.max(0, detailY - 2 - y));
+            int detailHeight = shortPanel ? 0 : Math.min(DETAIL_HEIGHT, Math.max(0, actionY - y - 23));
+            int detailY = actionY - (shortPanel ? 2 : 4) - detailHeight;
+            Bounds body = new Bounds(area.x() + 5, y, area.width() - 12,
+                Math.max(0, detailY - (shortPanel ? 0 : 2) - y));
             renderClauses(graphics, body, snapshot);
             SelectionDetail detail = selectionDetail();
             if (detailHeight >= client.font.lineHeight + 2) {
@@ -175,7 +178,8 @@ public final class CommandPanel {
                 if (target != null) conditionMenu(details, "selected-flow-details", flow, target,
                     snippet.text(), state.selectedUnobservedStageIndex() >= 0);
             }
-            graphics.fill(area.x() + 1, actionY - 3, area.x() + area.width() - 1, actionY - 2, DebuggerTheme.color(BORDER));
+            int dividerY = actionY - (shortPanel ? 1 : 3);
+            graphics.fill(area.x() + 1, dividerY, area.x() + area.width() - 1, dividerY + 1, DebuggerTheme.color(BORDER));
             ExecutionFlowStage stage = state.selectedExecutionFlowStage();
             boolean warning = stage != null && hasFlowWarning();
             int summaryX = area.x() + 8;

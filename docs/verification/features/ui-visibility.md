@@ -18,6 +18,21 @@ The default binding is `H`; the same gesture works in world and debugger cursor 
 6. Resume and step normally: hiding does not send a debugger control request or change
    client/server pause snapshots. Visibility is session state and is not saved to settings.
 
+The running idle badge yields to the vanilla F3 debug screen. Paused panels and
+cursor mode keep their existing visibility; H remains the temporary/session hide
+gesture, with no additional saved idle-hide preference. The Command workspace
+reserves 60 vanilla GUI pixels above the hotbar/health and expands this inset to
+clear recent wrapped chat rows, honoring vanilla chat scale/spacing. The inset is
+converted to Codon's scale; fitting does not rewrite saved panel widths. Recent
+chat may reduce the available command/world viewport on compact screens. Opening
+chat continues to suppress the passive debugger HUD.
+
+HUD background opacity still follows the saved 0–100% preference. Modal forms,
+pickers, Details, breakpoint dialogs, Help and UI-scale settings keep an opaque
+reading surface and their dim scrim independently of that preference. Text alpha
+is not the cause of low-opacity world contrast. English/Korean Help describes this
+boundary; slider behavior is unchanged.
+
 Gizmo collision cells retain at most 128 exact candidates before becoming a spatial
 aggregate, including cells whose rectangles have no common intersection. Coarse groups
 retain every source and the selected member; the existing 20-label spatial budget and
@@ -37,6 +52,7 @@ world projection and rendering remain separate acceptance checks.
 
 | Concern | Existing tests |
 | --- | --- |
+| HUD/chat inset, modal backing and EN/KO compact/default readability | `clientTest`: `DebuggerLayoutTest`; `test`: `DebuggerThemeTest`; native: `DebuggerReadabilityGameTest`, `DebuggerOpacityGameTest`, `DebuggerPresentationGameTest` |
 | Short/long boundary, repeated events and cancellation | `clientTest`: `UiHideGestureTest` |
 | Native keyboard/mouse dispatch, screen input, rebind, chat, missed mouse release, focus flag and rejoin | `DebuggerPeekUiGameTest` |
 | Real server breakpoint stays paused, then each command executes once after Resume | `DebuggerFreecamResumeGameTest` |
@@ -68,3 +84,11 @@ unrelated-gizmo sentinel. Hidden captures retain the sentinel, vanilla hotbar an
 The actual server pause and snapshot must remain unchanged across H gestures, and
 the scoreboard command must execute exactly once after Resume. This does not cover
 physical focus changes, a separate dedicated server, or the original packaged VM runtime.
+
+`DebuggerReadabilityGameTest` captures Command plus four recent chat messages and
+survival health/hotbar at 854×480 and 1280×720, EN/KO, default/zero opacity. Modal
+screenshots face bright sky and dark terrain for each combination. Additional
+captures show idle/no-F3, idle/F3, paused/F3 and open chat in both languages. The
+fixture uses injected client snapshots, so use the real world-marker regression
+for H and server-pause safety. Inspect `codon-readable-*` images; this matrix does
+not establish arbitrary modded HUD placement or unusually many health rows.

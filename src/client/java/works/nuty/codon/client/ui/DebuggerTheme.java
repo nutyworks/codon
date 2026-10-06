@@ -41,6 +41,11 @@ public final class DebuggerTheme {
         return (color & 0x00FFFFFF) | (Math.round((color >>> 24) * opacity.getAsInt() / 100f) << 24);
     }
 
+    /** Modal reading/forms retain their backing even when the HUD is transparent. */
+    public static int modalColor(int color) {
+        return color == PANEL ? WORKSPACE : color;
+    }
+
     /** Panel transparency must not reduce the contrast of text, icons or keyboard focus. */
     public static int foreground(int color) { return color | 0xFF000000; }
 

@@ -142,9 +142,9 @@ public final class BreakpointListScreen extends ScaledCodonScreen {
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         // Reuse button identities while reflecting newly available navigation destinations.
         rebuild();
-        graphics.fill(0, 0, width, height, DebuggerTheme.color(0x70000000));
-        graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.color(PANEL));
-        graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.color(BORDER));
+        graphics.fill(0, 0, width, height, DebuggerTheme.modalColor(0x70000000));
+        graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.modalColor(PANEL));
+        graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.modalColor(BORDER));
         WatchUi.line(graphics, font, tr(targets == null ? "codon.breakpoint.list_header" : "codon.breakpoint.saved_definitions_header", displayed.size()),
             left + 8, top + 10, panelWidth - 16, TEXT);
         if (displayed.isEmpty()) WatchUi.line(graphics, font, tr("codon.breakpoint.list_empty"), left + 12, top + 43,

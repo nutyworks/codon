@@ -70,7 +70,7 @@ public final class DebuggerOpacityGameTest implements FabricClientGameTest {
             context.takeScreenshot("codon-opacity-hover-50");
             moveCursor(context, screen, false);
             context.runOnClient(client -> {
-                require((DebuggerTheme.color(DebuggerTheme.TEXT) >>> 24) == 128, "Text follows the same opacity");
+                require((DebuggerTheme.foreground(DebuggerTheme.TEXT) >>> 24) == 255, "Rendered text retains full alpha");
                 require((DebuggerTheme.color(DebuggerTheme.BORDER) >>> 24) == 128, "Borders follow the same opacity");
                 state.preferences().setBackgroundOpacity(0);
             });
