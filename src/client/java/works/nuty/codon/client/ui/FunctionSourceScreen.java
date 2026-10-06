@@ -852,8 +852,8 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             label, goToStop.active, false, false, false, this::goToStop);
         goToStop.withStatusColor(TEAL, TEAL_SURFACE);
         if (compact) goToStop.withIcon(DebuggerIcon.HISTORY_NEXT);
-        goToStop.setTooltip(Tooltip.create(label.copy().append("\n").append(Component.translatable(goToStop.active
-            ? "codon.source.go_to_stop_hint" : "codon.ui.move_to_source.pending"))));
+        goToStop.setTooltip(Tooltip.create(Component.translatable(goToStop.active
+            ? "codon.source.go_to_stop_hint" : "codon.ui.move_to_source.pending")));
     }
 
     private void goToStop() {
