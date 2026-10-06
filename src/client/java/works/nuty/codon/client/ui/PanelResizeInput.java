@@ -2,8 +2,6 @@ package works.nuty.codon.client.ui;
 
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.Font;
-import net.minecraft.network.chat.Component;
 import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds;
 
 import java.util.LinkedHashMap;
@@ -89,14 +87,13 @@ final class PanelResizeInput {
         return active;
     }
 
-    void paint(GuiGraphicsExtractor graphics, Font font, int mouseX, int mouseY) {
+    void paint(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
         for (var entry : edges.entrySet()) {
             Edge edge = entry.getValue();
             boolean active = entry.getKey().equals(captured);
             if (!active && !edge.contains(mouseX, mouseY)) continue;
             graphics.fill(edge.x(), edge.panel.y(), edge.x() + 1, edge.panel.y() + edge.panel.height(), DebuggerTheme.MUTED);
             graphics.requestCursor(CursorTypes.RESIZE_EW);
-            if (!active) graphics.setTooltipForNextFrame(font, Component.translatable("codon.ui.resize_panel"), mouseX, mouseY);
         }
     }
 }

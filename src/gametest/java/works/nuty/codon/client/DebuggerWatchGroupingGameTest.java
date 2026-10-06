@@ -51,6 +51,7 @@ public final class DebuggerWatchGroupingGameTest implements FabricClientGameTest
                 });
                 context.waitTicks(3);
                 context.runOnClient(client -> {
+                    requireNoTooltip(client.gui.screen(), label);
                     click(client.gui.screen(), label);
                     require(client.gui.screen() instanceof CodonScreen, "header popover leaves Watches open");
                     require(state.watches().definitions().equals(definitions), "grouping does not change definitions or bindings");
@@ -204,6 +205,18 @@ public final class DebuggerWatchGroupingGameTest implements FabricClientGameTest
         var event = new MouseButtonEvent(button.getX() + 2, button.getY() + 2, new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
         require(screen.mouseClicked(event, false), "click " + label);
         screen.mouseReleased(event);
+    }
+    /** The popover title and the item label already say what each choice does. */
+    private static void requireNoTooltip(Screen screen, String label) {
+        var item = screen.children().stream().filter(DebuggerButton.class::isInstance).map(DebuggerButton.class::cast)
+            .filter(value -> value.getMessage().getString().equals(label)).findFirst().orElseThrow();
+        try {
+            for (String name : List.of("tooltip", "singleLineTooltip")) {
+                var field = DebuggerButton.class.getDeclaredField(name);
+                field.setAccessible(true);
+                require(field.get(item) == null, "Grouping menu item " + label + " has no echo tooltip");
+            }
+        } catch (ReflectiveOperationException error) { throw new AssertionError(error); }
     }
     private static void require(boolean condition, String message) { if (!condition) throw new AssertionError(message); }
 }

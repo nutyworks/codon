@@ -89,6 +89,7 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
         String name = "codon-compact-watch-" + scenario.language() + "-" + scenario.width() + "-game-"
             + scenario.gameScale() + "-custom-" + scenario.customScale();
         context.runOnClient(client -> checkWatchGeometry(client, fixture));
+        context.runOnClient(client -> checkRowTooltips(client));
         capture(context, name);
         var beforeCopyBounds = context.computeOnClient(client -> fixture.overlay().watchPanel().scrollBounds());
         int beforeCopyOffset = context.computeOnClient(client -> fixture.overlay().watchPanel().offset());
@@ -262,7 +263,7 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
             double y = value.getY() + value.getHeight() / 2.0;
             require(value.isMouseOver(x, y), "The last visible value pixel belongs to the inspection surface");
             Tooltip hint = tooltip(value);
-            require(hint != null, "The value surface retains the name/scope tooltip");
+            require(hint != null, "A clipped value keeps a tooltip with its full text");
             for (var other : buttons(screen(client))) if (other != value)
                 require(!other.isMouseOver(x, y), "Right-edge inspection cannot activate another control");
             var scale = ((ScaledCodonScreen) screen(client)).uiScale();
@@ -278,6 +279,34 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
         context.waitTicks(3);
         context.runOnClient(client -> require(screen(client) instanceof WatchDetailsScreen, "Native right-edge value click opens Details"));
         return true;
+    }
+
+    /** A healthy, fully drawn row is silent; a failed read or a clipped value still explains itself. */
+    private static void checkRowTooltips(Minecraft client) {
+        for (var widget : rowButtons(client, "row_0"))
+            require(tooltipText(widget, client).contains(text("codon.watch.status.error")),
+                "A failed read keeps its explanation on hover");
+        for (var widget : rowButtons(client, "row_1"))
+            require(tooltip(widget) == null, "A healthy, unclipped row has no echo tooltip");
+        for (var widget : rowButtons(client, NBT.path()))
+            require(tooltipText(widget, client).contains(LONG_VALUE.substring(0, 24)),
+                "A clipped value keeps its full text on hover");
+    }
+
+    private static List<DebuggerButton> rowButtons(Minecraft client, String path) {
+        String label = Component.translatable("codon.watch.inspect",
+            WatchFormatting.specification(new WatchSpec(WatchSpec.Kind.STORAGE_NBT, "demo:compact", path)).getString()).getString();
+        return buttons(screen(client)).stream().filter(widget -> widget.getMessage().getString().equals(label)).toList();
+    }
+
+    private static String tooltipText(DebuggerButton button, Minecraft client) {
+        var hint = tooltip(button);
+        var text = new StringBuilder();
+        if (hint != null) for (var line : hint.toCharSequence(client)) {
+            line.accept((index, style, codePoint) -> { text.appendCodePoint(codePoint); return true; });
+            text.append('\n');
+        }
+        return text.toString();
     }
 
     private static boolean overlaps(AbstractWidget a, AbstractWidget b) {

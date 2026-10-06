@@ -267,8 +267,9 @@ public final class WatchPickerScreen extends ScaledCodonScreen {
                 graphics.fill(arrow.x(), arrow.y(), arrow.x() + arrow.width(), arrow.y() + arrow.height(), DebuggerTheme.color(TEAL_SURFACE));
                 WatchUi.line(graphics, font, ">", arrow.x() + 4, arrow.y(), 8, TEAL);
             }
-            if (authoritative && hovered && !selectable(option)) graphics.setTooltipForNextFrame(font,
-                WatchUi.text("picker.path_too_long", WatchSpec.MAX_INPUT_LENGTH), mouseX, mouseY);
+            if (authoritative && hovered && !selectable(option) && HoverDelay.elapsed(List.of("picker.row", index)))
+                graphics.setTooltipForNextFrame(font,
+                    WatchUi.text("picker.path_too_long", WatchSpec.MAX_INPUT_LENGTH), mouseX, mouseY);
         }
         graphics.disableScissor();
         if (scrollable) {

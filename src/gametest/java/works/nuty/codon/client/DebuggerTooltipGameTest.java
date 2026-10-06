@@ -149,6 +149,8 @@ public final class DebuggerTooltipGameTest implements FabricClientGameTest {
         move(context, screen, x, y);
         context.runOnClient(client -> capture = null);
         context.waitTicks(3);
+        require(capture == null, "A direct Source tooltip waits for the hover delay like a button's");
+        context.waitTicks(10);
         assertCapture("Source saved line " + name);
         require(capture.rows() >= 3 && capture.text().contains(BreakpointUi.condition(works.nuty.codon.core.model.BreakpointCondition.ALWAYS)),
             "Exact line condition and both mouse hints are visible on separate lines");
@@ -164,7 +166,7 @@ public final class DebuggerTooltipGameTest implements FabricClientGameTest {
         context.waitTicks(3);
         require(capture == null, "condition layer suppresses saved-line tooltip below it");
         context.runOnClient(client -> { ScreenLayers.close(ScreenLayers.get(screen)); capture = null; });
-        context.waitTicks(3);
+        context.waitTicks(12);
         assertCapture("disabled saved line recovers after modal closes " + name);
         context.runOnClient(client -> {
             var location = new SourceLocation.Function(new FunctionLocation(FUNCTION, 1));

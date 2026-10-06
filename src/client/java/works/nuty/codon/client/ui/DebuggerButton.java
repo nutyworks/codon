@@ -42,7 +42,6 @@ public class DebuggerButton extends AbstractButton {
     private int contentWidth;
     private int textPadding = 10;
     private long hoverStartedAt = -1;
-    private static final long HOVER_DELAY_NANOS = 350_000_000L;
     private @Nullable DebuggerIcon icon;
     private boolean smallIcon;
     private int iconOffsetY;
@@ -317,7 +316,7 @@ public class DebuggerButton extends AbstractButton {
         boolean keyboardFocus = isFocused() && client.getLastInputType().isKeyboard();
         if (!isHovered()) hoverStartedAt = -1;
         else if (hoverStartedAt < 0) hoverStartedAt = System.nanoTime();
-        if (!keyboardFocus && (!isHovered() || System.nanoTime() - hoverStartedAt < HOVER_DELAY_NANOS)) return;
+        if (!keyboardFocus && (!isHovered() || System.nanoTime() - hoverStartedAt < HoverDelay.DELAY_NANOS)) return;
         if (singleLineTooltip != null) {
             showTooltip(graphics, java.util.List.of(singleLineTooltip.getVisualOrderText()), mouseX, mouseY, keyboardFocus);
             return;

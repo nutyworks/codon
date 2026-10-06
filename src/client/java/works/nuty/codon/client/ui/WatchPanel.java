@@ -198,8 +198,7 @@ public final class WatchPanel {
                     () -> {
                         state.watches().grouping(mode);
                         groupingMenuOpen = false;
-                    }, navigation, -3 + mode.ordinal(), 0).withSingleLineTooltip(text("grouping.tooltip."
-                    + mode.name().toLowerCase(java.util.Locale.ROOT))).withOpaqueColors());
+                    }, navigation, -3 + mode.ordinal(), 0).withOpaqueColors());
             }
         }
         if (groupingMenuContains(mouseX, mouseY)) mouseX = mouseY = -1;
@@ -264,15 +263,22 @@ public final class WatchPanel {
                     + (row.changedCount() > 0 ? " · Δ" + row.changedCount() : "")
                     + (row.issueCount() > 0 ? " · !" + row.issueCount() : "");
                 int countX = bounds.x() + bounds.width() - 12 - font.width(count);
+                int headingWidth = Math.max(0, countX - bounds.x() - 25 - inset);
                 WatchUi.line(graphics, font, row.heading().getString(), bounds.x() + 19 + inset,
-                    headingY, Math.max(0, countX - bounds.x() - 25 - inset), headingColor);
+                    headingY, headingWidth, headingColor);
                 WatchUi.line(graphics, font, count, countX, headingY, font.width(count), row.issueCount() > 0 ? RED : row.changedCount() > 0 ? AMBER : MUTED);
-                Component label = text(collapsed ? "group.expand" : "group.collapse", row.heading().getString(), row.groupSize())
-                    .copy().append("\n").append(text("group.summary", row.changedCount(), row.issueCount()));
-                button(id, header, label, true, false, () -> {
+                // The header draws its name and counts. Hover explains only a clipped name, or a collapsed
+                // group that changed or failed to read while hidden; the full label is also the narration.
+                Component action = text(collapsed ? "group.expand" : "group.collapse", row.heading().getString(), row.groupSize());
+                Component summary = text("group.summary", row.changedCount(), row.issueCount());
+                boolean hiddenActivity = collapsed && (row.changedCount() > 0 || row.issueCount() > 0);
+                Component label = hiddenActivity ? action.copy().append("\n").append(summary) : action;
+                var toggle = button(id, header, label, true, false, () -> {
                     if (!collapsedHeadings.add(row.key())) collapsedHeadings.remove(row.key());
                     navigation.requestFocus(id);
-                }, navigation, offset + index, 0).asHitSurface().setTooltip(Tooltip.create(label));
+                }, navigation, offset + index, 0).asHitSurface();
+                if (font.width(row.heading().getString()) > headingWidth) toggle.setTooltip(Tooltip.create(label));
+                else if (hiddenActivity) toggle.setTooltip(Tooltip.create(summary));
                 continue;
             }
             var entry = row.entry();
@@ -303,19 +309,21 @@ public final class WatchPanel {
             int kindInset = row.icon() == null ? 0 : KIND_ICON_INSET;
             if (row.icon() != null) row.icon().drawSmall(graphics, bounds.x() + 7, textY, DebuggerTheme.foreground(labelColor));
             int valueColor = row.muted() ? MUTED : changed ? AMBER : TEXT;
-            if (stackedValues)
-                WatchRowRenderer.renderStacked(graphics, font, entry, state.isPaused(), rowLabel(entry, row.grouped()),
+            boolean clipped = stackedValues
+                ? WatchRowRenderer.renderStacked(graphics, font, entry, state.isPaused(), rowLabel(entry, row.grouped()),
                     bounds.x() + 7, textY, rowWidth - 4, WatchPanelLayout.valueWidth(bounds.width()),
-                    kindInset, labelColor, valueColor);
-            else WatchRowRenderer.render(graphics, font, entry, state.isPaused(), rowLabel(entry, row.grouped()),
-                bounds.x() + 7 + kindInset, textY, rowWidth - 4 - kindInset, labelColor, valueColor);
-            if (!stackedValues && row.showScope())
-                WatchUi.line(graphics, font, scope(entry), bounds.x() + 7 + kindInset,
+                    kindInset, labelColor, valueColor)
+                : WatchRowRenderer.render(graphics, font, entry, state.isPaused(), rowLabel(entry, row.grouped()),
+                    bounds.x() + 7 + kindInset, textY, rowWidth - 4 - kindInset, labelColor, valueColor);
+            if (!stackedValues && row.showScope()) {
+                String scope = scope(entry);
+                WatchUi.line(graphics, font, scope, bounds.x() + 7 + kindInset,
                     textY + lineSpacing, rowWidth - 4 - kindInset, MUTED);
+                clipped |= font.width(scope) > rowWidth - 4 - kindInset;
+            }
             Component inspectionLabel = text("inspect", WatchFormatting.specification(entry.spec()).getString());
-            Tooltip inspectionTooltip = Tooltip.create(text("section." + entry.spec().kind().name().toLowerCase(java.util.Locale.ROOT))
-                .copy().append(" · ").append(text("inspect", WatchFormatting.specification(entry.spec()).getString()))
-                .append("\n").append(scope(entry)).append("\n").append(text("menu.hint")));
+            // A healthy, fully drawn row is its own description; hover only adds what it hides.
+            Tooltip inspectionTooltip = clipped || WatchFormatting.needsExplanation(entry) ? rowTooltip(entry) : null;
             for (int line = 0; line < inspectionBounds.size(); line++) {
                 button((line == 0 ? "watch-row-" : "watch-value-") + entry.id(), inspectionBounds.get(line),
                     inspectionLabel, true, entry.id() == selectedId,
@@ -339,7 +347,8 @@ public final class WatchPanel {
             scrollbars.add("watch", false, x, scrollBounds.y(), h, 2, thumb, offset, maximum, value -> offset = value);
         }
         if (interactive && noticeVisible && mouseX >= bounds.x()
-            && mouseX < bounds.x() + bounds.width() - 48 && mouseY >= bounds.y() && mouseY < bounds.y() + HEADER)
+            && mouseX < bounds.x() + bounds.width() - 48 && mouseY >= bounds.y() && mouseY < bounds.y() + HEADER
+            && HoverDelay.elapsed("watch.notice"))
             graphics.setTooltipForNextFrame(font, notice, mouseX, mouseY);
         buttons.keySet().retainAll(used);
         return List.copyOf(controls);
@@ -511,6 +520,15 @@ public final class WatchPanel {
     private boolean noExecutor(ClientWatchState.Entry entry) {
         return entry.spec().kind() != WatchSpec.Kind.STORAGE_NBT && entry.spec().scoreHolder() == null && (executor(entry) == null
             || entry.displayedResult() != null && entry.displayedResult().status() == WatchResult.Status.NO_EXECUTOR);
+    }
+
+    private Tooltip rowTooltip(ClientWatchState.Entry entry) {
+        var details = Component.empty();
+        for (Component line : WatchFormatting.tooltip(entry, state.isPaused())) {
+            if (!details.getSiblings().isEmpty()) details.append("\n");
+            details.append(line);
+        }
+        return Tooltip.create(details);
     }
 
     private String scope(ClientWatchState.Entry entry) {

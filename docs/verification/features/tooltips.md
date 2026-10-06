@@ -6,6 +6,19 @@ margin at every edge. The common boundary is `CodonGuiGraphics` and
 `CodonTooltips`; inline controls in vanilla command editors also use the shared
 positioner through `DebuggerButton` and `WrappedCommandEditBox`.
 
+Tooltips drawn directly by a panel (clipped labels, Source path/Find count/gutter/
+navigation track, Watch notice, form errors, picker rows, condition fragment and the
+inline command marker) wait for the same 350 ms hover delay as `DebuggerButton`
+through `HoverDelay`; keyboard focus stays immediate and only the opacity slider
+readout is shown at once. Panel resize edges and the Source splitter have no tooltip:
+the highlighted edge and resize cursor already show the affordance.
+
+A tooltip appears only when it adds what the screen does not already show. Flow clause,
+detail-band and call-frame tooltips never repeat the context definition, the count
+legend (both live in Help), the clause text, the counts drawn under the clause or an
+invocation id. Healthy, fully drawn Watch rows have no tooltip, and grouping menu items
+have none.
+
 Source line breakpoints show their exact condition, click toggle hint and right-click
 condition hint on separate English/Korean lines. Long unbroken paths wrap too.
 Styles, explicit newlines, visual character order and deferred-tooltip priority
@@ -20,12 +33,12 @@ surface has passed manual acceptance. Record run-specific evidence separately.
 
 | Surface | Content and hover review | Runtime coverage / remaining manual check |
 | --- | --- | --- |
-| Source tree splitter, path and Find limit | Direct text now wraps; row/track hit regions remain separate | `DebuggerTooltipGameTest` tests actual Source saved-line hover; inspect path/splitter/Find manually |
+| Source path and Find limit (the splitter has no tooltip) | Direct text wraps after the shared hover delay; row/track hit regions remain separate | `DebuggerTooltipGameTest` tests actual Source saved-line hover and its delay; inspect path/Find manually |
 | Source saved line, stage summary, stale/preview hints | Exact line condition and both mouse actions are separate localized lines; a distinct stage count never aliases the gutter target | `DebuggerTooltipGameTest`: English/Korean, enabled/disabled whole-line definition, separate legacy stage count and modal suppression |
 | Source inline stage and navigation track | Direct stage/condition and existing wrapped navigation help share viewport placement | Existing `FunctionSourceScreenGameTest`; manually inspect an offscreen/long stage condition |
-| Flow breadcrumbs, clauses, markers and observations | `Tooltip.create` labels/details retained; delayed button hover and scissor checks remain | `DebuggerPresentationGameTest`, `FlowLegacyConditionGameTest`; long details and paused real execution remain manual |
-| Watches values, executor/grouping and row actions | Rich status/target/value text preserved; compact action hints wrap if necessary | `DebuggerCompactWatchGameTest`, `DebuggerWatchPinGameTest`; unusual long value diagnostics remain manual |
-| Watches grouping menu and notices | Covered row controls/direct text cannot hover under menu; uncover resets button hover delay | Shared covered/uncovered regression; actual grouping-menu overlap remains manual |
+| Flow breadcrumbs, clauses, markers and observations | Clause tooltips carry only the stop marker, an unobserved reason or a warning/error reason (plus the stage counts when the row is too short to draw them); the detail band has a tooltip only for such a reason; frame tooltips show location and command without the invocation id | `FlowLegacyConditionGameTest` (no definition, legend, clause echo or `#id` in any Flow tooltip), `DebuggerPresentationGameTest`; long details and paused real execution remain manual |
+| Watches values, executor/grouping and row actions | A healthy, unclipped row has no tooltip; a failed read, changed executor/availability or clipped name/value shows the full status, value and target; a collapsed group header shows its note only when something changed or failed to read | `DebuggerCompactWatchGameTest`, `DebuggerWatchPinGameTest`; unusual long value diagnostics and the collapsed-header note remain manual |
+| Watches grouping menu and notices | Menu items have no tooltip (the trigger keeps its icon-only label); covered row controls/direct text cannot hover under menu; uncover resets button hover delay | `DebuggerWatchGroupingGameTest` (no item tooltip); shared covered/uncovered regression; actual grouping-menu overlap remains manual |
 | NBT node path/preview and pin | Separate component-list API uses shared wrapper; node preview excludes pin area so click hints retain priority | `DebuggerNbtTreeGameTest`: native pin click/right-click/path hover assertion and screenshot; shared component-list/long-identifier regression; manually inspect a long generated path |
 | Toolbar, View menu, world-source controls | Icons retain labels/keys; covered controls cannot hover below View menu | `DebuggerPresentationGameTest`, `DebuggerUiScaleGameTest`; actual View overlap remains manual |
 | Inspector context values and detail icons | Only clipped values echo; full diagnostic text preserved and wrapped | Shared native direct-text regression; inspect retained-entity/long-name details manually |
@@ -38,8 +51,9 @@ surface has passed manual acceptance. Record run-specific evidence separately.
 ## Checks and evidence
 
 `./gradlew test --tests '*CodonTooltipsTest' --tests '*DebuggerButtonTest'`
-checks mouse corners, keyboard placement above a near-top tall widget and narrow
-viewport margins. `./gradlew build` runs the configured full JVM checks.
+checks mouse corners, keyboard placement above a near-top tall widget, narrow
+viewport margins and the shared direct-tooltip hover delay (per-region timers, and a
+restart once the pointer has left). `./gradlew build` runs the configured full JVM checks.
 
 `./gradlew runClientGameTest -PclientGameTest=DebuggerTooltipGameTest`
 observes the actual deferred native tooltip components and positioner with a

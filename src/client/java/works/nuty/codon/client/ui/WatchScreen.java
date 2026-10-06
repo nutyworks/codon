@@ -339,7 +339,8 @@ public final class WatchScreen extends ScaledCodonScreen {
             Component error = errors.get(id);
             if (error != null && (attempted || !field.getValue().isBlank())) {
                 WatchUi.line(graphics, font, error.getString(), field.getX(), layout.errorY(index), layout.contentWidth(), RED);
-                if (mouseX >= field.getX() && mouseX < left + panelWidth - 8 && mouseY >= field.getY() + 22 && mouseY < field.getY() + 34)
+                if (mouseX >= field.getX() && mouseX < left + panelWidth - 8 && mouseY >= field.getY() + 22 && mouseY < field.getY() + 34
+                    && HoverDelay.elapsed(List.of("watch.field-error", id)))
                     graphics.setTooltipForNextFrame(font, error, mouseX, mouseY);
             }
         });
@@ -350,7 +351,7 @@ public final class WatchScreen extends ScaledCodonScreen {
             var bounds = layout.submitReason();
             WatchUi.line(graphics, font, reason.getString(), bounds.x(),
                 bounds.y() + (bounds.height() - font.lineHeight) / 2 + 1, bounds.width(), AMBER);
-            if (bounds.contains(mouseX, mouseY) || submit.isMouseOver(mouseX, mouseY))
+            if ((bounds.contains(mouseX, mouseY) || submit.isMouseOver(mouseX, mouseY)) && HoverDelay.elapsed("watch.submit-reason"))
                 graphics.setTooltipForNextFrame(font, reason, mouseX, mouseY);
         }
         WatchUi.line(graphics, font, text(editId > 0 ? "editor.edit_keys" : "editor.keys").getString(),

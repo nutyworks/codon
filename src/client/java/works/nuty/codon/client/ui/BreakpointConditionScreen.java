@@ -447,7 +447,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
         }
         if (menu == Menu.NONE && font.width(fragment) > panelWidth - 16
             && mouseX >= left + 8 && mouseX < left + panelWidth - 8
-            && mouseY >= top + 41 && mouseY < top + 52)
+            && mouseY >= top + 41 && mouseY < top + 52 && HoverDelay.elapsed("condition.fragment"))
             graphics.setTooltipForNextFrame(font, Component.literal(fragment), mouseX, mouseY);
         int hintColor = !validCount() || !supportedCondition() && !previewLoading() ? AMBER : MUTED;
         int hintY = drawLines(graphics, hint(), top + 86, hintColor);
