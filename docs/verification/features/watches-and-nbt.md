@@ -111,7 +111,10 @@ data modify storage codon:verify counter set value 0
    and Korean at normal and 320x240 GUI viewports. Labels sit above their fields;
    field actions share row height and the right column. Recommendations leave a
    gap before the next label, validation remains readable, and Retry sits beside
-   the preview value. Use native clicks and Tab to check Browse, Retry, Add/Save
+   the preview value. Before submitting an empty form, the first validation reason
+   is visible beside disabled Add/Save. Tab visits each field followed by its
+   Browse/Choose action, then Add/Save and Close; reverse Tab retraces that order.
+   Use native clicks and Tab to check Browse, Retry, Add/Save
    and focus after returning from the picker. Also check an independent Codon UI
    scale when that option is available.
 8. Open both Browse/Choose buttons. In Objectives, check a blank search with two

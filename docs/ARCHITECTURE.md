@@ -299,7 +299,9 @@ The chooser aligns search, rows and right-side actions, centers single-line opti
 short result pages without moving the title or search. Shared row bounds keep expansion controls,
 scrollbars, rendered gaps and native selection aligned at the applied Codon UI scale.
 Draft previews use pause/request/context correlation and never save definitions. Timeout retries are explicit. Input fields
-handle typing before global shortcuts; Tab changes fields, Enter adds and returns to Watches,
+handle typing before global shortcuts; Tab visits each field and its Browse/Choose action,
+then Add/Save and Close. The first validation reason appears beside disabled Add/Save
+without attempting a submit. Enter adds and returns to Watches,
 Ctrl+Enter adds another with focus restored. Watches owns editing, binding and removal controls.
 All three forms share label, field and action columns. Inline choices leave room before the
 next label; visible validation replaces choices in that slot, and Retry aligns with the preview value.
