@@ -58,10 +58,8 @@ public final class BackgroundOpacitySlider extends DebuggerButton {
     /** Also commit when the debugger is closed or rebuilt before the release event arrives. */
     public void commitPreview() {
         if (dragStartOpacity < 0) return;
-        int finalOpacity = preferences.backgroundOpacity();
-        preferences.previewBackgroundOpacity(dragStartOpacity);
         dragStartOpacity = -1;
-        preferences.setBackgroundOpacity(finalOpacity);
+        preferences.commitBackgroundOpacity();
     }
 
     @Override

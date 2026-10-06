@@ -79,6 +79,11 @@ public final class DebuggerPreferences {
         backgroundOpacity = Math.clamp(opacity, 0, 100);
     }
 
+    /** Persist the final preview even if another setting saved an intermediate value. */
+    public void commitBackgroundOpacity() {
+        changed();
+    }
+
     public void setBackgroundOpacity(int opacity) {
         opacity = Math.clamp(opacity, 0, 100);
         if (backgroundOpacity != opacity) {
