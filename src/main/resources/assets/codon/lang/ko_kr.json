@@ -1,4 +1,9 @@
 {
+  "codon.breakpoint.no_block_target": "20블록 이내의 블록을 바라보고 중단점을 전환하세요.",
+  "command.codon.breakpoint.function.invalid_line": "함수 %s의 %s행에 명령이 없습니다.",
+  "command.codon.breakpoint.function.source_unavailable": "함수 %s의 %s행: 소스를 읽을 수 없거나 Source 한도를 넘어, 행 위치로 중단점을 전환했습니다.",
+  "codon.breakpoint.whole_target": "전체 명령",
+  "codon.breakpoint.line_target": "%s행",
   "codon.pause.snapshot_too_large": "Codon이 일시 정지되어 있지만 스냅샷이 너무 커서 표시할 수 없습니다. /codon resume 명령으로 실행을 재개하세요.",
   "codon.ui.background_opacity.usage": "왼쪽·오른쪽 방향키로 패널 불투명도를 조절하세요.",
   "codon.ui.background_opacity": "패널 불투명도: %s%%",

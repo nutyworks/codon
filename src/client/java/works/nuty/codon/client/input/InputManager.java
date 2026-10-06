@@ -233,6 +233,8 @@ public final class InputManager implements ClientTickEvents.EndTick {
         if (hit instanceof BlockHitResult block && hit.getType() == HitResult.Type.BLOCK) {
             BlockPos pos = block.getBlockPos();
             client.player.connection.sendCommand("codon breakpoint block %d %d %d".formatted(pos.getX(), pos.getY(), pos.getZ()));
+        } else {
+            client.player.sendOverlayMessage(Component.translatable("codon.breakpoint.no_block_target"));
         }
     }
 
