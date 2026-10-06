@@ -57,6 +57,8 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
     private boolean docked;
     private boolean forwardingParentDrag;
     private boolean parentOwnsContextKeys;
+    /** Enter keys pressed in Search and not yet released; opening a function may move focus away from Search. */
+    private final Set<Integer> heldEnterKeys = new HashSet<>();
     private int listOffset, lineOffset, horizontalOffset;
     private final ScrollbarInput scrollbars = new ScrollbarInput();
     private boolean resizingTree;
@@ -868,6 +870,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         var level = minecraft.level;
         scrollbars.release();
         resizingTree = forwardingParentDrag = false;
+        heldEnterKeys.clear(); // The modal receives that key's release.
         if (parent instanceof CodonScreen codon) codon.cancelPanelResize();
         java.util.function.BooleanSupplier current = () -> minecraft.level == level && sources.document() == document
                 && sources.sourceStatus() != ClientFunctionSourceState.Status.LOADING
@@ -905,6 +908,26 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         if (!sources.goBack()) return;
         restoreBrowseView();
         if (drawerMode) setDrawerOpen(false);
+    }
+
+    /** Shared by a Functions row click and Enter in Search; compact mode closes the drawer to expose Source. */
+    private void openFunction(FunctionId function) {
+        sources.select(function);
+        restoreBrowseView();
+        if (drawerMode) setDrawerOpen(false);
+        rememberView();
+    }
+
+    /** Enter opens the sole function left by a nonblank filter; namespace and folder rows are not matches. */
+    private void openOnlyFunction() {
+        if (search.getValue().isBlank()) return;
+        FunctionId only = null;
+        for (Entry entry : entries) {
+            if (!(entry instanceof Entry.Function function)) continue;
+            if (only != null) return;
+            only = function.id();
+        }
+        if (only != null) openFunction(only);
     }
 
     private void restoreBrowseView() {
@@ -1008,12 +1031,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                                 rebuildEntries();
                             }
                         }
-                        case Entry.Function function -> {
-                            sources.select(function.id());
-                            restoreBrowseView();
-                            if (drawerMode) setDrawerOpen(false);
-                            rememberView();
-                        }
+                        case Entry.Function function -> openFunction(function.id());
                     }
                     return true;
                 }
@@ -1088,6 +1106,16 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             sourceSearch.setHighlightPos(0);
             return true;
         }
+        if (event.key() == InputConstants.KEY_RETURN || event.key() == InputConstants.KEY_NUMPADENTER) {
+            // A repeat arrives as another press. Whichever press started in Search owns it until release,
+            // even after opening a function closes the drawer or a resize restores focus to Search.
+            if (heldEnterKeys.contains(event.key())) return true;
+            if (getFocused() == search && search.visible && search.canConsumeInput()) {
+                heldEnterKeys.add(event.key());
+                openOnlyFunction();
+                return true;
+            }
+        }
         if (event.key() == InputConstants.KEY_F3 || sourceSearch.isFocused() && event.key() == InputConstants.KEY_RETURN) {
             nextMatch(event.hasShiftDown() ? -1 : 1);
             return true;
@@ -1134,6 +1162,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
     }
 
     @Override public boolean keyReleased(KeyEvent event) {
+        if (heldEnterKeys.remove(event.key())) return true;
         // Vanilla toggles its debug overlay on F3 release, after an unconsumed screen event.
         return event.key() == InputConstants.KEY_F3 || super.keyReleased(event);
     }
@@ -1155,6 +1184,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
     }
 
     @Override public void removed() {
+        heldEnterKeys.clear();
         if (parent instanceof CodonScreen codon) codon.cancelPanelResize();
         super.removed();
     }

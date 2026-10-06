@@ -128,6 +128,11 @@ be checked. The viewer lists functions actually loaded by the current server.
    when a typed key is bound to a debugger shortcut, including cursor-mode `V` and
    Keep Freecam `G`. Escape, Tab and Find shortcuts retain their behavior; parent
    debugger shortcuts remain available after text focus leaves the field.
+   In function-list Search, Enter or numpad Enter opens the function when a nonblank
+   filter leaves exactly one function row; namespace and folder rows do not count.
+   Several or no matches and a blank query consume the key without selecting or reading.
+   It selects like a row click: the compact drawer closes to show Source, and a held key
+   acts once until released.
    Follow underlined loaded function references and use Back; the caller's
    line/stage and horizontal viewport must return. References in `return run function`
    and `schedule function` are linked; matching words in `say` text or comments are not.
@@ -212,6 +217,16 @@ It checks that the press keeps Source open before `charTyped`, then verifies tex
 cursor movement, Find shortcuts, Tab traversal and parent shortcuts after focus
 leaves the field. Its source document is a client fixture; it does not establish
 physical keyboard/IME behavior or server-driven breakpoint execution.
+
+The same test covers Enter in Functions Search with a synthetic three-function list
+at a docked wide layout and a compact drawer (`codon-source-unique-enter-*`). Return and
+numpad Enter open the exact sole match with one read; two matches, no match and blank
+or whitespace queries select and read nothing; held repeats, including after the drawer
+closes or a resize restores Search focus, add no read and do not reach the parent
+(Return is bound to its menu key); release and Source removal clear that ownership; and
+Find Enter still advances matches. Inspect the screenshots for the selected row and source.
+The fixture IDs and lines are not datapack functions, so this does not establish server
+function discovery or a physical key repeat.
 
 `DebuggerSourceIconGameTest` captures normal, hovered, keyboard-focused and disabled
 Source buttons at every quarter step from 1.00× to 4.50× (including the larger-window
