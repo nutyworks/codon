@@ -62,6 +62,7 @@ public final class FunctionLineBreakpointGameTest implements FabricClientGameTes
             });
             verifyPreviewTransitions(context);
             verifyStaleWarning(context);
+            verifyStopCue(context);
             verifySingleStage(context, "en-default");
             context.runOnClient(client -> {
                 var screen = (ScaledCodonScreen) client.gui.screen();
@@ -162,6 +163,29 @@ public final class FunctionLineBreakpointGameTest implements FabricClientGameTes
         });
         context.takeScreenshot("codon-line-stale-warning-target");
         context.getInput().setCursorPos(0, 0);
+    }
+
+    private static void verifyStopCue(ClientGameTestContext context) {
+        context.runOnClient(client -> {
+            var state = CodonClientMod.state();
+            state.breakpoints().reset();
+            state.breakpoints().acceptPage(1, 0, true, List.of());
+            state.applyPause(new PauseSnapshot(LOCATION, CommandSnippet.plain(COMMAND), 0, List.of(), List.of(), PauseReason.BREAKPOINT));
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            var screen = client.gui.screen();
+            int y = value(screen, "sourceLineTop") + 9;
+            click(screen, value(screen, "sourceLeft") + 3, y, false);
+            require(!CodonClientMod.state().breakpoints().pending(BreakpointTarget.whole(LOCATION)),
+                "Clicking the stopped line's amber cue only selects the line, never toggles its breakpoint");
+            click(screen, value(screen, "lineMarkerX"), y, false);
+            require(CodonClientMod.state().breakpoints().pending(BreakpointTarget.whole(LOCATION)),
+                "The stopped line's breakpoint marker still requests the whole-line target");
+        });
+        context.takeScreenshot("codon-line-stop-cue-target");
+        context.runOnClient(client -> CodonClientMod.state().applyResume());
+        context.waitTicks(2);
     }
 
     private static void verifySingleStage(ClientGameTestContext context, String name) {

@@ -233,6 +233,8 @@ Flow reserves separate 18×18 targets for whole-command/stage markers and warnin
 including compact rows. Warning targets sit beside their clause, with their own
 reserved width. Source's whole-line gutter target is 18×18; its right and bottom
 edges are half-open, so adjacent line-number and next-row clicks cannot toggle it.
+On an actual stopped line the amber `>` cue is excluded from that target: clicking it
+only selects the line. `FunctionLineBreakpointGameTest` checks both the cue and marker.
 The visible breakpoint artwork keeps its existing size. `FlowBreakpointInteractionGameTest`
 checks target bounds and non-overlap at 320×240; `FunctionLineBreakpointGameTest`
 checks the expanded gutter corner and adjacent excluded edges, including the
