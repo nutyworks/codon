@@ -867,10 +867,10 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         int line = location.location().line();
         if (!wholeEligible(document, line)) return;
         stagesForLine(line, true);
+        heldEnterKeys.clear(); // The modal receives that key's release.
         var level = minecraft.level;
         scrollbars.release();
         resizingTree = forwardingParentDrag = false;
-        heldEnterKeys.clear(); // The modal receives that key's release.
         if (parent instanceof CodonScreen codon) codon.cancelPanelResize();
         java.util.function.BooleanSupplier current = () -> minecraft.level == level && sources.document() == document
                 && sources.sourceStatus() != ClientFunctionSourceState.Status.LOADING
