@@ -73,12 +73,13 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
     private int selectedStageIndex = -1;
     private @org.jspecify.annotations.Nullable BreakpointTarget revealTarget;
     private @org.jspecify.annotations.Nullable BreakpointTarget focusedBreakpoint;
+    private @org.jspecify.annotations.Nullable FunctionId pendingStop;
     private final List<StageHit> stageHits = new ArrayList<>();
     private final List<LineHit> lineHits = new ArrayList<>();
     private final List<FunctionHit> functionHits = new ArrayList<>();
     private EditBox search, sourceSearch;
     private DebuggerButton previousMatch, nextMatch;
-    private DebuggerButton refresh, close, reread, drawerButton, backButton;
+    private DebuggerButton refresh, close, reread, drawerButton, backButton, goToStop;
 
 
     private sealed interface Entry permits Entry.Group, Entry.Function {
@@ -152,6 +153,9 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                         new FunctionLocation(sources.selected(), selectedLine)));
             }));
         reread.setTooltip(Tooltip.create(Component.translatable("codon.source.reload_hint")));
+        goToStop = addRenderableWidget(WatchUi.button(reread.getRight() + 4, top + 5, 20, 18,
+            Component.empty(), this::goToStop));
+        goToStop.visible = goToStop.active = false;
         close = addRenderableWidget(WatchUi.button(left + panelWidth - 58, top + 5, 50, 18,
             Component.translatable("codon.breakpoint.close"), this::onClose));
         drawerButton = addRenderableWidget(WatchUi.button(left + 8, top + 5, 64, 18,
@@ -194,6 +198,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             }
         }
         rebuildEntries();
+        updateStopControl();
     }
 
     Screen parentScreen() { return parent; }
@@ -326,7 +331,9 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         search.visible = search.active = !drawerMode || drawerOpen;
         updateCodeCache();
         revealBreakpoint();
+        completeStopNavigation();
         updateInlineLayout();
+        updateStopControl();
         sourceSearch.visible = sourceSearch.active = !drawerOpen && sources.document() != null;
         previousMatch.visible = nextMatch.visible = sourceSearch.visible;
         previousMatch.active = nextMatch.active = !matches.isEmpty();
@@ -425,9 +432,9 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             return;
         }
         // Keep incomplete-source warnings visible even though revision details are secondary.
-        String status = (document.truncated() ? tr("codon.source.truncated") + " · " : "") + executionStatus(selected);
-        WatchUi.line(graphics, font, status, sourceLeft + 6, statusY, sourceWidth - 12,
-            document.truncated() ? AMBER : MUTED);
+        String warning = document.truncated() ? tr("codon.source.truncated") + " · " : "";
+        WatchUi.line(graphics, font, warning + executionStatus(selected), sourceLeft + 6, statusY,
+            sourceWidth - 12, document.truncated() ? AMBER : MUTED);
         int countX = sourceLeft + sourceWidth - 110;
         int countY = sourceSearch.getY() + 6;
         WatchUi.line(graphics, font, matches.isEmpty() ? "0/0"
@@ -817,6 +824,97 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             && location.location().function().equals(function) && location.location().line() == line;
     }
 
+    /** The acknowledged live location, which needs no loaded source to name its function. */
+    private @org.jspecify.annotations.Nullable FunctionLocation liveStop() {
+        ClientDebuggerState state = CodonClientMod.state();
+        if (state == null || !state.isPaused() || state.snapshot() == null
+            || state.snapshot().reason() == PauseReason.EXECUTION_COMPLETE
+            || !(state.snapshot().location() instanceof SourceLocation.Function location)) return null;
+        return location.location();
+    }
+
+    /** A line may be revealed only in the matching loaded source whose command still matches the pause. */
+    private int actualStopLine() {
+        FunctionLocation stop = liveStop();
+        FunctionSourceDocument document = sources.document();
+        if (stop == null || sources.sourceStatus() != ClientFunctionSourceState.Status.READY || document == null
+            || !Objects.equals(document.id(), sources.selected())
+            || !stop.function().equals(document.id())) return -1;
+        int line = stop.line();
+        if (line < 1 || line > document.lines().size()
+            || !SourceSyntax.runs(document.lines().get(line - 1), CodonClientMod.state().snapshot().command().text())) return -1;
+        return line;
+    }
+
+    private void updateStopControl() {
+        FunctionLocation stop = liveStop();
+        goToStop.visible = !drawerOpen && stop != null && sources.selected() != null
+            && sources.sourceStatus() != ClientFunctionSourceState.Status.LOADING
+            && (!stop.function().equals(sources.selected()) || actualStopLine() > 0);
+        goToStop.active = goToStop.visible && !CodonClientMod.state().controlPending();
+        if (!goToStop.active && getFocused() == goToStop) setFocused(null);
+        if (!goToStop.visible) return;
+        int x = reread.getRight() + 4;
+        int right = (sources.canGoBack() ? backButton.getX() : close.getX()) - 4;
+        Component label = Component.translatable("codon.source.go_to_stop");
+        int labelWidth = font.width(label) + 10;
+        boolean compact = labelWidth > right - x;
+        goToStop.configure(x, reread.getY(), compact ? 20 : labelWidth, reread.getHeight(),
+            label, goToStop.active, false, false, false, this::goToStop);
+        goToStop.withStatusColor(TEAL, TEAL_SURFACE);
+        if (compact) goToStop.withIcon(DebuggerIcon.HISTORY_NEXT);
+        goToStop.setTooltip(Tooltip.create(Component.translatable(goToStop.active
+            ? "codon.source.go_to_stop_hint" : "codon.ui.move_to_source.pending")));
+    }
+
+    private void goToStop() {
+        FunctionLocation stop = liveStop();
+        if (stop == null || CodonClientMod.state().controlPending()) return;
+        if (stop.function().equals(sources.selected())) { revealStop(); return; }
+        // The other file's command cannot be checked until it loads; completeStopNavigation() reveals it then.
+        sources.select(stop.function());
+        restoreBrowseView();
+        pendingStop = stop.function();
+        parentOwnsContextKeys = false;
+        setFocused(null);
+        rememberView();
+    }
+
+    private void completeStopNavigation() {
+        if (pendingStop == null) return;
+        ClientDebuggerState state = CodonClientMod.state();
+        // A pending control makes the live stop stale, exactly as it disables direct activation.
+        if (state == null || state.controlPending() || !pendingStop.equals(sources.selected())) { pendingStop = null; return; }
+        if (sources.sourceStatus() == ClientFunctionSourceState.Status.LOADING) return;
+        pendingStop = null;
+        revealStop();
+    }
+
+    private void revealStop() {
+        int line = actualStopLine();
+        if (line < 1) return;
+        selectLine(line);
+        lineOffset = Math.clamp(line - 1, 0, maximumLineOffset());
+        horizontalOffset = 0;
+        parentOwnsContextKeys = false;
+        setFocused(null);
+        rememberView();
+    }
+
+    private void goToLine(int line) {
+        FunctionSourceDocument document = sources.document();
+        if (sources.sourceStatus() != ClientFunctionSourceState.Status.READY || document == null
+            || !Objects.equals(document.id(), sources.selected()) || line < 1 || line > document.lines().size()) return;
+        selectLine(line);
+        lineOffset = Math.clamp(line - 1, 0, Math.max(0, document.lines().size() - sourceRows()));
+        horizontalOffset = 0;
+        parentOwnsContextKeys = false;
+        clearSourceHits();
+        rememberView();
+        if (drawerOpen) setDrawerOpen(false);
+        setFocused(null);
+    }
+
     private String executionStatus(FunctionId function) {
         ClientDebuggerState state = CodonClientMod.state();
         if (state == null || state.inspectionSnapshot() == null) return tr("codon.source.record_unavailable");
@@ -859,6 +957,13 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         return BreakpointTarget.whole(new SourceLocation.Function(new FunctionLocation(sources.selected(), selectedLine)));
     }
 
+    /** A modal layer consumes the mouse release, so held captures must end before it opens. */
+    private void releasePointerCaptures() {
+        scrollbars.release();
+        resizingTree = forwardingParentDrag = false;
+        if (parent instanceof CodonScreen codon) codon.cancelPanelResize();
+    }
+
     private void openCondition(BreakpointTarget target, Bounds anchor, boolean direct) {
         ClientDebuggerState debugger = CodonClientMod.state();
         FunctionSourceDocument document = sources.document();
@@ -867,9 +972,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         if (!wholeEligible(document, line)) return;
         stagesForLine(line, true);
         var level = minecraft.level;
-        scrollbars.release();
-        resizingTree = forwardingParentDrag = false;
-        if (parent instanceof CodonScreen codon) codon.cancelPanelResize();
+        releasePointerCaptures();
         java.util.function.BooleanSupplier current = () -> minecraft.level == level && sources.document() == document
                 && sources.sourceStatus() != ClientFunctionSourceState.Status.LOADING
                 && Objects.equals(sources.selected(), location.location().function())
@@ -1067,6 +1170,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
 
     @Override public boolean keyPressed(KeyEvent event) {
         if (ScreenLayers.get(this) != null) return true;
+        updateStopControl();
         if (event.key() == InputConstants.KEY_F10 && event.hasShiftDown() && parentOwnsContextKeys && docked)
             return parent.keyPressed(event);
         if (event.key() == InputConstants.KEY_F10 && event.hasShiftDown() && getFocused() == null && !drawerOpen) {
@@ -1082,6 +1186,15 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                     : new Bounds(stage.x(), stage.y(), stage.width(), stage.height()), focusedBreakpoint != null);
                 return true;
             }
+        }
+        if (event.key() == InputConstants.KEY_G && event.hasControlDownWithQuirk()) {
+            FunctionSourceDocument document = sources.document();
+            if (sources.sourceStatus() == ClientFunctionSourceState.Status.READY && document != null
+                && Objects.equals(document.id(), sources.selected()) && !document.lines().isEmpty()) {
+                releasePointerCaptures();
+                ScreenLayers.open(this, new SourceLineJumpScreen(this, sources, document, selectedLine, this::goToLine));
+            }
+            return true;
         }
         if (event.key() == InputConstants.KEY_F && event.hasControlDownWithQuirk() && sourceSearch.visible) {
             focusedBreakpoint = null;
