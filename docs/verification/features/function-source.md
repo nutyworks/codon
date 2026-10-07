@@ -83,6 +83,21 @@ be checked. The viewer lists functions actually loaded by the current server.
    stops at the selected location. Reopen Source at the pause and distinguish the
    actual stopped line from a manually inspected line/record. A live pause has an
    arrow and amber row; ordinary line selection uses a neutral line-number cue.
+   Use **Go to stop** in the Source header immediately after **Reread file**. In the paused
+   function it selects and reveals the live paused line, resetting horizontal scrolling to its
+   beginning; in any other file it opens the paused function's source and reveals that line
+   once it loads. The action supports normal Tab/Enter activation and leaves debugger
+   frame/flow selection intact. The button carries no line number. In the paused function it
+   appears only for a ready document with an in-range line whose command matches the live
+   pause; elsewhere it appears whenever a pause is live and no source is loading, and a
+   command that no longer matches after loading opens the file without moving. Pending
+   debugger controls disable it, and a control that becomes pending while another file
+   loads cancels the deferred reveal. A macro line matches when the text around its
+   `$(name)` substitutions equals the paused command. Loading, changed source commands and
+   resumed records cannot supply a live destination. Tight headers use an arrow with the full action tooltip;
+   Back and Close remain separate. Tab reaches the action immediately after Reread
+   file; hiding or disabling it releases its focus for code navigation. The status
+   row retains the execution status and truncated-source warning.
    Actual pause highlighting remains independent of that navigation position. After Continue, the retained
    location is labelled as a recorded line and has no live-pause arrow.
 4. With execution resumed, change/reload the scratch datapack. Use **Refresh list**
@@ -174,6 +189,7 @@ scroll settings. Synthetic callback input does not verify a physical trackpad.
 | Network payloads | `test`: `FunctionSourcePayloadTest`, `BreakpointStagePreviewPayloadTest` |
 | Line gutter, one-stage suppression, EN/KO/custom scale and hit boxes | `FunctionLineBreakpointGameTest` |
 | Real rendering, selection, resize and inline stage markers | `FunctionSourceScreenGameTest`, `FunctionSourceInteractionGameTest`, `FunctionSourceReviewGameTest` |
+| Header stop navigation, Reread/stop Tab order, focus lifecycle, EN/KO minimum and custom scales | `FunctionSourceScreenGameTest` |
 | Active stage readability, adjacent stages, horizontal clipping and representative scales | `FunctionSourceStageHighlightGameTest` |
 | Source toolbar icon, state styling, scale readability and native activation | `DebuggerSourceIconGameTest` |
 | F3/Shift+F3 press/repeat/release ownership and vanilla behavior outside Source | `FunctionSourceKeyboardGameTest` |
@@ -264,6 +280,17 @@ remain visible. This GameTest injects a source document, breakpoint definitions 
 not installed in the server's datapack. It proves presentation/interaction, not
 server source discovery, permission enforcement or native function breakpoints.
 Use the manual loaded-function path for those acceptance criteria.
+
+The same GameTest verifies the header's **Go to stop** with native mouse and keyboard
+activation, adjacent Reread/stop Tab order, an independently inspected historical
+frame, pending-control and source-loading gates, stale command/resume changes
+between render and activation, and focus release/retention across state changes
+and resize. Back/Close remain separate in EN/KO minimum layouts and Korean 1.25×/4.50×
+views; a second scenario opens it from a different file. Inspect `go-to-stop-live`, `go-to-stop-english-minimum`,
+`go-to-stop-korean-minimum`, `go-to-stop-korean-1.25x` and `go-to-stop-korean-4.5x`.
+These injected pause/source fixtures establish client
+navigation and presentation; they do not establish server breakpoint execution
+or unsolicited datapack revision detection.
 
 For search rebuilds, enter a query that excludes another known function, resize
 the window, and open the compact Functions drawer. The query and filtered list

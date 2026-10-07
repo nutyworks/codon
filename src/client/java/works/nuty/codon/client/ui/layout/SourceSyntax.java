@@ -19,6 +19,37 @@ public final class SourceSyntax {
 
     private SourceSyntax() { }
 
+    /**
+     * Whether a source line can be the command a pause reported. A macro template matches around its
+     * substituted {@code $(name)} values; the client never receives those values, so only the
+     * literal text between them is compared.
+     */
+    public static boolean runs(String sourceLine, String command) {
+        String source = sourceLine.trim();
+        if (source.equals(command)) return true;
+        if (!source.startsWith("$")) return false;
+        List<String> literals = new ArrayList<>();
+        int at = 1;
+        for (int open; (open = source.indexOf("$(", at)) >= 0;) {
+            int close = source.indexOf(')', open + 2);
+            if (close < 0) break;
+            literals.add(source.substring(at, open));
+            at = close + 1;
+        }
+        literals.add(source.substring(at));
+        String first = literals.getFirst(), last = literals.getLast();
+        if (literals.size() == 1) return command.equals(first);
+        int end = command.length() - last.length();
+        if (!command.startsWith(first) || end < first.length() || !command.endsWith(last)) return false;
+        int from = first.length();
+        for (String middle : literals.subList(1, literals.size() - 1)) {
+            int found = command.indexOf(middle, from);
+            if (found < 0 || found + middle.length() > end) return false;
+            from = found + middle.length();
+        }
+        return true;
+    }
+
     public static List<Span> spans(String source) {
         List<Span> spans = new ArrayList<>();
         boolean command = true;
