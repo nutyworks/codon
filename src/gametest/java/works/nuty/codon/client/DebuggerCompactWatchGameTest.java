@@ -70,7 +70,8 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
             state.selectSource(0);
             state.watches().grouping(WatchGrouping.Mode.NONE);
             var definitions = new ArrayList<>(List.of(SCORE, NBT));
-            for (int i = 0; i < 16; i++) definitions.add(new WatchSpec(WatchSpec.Kind.STORAGE_NBT, "demo:compact", "row_" + i));
+            // Keep the healthy case fully visible even in the 144-pixel compact pane.
+            for (int i = 0; i < 16; i++) definitions.add(new WatchSpec(WatchSpec.Kind.STORAGE_NBT, "demo:compact", i == 1 ? "ok" : "row_" + i));
             state.watches().addAll(definitions);
             accept(state, "123456789");
             state.applyPause(pause(base, 102, PauseReason.STEP));
@@ -286,7 +287,7 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
         for (var widget : rowButtons(client, "row_0"))
             require(tooltipText(widget, client).contains(text("codon.watch.status.error")),
                 "A failed read keeps its explanation on hover");
-        for (var widget : rowButtons(client, "row_1"))
+        for (var widget : rowButtons(client, "ok"))
             require(tooltip(widget) == null, "A healthy, unclipped row has no echo tooltip");
         for (var widget : rowButtons(client, NBT.path()))
             require(tooltipText(widget, client).contains(LONG_VALUE.substring(0, 24)),
