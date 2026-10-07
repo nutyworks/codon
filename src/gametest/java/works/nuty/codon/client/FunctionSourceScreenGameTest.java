@@ -197,6 +197,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             verifyStageVisibility(context);
             verifySelectionVisibilityMatrix(context);
             verifyGoToStop(context);
+            verifyGoToStopFromOtherFile(context);
             context.runOnClient(client -> client.setScreenAndShow(null));
         }
     }
@@ -394,6 +395,47 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             return client.reloadResourcePacks();
         });
         context.waitFor(client -> restore.isDone() && client.gui.overlay() == null, 200);
+    }
+
+    private static void verifyGoToStopFromOtherFile(ClientGameTestContext context) {
+        context.getInput().resizeWindow(1600, 1000);
+        String command = "say actual_stop";
+        var location = new SourceLocation.Function(new FunctionLocation(FUNCTION, 2));
+        var pause = new PauseSnapshot(location, CommandSnippet.plain(command), 0,
+            List.of(new CallFrame(0, location, CommandSnippet.plain(command))), List.of(), PauseReason.BREAKPOINT);
+        List<String> lines = new java.util.ArrayList<>(java.util.Collections.nCopies(30, "# original source"));
+        lines.set(1, command);
+        var other = new FunctionId("codon_test", "other");
+        ClientFunctionSourceState sources = context.computeOnClient(client -> {
+            client.options.guiScale().set(2); client.resizeGui();
+            var state = new ClientFunctionSourceState();
+            state.select(other);
+            state.accept(new ClientFunctionSourceState.SourcePage(state.drainRequests().getFirst().requestId(),
+                ClientFunctionSourceState.Status.READY, other, "gametest", "other", false, 0, true, List.of("say other")));
+            require(CodonClientMod.state(), "debugger exists for stop navigation").applyPause(pause);
+            client.setScreenAndShow(new FunctionSourceScreen(new Screen(Component.empty()) { }, state));
+            return state;
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            var button = stopButton(client.gui.screen());
+            require(button.visible && button.active && button.getMessage().getString().equals(
+                    Component.translatable("codon.source.go_to_stop").getString()),
+                "a file other than the live stop still offers Go to stop, without a line number");
+            button.onPress(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
+            require(FUNCTION.equals(sources.selected()), "Go to stop opens the paused function's source");
+            long request = sources.drainRequests().stream().filter(ClientFunctionSourceState.Request.ReadFunction.class::isInstance)
+                .map(ClientFunctionSourceState.Request.ReadFunction.class::cast).reduce((first, last) -> last).orElseThrow().requestId();
+            sources.accept(new ClientFunctionSourceState.SourcePage(request, ClientFunctionSourceState.Status.READY,
+                FUNCTION, "gametest", "go-to-stop-other", false, 0, true, lines));
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            require(sources.browseView().selectedLine() == 2 && sources.browseView().lineOffset() == 1
+                    && sources.browseView().horizontalOffset() == 0,
+                "the loaded paused function reveals and selects its live line");
+            CodonClientMod.state().applyResume();
+        });
     }
 
     private static AbstractButton stopButton(Screen screen) {

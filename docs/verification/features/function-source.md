@@ -83,13 +83,16 @@ be checked. The viewer lists functions actually loaded by the current server.
    stops at the selected location. Reopen Source at the pause and distinguish the
    actual stopped line from a manually inspected line/record. A live pause has an
    arrow and amber row; ordinary line selection uses a neutral line-number cue.
-   Use **Go to stop · line N** in the Source header immediately after **Reread file** to select and reveal the
-   live paused line, resetting horizontal scrolling to its beginning. The action
-   supports normal Tab/Enter activation and leaves debugger frame/flow selection
-   intact. It appears only for a ready document of the paused function with an
-   in-range line whose command matches the live pause; pending debugger controls
-   disable it. Loading, changed source commands and resumed records cannot supply
-   a live destination. Tight headers use an arrow with the full action/line tooltip;
+   Use **Go to stop** in the Source header immediately after **Reread file**. In the paused
+   function it selects and reveals the live paused line, resetting horizontal scrolling to its
+   beginning; in any other file it opens the paused function's source and reveals that line
+   once it loads. The action supports normal Tab/Enter activation and leaves debugger
+   frame/flow selection intact. The button carries no line number. In the paused function it
+   appears only for a ready document with an in-range line whose command matches the live
+   pause; elsewhere it appears whenever a pause is live and no source is loading, and a
+   command that no longer matches after loading opens the file without moving. Pending
+   debugger controls disable it. Loading, changed source commands and resumed records cannot
+   supply a live destination. Tight headers use an arrow with the full action tooltip;
    Back and Close remain separate. Tab reaches the action immediately after Reread
    file; hiding or disabling it releases its focus for code navigation. The status
    row retains the execution status and truncated-source warning.
@@ -281,7 +284,7 @@ activation, adjacent Reread/stop Tab order, an independently inspected historica
 frame, pending-control and source-loading gates, stale command/resume changes
 between render and activation, and focus release/retention across state changes
 and resize. Back/Close remain separate in EN/KO minimum layouts and Korean 1.25×/4.50×
-views. Inspect `go-to-stop-live`, `go-to-stop-english-minimum`,
+views; a second scenario opens it from a different file. Inspect `go-to-stop-live`, `go-to-stop-english-minimum`,
 `go-to-stop-korean-minimum`, `go-to-stop-korean-1.25x` and `go-to-stop-korean-4.5x`.
 These injected pause/source fixtures establish client
 navigation and presentation; they do not establish server breakpoint execution

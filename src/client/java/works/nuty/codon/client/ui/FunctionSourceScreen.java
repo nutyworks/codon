@@ -73,6 +73,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
     private int selectedStageIndex = -1;
     private @org.jspecify.annotations.Nullable BreakpointTarget revealTarget;
     private @org.jspecify.annotations.Nullable BreakpointTarget focusedBreakpoint;
+    private @org.jspecify.annotations.Nullable FunctionId pendingStop;
     private final List<StageHit> stageHits = new ArrayList<>();
     private final List<LineHit> lineHits = new ArrayList<>();
     private final List<FunctionHit> functionHits = new ArrayList<>();
@@ -330,6 +331,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         search.visible = search.active = !drawerMode || drawerOpen;
         updateCodeCache();
         revealBreakpoint();
+        completeStopNavigation();
         updateInlineLayout();
         updateStopControl();
         sourceSearch.visible = sourceSearch.active = !drawerOpen && sources.document() != null;
@@ -821,31 +823,39 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             && location.location().function().equals(function) && location.location().line() == line;
     }
 
-    /** Navigation may use only the acknowledged live location in the matching loaded source. */
-    private int actualStopLine() {
+    /** The acknowledged live location, which needs no loaded source to name its function. */
+    private @org.jspecify.annotations.Nullable FunctionLocation liveStop() {
         ClientDebuggerState state = CodonClientMod.state();
-        FunctionSourceDocument document = sources.document();
         if (state == null || !state.isPaused() || state.snapshot() == null
             || state.snapshot().reason() == PauseReason.EXECUTION_COMPLETE
-            || sources.sourceStatus() != ClientFunctionSourceState.Status.READY || document == null
+            || !(state.snapshot().location() instanceof SourceLocation.Function location)) return null;
+        return location.location();
+    }
+
+    /** A line may be revealed only in the matching loaded source whose command still matches the pause. */
+    private int actualStopLine() {
+        FunctionLocation stop = liveStop();
+        FunctionSourceDocument document = sources.document();
+        if (stop == null || sources.sourceStatus() != ClientFunctionSourceState.Status.READY || document == null
             || !Objects.equals(document.id(), sources.selected())
-            || !(state.snapshot().location() instanceof SourceLocation.Function location)
-            || !location.location().function().equals(document.id())) return -1;
-        int line = location.location().line();
+            || !stop.function().equals(document.id())) return -1;
+        int line = stop.line();
         if (line < 1 || line > document.lines().size()
-            || !document.lines().get(line - 1).trim().equals(state.snapshot().command().text())) return -1;
+            || !document.lines().get(line - 1).trim().equals(CodonClientMod.state().snapshot().command().text())) return -1;
         return line;
     }
 
     private void updateStopControl() {
-        int line = actualStopLine();
-        goToStop.visible = !drawerOpen && line > 0;
+        FunctionLocation stop = liveStop();
+        goToStop.visible = !drawerOpen && stop != null && sources.selected() != null
+            && sources.sourceStatus() != ClientFunctionSourceState.Status.LOADING
+            && (!stop.function().equals(sources.selected()) || actualStopLine() > 0);
         goToStop.active = goToStop.visible && !CodonClientMod.state().controlPending();
         if (!goToStop.active && getFocused() == goToStop) setFocused(null);
         if (!goToStop.visible) return;
         int x = reread.getRight() + 4;
         int right = (sources.canGoBack() ? backButton.getX() : close.getX()) - 4;
-        Component label = Component.translatable("codon.source.go_to_stop", line);
+        Component label = Component.translatable("codon.source.go_to_stop");
         int labelWidth = font.width(label) + 10;
         boolean compact = labelWidth > right - x;
         goToStop.configure(x, reread.getY(), compact ? 20 : labelWidth, reread.getHeight(),
@@ -857,8 +867,29 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
     }
 
     private void goToStop() {
+        FunctionLocation stop = liveStop();
+        if (stop == null || CodonClientMod.state().controlPending()) return;
+        if (stop.function().equals(sources.selected())) { revealStop(); return; }
+        // The other file's command cannot be checked until it loads; completeStopNavigation() reveals it then.
+        sources.select(stop.function());
+        restoreBrowseView();
+        pendingStop = stop.function();
+        parentOwnsContextKeys = false;
+        setFocused(null);
+        rememberView();
+    }
+
+    private void completeStopNavigation() {
+        if (pendingStop == null) return;
+        if (!pendingStop.equals(sources.selected())) { pendingStop = null; return; }
+        if (sources.sourceStatus() == ClientFunctionSourceState.Status.LOADING) return;
+        pendingStop = null;
+        revealStop();
+    }
+
+    private void revealStop() {
         int line = actualStopLine();
-        if (line < 1 || CodonClientMod.state().controlPending()) return;
+        if (line < 1) return;
         selectLine(line);
         lineOffset = Math.clamp(line - 1, 0, maximumLineOffset());
         horizontalOffset = 0;
