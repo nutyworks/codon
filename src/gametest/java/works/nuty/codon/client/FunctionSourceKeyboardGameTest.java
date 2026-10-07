@@ -22,6 +22,60 @@ import java.util.List;
 public final class FunctionSourceKeyboardGameTest implements FabricClientGameTest {
     private final List<String> failures = new ArrayList<>();
 
+    private enum Close { PARENT, WORLD_REPEAT, LOST_RELEASE, FOREIGN_WINDOW }
+
+    /** F3 pressed in Source, Source closed by a real Escape press, then F3 released elsewhere. */
+    private void closeThenRelease(ClientGameTestContext context, boolean visible, int modifiers, Close close) {
+        String label = (modifiers == 0 ? "F3" : "Shift+F3") + " overlay=" + visible + " " + close;
+        context.runOnClient(FunctionSourceKeyboardGameTest::showSource);
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            Screen screen = client.gui.screen();
+            ((EditBox) field(screen, "sourceSearch")).setValue("needle");
+            screen.setFocused(null);
+            client.debugEntries.setOverlayVisible(visible);
+            int before = index(screen);
+            key(client, InputConstants.KEY_F3, 1, modifiers);
+            check(index(screen) != before, label + ": Source press navigates");
+            key(client, InputConstants.KEY_ESCAPE, 1, 0);
+            check(!(client.gui.screen() instanceof FunctionSourceScreen), label + ": Escape closes Source");
+            if (close == Close.WORLD_REPEAT) {
+                client.setScreenAndShow(null);
+                key(client, InputConstants.KEY_F3, -1, modifiers);
+            }
+            if (close == Close.FOREIGN_WINDOW) {
+                client.keyboardHandler.keyPress(client.getWindow().handle() + 1, 0, new KeyEvent(InputConstants.KEY_F3, 0, modifiers));
+            } else if (close != Close.LOST_RELEASE) {
+                key(client, InputConstants.KEY_F3, 0, modifiers);
+            }
+            check(client.debugEntries.isOverlayVisible() == visible,
+                label + ": release after Source closes preserves overlay, or ignores a foreign window");
+            check(!client.options.keyDebugModifier.isDown(), label + ": no stuck debug modifier");
+        });
+        if (close == Close.PARENT && visible && modifiers == 0) {
+            context.waitTicks(2);
+            context.takeScreenshot("codon-source-f3-close-release");
+        }
+        context.runOnClient(client -> {
+            client.setScreenAndShow(null);
+            key(client, InputConstants.KEY_F3, 1, 0);
+            key(client, InputConstants.KEY_F3, 0, 0);
+            check(client.debugEntries.isOverlayVisible() == !visible, label + ": a fresh F3 outside Source toggles overlay");
+            check(!client.options.keyDebugModifier.isDown(), label + ": fresh F3 leaves no stuck debug modifier");
+        });
+    }
+
+    private static void showSource(Minecraft client) {
+        var id = new FunctionId("codon_test", "keyboard");
+        var sources = new ClientFunctionSourceState();
+        sources.select(id);
+        long request = sources.drainRequests().getFirst().requestId();
+        sources.accept(new ClientFunctionSourceState.SourcePage(request, ClientFunctionSourceState.Status.READY,
+            id, "gametest", "keyboard", false, 0, true, List.of("say needle first", "say needle second", "say needle third")));
+        client.setScreenAndShow(new FunctionSourceScreen(
+            new ScaledCodonScreen(Component.empty(), new DebuggerPreferences()) { }, sources));
+    }
+
     @Override public void runTest(ClientGameTestContext context) {
         failures.clear();
         try (var world = context.worldBuilder().create()) {
@@ -31,7 +85,14 @@ public final class FunctionSourceKeyboardGameTest implements FabricClientGameTes
             try {
                 context.runOnClient(client -> {
                     CodonClientMod.state().applyResume();
-                    showSource(client);
+                    var id = new FunctionId("codon_test", "keyboard");
+                    var sources = new ClientFunctionSourceState();
+                    sources.select(id);
+                    long request = sources.drainRequests().getFirst().requestId();
+                    sources.accept(new ClientFunctionSourceState.SourcePage(request, ClientFunctionSourceState.Status.READY,
+                        id, "gametest", "keyboard", false, 0, true, List.of("say needle first", "say needle second", "say needle third")));
+                    client.setScreenAndShow(new FunctionSourceScreen(
+                        new ScaledCodonScreen(Component.empty(), new DebuggerPreferences()) { }, sources));
                 });
                 context.waitTicks(2);
                 for (boolean visible : new boolean[]{false, true}) {
@@ -98,60 +159,6 @@ public final class FunctionSourceKeyboardGameTest implements FabricClientGameTes
             }
         }
         if (!failures.isEmpty()) throw new AssertionError(String.join("; ", failures));
-    }
-
-    private enum Close { PARENT, WORLD_REPEAT, LOST_RELEASE, FOREIGN_WINDOW }
-
-    /** F3 pressed in Source, Source closed by a real Escape press, then F3 released elsewhere. */
-    private void closeThenRelease(ClientGameTestContext context, boolean visible, int modifiers, Close close) {
-        String label = (modifiers == 0 ? "F3" : "Shift+F3") + " overlay=" + visible + " " + close;
-        context.runOnClient(FunctionSourceKeyboardGameTest::showSource);
-        context.waitTicks(2);
-        context.runOnClient(client -> {
-            Screen screen = client.gui.screen();
-            ((EditBox) field(screen, "sourceSearch")).setValue("needle");
-            screen.setFocused(null);
-            client.debugEntries.setOverlayVisible(visible);
-            int before = index(screen);
-            key(client, InputConstants.KEY_F3, 1, modifiers);
-            check(index(screen) != before, label + ": Source press navigates");
-            key(client, InputConstants.KEY_ESCAPE, 1, 0);
-            check(!(client.gui.screen() instanceof FunctionSourceScreen), label + ": Escape closes Source");
-            if (close == Close.WORLD_REPEAT) {
-                client.setScreenAndShow(null);
-                key(client, InputConstants.KEY_F3, -1, modifiers);
-            }
-            if (close == Close.FOREIGN_WINDOW) {
-                client.keyboardHandler.keyPress(client.getWindow().handle() + 1, 0, new KeyEvent(InputConstants.KEY_F3, 0, modifiers));
-            } else if (close != Close.LOST_RELEASE) {
-                key(client, InputConstants.KEY_F3, 0, modifiers);
-            }
-            check(client.debugEntries.isOverlayVisible() == visible,
-                label + ": release after Source closes preserves overlay, or ignores a foreign window");
-            check(!client.options.keyDebugModifier.isDown(), label + ": no stuck debug modifier");
-        });
-        if (close == Close.PARENT && visible && modifiers == 0) {
-            context.waitTicks(2);
-            context.takeScreenshot("codon-source-f3-close-release");
-        }
-        context.runOnClient(client -> {
-            client.setScreenAndShow(null);
-            key(client, InputConstants.KEY_F3, 1, 0);
-            key(client, InputConstants.KEY_F3, 0, 0);
-            check(client.debugEntries.isOverlayVisible() == !visible, label + ": a fresh F3 outside Source toggles overlay");
-            check(!client.options.keyDebugModifier.isDown(), label + ": fresh F3 leaves no stuck debug modifier");
-        });
-    }
-
-    private static void showSource(Minecraft client) {
-        var id = new FunctionId("codon_test", "keyboard");
-        var sources = new ClientFunctionSourceState();
-        sources.select(id);
-        long request = sources.drainRequests().getFirst().requestId();
-        sources.accept(new ClientFunctionSourceState.SourcePage(request, ClientFunctionSourceState.Status.READY,
-            id, "gametest", "keyboard", false, 0, true, List.of("say needle first", "say needle second", "say needle third")));
-        client.setScreenAndShow(new FunctionSourceScreen(
-            new ScaledCodonScreen(Component.empty(), new DebuggerPreferences()) { }, sources));
     }
 
     private static void key(Minecraft client, int key, int action, int modifiers) {
