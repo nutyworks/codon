@@ -424,6 +424,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
                 "a file other than the live stop still offers Go to stop, without a line number");
             button.onPress(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
             require(FUNCTION.equals(sources.selected()), "Go to stop opens the paused function's source");
+            require(CodonClientMod.state().beginControlRequest(), "fixture begins a pending control while the source loads");
             long request = sources.drainRequests().stream().filter(ClientFunctionSourceState.Request.ReadFunction.class::isInstance)
                 .map(ClientFunctionSourceState.Request.ReadFunction.class::cast).reduce((first, last) -> last).orElseThrow().requestId();
             sources.accept(new ClientFunctionSourceState.SourcePage(request, ClientFunctionSourceState.Status.READY,
@@ -431,6 +432,13 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
         });
         context.waitTicks(2);
         context.runOnClient(client -> {
+            require(sources.browseView().selectedLine() != 2,
+                "a control pending before the source loads cancels the deferred stop navigation");
+            CodonClientMod.state().applyPause(pause);
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            stopButton(client.gui.screen()).onPress(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
             require(sources.browseView().selectedLine() == 2 && sources.browseView().lineOffset() == 1
                     && sources.browseView().horizontalOffset() == 0,
                 "the loaded paused function reveals and selects its live line");

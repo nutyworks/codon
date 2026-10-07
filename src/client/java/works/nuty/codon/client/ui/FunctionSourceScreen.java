@@ -841,7 +841,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             || !stop.function().equals(document.id())) return -1;
         int line = stop.line();
         if (line < 1 || line > document.lines().size()
-            || !document.lines().get(line - 1).trim().equals(CodonClientMod.state().snapshot().command().text())) return -1;
+            || !SourceSyntax.runs(document.lines().get(line - 1), CodonClientMod.state().snapshot().command().text())) return -1;
         return line;
     }
 
@@ -881,7 +881,9 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
 
     private void completeStopNavigation() {
         if (pendingStop == null) return;
-        if (!pendingStop.equals(sources.selected())) { pendingStop = null; return; }
+        ClientDebuggerState state = CodonClientMod.state();
+        // A pending control makes the live stop stale, exactly as it disables direct activation.
+        if (state == null || state.controlPending() || !pendingStop.equals(sources.selected())) { pendingStop = null; return; }
         if (sources.sourceStatus() == ClientFunctionSourceState.Status.LOADING) return;
         pendingStop = null;
         revealStop();

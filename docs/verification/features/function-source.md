@@ -91,8 +91,10 @@ be checked. The viewer lists functions actually loaded by the current server.
    appears only for a ready document with an in-range line whose command matches the live
    pause; elsewhere it appears whenever a pause is live and no source is loading, and a
    command that no longer matches after loading opens the file without moving. Pending
-   debugger controls disable it. Loading, changed source commands and resumed records cannot
-   supply a live destination. Tight headers use an arrow with the full action tooltip;
+   debugger controls disable it, and a control that becomes pending while another file
+   loads cancels the deferred reveal. A macro line matches when the text around its
+   `$(name)` substitutions equals the paused command. Loading, changed source commands and
+   resumed records cannot supply a live destination. Tight headers use an arrow with the full action tooltip;
    Back and Close remain separate. Tab reaches the action immediately after Reread
    file; hiding or disabling it releases its focus for code navigation. The status
    row retains the execution status and truncated-source warning.
