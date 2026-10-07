@@ -225,6 +225,13 @@ Source owns F3/Shift+F3 releases as well as their Find navigation presses, so th
 vanilla debug overlay retains its current visibility. `FunctionSourceKeyboardGameTest`
 calls the real KeyboardHandler with press/repeat/release events, checks both overlay
 states and unfocused/empty Find, then verifies vanilla F3/Shift+F3 after closing Source.
+If Source closes (a real Escape) while an F3 it consumed is still held, `KeyboardHandlerMixin`
+keeps that release from toggling the overlay by marking vanilla's shared debug-modifier
+release as used; the key mapping still clears and a fresh F3 outside Source toggles normally.
+The GameTest covers F3 and Shift+F3 in both overlay states with a parent or world release,
+a held repeat, a lost release and a release from another window; inspect
+`*codon-source-f3-close-release.png`. It does not exercise remapped overlay/modifier keys or
+a physical keyboard.
 The same GameTest checks the proportional default font, Unicode geometry, inline
 stage targeting and condition preservation, keyboard selection, horizontal-wheel
 state, literal search next/previous,
