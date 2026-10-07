@@ -35,6 +35,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.ToIntFunction;
 
 import static works.nuty.codon.client.ui.DebuggerTheme.*;
 import static works.nuty.codon.client.ui.layout.CommandFlowLayout.CELL_HORIZONTAL_PADDING;
@@ -165,16 +166,19 @@ public final class CommandPanel {
             renderClauses(graphics, body, snapshot);
             SelectionDetail detail = selectionDetail();
             if (detailHeight >= client.font.lineHeight + 2) {
+                boolean valuesDrawn = detailHeight >= 2 * client.font.lineHeight + 5;
                 drawText(graphics, detail.title(), area.x() + 8, detailY + 2, area.width() - 16, detail.color());
-                if (detailHeight >= 2 * client.font.lineHeight + 5)
+                if (valuesDrawn)
                     drawText(graphics, detail.values(), area.x() + 8, detailY + 13, area.width() - 16, TEXT);
                 navigationGroup = DebuggerNavigation.Group.ACTIONS;
-                // The band draws its own title and values; only a reason beyond them is worth a tooltip.
+                // Hover adds only what the band does not show: clipped or undrawn lines, then any reason.
                 Component label = Component.literal(detail.title() + "\n" + detail.values()
                     + (detail.explanation().isEmpty() ? "" : "\n" + detail.explanation()));
                 DebuggerButton details = button("selected-flow-details", new Bounds(area.x() + 5, detailY, area.width() - 10, detailHeight),
                     label, true, false, () -> { }).asHitSurface();
-                if (!detail.explanation().isEmpty()) details.setTooltip(Tooltip.create(Component.literal(detail.explanation())));
+                String hidden = hiddenDetail(detail.title(), detail.values(), detail.explanation(), valuesDrawn,
+                    area.width() - 16, client.font::width);
+                if (!hidden.isEmpty()) details.setTooltip(Tooltip.create(Component.literal(hidden)));
                 BreakpointTarget target = selectedBreakpoint();
                 if (target != null) conditionMenu(details, "selected-flow-details", flow, target,
                     snippet.text(), state.selectedUnobservedStageIndex() >= 0);
@@ -806,6 +810,16 @@ public final class CommandPanel {
             stageDetailCache.clear();
             flowWarningDetails = null;
         }
+    }
+
+    /** The detail band's text a reader cannot see in the band itself, then the reason; empty when none. */
+    static String hiddenDetail(String title, String values, String explanation, boolean valuesDrawn,
+                               int textWidth, ToIntFunction<String> width) {
+        var lines = new ArrayList<String>();
+        if (width.applyAsInt(title) > textWidth) lines.add(title);
+        if (!valuesDrawn || width.applyAsInt(values) > textWidth) lines.add(values);
+        if (!explanation.isEmpty()) lines.add(explanation);
+        return String.join("\n", lines);
     }
 
     /** Why this stage's observation is incomplete or failed; empty when nothing needs explaining. */

@@ -67,6 +67,20 @@ class CommandPanelTest {
         } finally { buffer.release(); }
     }
 
+    @Test void detailBandTooltipAddsOnlyClippedOrUndrawnLinesAndTheReason() {
+        java.util.function.ToIntFunction<String> width = String::length;
+        assertEquals("", CommandPanel.hiddenDetail("Stop #1", "In 1 → Out 1", "", true, 40, width),
+            "A fully drawn healthy band has nothing to add");
+        assertEquals("Stop #1 · a long title", CommandPanel.hiddenDetail("Stop #1 · a long title", "In 1", "", true, 10, width),
+            "A clipped title is readable on hover");
+        assertEquals("In 1 → Out 1", CommandPanel.hiddenDetail("Stop #1", "In 1 → Out 1", "", false, 40, width),
+            "A values line that is not drawn at this height is readable on hover");
+        assertEquals("In 1 → Out 1 → Excluded 0", CommandPanel.hiddenDetail("Stop #1", "In 1 → Out 1 → Excluded 0", "", true, 12, width));
+        assertEquals("In 1 → Out 1\nCapture incomplete", CommandPanel.hiddenDetail("Stop #1", "In 1 → Out 1", "Capture incomplete", false, 40, width),
+            "A reason follows whatever the band hides");
+        assertEquals("Capture incomplete", CommandPanel.hiddenDetail("Stop #1", "In 1", "Capture incomplete", true, 40, width));
+    }
+
     @Test void warningExcerptKeepsUnicodeAndTheFirstOmittedStageIdentity() {
         var warning = new ExecutionFlowWarning(ExecutionFlowWarning.Reason.STAGE_LIMIT, 24,
             CommandSnippet.plain("a".repeat(255) + "😀"), 24, "");
