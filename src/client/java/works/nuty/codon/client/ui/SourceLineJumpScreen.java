@@ -107,7 +107,8 @@ final class SourceLineJumpScreen extends ScaledCodonScreen {
     @Override public boolean keyPressed(KeyEvent event) {
         if (!validContext()) return true;
         if (event.key() == InputConstants.KEY_ESCAPE) { onClose(); return true; }
-        if (event.key() == InputConstants.KEY_RETURN && getFocused() == lineNumber) { go(); return true; }
+        if ((event.key() == InputConstants.KEY_RETURN || event.key() == InputConstants.KEY_NUMPADENTER)
+            && getFocused() == lineNumber) { go(); return true; }
         if (event.key() == InputConstants.KEY_TAB) {
             var eligible = children().stream().filter(AbstractWidget.class::isInstance).map(AbstractWidget.class::cast)
                 .filter(widget -> widget.visible && widget.active).toList();

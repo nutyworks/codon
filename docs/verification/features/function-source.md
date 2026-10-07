@@ -135,13 +135,14 @@ be checked. The viewer lists functions actually loaded by the current server.
    selected and revealed without pressing Next if the previous result cannot be
    restored. An unchanged rebuild retains the selected result and viewport.
 7. Use **Go to line** (`Ctrl/Cmd+G`) to enter an original physical line number in the
-   loaded function. Enter or Go selects and reveals that line; blank, non-integer
+   loaded function. Enter (including keypad Enter) or Go selects and reveals that line; blank, non-integer
    and out-of-range input stays in the dialog with Go disabled. The range is only
    the loaded lines, including comments and blank lines, even when the document is
    truncated. Escape/Cancel restores the original control focus, including after
    resize. A reread, changed selected document or connection reset invalidates an
    open dialog; an unloaded or loading source cannot open it. Navigation changes
-   only client selection/scroll, while the existing Find and Go to stop behavior
+   only client selection/scroll, and opening the dialog ends any held tree-divider,
+   scrollbar or parent-drag capture, while the existing Find and Go to stop behavior
    remains available. This checks known client source state, not automatic server
    reload notifications or disk monitoring.
 8. Click a code line, or press Esc from Find, to focus code navigation. Up/Down,

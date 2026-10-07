@@ -185,8 +185,19 @@ public final class FunctionSourceKeyboardGameTest implements FabricClientGameTes
                 context.takeScreenshot("codon-source-go-line-selected-" + locale + "-320x240");
                 context.runOnClient(client -> {
                     var source = (FunctionSourceScreen) client.gui.screen();
-                    source.setFocused((EditBox) field(source, "sourceSearch"));
+                    var sources = (ClientFunctionSourceState) field(source, "sources");
                     openJump(client, source);
+                    ((EditBox) field(ScreenLayers.get(source), "lineNumber")).setValue("3");
+                    key(client, InputConstants.KEY_NUMPADENTER, 1, 0);
+                    key(client, InputConstants.KEY_NUMPADENTER, 0, 0);
+                    require(ScreenLayers.get(source) == null && sources.browseView().selectedLine() == 3,
+                        "numpad Enter submits a valid line");
+                    source.setFocused((EditBox) field(source, "sourceSearch"));
+                    setField(source, "resizingTree", true);
+                    setField(source, "forwardingParentDrag", true);
+                    openJump(client, source);
+                    require(!(boolean) field(source, "resizingTree") && !(boolean) field(source, "forwardingParentDrag"),
+                        "opening Go releases held pointer captures that the modal would swallow");
                     var layer = ScreenLayers.get(source);
                     ((EditBox) field(layer, "lineNumber")).setValue("0");
                     key(client, InputConstants.KEY_TAB, 1, 0);
@@ -273,6 +284,10 @@ public final class FunctionSourceKeyboardGameTest implements FabricClientGameTes
     private static int index(Screen screen) { return (int) field(screen, "matchIndex"); }
     private static Object field(Object target, String name) {
         try { var field = target.getClass().getDeclaredField(name); field.setAccessible(true); return field.get(target); }
+        catch (ReflectiveOperationException error) { throw new AssertionError(error); }
+    }
+    private static void setField(Object target, String name, Object value) {
+        try { var field = target.getClass().getDeclaredField(name); field.setAccessible(true); field.set(target, value); }
         catch (ReflectiveOperationException error) { throw new AssertionError(error); }
     }
     private void check(boolean condition, String message) {
