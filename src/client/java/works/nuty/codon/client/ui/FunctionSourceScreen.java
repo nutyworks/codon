@@ -900,6 +900,20 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         rememberView();
     }
 
+    private void goToLine(int line) {
+        FunctionSourceDocument document = sources.document();
+        if (sources.sourceStatus() != ClientFunctionSourceState.Status.READY || document == null
+            || !Objects.equals(document.id(), sources.selected()) || line < 1 || line > document.lines().size()) return;
+        selectLine(line);
+        lineOffset = Math.clamp(line - 1, 0, Math.max(0, document.lines().size() - sourceRows()));
+        horizontalOffset = 0;
+        parentOwnsContextKeys = false;
+        clearSourceHits();
+        rememberView();
+        if (drawerOpen) setDrawerOpen(false);
+        setFocused(null);
+    }
+
     private String executionStatus(FunctionId function) {
         ClientDebuggerState state = CodonClientMod.state();
         if (state == null || state.inspectionSnapshot() == null) return tr("codon.source.record_unavailable");
@@ -942,6 +956,13 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         return BreakpointTarget.whole(new SourceLocation.Function(new FunctionLocation(sources.selected(), selectedLine)));
     }
 
+    /** A modal layer consumes the mouse release, so held captures must end before it opens. */
+    private void releasePointerCaptures() {
+        scrollbars.release();
+        resizingTree = forwardingParentDrag = false;
+        if (parent instanceof CodonScreen codon) codon.cancelPanelResize();
+    }
+
     private void openCondition(BreakpointTarget target, Bounds anchor, boolean direct) {
         ClientDebuggerState debugger = CodonClientMod.state();
         FunctionSourceDocument document = sources.document();
@@ -950,9 +971,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         if (!wholeEligible(document, line)) return;
         stagesForLine(line, true);
         var level = minecraft.level;
-        scrollbars.release();
-        resizingTree = forwardingParentDrag = false;
-        if (parent instanceof CodonScreen codon) codon.cancelPanelResize();
+        releasePointerCaptures();
         java.util.function.BooleanSupplier current = () -> minecraft.level == level && sources.document() == document
                 && sources.sourceStatus() != ClientFunctionSourceState.Status.LOADING
                 && Objects.equals(sources.selected(), location.location().function())
@@ -1166,6 +1185,15 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                     : new Bounds(stage.x(), stage.y(), stage.width(), stage.height()), focusedBreakpoint != null);
                 return true;
             }
+        }
+        if (event.key() == InputConstants.KEY_G && event.hasControlDownWithQuirk()) {
+            FunctionSourceDocument document = sources.document();
+            if (sources.sourceStatus() == ClientFunctionSourceState.Status.READY && document != null
+                && Objects.equals(document.id(), sources.selected()) && !document.lines().isEmpty()) {
+                releasePointerCaptures();
+                ScreenLayers.open(this, new SourceLineJumpScreen(this, sources, document, selectedLine, this::goToLine));
+            }
+            return true;
         }
         if (event.key() == InputConstants.KEY_F && event.hasControlDownWithQuirk() && sourceSearch.visible) {
             focusedBreakpoint = null;

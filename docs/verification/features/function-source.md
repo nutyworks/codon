@@ -134,7 +134,19 @@ be checked. The viewer lists functions actually loaded by the current server.
    When the query survives a function switch or Reload, the first new result is
    selected and revealed without pressing Next if the previous result cannot be
    restored. An unchanged rebuild retains the selected result and viewport.
-7. Click a code line, or press Esc from Find, to focus code navigation. Up/Down,
+7. Use **Go to line** (`Ctrl/Cmd+G`) to enter an original physical line number in the
+   loaded function. Enter (including keypad Enter) or Go selects and reveals that line; blank, non-integer
+   and out-of-range input stays in the dialog with Go disabled. The range is only
+   the loaded lines, including comments and blank lines, even when the document is
+   truncated. Escape/Cancel restores the original control focus, including after
+   resize. A reread, changed selected document or connection reset invalidates an
+   open dialog; an unloaded or loading source cannot open it. Navigation changes
+   only client selection/scroll, and opening the dialog ends any held tree-divider,
+   scrollbar or parent-drag capture, while the existing Find and Go to stop behavior
+   remains available. Help > Source viewer keys lists the shortcut in English and
+   Korean. This checks known client source state, not automatic server reload
+   notifications or disk monitoring.
+8. Click a code line, or press Esc from Find, to focus code navigation. Up/Down,
    PageUp/PageDown and Home/End select original lines. Tab/Shift+Tab traverses visible
    controls; with no focused widget, Tab starts at the first active visible control
    and Shift+Tab starts at the last.
@@ -192,7 +204,7 @@ scroll settings. Synthetic callback input does not verify a physical trackpad.
 | Header stop navigation, Reread/stop Tab order, focus lifecycle, EN/KO minimum and custom scales | `FunctionSourceScreenGameTest` |
 | Active stage readability, adjacent stages, horizontal clipping and representative scales | `FunctionSourceStageHighlightGameTest` |
 | Source toolbar icon, state styling, scale readability and native activation | `DebuggerSourceIconGameTest` |
-| F3/Shift+F3 press/repeat/release ownership and vanilla behavior outside Source | `FunctionSourceKeyboardGameTest` |
+| F3/Shift+F3 ownership; Ctrl/Cmd+G range, English/Korean minimum viewport, Cancel/focus, resize and stale-source guards | `FunctionSourceKeyboardGameTest` |
 | Exact gutter target with missing/loading/stale previews, direct marker editor/cancel, parsed as/at/run/function marker targets | `FunctionLineBreakpointGameTest`, `FlowBreakpointInteractionGameTest` |
 | Focused Find/function-list Search key press before character input, bound/unbound/remapped cursor-mode keys, parent shortcuts and focus navigation | `FunctionSourceTextInputGameTest` |
 
