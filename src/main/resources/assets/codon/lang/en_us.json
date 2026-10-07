@@ -377,7 +377,7 @@
   "codon.ui.help.scrolling.title": "Read long lists and commands",
   "codon.ui.help.scrolling.body": "Scroll over the panel you want to browse. In the debugger, click a scrollbar track or drag its thumb to move through contexts, NBT, watches, or command content. In this guide, use the wheel, Up/Down, Page Up/Down, or Home/End; Left/Right selects a tab button and Enter opens it.",
   "codon.ui.help.source_viewer.title": "Source viewer keys",
-  "codon.ui.help.source_viewer.body": "Find: Ctrl/Cmd+F focuses the field, Enter / Shift+Enter jumps to the next / previous match, and Esc returns to code navigation. Code: Up/Down, Page Up/Down and Home/End move through lines; Left/Right, Shift+wheel or dragging the scrollbar move sideways.",
+  "codon.ui.help.source_viewer.body": "Find: Ctrl/Cmd+F focuses the field, Enter / Shift+Enter jumps to the next / previous match, and Esc returns to code navigation. Go to line: Ctrl/Cmd+G opens a line-number box; Enter jumps to that line. Code: Up/Down, Page Up/Down and Home/End move through lines; Left/Right, Shift+wheel or dragging the scrollbar move sideways.",
   "codon.ui.help.gizmo.title": "Group nearby context labels",
   "codon.ui.help.gizmo.body": "The gizmo button switches between Grouped and Labels. In Grouped mode, nearby contexts share a label. A +N suffix counts additional contexts in that group. Click it to open the group in Contexts, choose a member to inspect, or use All to return to the full list.",
   "codon.ui.help.labels.title": "Individual labels and crowded scenes",

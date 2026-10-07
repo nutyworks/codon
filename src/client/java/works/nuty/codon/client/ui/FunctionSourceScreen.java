@@ -904,9 +904,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         FunctionSourceDocument document = sources.document();
         if (sources.sourceStatus() != ClientFunctionSourceState.Status.READY || document == null
             || !Objects.equals(document.id(), sources.selected()) || line < 1 || line > document.lines().size()) return;
-        revealTarget = focusedBreakpoint = null;
-        selectedLine = line;
-        selectedStageIndex = -1;
+        selectLine(line);
         lineOffset = Math.clamp(line - 1, 0, Math.max(0, document.lines().size() - sourceRows()));
         horizontalOffset = 0;
         parentOwnsContextKeys = false;

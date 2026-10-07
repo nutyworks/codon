@@ -377,7 +377,7 @@
   "codon.ui.help.scrolling.title": "긴 목록과 명령 읽기",
   "codon.ui.help.scrolling.body": "살펴볼 패널 위에서 스크롤하세요. 디버거에서는 스크롤 막대의 빈 곳을 클릭하거나 손잡이를 드래그해 컨텍스트, NBT, 감시 항목, 명령 내용을 이동할 수 있습니다. 이 안내에서는 휠, 위/아래 방향키, Page Up/Down, Home/End로 스크롤합니다. 왼쪽/오른쪽 방향키로 탭 버튼을 선택하고 Enter로 엽니다.",
   "codon.ui.help.source_viewer.title": "소스 뷰어 단축키",
-  "codon.ui.help.source_viewer.body": "찾기: Ctrl/Cmd+F로 입력란에 이동하고, Enter / Shift+Enter로 다음 / 이전 결과로 이동하며, Esc로 코드 탐색으로 돌아갑니다. 코드: ↑↓ / PgUp PgDn / Home End로 줄을 이동하고, ←→ / Shift+휠 / 스크롤 막대 드래그로 가로로 이동합니다.",
+  "codon.ui.help.source_viewer.body": "찾기: Ctrl/Cmd+F로 입력란에 이동하고, Enter / Shift+Enter로 다음 / 이전 결과로 이동하며, Esc로 코드 탐색으로 돌아갑니다. 줄로 이동: Ctrl/Cmd+G로 줄 번호 입력창을 열고 Enter로 해당 줄로 이동합니다. 코드: ↑↓ / PgUp PgDn / Home End로 줄을 이동하고, ←→ / Shift+휠 / 스크롤 막대 드래그로 가로로 이동합니다.",
   "codon.ui.help.gizmo.title": "가까운 컨텍스트 표시 묶기",
   "codon.ui.help.gizmo.body": "기즈모 버튼은 그룹 표시와 개별 표시 모드를 전환합니다. 그룹 표시에서는 가까운 컨텍스트를 하나의 표시로 묶습니다. 뒤에 붙는 +N은 같은 그룹에 추가로 포함된 컨텍스트 수입니다. 표시를 클릭해 컨텍스트에서 그룹을 열고 개별 항목을 선택하세요. 전체를 누르면 전체 목록으로 돌아갑니다.",
   "codon.ui.help.labels.title": "개별 표시와 혼잡한 화면",

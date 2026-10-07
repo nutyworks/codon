@@ -143,8 +143,9 @@ be checked. The viewer lists functions actually loaded by the current server.
    open dialog; an unloaded or loading source cannot open it. Navigation changes
    only client selection/scroll, and opening the dialog ends any held tree-divider,
    scrollbar or parent-drag capture, while the existing Find and Go to stop behavior
-   remains available. This checks known client source state, not automatic server
-   reload notifications or disk monitoring.
+   remains available. Help > Source viewer keys lists the shortcut in English and
+   Korean. This checks known client source state, not automatic server reload
+   notifications or disk monitoring.
 8. Click a code line, or press Esc from Find, to focus code navigation. Up/Down,
    PageUp/PageDown and Home/End select original lines. Tab/Shift+Tab traverses visible
    controls; with no focused widget, Tab starts at the first active visible control
