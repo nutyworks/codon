@@ -22,6 +22,7 @@
       "works.nuty.codon.client.FunctionSourceStageHighlightGameTest",
       "works.nuty.codon.client.FunctionListScrollbarGameTest",
       "works.nuty.codon.client.DebuggerBreakpointUiGameTest",
+      "works.nuty.codon.client.CodonLabelsGameTest",
       "works.nuty.codon.client.FunctionSourceScreenGameTest",
       "works.nuty.codon.client.DebuggerOpacityGameTest",
       "works.nuty.codon.client.DebuggerReadabilityGameTest",

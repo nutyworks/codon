@@ -14,8 +14,8 @@ public final class SourceDetailsFormatting {
             source.anchor().x(), source.anchor().y(), source.anchor().z());
     }
 
-    public static String rotation(PauseSource source) {
-        return String.format(Locale.ROOT, "yaw %.1f° / pitch %.1f°", source.yaw(), source.pitch());
+    public static String rotation(PauseSource source, String yaw, String pitch) {
+        return String.format(Locale.ROOT, "%s %.1f° / %s %.1f°", yaw, source.yaw(), pitch, source.pitch());
     }
 
     public static String previousPosition(@Nullable PauseSource before, PauseSource after) {
@@ -25,10 +25,10 @@ public final class SourceDetailsFormatting {
             new String[] { "X", "Y", "Z" }, "%.2f");
     }
 
-    public static String previousRotation(@Nullable PauseSource before, PauseSource after) {
+    public static String previousRotation(@Nullable PauseSource before, PauseSource after, String yaw, String pitch) {
         if (before == null) return "";
         return previous(new double[] { before.yaw(), before.pitch() },
-            new double[] { after.yaw(), after.pitch() }, new String[] { "yaw", "pitch" }, "%.1f°");
+            new double[] { after.yaw(), after.pitch() }, new String[] { yaw, pitch }, "%.1f°");
     }
 
     private static String previous(double[] oldValues, double[] newValues, String[] labels, String format) {

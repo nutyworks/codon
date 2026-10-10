@@ -198,11 +198,17 @@ public final class BreakpointListScreen extends ScaledCodonScreen {
         graphics.fill(0, 0, width, height, DebuggerTheme.modalColor(0x70000000));
         graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.modalColor(PANEL));
         graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.modalColor(BORDER));
-        WatchUi.line(graphics, font, tr(targets == null ? "codon.breakpoint.list_header" : "codon.breakpoint.saved_definitions_header", displayed.size()),
+        WatchUi.line(graphics, font, countHeader(),
             left + 8, top + 10, panelWidth - 16, TEXT);
         if (displayed.isEmpty()) WatchUi.line(graphics, font, tr("codon.breakpoint.list_empty"), left + 12, top + 43,
             panelWidth - 24, MUTED);
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+    }
+
+    private String countHeader() {
+        if (targets != null) return tr("codon.breakpoint.saved_definitions_header", displayed.size());
+        long enabled = displayed.stream().filter(BreakpointDefinition::enabled).count();
+        return tr("codon.breakpoint.list_header", displayed.size(), enabled);
     }
 
     @Override public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {

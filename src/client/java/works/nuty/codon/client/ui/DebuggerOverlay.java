@@ -386,7 +386,7 @@ public final class DebuggerOverlay {
             () -> { if (client.gui.screen() != null) client.gui.setScreen(new BreakpointListScreen(client.gui.screen(), state)); })
             .withTextIcon(DebuggerIcon.BREAKPOINT_LIST)
             .setTooltip(Tooltip.create(Component.translatable("codon.breakpoint.toolbar",
-                breakpointCount)));
+                breakpointCount, state.breakpoints().definitions().size())));
 
     }
 
@@ -731,8 +731,9 @@ public final class DebuggerOverlay {
         }
         y = sourceValueRows(graphics, area, y, SourceDetailsFormatting.position(source),
             SourceDetailsFormatting.previousPosition(before, source));
-        sourceValueRows(graphics, area, y, SourceDetailsFormatting.rotation(source),
-            SourceDetailsFormatting.previousRotation(before, source));
+        String yaw = tr("codon.ui.rotation.yaw"), pitch = tr("codon.ui.rotation.pitch");
+        sourceValueRows(graphics, area, y, SourceDetailsFormatting.rotation(source, yaw, pitch),
+            SourceDetailsFormatting.previousRotation(before, source, yaw, pitch));
     }
 
     private int sourceValueRows(GuiGraphicsExtractor graphics, Bounds area, int y,
