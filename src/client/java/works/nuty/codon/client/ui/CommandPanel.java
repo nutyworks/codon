@@ -151,17 +151,24 @@ public final class CommandPanel {
             && previewRequests.needsRequestWithState(snapshot, flow.location(), state.stagePreviews(), snippet.text())
             && ClientNetworking.requestAutomaticStagePreview(state, flow.location())) previewRequests.requested(flow.location());
 
-        // The action row is anchored to the screen's bottom, independently of expansion.
+        // The action row stays at the panel's bottom, independently of expansion.
         int actionY = Math.max(area.y() + 1, area.y() + area.height() - 20);
         int actionLeft = renderActions(new Bounds(area.x() + 4, actionY, area.width() - 8, 17));
         if (area.height() >= 40) {
-            int y = area.y() + 3;
-            renderPath(graphics, new Bounds(area.x() + 4, y, area.width() - 8, 17), snapshot);
-            y += 19;
+            // Recent chat can leave a short panel: retain path, selected clause and actions.
+            boolean shortPanel = area.height() < 66;
+            boolean sharedPathRow = area.height() < 58;
+            int y = area.y() + (shortPanel ? 1 : 3);
+            if (!sharedPathRow) {
+                renderPath(graphics, new Bounds(area.x() + 4, y, area.width() - 8, 17), snapshot);
+                y += shortPanel ? 18 : 19;
+            }
             // Fixed full-width detail band: selected state never changes clause widths or action positions.
-            int detailHeight = Math.min(DETAIL_HEIGHT, Math.max(0, actionY - y - 21));
-            int detailY = actionY - 4 - detailHeight;
-            Bounds body = new Bounds(area.x() + 5, y, area.width() - 12, Math.max(0, detailY - 2 - y));
+            int detailHeight = shortPanel ? 0 : Math.min(DETAIL_HEIGHT,
+                Math.max(0, actionY - y - MARKER_SIZE - 6));
+            int detailY = actionY - (shortPanel ? 1 : 4) - detailHeight;
+            Bounds body = new Bounds(area.x() + 5, y, area.width() - 12,
+                Math.max(0, detailY - (shortPanel ? 0 : 2) - y));
             renderClauses(graphics, body, snapshot);
             SelectionDetail detail = selectionDetail();
             if (detailHeight >= client.font.lineHeight + 2) {
@@ -177,7 +184,8 @@ public final class CommandPanel {
                 if (target != null) conditionMenu(details, "selected-flow-details", flow, target,
                     snippet.text(), state.selectedUnobservedStageIndex() >= 0);
             }
-            graphics.fill(area.x() + 1, actionY - 3, area.x() + area.width() - 1, actionY - 2, DebuggerTheme.color(BORDER));
+            int dividerY = actionY - (shortPanel ? 1 : 3);
+            graphics.fill(area.x() + 1, dividerY, area.x() + area.width() - 1, dividerY + 1, DebuggerTheme.color(BORDER));
             ExecutionFlowStage stage = state.selectedExecutionFlowStage();
             boolean warning = stage != null && hasFlowWarning();
             int summaryX = area.x() + 8;
@@ -189,8 +197,14 @@ public final class CommandPanel {
             String footer = stage == null ? "" : conditionSummary(stage);
             if (hasFlowWarning()) footer = (footer.isEmpty() ? "" : footer + " · ")
                 + tr("codon.ui.flow_detail.trace_warning", warningSummary(state.selectedExecutionFlow()));
-            drawText(graphics, detailHeight < client.font.lineHeight + 2 ? detail.title() : footer,
-                summaryX, actionY + 4, Math.max(0, actionLeft - summaryX - 6), MUTED);
+            if (sharedPathRow) {
+                // Keep the 18-pixel clause row even when chat leaves only 40–57 pixels.
+                renderPath(graphics, new Bounds(summaryX, actionY,
+                    Math.max(0, actionLeft - summaryX - 6), 17), snapshot);
+            } else {
+                drawText(graphics, detailHeight < client.font.lineHeight + 2 ? detail.title() : footer,
+                    summaryX, actionY + 4, Math.max(0, actionLeft - summaryX - 6), MUTED);
+            }
         }
         return finish();
     }

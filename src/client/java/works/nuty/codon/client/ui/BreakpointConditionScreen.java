@@ -434,9 +434,9 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
             BreakpointDefinition saved = state.breakpoints().get(original.target());
             if (saved != null && saved.enabled() && saved.condition().equals(draft())) { ScreenLayers.close(this); return; }
         }
-        graphics.fill(0, 0, width, height, DebuggerTheme.color(0x70000000));
-        graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.color(PANEL));
-        graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.color(BORDER));
+        graphics.fill(0, 0, width, height, DebuggerTheme.modalColor(0x70000000));
+        graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.modalColor(PANEL));
+        graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.modalColor(BORDER));
         WatchUi.line(graphics, font, tr(confirmingDiscard ? "codon.breakpoint.discard_title"
             : "codon.breakpoint.condition_title"), left + 8, top + 10, panelWidth - (confirmingDiscard ? 16 : 44), TEXT);
         WatchUi.line(graphics, font, BreakpointUi.target(original.target()), left + 8, top + 29,

@@ -38,9 +38,9 @@ public final class WatchGroupingScreen extends ScaledCodonScreen {
     }
 
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-        graphics.fill(0, 0, width, height, DebuggerTheme.color(0x70000000));
-        graphics.fill(left, top, left + panelWidth, top + 130, DebuggerTheme.color(DebuggerTheme.PANEL));
-        graphics.outline(left, top, panelWidth, 130, DebuggerTheme.color(DebuggerTheme.BORDER));
+        graphics.fill(0, 0, width, height, DebuggerTheme.modalColor(0x70000000));
+        graphics.fill(left, top, left + panelWidth, top + 130, DebuggerTheme.modalColor(DebuggerTheme.PANEL));
+        graphics.outline(left, top, panelWidth, 130, DebuggerTheme.modalColor(DebuggerTheme.BORDER));
         WatchUi.line(graphics, font, title.getString(), left + 8, top + 9, panelWidth - 16, DebuggerTheme.TEAL);
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
     }

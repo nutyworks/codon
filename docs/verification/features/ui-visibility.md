@@ -23,6 +23,30 @@ also provides the existing getting-started workflow with live binding labels.
 6. Resume and step normally: hiding does not send a debugger control request or change
    client/server pause snapshots. Visibility is session state and is not saved to settings.
 
+The running idle badge yields to the vanilla F3 debug screen. Paused panels and
+cursor mode keep their existing visibility; H remains the temporary/session hide
+gesture, with no additional saved idle-hide preference. The Command workspace
+reserves 60 vanilla GUI pixels above the hotbar/health and expands this inset to
+clear recent wrapped chat rows, honoring vanilla chat scale/spacing. The inset is
+converted to Codon's scale; fitting does not rewrite saved panel widths. Recent
+chat first reduces the world/detail viewport to retain selectable Command rows.
+If fewer than 58 pixels remain, the call path shares the action row to preserve an
+18-pixel command/marker row in a 40-pixel panel. Opening
+chat continues to suppress the passive debugger HUD.
+
+At compact widths, explicitly opened Watches use the available workspace above the
+HUD; narrow Details drawers do the same, and closing them restores Command. Taller
+layouts retain context detail actions and NBT rows by reducing Command height before
+removing those controls. Short inspector viewports reserve the full NBT heading
+before source details; details disappear when they would push that heading outside
+the workspace.
+
+HUD background opacity still follows the saved 0–100% preference. Modal forms,
+pickers, Details, breakpoint dialogs, Help and UI-scale settings keep an opaque
+reading surface and their dim scrim independently of that preference. Text alpha
+is not the cause of low-opacity world contrast. English/Korean Help describes this
+boundary; slider behavior is unchanged.
+
 Gizmo collision cells retain at most 128 exact candidates before becoming a spatial
 aggregate, including cells whose rectangles have no common intersection. Coarse groups
 retain every source and the selected member; the existing 20-label spatial budget and
@@ -42,6 +66,7 @@ world projection and rendering remain separate acceptance checks.
 
 | Concern | Existing tests |
 | --- | --- |
+| HUD/chat inset, modal backing and EN/KO compact/default readability | `clientTest`: `DebuggerLayoutTest`; `test`: `DebuggerThemeTest`, `UiScaleScreenRenderTest`; native: `DebuggerReadabilityGameTest`, `DebuggerOpacityGameTest`, `DebuggerPresentationGameTest`, `DebuggerNbtTreeGameTest`, `DebuggerUiScaleGameTest` |
 | Short/long boundary, repeated events and cancellation | `clientTest`: `UiHideGestureTest` |
 | Native keyboard/mouse dispatch, screen input, rebind, chat, missed mouse release, focus flag and rejoin | `DebuggerPeekUiGameTest` |
 | Real server breakpoint stays paused, then each command executes once after Resume | `DebuggerFreecamResumeGameTest` |
@@ -73,3 +98,21 @@ unrelated-gizmo sentinel. Hidden captures retain the sentinel, vanilla hotbar an
 The actual server pause and snapshot must remain unchanged across H gestures, and
 the scoreboard command must execute exactly once after Resume. This does not cover
 physical focus changes, a separate dedicated server, or the original packaged VM runtime.
+
+`DebuggerReadabilityGameTest` captures Command plus four recent chat messages and
+survival health/hotbar at 854×480 and 1280×720, EN/KO, default/zero opacity. Modal
+screenshots face bright sky and dark terrain for each combination. Additional
+captures show idle/no-F3, idle/F3, paused/F3 and open chat in both languages. The
+Targeted captures also check five/ten recent chat rows and the 299/300-pixel height
+boundary. `DebuggerNbtTreeGameTest` checks heading containment in a 64-pixel inspector
+with an actual paused entity source; an injected flow fixture has no live NBT executor.
+The fixture uses injected client snapshots, so use the real world-marker regression
+for H and server-pause safety. Inspect `codon-readable-*` images; this matrix does
+not establish arbitrary modded HUD placement or unusually many health rows.
+
+`UiScaleScreenRenderTest` checks that UI-scale settings extract a full-viewport
+dim scrim before the opaque panel at both 0% and 100% HUD opacity. The native
+`DebuggerUiScaleGameTest` opens settings through View and checks the actual GUI
+render-state rectangles at those two opacities. Inspect `codon-scale-scrim-hud-*`
+alongside the existing scale/input screenshots; the world outside the panel stays
+dim while the reading surface and the saved HUD-opacity intent remain intact.

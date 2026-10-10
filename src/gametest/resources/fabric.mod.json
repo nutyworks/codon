@@ -24,6 +24,7 @@
       "works.nuty.codon.client.DebuggerBreakpointUiGameTest",
       "works.nuty.codon.client.FunctionSourceScreenGameTest",
       "works.nuty.codon.client.DebuggerOpacityGameTest",
+      "works.nuty.codon.client.DebuggerReadabilityGameTest",
       "works.nuty.codon.client.PauseWatchChangesGameTest",
       "works.nuty.codon.client.DebuggerColdStorageWatchGameTest",
       "works.nuty.codon.client.DebuggerStorageReadFailureGameTest",

@@ -337,7 +337,7 @@
   "codon.ui.help.details.title": "Show or hide the inspector",
   "codon.ui.help.details.body": "The Details button shows or hides Contexts, the selected context details, and its entity NBT. Watches keeps saved fields available separately. The command panel below the world contains execute flow and the call stack; expand it to read longer commands.",
   "codon.ui.help.opacity.title": "Adjust panel opacity",
-  "codon.ui.help.opacity.body": "Drag the small slider in the Codon header, or focus it and use %s. It fades panel backgrounds and borders from 0 to 100 percent. Text, icons and keyboard focus stay readable. The header stays visible so you can restore opacity. This setting is saved across worlds and restarts.",
+  "codon.ui.help.opacity.body": "Drag the small slider in the Codon header, or focus it and use %s. It fades HUD panel backgrounds and borders from 0 to 100 percent. Forms and reading dialogs keep a solid background. Text, icons and keyboard focus retain full opacity. The header stays visible so you can restore opacity. This setting is saved across worlds and restarts.",
   "codon.ui.help.source.title": "What is an execution context?",
   "codon.ui.help.source.body": "A context is the executor, position, dimension, and facing used by a command. It can represent an entity or just a position. Select it in the list or through a world label to inspect it. Selection changes what you inspect without moving the entity or rerunning the command.",
   "codon.ui.help.coordinates.title": "Read position and facing",

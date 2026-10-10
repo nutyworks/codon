@@ -395,6 +395,23 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
                 "The compact NBT heading stays inside the screen");
         });
         context.takeScreenshot("codon-nbt-compact");
+        context.getInput().resizeWindow(1024, 576);
+        context.runOnClient(client -> {
+            client.gui.hud.getChat().clearMessages(false);
+            CodonClientMod.state().preferences().setCommandVisible(true);
+        });
+        context.waitTicks(3);
+        context.runOnClient(client -> {
+            CodonScreen screen = codonScreen(client.gui.screen());
+            var preferences = CodonClientMod.state().preferences();
+            var inspector = DebuggerLayout.create(screen.width, screen.height, true, 104,
+                preferences.inspectorWidth(), works.nuty.codon.client.ui.DebuggerHudInsets.bottom(preferences)).inspector();
+            require(inspector.height() == 64, "The regression uses the short inspector viewport");
+            DebuggerButton heading = button(screen, DebuggerNbtTreeGameTest::isNbtHeading);
+            require(heading.getY() >= inspector.y() && heading.getBottom() <= inspector.y() + inspector.height(),
+                "Source details cannot push the NBT heading outside its reserved viewport");
+        });
+        context.takeScreenshot("codon-nbt-short-inspector-heading");
         context.getInput().resizeWindow(1280, 900);
         context.waitTicks(3);
     }

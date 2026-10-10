@@ -174,14 +174,14 @@ public final class DebuggerHelpScreen extends ScaledCodonScreen {
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         scrollbars.beginFrame();
-        graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.color(SURFACE));
-        graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.color(BORDER));
+        graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.modalColor(SURFACE));
+        graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.modalColor(BORDER));
         graphics.text(font, title, left + 8, top + 9, DebuggerTheme.foreground(TEAL), false);
         graphics.enableScissor(left + 6, top + 54, left + panelWidth - 6, top + panelHeight - 22);
         for (int row = 0; row < visibleLines() && offset + row < lines.size(); row++) {
             Line line = lines.get(offset + row);
             int y = top + 54 + row * (font.lineHeight + 3);
-            if (line.icon() != null) line.icon().draw(graphics, left + 9, y - 1, DebuggerTheme.color(line.color()));
+            if (line.icon() != null) line.icon().draw(graphics, left + 9, y - 1, DebuggerTheme.modalColor(line.color()));
             graphics.text(font, line.text(), left + 26, y, DebuggerTheme.foreground(line.color()), false);
         }
         graphics.disableScissor();
@@ -191,7 +191,7 @@ public final class DebuggerHelpScreen extends ScaledCodonScreen {
             scrollbars.add("information", false, left + panelWidth - 5, top + 55, track, 2,
                 thumb, offset, maxOffset(), value -> offset = value);
             int y = top + 55 + (track - thumb) * offset / maxOffset();
-            graphics.fill(left + panelWidth - 5, y, left + panelWidth - 3, y + thumb, DebuggerTheme.color(TEAL));
+            graphics.fill(left + panelWidth - 5, y, left + panelWidth - 3, y + thumb, DebuggerTheme.modalColor(TEAL));
         }
         scrollbars.endFrame();
         graphics.text(font, help("navigation", keybind(Component.literal("↑ / ↓ / PgUp / PgDn")),

@@ -11,6 +11,71 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DebuggerLayoutTest {
     @Test
+    void recentChatRetainsTheCommandRowBeforeTheWorldViewport() {
+        for (boolean inspectorOpen : List.of(false, true)) {
+            for (int inset : List.of(89, 98, 134)) {
+                var layout = DebuggerLayout.create(427, 240, inspectorOpen, 104, 190, inset);
+                assertTrue(layout.command().height() >= (inset == 134 ? 40 : 58),
+                    "Recent chat keeps a marker-sized command row, compressing the path when needed");
+                assertTrue(layout.command().y() + layout.command().height() <= 240 - inset);
+                assertFalse(overlaps(layout.command(), layout.controls()));
+                assertFalse(overlaps(layout.command(), layout.world()));
+                assertFalse(overlaps(layout.command(), layout.inspector()));
+            }
+        }
+    }
+
+    @Test
+    void recentChatRetainsSelectableCommandsAcrossTheTallLayoutBoundary() {
+        for (int height : List.of(299, 300)) {
+            for (boolean inspectorOpen : List.of(false, true)) {
+                for (int inset : List.of(71, 89)) {
+                    var layout = DebuggerLayout.create(640, height, inspectorOpen, 104, 190, inset);
+                    assertTrue(layout.command().height() >= 58,
+                        "The 300-pixel boundary must not remove the selected clause or markers");
+                    assertTrue(layout.command().y() + layout.command().height() <= height - inset);
+                    assertFalse(overlaps(layout.command(), layout.inspector()));
+                }
+            }
+        }
+    }
+
+    @Test
+    void hudInsetKeepsContextDetailsAndNbtAlongsideASelectableCommand() {
+        var layout = DebuggerLayout.create(640, 300, true, 104, 190, 60);
+        assertTrue(layout.inspector().height() >= 116,
+            "Context row, detail actions and NBT rows remain available");
+        assertTrue(layout.command().height() >= 58, "The command keeps its marker-sized row");
+        assertFalse(overlaps(layout.command(), layout.inspector()));
+        assertTrue(layout.command().y() + layout.command().height() <= 240);
+    }
+
+    @Test
+    void reservesVanillaHudAndRecentChatWithoutChangingRequestedSizes() {
+        for (Size size : List.of(new Size(320, 240), new Size(427, 240), new Size(640, 360))) {
+            for (int inset : List.of(60, 80, 134)) {
+                var layout = DebuggerLayout.create(size.width(), size.height(), true, 112, 190, inset);
+                assertInScreen(layout.command(), size);
+                assertInScreen(layout.world(), size);
+                assertInScreen(layout.inspector(), size);
+                assertTrue(layout.command().y() + layout.command().height() <= size.height() - inset);
+                assertTrue(layout.inspector().y() + layout.inspector().height() <= size.height() - inset);
+                assertFalse(overlaps(layout.command(), layout.controls()));
+                assertFalse(overlaps(layout.command(), layout.world()));
+                if (inset <= 80) {
+                    assertTrue(layout.command().height() >= 58,
+                        "Compact recent chat retains room for a selectable command row");
+                    assertTrue(layout.world().height() >= 42,
+                        "Compact chat keeps the context inspector's existing viewport minimum");
+                }
+                assertEquals(DebuggerLayout.create(size.width(), size.height(), true, 112, 190),
+                    DebuggerLayout.create(size.width(), size.height(), true, 112, 190, 0),
+                    "Removing the inset restores the same requested layout");
+            }
+        }
+    }
+
+    @Test
     void keepsMajorRegionsOnScreenAndSeparateAtSupportedGuiSizes() {
         for (Size size : List.of(new Size(320, 180), new Size(480, 270), new Size(640, 360), new Size(1024, 576))) {
             for (boolean inspectorOpen : List.of(false, true)) {
