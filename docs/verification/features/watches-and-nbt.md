@@ -20,8 +20,8 @@ exercises the actual screen events and Details actions.
 Watch Details uses localized kind prefixes and literal objective/storage/path identifiers.
 `CodonLabelsTest` checks EN/KO key and placeholder parity and all three Watch kinds,
 including `Health` and `Pos[0]`. `CodonLabelsGameTest` captures their actual English/Korean
-Details rendering and the localized yaw/pitch labels at normal and 320×240 logical
-viewports. These use presentation fixtures and do not establish server read execution.
+Details rendering and the localized yaw/pitch labels at the 320×240 logical viewport
+(640×480 window, GUI scale 2). These use presentation fixtures and do not establish server read execution.
 
 ## User path and expected result
 
