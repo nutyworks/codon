@@ -42,13 +42,13 @@ public class DebuggerButton extends AbstractButton {
     private int contentWidth;
     private int textPadding = 10;
     private long hoverStartedAt = -1;
-    private static final long HOVER_DELAY_NANOS = 350_000_000L;
     private @Nullable DebuggerIcon icon;
     private boolean smallIcon;
     private int iconOffsetY;
     private @Nullable Tooltip tooltip;
     private @Nullable Component singleLineTooltip;
     private @Nullable Component changedDotDescription;
+    private @Nullable Component narrationHint;
     private int foregroundColor = DebuggerTheme.TEXT;
     private int accentColor = DebuggerTheme.TEAL;
     private int selectedSurface = DebuggerTheme.TEAL_SURFACE;
@@ -68,6 +68,7 @@ public class DebuggerButton extends AbstractButton {
         setTooltip(null);
         this.singleLineTooltip = null;
         this.changedDotDescription = null;
+        this.narrationHint = null;
         this.active = active;
         this.inputBlocked = false;
         this.selected = selected;
@@ -113,6 +114,16 @@ public class DebuggerButton extends AbstractButton {
     }
 
     public boolean hasChangedDot() { return changedDotDescription != null; }
+
+    /**
+     * Spoken in place of the tooltip, for a row whose hover is quiet but whose context still has to be
+     * narrated. The visible tooltip, if any, is unchanged.
+     */
+    public DebuggerButton withNarrationHint(Component hint) {
+        this.narrationHint = hint;
+        super.setTooltip(null);
+        return this;
+    }
 
     public void setSelected(boolean selected) { this.selected = selected; }
 
@@ -306,7 +317,8 @@ public class DebuggerButton extends AbstractButton {
     @Override
     public void setTooltip(@Nullable Tooltip tooltip) {
         this.tooltip = tooltip;
-        super.setTooltip(tooltip);
+        // The widget narrates its tooltip as the hint; an explicit narration hint takes that slot.
+        super.setTooltip(narrationHint == null ? tooltip : null);
     }
 
     @Override
@@ -317,7 +329,7 @@ public class DebuggerButton extends AbstractButton {
         boolean keyboardFocus = isFocused() && client.getLastInputType().isKeyboard();
         if (!isHovered()) hoverStartedAt = -1;
         else if (hoverStartedAt < 0) hoverStartedAt = System.nanoTime();
-        if (!keyboardFocus && (!isHovered() || System.nanoTime() - hoverStartedAt < HOVER_DELAY_NANOS)) return;
+        if (!keyboardFocus && (!isHovered() || System.nanoTime() - hoverStartedAt < HoverDelay.DELAY_NANOS)) return;
         if (singleLineTooltip != null) {
             showTooltip(graphics, java.util.List.of(singleLineTooltip.getVisualOrderText()), mouseX, mouseY, keyboardFocus);
             return;
@@ -364,6 +376,7 @@ public class DebuggerButton extends AbstractButton {
     @Override
     protected void updateWidgetNarration(NarrationElementOutput output) {
         defaultButtonNarrationText(output);
+        if (narrationHint != null) output.add(NarratedElementType.HINT, narrationHint);
         if (changedDotDescription != null) output.add(NarratedElementType.HINT, changedDotDescription);
     }
 }

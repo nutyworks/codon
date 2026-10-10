@@ -164,7 +164,9 @@ public final class WrappedCommandEditBox extends EditBox {
                 point.x() - MARKER_RADIUS, point.y() - MARKER_RADIUS, color);
             if (marker.target().equals(focusedTarget))
                 graphics.outline(point.x() - 6, point.y() - 6, 13, 13, DebuggerTheme.TEAL);
-            if (marker == hovered || marker.target().equals(focusedTarget)) {
+            // Keyboard focus shows its help at once; a passing pointer waits like a button's tooltip.
+            if (marker.target().equals(focusedTarget)
+                || marker == hovered && HoverDelay.elapsed(List.of("command.marker", marker.target()))) {
                 String label = marker.target().wholeCommand()
                     ? Component.translatable("codon.breakpoint.block_stop").getString()
                     : Component.translatable("codon.breakpoint.stage_target", marker.target().stageIndex() + 1).getString();

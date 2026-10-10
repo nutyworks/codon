@@ -5,6 +5,7 @@
 	"client": [
 		"AbstractCommandBlockEditScreenMixin",
 		"CameraMixin",
+		"ChatComponentAccessor",
 		"ChannelMixin",
 		"ClientLevelMixin",
 		"ClientPacketListenerMixin",

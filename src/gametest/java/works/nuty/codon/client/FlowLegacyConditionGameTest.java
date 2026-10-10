@@ -45,6 +45,16 @@ public final class FlowLegacyConditionGameTest implements FabricClientGameTest {
             context.runOnClient(client -> {
                 var panel = (CommandPanel) FunctionLineBreakpointGameTest.field(overlay, "commandPanel");
                 var buttons = (Map<String, DebuggerButton>) FunctionLineBreakpointGameTest.field(panel, "cache");
+                for (var entry : buttons.entrySet()) {
+                    String tooltip = tooltipText(entry.getValue(), client);
+                    String key = entry.getKey();
+                    if (tooltip.contains("A context is the executor") || tooltip.contains("0 is an observed count"))
+                        failures.add("Flow tooltip " + key + " repeats the context definition or count legend: " + tooltip);
+                    if (key.startsWith("clause-") && tooltip.contains(entry.getValue().getMessage().getString()))
+                        failures.add("Flow clause tooltip " + key + " echoes the clause text: " + tooltip);
+                    if (key.startsWith("path-") && tooltip.contains("#"))
+                        failures.add("Flow frame tooltip " + key + " shows the internal invocation id: " + tooltip);
+                }
                 if (buttons.containsKey("selected-condition"))
                     failures.add("Flow recreates the removed selected-condition footer control");
                 try {
@@ -165,6 +175,16 @@ public final class FlowLegacyConditionGameTest implements FabricClientGameTest {
         }
     }
 
+    private static String tooltipText(DebuggerButton button, net.minecraft.client.Minecraft client) {
+        var tooltip = (net.minecraft.client.gui.components.Tooltip) FunctionLineBreakpointGameTest.field(button, "tooltip");
+        var text = new StringBuilder();
+        if (tooltip != null) for (var line : tooltip.toCharSequence(client)) {
+            line.accept((index, style, codePoint) -> { text.appendCodePoint(codePoint); return true; });
+            text.append('\n');
+        }
+        return text.toString();
+    }
+
     private static DebuggerButton marker(DebuggerOverlay overlay, BreakpointTarget target) {
         var panel = FunctionLineBreakpointGameTest.field(overlay, "commandPanel");
         var buttons = (Map<String, DebuggerButton>) FunctionLineBreakpointGameTest.field(panel, "cache");
@@ -178,5 +198,8 @@ public final class FlowLegacyConditionGameTest implements FabricClientGameTest {
             new net.minecraft.client.input.MouseButtonInfo(com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_RIGHT, 0));
         screen.mouseClicked(event, false);
         screen.mouseReleased(event);
+        var layer = ScreenLayers.get(screen);
+        if (layer != null && layer.getClass().getSimpleName().equals("DebuggerContextMenu"))
+            layer.keyPressed(new net.minecraft.client.input.KeyEvent(com.mojang.blaze3d.platform.InputConstants.KEY_RETURN, 0, 0));
     }
 }

@@ -89,8 +89,11 @@ public final class BreakpointListScreen extends ScaledCodonScreen {
                 }
                 case SourceLocation.Player ignored -> throw new IllegalStateException("Player breakpoint cannot be saved");
             }
-            button.setTooltip(Tooltip.create(Component.literal(label + "\n" + tr(canNavigate(target)
-                ? "codon.breakpoint.go_to_location" : "codon.breakpoint.flow_unavailable"))));
+            // The row already draws its text; a tooltip adds only clipped text or why it cannot navigate.
+            StringBuilder tip = new StringBuilder();
+            if (button.clipped()) tip.append(label);
+            if (!canNavigate(target)) tip.append(tip.isEmpty() ? "" : "\n").append(tr("codon.breakpoint.flow_unavailable"));
+            button.setTooltip(tip.isEmpty() ? null : Tooltip.create(Component.literal(tip.toString())));
             button.setTabOrderGroup(row);
         }
         DebuggerButton close = addRenderableWidget(buttons.get("close", DebuggerButton::new));
@@ -104,12 +107,20 @@ public final class BreakpointListScreen extends ScaledCodonScreen {
     private static final class RowButton extends DebuggerButton {
         private String headline = "", detail = "";
 
+        private int textX() { return getX() + TEXT_ICON_INSET + 5; }
+        private int textWidth() { return Math.max(0, getRight() - 5 - textX()); }
+
+        boolean clipped() {
+            var font = Minecraft.getInstance().font;
+            return WatchUi.clipped(font, headline, textWidth()) || WatchUi.clipped(font, detail, textWidth());
+        }
+
         @Override protected void extractContents(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
             if (active && (isHovered() || isFocused()))
                 graphics.fill(getX(), getY(), getRight(), getBottom(), DebuggerTheme.color(RAISED));
             var font = Minecraft.getInstance().font;
-            int textX = getX() + TEXT_ICON_INSET + 5;
-            int textWidth = Math.max(0, getRight() - 5 - textX);
+            int textX = textX();
+            int textWidth = textWidth();
             if (icon() != null) icon().draw(graphics, getX() + 4, getY() + 3,
                 DebuggerTheme.foreground(active ? TEXT : MUTED));
             WatchUi.line(graphics, font, headline, textX, getY() + 3, textWidth, active ? TEXT : MUTED);
@@ -139,7 +150,10 @@ public final class BreakpointListScreen extends ScaledCodonScreen {
             if (target.wholeCommand()) return new FlowTarget(index, 0, false);
             String command = flow.stages().getFirst().command().text();
             if (!target.commandFingerprint().equals(BreakpointTarget.fingerprint(command))) continue;
-            if (BreakpointTargetPolicy.stageCount(command, state.stagePreviews().get(flow.location()), flow) == 1) continue;
+            if (BreakpointTargetPolicy.stageCount(command, state.stagePreviews().get(flow.location()), flow) == 1) {
+                if (target.stageIndex() == 0) return new FlowTarget(index, 0, false);
+                continue;
+            }
             for (int stage = 0; stage < flow.stages().size(); stage++)
                 if (flow.stages().get(stage).index() == target.stageIndex()) return new FlowTarget(index, stage, false);
             var preview = state.stagePreviews().get(flow.location());
@@ -171,21 +185,30 @@ public final class BreakpointListScreen extends ScaledCodonScreen {
         if (destination.unobserved()) state.selectUnobservedExecutionFlowStage(destination.stage());
         else state.selectExecutionFlowStage(destination.stage());
         var flow = state.selectedExecutionFlow();
-        screen.revealSelectedFlow(CommandPanel.breakpointFocusId(flow, target));
+        var marker = !target.wholeCommand() && target.stageIndex() == 0
+            && BreakpointTargetPolicy.stageCount(flow.stages().getFirst().command().text(), state.stagePreviews().get(flow.location()), flow) == 1
+            ? BreakpointTarget.whole(target.location()) : target;
+        screen.revealSelectedFlow(CommandPanel.breakpointFocusId(flow, marker));
         Minecraft.getInstance().gui.setScreen(screen);
     }
 
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         // Reuse button identities while reflecting newly available navigation destinations.
         rebuild();
-        graphics.fill(0, 0, width, height, DebuggerTheme.color(0x70000000));
-        graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.color(PANEL));
-        graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.color(BORDER));
-        WatchUi.line(graphics, font, tr(targets == null ? "codon.breakpoint.list_header" : "codon.breakpoint.saved_definitions_header", displayed.size()),
+        graphics.fill(0, 0, width, height, DebuggerTheme.modalColor(0x70000000));
+        graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.modalColor(PANEL));
+        graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.modalColor(BORDER));
+        WatchUi.line(graphics, font, countHeader(),
             left + 8, top + 10, panelWidth - 16, TEXT);
         if (displayed.isEmpty()) WatchUi.line(graphics, font, tr("codon.breakpoint.list_empty"), left + 12, top + 43,
             panelWidth - 24, MUTED);
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+    }
+
+    private String countHeader() {
+        if (targets != null) return tr("codon.breakpoint.saved_definitions_header", displayed.size());
+        long enabled = displayed.stream().filter(BreakpointDefinition::enabled).count();
+        return tr("codon.breakpoint.list_header", displayed.size(), enabled);
     }
 
     @Override public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {

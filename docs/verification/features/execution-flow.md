@@ -46,8 +46,9 @@ command text, stage ranges, tooltips, marker hitboxes and spacing inside a claus
 are preserved. Continuation fragments are not stripped. The 6-pixel total padding,
 2-pixel cell gap and hidden inline Unrun remain in place.
 
-Contexts now labels the selected stop/recorded stage separately from the stage
-which supplies its displayed contexts. Complete modifier records show outputs plus
+The Contexts header no longer repeats the selected stop/recorded stage; the Flow
+detail band states it once and both panels write it as `stage N` / `N단계`. Contexts
+labels only the stage which supplies its displayed contexts. Complete modifier records show outputs plus
 excluded inputs; terminal, unfinished or incomplete-lineage records show inputs.
 A predecessor's outputs retain that predecessor's stage number. Empty observed
 context sets are not relabeled as missing recordings. Very short inspector viewports

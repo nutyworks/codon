@@ -80,8 +80,8 @@ public final class WatchPickerScreen extends ScaledCodonScreen {
         Component searchHint = mode == WatchEditorQuery.Mode.NBT
             ? WatchUi.text("picker.filter_page") : WatchUi.text("picker.search");
         search.setHint(searchHint);
-        search.setTooltip(Tooltip.create(mode == WatchEditorQuery.Mode.NBT
-            ? WatchUi.text("picker.filter_page") : WatchUi.text("picker.search_hint")));
+        // The NBT placeholder already says "Filter current page"; only the server search needs a hint.
+        if (mode != WatchEditorQuery.Mode.NBT) search.setTooltip(Tooltip.create(WatchUi.text("picker.search_hint")));
         search.setValue(searchText);
         search.setResponder(ignored -> {
             searchText = ignored;
@@ -232,10 +232,10 @@ public final class WatchPickerScreen extends ScaledCodonScreen {
         boolean authoritative = authoritativePage != null;
         List<WatchEditorPage.Option> options = options(page, authoritative);
         updatePresentation(page, options, authoritative);
-        graphics.fill(0, 0, width, height, DebuggerTheme.color(0x70000000));
-        graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.color(PANEL));
-        graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.color(BORDER));
-        graphics.fill(left, top, left + 2, top + 24, DebuggerTheme.color(TEAL));
+        graphics.fill(0, 0, width, height, DebuggerTheme.modalColor(0x70000000));
+        graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.modalColor(PANEL));
+        graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.modalColor(BORDER));
+        graphics.fill(left, top, left + 2, top + 24, DebuggerTheme.modalColor(TEAL));
         WatchUi.line(graphics, font, title.getString(), left + 8, top + 9, panelWidth - 72, TEXT);
         String place = mode == WatchEditorQuery.Mode.NBT
             ? path.isEmpty() ? WatchUi.text("picker.root").getString() : path
@@ -254,8 +254,8 @@ public final class WatchPickerScreen extends ScaledCodonScreen {
             boolean hovered = authoritative && row.contains(mouseX, mouseY);
             boolean expandable = option.expandable() && mode == WatchEditorQuery.Mode.NBT;
             int surface = focused || hovered ? RAISED : SURFACE;
-            graphics.fill(row.x(), row.y(), row.x() + row.width(), row.y() + row.height(), DebuggerTheme.color(surface));
-            if (focused) graphics.outline(row.x(), row.y(), row.width(), row.height(), DebuggerTheme.color(TEAL));
+            graphics.fill(row.x(), row.y(), row.x() + row.width(), row.y() + row.height(), DebuggerTheme.modalColor(surface));
+            if (focused) graphics.outline(row.x(), row.y(), row.width(), row.height(), DebuggerTheme.modalColor(TEAL));
             int labelColor = selectable(option) ? TEXT : MUTED;
             WatchUi.line(graphics, font, option.label(), row.x() + 5,
                 layout.labelY(visibleIndex, !option.detail().isBlank(), font.lineHeight),
@@ -264,18 +264,19 @@ public final class WatchPickerScreen extends ScaledCodonScreen {
                 layout.textWidth(expandable, scrollable), MUTED);
             if (expandable) {
                 Bounds arrow = layout.expand(visibleIndex, scrollable);
-                graphics.fill(arrow.x(), arrow.y(), arrow.x() + arrow.width(), arrow.y() + arrow.height(), DebuggerTheme.color(TEAL_SURFACE));
+                graphics.fill(arrow.x(), arrow.y(), arrow.x() + arrow.width(), arrow.y() + arrow.height(), DebuggerTheme.modalColor(TEAL_SURFACE));
                 WatchUi.line(graphics, font, ">", arrow.x() + 4, arrow.y(), 8, TEAL);
             }
-            if (authoritative && hovered && !selectable(option)) graphics.setTooltipForNextFrame(font,
-                WatchUi.text("picker.path_too_long", WatchSpec.MAX_INPUT_LENGTH), mouseX, mouseY);
+            if (authoritative && hovered && !selectable(option) && HoverDelay.elapsed(List.of("picker.row", index)))
+                graphics.setTooltipForNextFrame(font,
+                    WatchUi.text("picker.path_too_long", WatchSpec.MAX_INPUT_LENGTH), mouseX, mouseY);
         }
         graphics.disableScissor();
         if (scrollable) {
             int track = Math.max(1, listBottom - listTop);
             int thumb = Math.max(4, track * visibleRows() / options.size());
             int thumbY = listTop + (track - thumb) * rowOffset / maxRowOffset(options);
-            graphics.fill(layout.scrollbarX(), thumbY, layout.contentRight(), thumbY + thumb, DebuggerTheme.color(TEAL));
+            graphics.fill(layout.scrollbarX(), thumbY, layout.contentRight(), thumbY + thumb, DebuggerTheme.modalColor(TEAL));
             if (authoritative) scrollbars.add("picker", false, layout.scrollbarX(), listTop, track, 2,
                 thumb, rowOffset, maxRowOffset(options), value -> rowOffset = value);
         }

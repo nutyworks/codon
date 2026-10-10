@@ -395,6 +395,23 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
                 "The compact NBT heading stays inside the screen");
         });
         context.takeScreenshot("codon-nbt-compact");
+        context.getInput().resizeWindow(1024, 576);
+        context.runOnClient(client -> {
+            client.gui.hud.getChat().clearMessages(false);
+            CodonClientMod.state().preferences().setCommandVisible(true);
+        });
+        context.waitTicks(3);
+        context.runOnClient(client -> {
+            CodonScreen screen = codonScreen(client.gui.screen());
+            var preferences = CodonClientMod.state().preferences();
+            var inspector = DebuggerLayout.create(screen.width, screen.height, true, 104,
+                preferences.inspectorWidth(), works.nuty.codon.client.ui.DebuggerHudInsets.bottom(preferences)).inspector();
+            require(inspector.height() == 64, "The regression uses the short inspector viewport");
+            DebuggerButton heading = button(screen, DebuggerNbtTreeGameTest::isNbtHeading);
+            require(heading.getY() >= inspector.y() && heading.getBottom() <= inspector.y() + inspector.height(),
+                "Source details cannot push the NBT heading outside its reserved viewport");
+        });
+        context.takeScreenshot("codon-nbt-short-inspector-heading");
         context.getInput().resizeWindow(1280, 900);
         context.waitTicks(3);
     }
@@ -472,8 +489,8 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
         context.runOnClient(client -> client.setLastInputType(net.minecraft.client.InputType.MOUSE));
         context.waitTicks(12);
         String pinHint = context.computeOnClient(client -> DebuggerTooltipGameTest.endObservation());
-        require(pinHint.contains("Left-click:") && pinHint.contains("Right-click:") && pinHint.contains(UUID_LEAF),
-            "node preview must not obscure pin click hints: " + pinHint);
+        require(pinHint.contains("Left-click:") && pinHint.contains("Right-click:") && !pinHint.contains(UUID_LEAF),
+            "pin hover shows the click hints without repeating the path of the row tooltip: " + pinHint);
         context.takeScreenshot("codon-nbt-pin-tooltip-" + sourceName);
         context.runOnClient(client -> {
             CodonScreen screen = codonScreen(client.gui.screen());

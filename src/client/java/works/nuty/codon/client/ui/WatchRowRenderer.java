@@ -8,27 +8,30 @@ import works.nuty.codon.client.state.ClientWatchState;
 public final class WatchRowRenderer {
     private WatchRowRenderer() { }
 
-    /** Compact HUD rows use full-width name and value lines. */
-    public static void renderStacked(GuiGraphicsExtractor graphics, Font font, ClientWatchState.Entry entry,
+    /** Compact HUD rows use full-width name and value lines. Returns whether either line was cut short. */
+    public static boolean renderStacked(GuiGraphicsExtractor graphics, Font font, ClientWatchState.Entry entry,
                                      boolean paused, String label, int x, int y, int labelWidth, int valueWidth,
                                      int kindInset, int labelColor, int valueColor) {
         String badge = WatchFormatting.changeBadge(entry).getString();
         if (!badge.isEmpty()) label += " · " + badge;
         WatchUi.line(graphics, font, label, x + kindInset, y, labelWidth - kindInset, labelColor);
-        graphics.text(font, fitValue(font, entry, paused, valueWidth), x, y + 16,
-            DebuggerTheme.foreground(valueColor), false);
+        String value = fitValue(font, entry, paused, valueWidth);
+        graphics.text(font, value, x, y + 16, DebuggerTheme.foreground(valueColor), false);
+        return font.width(label) > labelWidth - kindInset || !value.equals(WatchFormatting.value(entry, paused).getString());
     }
 
-    public static void render(GuiGraphicsExtractor graphics, Font font, ClientWatchState.Entry entry,
-                              boolean paused, String label, int x, int y, int width, int labelColor, int valueColor) {
-        if (width <= 0) return;
+    /** Returns whether the name or value was cut short. */
+    public static boolean render(GuiGraphicsExtractor graphics, Font font, ClientWatchState.Entry entry,
+                                 boolean paused, String label, int x, int y, int width, int labelColor, int valueColor) {
+        if (width <= 0) return false;
         String badge = WatchFormatting.changeBadge(entry).getString();
         if (!badge.isEmpty()) label += (label.isEmpty() ? "" : " · ") + badge;
         String value = fitValue(font, entry, paused, label.isEmpty() ? width : width / 2);
         int valueX = x + width - font.width(value);
-        label = fit(font, label, Math.max(0, valueX - x - 8));
-        graphics.text(font, label, x, y, DebuggerTheme.foreground(labelColor), false);
+        String shownLabel = fit(font, label, Math.max(0, valueX - x - 8));
+        graphics.text(font, shownLabel, x, y, DebuggerTheme.foreground(labelColor), false);
         graphics.text(font, value, valueX, y, DebuggerTheme.foreground(valueColor), false);
+        return !shownLabel.equals(label) || !value.equals(WatchFormatting.value(entry, paused).getString());
     }
 
     private static String fitValue(Font font, ClientWatchState.Entry entry, boolean paused, int width) {

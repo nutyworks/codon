@@ -24,11 +24,15 @@ import works.nuty.codon.core.model.SourceLocation;
 import works.nuty.codon.core.service.DebuggerEngine;
 
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 
-/** Native command execution proves measured zero and one whole-command result stop per invocation. */
+/**
+ * Native command execution proves measured zero and one whole-command result stop per invocation,
+ * with both conditions created through {@code /codon breakpoint}.
+ */
 @SuppressWarnings("UnstableApiUsage")
 public final class DebuggerBreakpointResultGameTest implements FabricClientGameTest {
     private static final String COMMAND =
@@ -78,10 +82,16 @@ public final class DebuggerBreakpointResultGameTest implements FabricClientGameT
         entity.getCommandBlock().setCommand(COMMAND);
         SourceLocation.Block location = new SourceLocation.Block(new BlockLocation(position.getX(), position.getY(),
             position.getZ(), level.dimension().identifier().toString()));
-        engine.saveBreakpoint(new BreakpointDefinition(BreakpointTarget.whole(location), true,
-            BreakpointCondition.count(BreakpointCondition.Kind.OUTPUT_COUNT, BreakpointCondition.Comparison.GE, 0)));
-        engine.saveBreakpoint(new BreakpointDefinition(BreakpointTarget.stage(location, 1, COMMAND), true,
-            BreakpointCondition.count(BreakpointCondition.Kind.OUTPUT_COUNT, BreakpointCondition.Comparison.EQ, 0)));
+        // The user-facing command path creates the same exact definitions the UI editor would.
+        String at = "%d %d %d".formatted(position.getX(), position.getY(), position.getZ());
+        runCodon(server, "breakpoint block " + at + " condition output_count ge 0");
+        runCodon(server, "breakpoint block " + at + " stage 2 condition output_count eq 0");
+        require(Set.copyOf(engine.breakpointDefinitions()).equals(Set.of(
+            new BreakpointDefinition(BreakpointTarget.whole(location), true,
+                BreakpointCondition.count(BreakpointCondition.Kind.OUTPUT_COUNT, BreakpointCondition.Comparison.GE, 0)),
+            new BreakpointDefinition(BreakpointTarget.stage(location, 1, COMMAND), true,
+                BreakpointCondition.count(BreakpointCondition.Kind.OUTPUT_COUNT, BreakpointCondition.Comparison.EQ, 0)))),
+            "commands saved the whole-command and stage-two conditions: " + engine.breakpointDefinitions());
         PauseDriver driver = new PauseDriver(server, engine);
         driver.start();
         TRIGGER.set("queued");
@@ -95,6 +105,10 @@ public final class DebuggerBreakpointResultGameTest implements FabricClientGameT
             }
         }));
         return new Setup(position, driver);
+    }
+
+    private static void runCodon(MinecraftServer server, String arguments) {
+        server.getCommands().performPrefixedCommand(server.createCommandSourceStack(), "codon " + arguments);
     }
 
     private static void cleanup(MinecraftServer server, Setup setup) {

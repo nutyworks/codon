@@ -127,7 +127,7 @@ public final class WatchDetailsScreen extends ScaledCodonScreen {
         retry.active = !entry.automatic() && !state.watchReadsFailed() && state.watches().canRetry(entryId);
         edit.active = expanded;
         add(WatchUi.text("details.expression"), TEAL);
-        add(Component.literal(expression(entry.spec())), TEXT);
+        add(expression(entry.spec()), TEXT);
         blank();
         add(WatchUi.text("details.binding"), TEAL);
         if (entry.spec().kind() == WatchSpec.Kind.STORAGE_NBT) add(WatchUi.text("details.storage"), TEXT);
@@ -151,12 +151,14 @@ public final class WatchDetailsScreen extends ScaledCodonScreen {
         return WatchUi.text("details.fixed", name + entry.spec().executor()).getString();
     }
 
-    private static String expression(WatchSpec spec) {
-        return switch (spec.kind()) {
-            case SCORE -> "score: " + spec.target();
-            case ENTITY_NBT -> "entity NBT: " + spec.path();
-            case STORAGE_NBT -> "storage NBT: " + spec.target() + " / " + spec.path();
+    private static Component expression(WatchSpec spec) {
+        String value = switch (spec.kind()) {
+            case SCORE -> spec.target();
+            case ENTITY_NBT -> spec.path();
+            case STORAGE_NBT -> spec.target() + " / " + spec.path();
         };
+        return WatchUi.text("kind." + spec.kind().name().toLowerCase(java.util.Locale.ROOT))
+            .copy().append(": ").append(Component.literal(value));
     }
 
     private static String value(WatchResult result) {
@@ -180,10 +182,10 @@ public final class WatchDetailsScreen extends ScaledCodonScreen {
 
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         rebuildLines();
-        graphics.fill(0, 0, width, height, DebuggerTheme.color(0x70000000));
-        graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.color(PANEL));
-        graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.color(BORDER));
-        graphics.fill(left, top, left + 2, top + 24, DebuggerTheme.color(TEAL));
+        graphics.fill(0, 0, width, height, DebuggerTheme.modalColor(0x70000000));
+        graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.modalColor(PANEL));
+        graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.modalColor(BORDER));
+        graphics.fill(left, top, left + 2, top + 24, DebuggerTheme.modalColor(TEAL));
         boolean copied = System.nanoTime() < copiedUntil;
         String confirmation = Component.translatable("codon.ui.copied").getString();
         int confirmationWidth = copied ? font.width(confirmation) + 12 : 0;
@@ -200,7 +202,7 @@ public final class WatchDetailsScreen extends ScaledCodonScreen {
             int track = Math.max(1, layout.textBottom() - top - 30);
             int thumb = Math.max(4, track * visibleLines() / lines.size());
             int y = top + 30 + (track - thumb) * offset / maxOffset();
-            graphics.fill(left + panelWidth - 5, y, left + panelWidth - 3, y + thumb, DebuggerTheme.color(TEAL));
+            graphics.fill(left + panelWidth - 5, y, left + panelWidth - 3, y + thumb, DebuggerTheme.modalColor(TEAL));
         }
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
     }

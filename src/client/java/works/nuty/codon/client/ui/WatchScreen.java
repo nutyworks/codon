@@ -146,7 +146,6 @@ public final class WatchScreen extends ScaledCodonScreen {
         field.setMaxLength(id.equals("entity") && kind == WatchSpec.Kind.SCORE
             ? WatchSpec.MAX_INPUT_LENGTH * 2 + 2 : WatchSpec.MAX_INPUT_LENGTH);
         field.setHint(Component.literal(hint));
-        field.setTooltip(Tooltip.create(label));
         field.setValue(value);
         field.setResponder(ignored -> {
             feedback = "";
@@ -159,7 +158,6 @@ public final class WatchScreen extends ScaledCodonScreen {
         var browseBounds = layout.browse(index);
         DebuggerButton browse = addRenderableWidget(WatchUi.button(browseBounds.x(), browseBounds.y(), browseBounds.width(), browseBounds.height(),
             text(id.equals("entity") ? "editor.choose" : "editor.browse"), () -> browse(mode, id)));
-        browse.setTooltip(Tooltip.create(text("editor.browse_hint")));
         tabOrder.add(browse);
     }
 
@@ -326,10 +324,10 @@ public final class WatchScreen extends ScaledCodonScreen {
     }
 
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-        graphics.fill(0, 0, width, height, DebuggerTheme.color(0x70000000));
-        graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.color(PANEL));
-        graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.color(BORDER));
-        graphics.fill(left, top, left + 2, top + 24, DebuggerTheme.color(TEAL));
+        graphics.fill(0, 0, width, height, DebuggerTheme.modalColor(0x70000000));
+        graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.modalColor(PANEL));
+        graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.modalColor(BORDER));
+        graphics.fill(left, top, left + 2, top + 24, DebuggerTheme.modalColor(TEAL));
         WatchUi.line(graphics, font, title.getString(), left + 8, top + 9, panelWidth - 72, TEXT);
         var errors = errors();
         submit.active = errors.isEmpty();
@@ -339,7 +337,9 @@ public final class WatchScreen extends ScaledCodonScreen {
             Component error = errors.get(id);
             if (error != null && (attempted || !field.getValue().isBlank())) {
                 WatchUi.line(graphics, font, error.getString(), field.getX(), layout.errorY(index), layout.contentWidth(), RED);
-                if (mouseX >= field.getX() && mouseX < left + panelWidth - 8 && mouseY >= field.getY() + 22 && mouseY < field.getY() + 34)
+                if (WatchUi.clipped(font, error.getString(), layout.contentWidth())
+                    && mouseX >= field.getX() && mouseX < left + panelWidth - 8 && mouseY >= field.getY() + 22 && mouseY < field.getY() + 34
+                    && HoverDelay.elapsed(List.of("watch.field-error", id)))
                     graphics.setTooltipForNextFrame(font, error, mouseX, mouseY);
             }
         });
@@ -350,7 +350,9 @@ public final class WatchScreen extends ScaledCodonScreen {
             var bounds = layout.submitReason();
             WatchUi.line(graphics, font, reason.getString(), bounds.x(),
                 bounds.y() + (bounds.height() - font.lineHeight) / 2 + 1, bounds.width(), AMBER);
-            if (bounds.contains(mouseX, mouseY) || submit.isMouseOver(mouseX, mouseY))
+            if (WatchUi.clipped(font, reason.getString(), bounds.width())
+                && (bounds.contains(mouseX, mouseY) || submit.isMouseOver(mouseX, mouseY))
+                && HoverDelay.elapsed("watch.submit-reason"))
                 graphics.setTooltipForNextFrame(font, reason, mouseX, mouseY);
         }
         WatchUi.line(graphics, font, text(editId > 0 ? "editor.edit_keys" : "editor.keys").getString(),

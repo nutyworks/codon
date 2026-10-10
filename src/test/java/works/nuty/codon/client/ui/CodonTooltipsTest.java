@@ -28,4 +28,35 @@ class CodonTooltipsTest {
         assertEquals(240, CodonTooltips.wrapWidth(320));
         assertEquals(240, CodonTooltips.wrapWidth(1920));
     }
+    private static final long MS = 1_000_000L;
+
+    /** Asks once per 16 ms frame, as a render loop would while the pointer rests on the region. */
+    private static boolean hover(HoverDelay delay, Object region, long fromMs, long toMs) {
+        return hover(delay, region, fromMs, toMs, 16, HoverDelay.FRAME_GAP_NANOS);
+    }
+    private static boolean hover(HoverDelay delay, Object region, long fromMs, long toMs, long frameMs, long gapNanos) {
+        boolean shown = false;
+        for (long at = fromMs; at <= toMs; at += frameMs) shown = delay.elapsed(region, at * MS, gapNanos);
+        return shown;
+    }
+    @Test void directTooltipWaitsForTheButtonDelayAndRestartsAfterTheRegionIsLeft() {
+        var delay = new HoverDelay();
+        assertFalse(hover(delay, "region", 0, 320), "Still inside the delay");
+        assertTrue(hover(delay, "region", 336, 400), "Shown once the delay has passed");
+        // No frame asked for longer than the frame gap: the pointer left, so the next hover starts over.
+        assertFalse(hover(delay, "region", 900, 1_000));
+        assertTrue(hover(delay, "region", 1_016, 1_300));
+    }
+    @Test void eachDirectTooltipRegionHasItsOwnTimer() {
+        var delay = new HoverDelay();
+        assertTrue(hover(delay, "first", 0, 400));
+        assertFalse(hover(delay, "second", 416, 416), "A different region starts its own delay");
+        assertTrue(hover(delay, "first", 432, 432), "Another region does not disturb the first");
+    }
+    @Test void aSlowClientStillReachesTheDelayBecauseTheGapFollowsItsFrameTime() {
+        var delay = new HoverDelay();
+        // 400 ms frames: the client reports a gap of two frames, so the hover is never mistaken for leaving.
+        assertFalse(hover(delay, "region", 0, 0, 400, 800 * MS));
+        assertTrue(hover(delay, "region", 400, 800, 400, 800 * MS));
+    }
 }

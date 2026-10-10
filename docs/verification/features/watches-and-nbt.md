@@ -17,6 +17,12 @@ edge, with no inline management controls. `WatchPanelLayoutTest` covers the same
 name/value layout at narrow and wide widths; `DebuggerCompactWatchGameTest`
 exercises the actual screen events and Details actions.
 
+Watch Details uses localized kind prefixes and literal objective/storage/path identifiers.
+`CodonLabelsTest` checks EN/KO key and placeholder parity and all three Watch kinds,
+including `Health` and `Pos[0]`. `CodonLabelsGameTest` captures their actual English/Korean
+Details rendering and the localized yaw/pitch labels at normal and 320×240 logical
+viewports. These use presentation fixtures and do not establish server read execution.
+
 ## User path and expected result
 
 Regular Watches default to 280 logical pixels (previously 360), bounded by the same
@@ -137,12 +143,13 @@ data modify storage codon:verify counter set value 0
    Click the scrollbar track, grab its thumb without a jump, drag outside the
    list and release. Capture must end on release, resize, page loss or closing.
 9. At 427x240, open View → Watches. Compact rows put a full-width name above a value
-   line; scope moves into the row tooltip and full-text inspector. Inspect shortened
+   line; scope moves into the full-text inspector (and into a row tooltip only when
+   the row is clipped or has a status to explain). Inspect shortened
    names and long values, check numeric/error states, scroll past the visible rows,
    and use Add, pin/unpin, Copy, Edit, Delete and Undo. Compare a regular viewport
    in English/Korean, following game scale and using a custom Codon scale.
-   Hover the far right of the compact value line: its tooltip must appear. Click
-   the same point to open Details. Right-click either line to manage that Watch.
+   Hover the far right of a clipped compact value line: its full-text tooltip must
+   appear, while a healthy, fully drawn row stays silent. Click the same point to open Details. Right-click either line to manage that Watch.
    Focus the row and press Shift+F10, then use Up/Down, Tab and Enter/Space.
    Check Copy/Edit/Delete, target fixing/following, disabled fixing without an
    executor, and automatic-change Add to Watches. Storage rows have no executor

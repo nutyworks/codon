@@ -2,6 +2,7 @@ package works.nuty.codon.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.List;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
@@ -9,8 +10,11 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContex
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.minecraft.client.InputType;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.renderer.state.gui.ColoredRectangleRenderState;
+import net.minecraft.client.renderer.state.gui.GuiRenderState;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import works.nuty.codon.client.input.InputManager;
@@ -48,6 +52,7 @@ public final class DebuggerUiScaleGameTest implements FabricClientGameTest {
             click(context, fixture.screen(), "View");
             click(context, fixture.screen(), "Codon UI scale");
             UiScaleScreen settings = context.computeOnClient(client -> (UiScaleScreen) client.gui.screen());
+            checkModalScrim(context, settings, state);
             click(context, settings, "Custom scale");
             context.runOnClient(client -> {
                 require(state.preferences().uiScaleMode() == DebuggerPreferences.UiScaleMode.CUSTOM, "Native click selects custom mode");
@@ -363,6 +368,39 @@ public final class DebuggerUiScaleGameTest implements FabricClientGameTest {
             require(ScreenLayers.get(parent) == null && client.gui.screen() == parent, "Native modal click closes only the layer");
             client.setScreenAndShow(fixture.screen());
         });
+    }
+
+    private static void checkModalScrim(ClientGameTestContext context, UiScaleScreen settings, ClientDebuggerState state) {
+        int oldOpacity = state.preferences().backgroundOpacity();
+        try {
+            for (int opacity : new int[]{100, 0}) {
+                context.runOnClient(client -> {
+                    state.preferences().setBackgroundOpacity(opacity);
+                    DebuggerTheme.usePreferences(state.preferences());
+                    var renderState = new GuiRenderState();
+                    settings.extractRenderState(new GuiGraphicsExtractor(client, renderState, -1, -1), -1, -1, 0);
+                    var rectangles = new ArrayList<ColoredRectangleRenderState>();
+                    renderState.forEachElement(element -> {
+                        if (element instanceof ColoredRectangleRenderState rectangle) rectangles.add(rectangle);
+                    }, GuiRenderState.TraverseRange.ALL);
+                    require(rectangles.stream().anyMatch(rectangle -> rectangle.bounds().left() == 0 && rectangle.bounds().top() == 0
+                        && rectangle.bounds().width() == settings.width && rectangle.bounds().height() == settings.height
+                        && rectangle.col1() == 0x70000000 && rectangle.col2() == 0x70000000),
+                        "UI-scale settings render the full-viewport dim scrim independently of HUD opacity");
+                    require(rectangles.stream().anyMatch(rectangle -> rectangle.col1() == DebuggerTheme.WORKSPACE
+                        && rectangle.bounds().width() == integer(settings, "panelWidth")
+                        && rectangle.bounds().height() == 218), "UI-scale reading panel remains opaque");
+                    require(state.preferences().backgroundOpacity() == opacity, "Scrim rendering preserves HUD opacity");
+                });
+                context.waitTicks(3);
+                context.takeScreenshot("codon-scale-scrim-hud-" + opacity);
+            }
+        } finally {
+            context.runOnClient(client -> {
+                state.preferences().setBackgroundOpacity(oldOpacity);
+                DebuggerTheme.usePreferences(CodonClientMod.state().preferences());
+            });
+        }
     }
 
     private static void setGameScale(ClientGameTestContext context, int value) {

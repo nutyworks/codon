@@ -147,4 +147,17 @@ class SourceSyntaxTest {
         assertEquals(new SourceSyntax.Match(2, exact.length() - 4, exact.length() - 2), overLimit.matches().getLast());
         assertEquals(new SourceSyntax.SearchResults(List.of(), false), SourceSyntax.find(List.of(exact), "missing"));
     }
+
+    @Test void pausedCommandMatchesPlainLinesAndMacroTemplatesAroundSubstitutions() {
+        assertTrue(SourceSyntax.runs("  say stop  ", "say stop"));
+        assertFalse(SourceSyntax.runs("say stop", "say other"));
+        assertTrue(SourceSyntax.runs("$say $(name) says $(text)!", "say Alex says hello!"));
+        assertTrue(SourceSyntax.runs("$say $(name) says $(text)!", "say  says !"));
+        assertFalse(SourceSyntax.runs("$say $(name) says $(text)!", "say Alex says hello?"));
+        assertFalse(SourceSyntax.runs("$say $(name) says $(text)!", "tellraw Alex says hello!"));
+        assertFalse(SourceSyntax.runs("$say $(name) says $(text)!", "say Alex hello says!"));
+        assertFalse(SourceSyntax.runs("$a$(x)a", "a"));
+        assertTrue(SourceSyntax.runs("$a$(x)a", "aa"));
+        assertFalse(SourceSyntax.runs("$say $(name", "say Alex"));
+    }
 }

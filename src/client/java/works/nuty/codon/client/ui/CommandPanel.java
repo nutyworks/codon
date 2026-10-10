@@ -35,6 +35,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.ToIntFunction;
 
 import static works.nuty.codon.client.ui.DebuggerTheme.*;
 import static works.nuty.codon.client.ui.layout.CommandFlowLayout.CELL_HORIZONTAL_PADDING;
@@ -151,33 +152,46 @@ public final class CommandPanel {
             && previewRequests.needsRequestWithState(snapshot, flow.location(), state.stagePreviews(), snippet.text())
             && ClientNetworking.requestAutomaticStagePreview(state, flow.location())) previewRequests.requested(flow.location());
 
-        // The action row is anchored to the screen's bottom, independently of expansion.
+        // The action row stays at the panel's bottom, independently of expansion.
         int actionY = Math.max(area.y() + 1, area.y() + area.height() - 20);
         int actionLeft = renderActions(new Bounds(area.x() + 4, actionY, area.width() - 8, 17));
         if (area.height() >= 40) {
-            int y = area.y() + 3;
-            renderPath(graphics, new Bounds(area.x() + 4, y, area.width() - 8, 17), snapshot);
-            y += 19;
+            // Recent chat can leave a short panel: retain path, selected clause and actions.
+            boolean shortPanel = area.height() < 66;
+            boolean sharedPathRow = area.height() < 58;
+            int y = area.y() + (shortPanel ? 1 : 3);
+            if (!sharedPathRow) {
+                renderPath(graphics, new Bounds(area.x() + 4, y, area.width() - 8, 17), snapshot);
+                y += shortPanel ? 18 : 19;
+            }
             // Fixed full-width detail band: selected state never changes clause widths or action positions.
-            int detailHeight = Math.min(DETAIL_HEIGHT, Math.max(0, actionY - y - 21));
-            int detailY = actionY - 4 - detailHeight;
-            Bounds body = new Bounds(area.x() + 5, y, area.width() - 12, Math.max(0, detailY - 2 - y));
+            int detailHeight = shortPanel ? 0 : Math.min(DETAIL_HEIGHT,
+                Math.max(0, actionY - y - MARKER_SIZE - 6));
+            int detailY = actionY - (shortPanel ? 1 : 4) - detailHeight;
+            Bounds body = new Bounds(area.x() + 5, y, area.width() - 12,
+                Math.max(0, detailY - (shortPanel ? 0 : 2) - y));
             renderClauses(graphics, body, snapshot);
             SelectionDetail detail = selectionDetail();
             if (detailHeight >= client.font.lineHeight + 2) {
+                boolean valuesDrawn = detailHeight >= 2 * client.font.lineHeight + 5;
                 drawText(graphics, detail.title(), area.x() + 8, detailY + 2, area.width() - 16, detail.color());
-                if (detailHeight >= 2 * client.font.lineHeight + 5)
+                if (valuesDrawn)
                     drawText(graphics, detail.values(), area.x() + 8, detailY + 13, area.width() - 16, TEXT);
                 navigationGroup = DebuggerNavigation.Group.ACTIONS;
-                Component label = Component.literal(detail.title() + "\n" + detail.values() + "\n" + detail.explanation());
+                // Hover adds only what the band does not show: clipped or undrawn lines, then any reason.
+                Component label = Component.literal(detail.title() + "\n" + detail.values()
+                    + (detail.explanation().isEmpty() ? "" : "\n" + detail.explanation()));
                 DebuggerButton details = button("selected-flow-details", new Bounds(area.x() + 5, detailY, area.width() - 10, detailHeight),
                     label, true, false, () -> { }).asHitSurface();
-                details.setTooltip(Tooltip.create(label));
+                String hidden = hiddenDetail(detail.title(), detail.values(), detail.explanation(), valuesDrawn,
+                    area.width() - 16, client.font::width);
+                if (!hidden.isEmpty()) details.setTooltip(Tooltip.create(Component.literal(hidden)));
                 BreakpointTarget target = selectedBreakpoint();
                 if (target != null) conditionMenu(details, "selected-flow-details", flow, target,
                     snippet.text(), state.selectedUnobservedStageIndex() >= 0);
             }
-            graphics.fill(area.x() + 1, actionY - 3, area.x() + area.width() - 1, actionY - 2, DebuggerTheme.color(BORDER));
+            int dividerY = actionY - (shortPanel ? 1 : 3);
+            graphics.fill(area.x() + 1, dividerY, area.x() + area.width() - 1, dividerY + 1, DebuggerTheme.color(BORDER));
             ExecutionFlowStage stage = state.selectedExecutionFlowStage();
             boolean warning = stage != null && hasFlowWarning();
             int summaryX = area.x() + 8;
@@ -189,8 +203,14 @@ public final class CommandPanel {
             String footer = stage == null ? "" : conditionSummary(stage);
             if (hasFlowWarning()) footer = (footer.isEmpty() ? "" : footer + " · ")
                 + tr("codon.ui.flow_detail.trace_warning", warningSummary(state.selectedExecutionFlow()));
-            drawText(graphics, detailHeight < client.font.lineHeight + 2 ? detail.title() : footer,
-                summaryX, actionY + 4, Math.max(0, actionLeft - summaryX - 6), MUTED);
+            if (sharedPathRow) {
+                // Keep the 18-pixel clause row even when chat leaves only 40–57 pixels.
+                renderPath(graphics, new Bounds(summaryX, actionY,
+                    Math.max(0, actionLeft - summaryX - 6), 17), snapshot);
+            } else {
+                drawText(graphics, detailHeight < client.font.lineHeight + 2 ? detail.title() : footer,
+                    summaryX, actionY + 4, Math.max(0, actionLeft - summaryX - 6), MUTED);
+            }
         }
         return finish();
     }
@@ -341,8 +361,8 @@ public final class CommandPanel {
                 && state.selectedExecutionFlow() == flow && (!unobserved || currentPreviewTarget(flow, target, command));
             Bounds anchor = new Bounds(button.getX(), button.getY(), button.getWidth(), button.getHeight());
             Runnable restore = () -> navigation.requestFocus(focusId);
-            if (direct) BreakpointContextMenu.openEditor(parent, state, target, anchor, current, restore);
-            else BreakpointContextMenu.open(parent, state, target, anchor, current, restore);
+            if (direct) BreakpointContextMenu.openEditor(parent, state, target, command, stageCount(flow, command), anchor, current, restore);
+            else BreakpointContextMenu.open(parent, state, target, command, stageCount(flow, command), anchor, current, restore);
         };
         button.withSecondaryAction(open);
         contextMenus.put(button, open);
@@ -545,9 +565,18 @@ public final class CommandPanel {
                 if (stopped) clause.withStatusColor(AMBER, AMBER_SURFACE);
                 clause.withOpenEdges(!cell.first(), cellIndex + 1 < layout.cells().size()
                     && layout.cells().get(cellIndex + 1).partIndex() == cell.partIndex());
-                clause.setTooltip(Tooltip.create(Component.literal(part.text().strip() + "\n"
-                    + (stopped ? tr("codon.ui.flow_detail.stop") + " · #" + (stage.index() + 1) + "\n" : "")
-                    + stageDetails(stage))));
+                var clauseDetails = new ArrayList<String>();
+                if (stopped) clauseDetails.add(tr("codon.ui.flow_detail.stop") + " · #" + (stage.index() + 1));
+                // The counts line under the clause already says this when the row is tall enough to draw it.
+                boolean countsDrawn = rowHeight >= 30;
+                if (!countsDrawn) clauseDetails.add(stageSummary(stage));
+                String warnings = stageDetails(stage);
+                if (!warnings.isEmpty()) clauseDetails.add(warnings);
+                if (!clauseDetails.isEmpty()) clause.setTooltip(Tooltip.create(Component.literal(String.join("\n", clauseDetails))));
+                // Drawn counts are not spoken with the clause, so narrate them even though hover stays quiet.
+                var spoken = new ArrayList<>(clauseDetails);
+                if (countsDrawn) spoken.add(stageSummary(stage));
+                clause.withNarrationHint(Component.literal(String.join("\n", spoken)));
                 if (editableSource && target != null) conditionMenu(clause,
                     "clause-" + flow.invocationId() + "-" + stage.index() + "-" + cell.row(),
                     flow, target, stage.command().text(), false);
@@ -614,7 +643,7 @@ public final class CommandPanel {
             new Bounds(x + inset, y, Math.max(1, cell.width() - inset), 16), Component.literal(cell.text()), true,
             state.selectedUnobservedStageIndex() == part.targetStageIndex(), select);
         clause.withTextPadding(CELL_HORIZONTAL_PADDING).withStatusColor(MUTED, SURFACE).withOpenEdges(!cell.first(), continues);
-        clause.setTooltip(Tooltip.create(Component.literal(part.text().strip() + "\n" + observationText(part))));
+        clause.setTooltip(Tooltip.create(Component.literal(observationText(part))));
         if (editableSource) conditionMenu(clause, unobservedKey("clause", flow, part) + "-" + cell.row(),
             flow, target, state.selectedCommand().text(), true);
         if (cell.first() && rowHeight >= 30) drawText(graphics, observationLabel(part),
@@ -757,7 +786,7 @@ public final class CommandPanel {
             : tr("codon.ui.flow_detail.contexts", measuredCount(stage.inputCount()),
                 measuredCount(stage.complete() ? stage.outputCount() : ExecutionFlowStage.UNMEASURED),
                 measuredCount(stage.complete() && stage.outputCount() >= 0 ? stage.droppedCount() : ExecutionFlowStage.UNMEASURED));
-        return new SelectionDetail(title, values, stageDetails(stage) + "\n" + tr("codon.ui.flow_detail.count_hint"),
+        return new SelectionDetail(title, values, stageDetails(stage),
             error ? RED : incomplete ? AMBER : state.isViewingCurrentCommand() ? AMBER : TEAL);
     }
 
@@ -797,13 +826,24 @@ public final class CommandPanel {
         }
     }
 
+    /** The detail band's text a reader cannot see in the band itself, then the reason; empty when none. */
+    static String hiddenDetail(String title, String values, String explanation, boolean valuesDrawn,
+                               int textWidth, ToIntFunction<String> width) {
+        var lines = new ArrayList<String>();
+        if (width.applyAsInt(title) > textWidth) lines.add(title);
+        if (!valuesDrawn || width.applyAsInt(values) > textWidth) lines.add(values);
+        if (!explanation.isEmpty()) lines.add(explanation);
+        return String.join("\n", lines);
+    }
+
+    /** Why this stage's observation is incomplete or failed; empty when nothing needs explaining. */
     static String stageDetails(ExecutionFlowStage stage, @Nullable ExecutionFlowTrace flow) {
-        StringBuilder details = new StringBuilder(stageSummary(stage)).append('\n').append(tr("codon.ui.context_explanation"));
+        StringBuilder details = new StringBuilder();
         List<ExecutionFlowWarning> warnings = warningsForStage(flow, stage.index());
         if (!warnings.isEmpty()) {
             appendWarnings(details, warnings);
         } else if (!stage.lineageComplete() || stage.truncated()) {
-            details.append('\n').append(tr("codon.ui.recording_warning_legacy"));
+            details.append(tr("codon.ui.recording_warning_legacy"));
         }
         return details.toString();
     }
@@ -857,9 +897,11 @@ public final class CommandPanel {
         prepareDetails();
         ExecutionFlowTrace flow = state.selectedExecutionFlow();
         if (flow == null) return stageDetails(selectedStage);
-        if (flow.warnings().isEmpty()) return flow.truncated()
-            ? stageDetails(selectedStage) + "\n" + tr("codon.ui.recording_warning_legacy")
-            : stageDetails(selectedStage);
+        if (flow.warnings().isEmpty()) {
+            // The warning may come from another stage; the selected stage can have nothing to add.
+            String stage = stageDetails(selectedStage);
+            return stage.isEmpty() ? tr("codon.ui.recording_warning_legacy") : stage;
+        }
         if (flowWarningDetails == null) flowWarningDetails = warningDetails(flow.warnings());
         return flowWarningDetails;
     }
@@ -982,8 +1024,7 @@ public final class CommandPanel {
     }
 
     private static Component frameTooltip(CallFrame frame) {
-        return ClientFormatting.sourceLocation(frame.location()).copy().append("\n" + frame.command().text())
-            .append(frame.invocationId() >= 0 ? "\n#" + frame.invocationId() : "");
+        return ClientFormatting.sourceLocation(frame.location()).copy().append("\n" + frame.command().text());
     }
 
     private static String location(SourceLocation location) {

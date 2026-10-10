@@ -20,6 +20,22 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 
 class ClientBreakpointStateTest {
     @Test
+    void acknowledgedMixedSnapshotKeepsDisabledDefinitionsAndEnabledCountDistinct() {
+        var state = new ClientBreakpointState();
+        var first = BreakpointDefinition.plain(BreakpointTarget.whole(
+            new SourceLocation.Block(new BlockLocation(1, 64, 0, "minecraft:overworld"))));
+        var second = BreakpointDefinition.plain(BreakpointTarget.whole(
+            new SourceLocation.Block(new BlockLocation(2, 64, 0, "minecraft:overworld"))));
+        assertTrue(state.acceptPage(1, 0, true, List.of(first, second.withEnabled(false))));
+        assertEquals(2, state.definitions().size());
+        assertEquals(1, state.definitions().stream().filter(BreakpointDefinition::enabled).count());
+        assertFalse(state.get(second.target()).enabled());
+        assertTrue(state.acceptPage(2, 0, true, List.of(first.withEnabled(false), second.withEnabled(false))));
+        assertEquals(2, state.definitions().size());
+        assertEquals(0, state.definitions().stream().filter(BreakpointDefinition::enabled).count());
+    }
+
+    @Test
     void inlineRejectionsNotifyWithoutChangingAcknowledgedDefinitions() {
         var notices = new ArrayList<ClientBreakpointState.Result>();
         var state = new ClientBreakpointState(System::nanoTime, notices::add);
