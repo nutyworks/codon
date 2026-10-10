@@ -102,7 +102,8 @@ final class BreakpointEditCommands {
         try {
             engine.saveBreakpoint(next);
         } catch (BreakpointRegistry.LimitExceeded limit) {
-            source.sendFailure(Component.translatable("command.codon.breakpoint.invalid.limit"));
+            source.sendFailure(Component.translatableWithFallback("command.codon.breakpoint.invalid.limit",
+                "Breakpoint limit reached."));
             return 0;
         }
         Component message = switch (operation) {
