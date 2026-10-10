@@ -161,7 +161,7 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
                 require(CodonClientMod.state().breakpoints().get(first).enabled(), "layer blocks underlying marker clicks");
                 require(COMMAND.equals(originalEditor.getValue()), "layer blocks typing into the underlying command");
             });
-            AbstractButton save = context.computeOnClient(client -> button(conditionLayer(parent), "Save"));
+            AbstractButton save = context.computeOnClient(client -> button(conditionLayer(parent), "Save and enable"));
             nativeClick(context, parent, save.getX() + 3, save.getY() + 2, InputConstants.MOUSE_BUTTON_LEFT);
             context.waitFor(client -> client.gui.screen() instanceof CommandBlockEditScreen && ScreenLayers.get(client.gui.screen()) == null, 200);
             context.waitTicks(1);
@@ -223,7 +223,7 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
                         value.getMessage().getString().equals(works.nuty.codon.client.ui.BreakpointUi.kindLabel(kind)))).count() == 9,
                     "the dropdown retains all nine condition kinds");
                 require(!button(screen, "Context created").visible, "choices stay hidden until the dropdown opens");
-                require(button(screen, "Save").getBottom() - button(screen, "Cancel").getY() <= 137,
+                require(button(screen, "Save and enable").getBottom() - button(screen, "Cancel").getY() <= 137,
                     "compact condition panel fits within 150 GUI pixels vertically");
             });
             verifyDraftDismissal(context, world, parent, position, first);
@@ -261,7 +261,7 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
                 require(count.getY() == button(screen, "Output count ▾").getY()
                     && count.getY() == button(screen, "= ▾").getY(), "kind, comparison and count share one row");
                 count.setValue("-1");
-                require(!button(screen, "Save").active, "negative count disables save immediately");
+                require(!button(screen, "Save and enable").active, "negative count disables save immediately");
                 count.setValue("2");
                 screen.setFocused(button(screen, "= ▾"));
             });
@@ -302,11 +302,11 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             context.runOnClient(client -> {
                 Screen screen = conditionLayer(parent);
                 require(button(screen, "≥ ▾").visible, "arrow navigation reaches and selects a scrolled comparison");
-                require(button(screen, "Save").active, "valid count and comparison can be saved");
+                require(button(screen, "Save and enable").active, "valid count and comparison can be saved");
             });
             context.waitTicks(1);
             context.takeScreenshot("codon-breakpoint-condition-count-dropdown-320x240");
-            AbstractButton resizedSave = context.computeOnClient(client -> button(conditionLayer(client.gui.screen()), "Save"));
+            AbstractButton resizedSave = context.computeOnClient(client -> button(conditionLayer(client.gui.screen()), "Save and enable"));
             nativeClick(context, parent, resizedSave.getX() + 3, resizedSave.getY() + 2, InputConstants.MOUSE_BUTTON_LEFT);
             context.waitFor(client -> ScreenLayers.get(client.gui.screen()) == null
                 && CodonClientMod.state().breakpoints().get(first).condition().equals(
@@ -435,7 +435,7 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
                 layer.keyPressed(new KeyEvent(InputConstants.KEY_DOWN, 0, 0));
             layer.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
             countBox(layer).setValue("");
-            require(!button(layer, "Save").active, "invalid draft count cannot be saved");
+            require(!button(layer, "Save and enable").active, "invalid draft count cannot be saved");
         });
         nativeClick(context, parent, 0, 0, InputConstants.MOUSE_BUTTON_LEFT);
         nativeButton(context, parent, "Keep editing");
@@ -451,7 +451,7 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             .getFirst().level().getBlockEntity(position)).getCommandBlock().setCommand(COMMAND + " changed"));
         context.runOnClient(client -> {
             Screen layer = conditionLayer(parent);
-            click(layer, button(layer, "Save"));
+            click(layer, button(layer, "Save and enable"));
             require(CodonClientMod.state().breakpoints().pending(target), "Save waits for server acknowledgement");
             layer.keyPressed(new KeyEvent(InputConstants.KEY_ESCAPE, 0, 0));
             layer.mouseClicked(new MouseButtonEvent(0, 0,
@@ -459,7 +459,7 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             layer.setFocused(countBox(layer));
             layer.charTyped(new net.minecraft.client.input.CharacterEvent('9'));
             require(ScreenLayers.get(parent) == layer && !button(layer, "Cancel").active
-                && !button(layer, "Save").active && !button(layer, "Delete").active
+                && !button(layer, "Save and enable").active && !button(layer, "Delete").active
                 && countBox(layer).getValue().equals("3"), "pending ACK blocks dismissal and changes to the submitted draft");
         });
         context.waitFor(client -> !CodonClientMod.state().breakpoints().pending(target)
@@ -588,7 +588,7 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
         context.waitTicks(1);
         context.runOnClient(client -> {
             Screen layer = conditionLayer(client.gui.screen());
-            require(!button(layer, "Save").active, "pending feedback disables save");
+            require(!button(layer, "Save and enable").active, "pending feedback disables save");
             for (var button : controls(layer)) if (button.visible)
                 require(button.getY() >= 0 && button.getBottom() <= layer.height - 6,
                     "feedback expansion keeps the bottom-anchored controls inside the viewport");

@@ -114,6 +114,13 @@ public final class ClientSettingsStore {
             }
             preferences.setCommandVisible(visible.getAsBoolean());
         }
+        if (json.has("idleBadgeVisible")) {
+            JsonElement visible = json.get("idleBadgeVisible");
+            if (!visible.isJsonPrimitive() || !visible.getAsJsonPrimitive().isBoolean()) {
+                throw new IOException("Invalid idleBadgeVisible in Codon client settings");
+            }
+            preferences.setIdleBadgeVisible(visible.getAsBoolean());
+        }
         if (json.has("keepFreecam")) {
             JsonElement keep = json.get("keepFreecam");
             if (!keep.isJsonPrimitive() || !keep.getAsJsonPrimitive().isBoolean()) {
@@ -184,6 +191,7 @@ public final class ClientSettingsStore {
         json.addProperty("keepFreecam", preferences.keepFreecam());
         json.addProperty("watchesVisible", preferences.watchesVisible());
         json.addProperty("commandVisible", preferences.commandVisible());
+        json.addProperty("idleBadgeVisible", preferences.idleBadgeVisible());
         return json;
     }
 }

@@ -31,6 +31,48 @@ class WorldBreakpointPersistenceTest {
     private static final BlockLocation NETHER = new BlockLocation(-12, 64, 8, "minecraft:the_nether");
     private static final FunctionLocation FUNCTION = new FunctionLocation(new FunctionId("test", "nested/tick"), 27);
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {2, 3})
+    void savedSoleStageRemainsExactAndStopsFiringAfterDisableOrDelete(int version) throws Exception {
+        for (SourceLocation location : List.of(new SourceLocation.Function(FUNCTION), new SourceLocation.Block(OVERWORLD))) {
+            Path world = directory.resolve(version + "-" + location.getClass().getSimpleName());
+            var harness = new Harness();
+            harness.persistence.openWorld(world);
+            var target = BreakpointTarget.stage(location, 0, "say one");
+            var saved = BreakpointDefinition.plain(target);
+            var unrelated = BreakpointDefinition.plain(BreakpointTarget.whole(new SourceLocation.Block(NETHER)));
+            harness.engine.saveBreakpoint(saved);
+            harness.engine.saveBreakpoint(unrelated);
+            harness.persistence.closeWorld();
+            Path file = world.resolve("data/" + WorldBreakpointPersistence.FILE_NAME);
+            var json = com.google.gson.JsonParser.parseString(Files.readString(file)).getAsJsonObject();
+            json.addProperty("version", version);
+            if (version == 2) json.getAsJsonArray("breakpoints").forEach(entry -> entry.getAsJsonObject().remove("staleSource"));
+            Files.writeString(file, json.toString());
+            harness.persistence.openWorld(world);
+            assertTrue(harness.engine.breakpointDefinitions().contains(saved));
+            harness.engine.onCommandStage(new works.nuty.codon.core.service.CommandStageEvent(10, 0, location,
+                works.nuty.codon.core.model.CommandSnippet.plain("say one"), List::of, 0));
+            assertTrue(harness.engine.isPaused(), "restored legacy definition fires");
+            harness.engine.resume();
+            harness.engine.toggleBreakpoint(target);
+            harness.persistence.closeWorld();
+            harness.persistence.openWorld(world);
+            assertTrue(harness.engine.breakpointDefinitions().contains(saved.withEnabled(false)));
+            harness.engine.onCommandStage(new works.nuty.codon.core.service.CommandStageEvent(11, 0, location,
+                works.nuty.codon.core.model.CommandSnippet.plain("say one"), List::of, 0));
+            assertFalse(harness.engine.isPaused(), "disabled legacy definition no longer fires");
+            harness.engine.toggleBreakpoint(target);
+            harness.engine.deleteBreakpoint(target);
+            harness.persistence.closeWorld();
+            harness.persistence.openWorld(world);
+            harness.engine.onCommandStage(new works.nuty.codon.core.service.CommandStageEvent(12, 0, location,
+                works.nuty.codon.core.model.CommandSnippet.plain("say one"), List::of, 0));
+            assertFalse(harness.engine.isPaused(), "deleted legacy definition no longer fires");
+            assertEquals(List.of(unrelated), harness.engine.breakpointDefinitions());
+        }
+    }
+
     @Test
     void mutationsSurviveAFreshProcessWithoutWaitingForShutdown() {
         Harness original = new Harness();

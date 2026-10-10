@@ -180,7 +180,7 @@ public final class DebuggerOverlay {
         }
         Font font = client.font;
         if ((!state.isPaused() || snapshot == null) && !interactive) {
-            if (!client.gui.hud.getDebugOverlay().showDebugScreen()) {
+            if (state.preferences().idleBadgeVisible() && !client.gui.hud.getDebugOverlay().showDebugScreen()) {
                 Component text = Component.literal("CODON · " + statusText() + " ")
                     .append(keybind(Component.literal("[").append(input.menuKey.getTranslatedKeyMessage()).append("]")));
                 Bounds header = DebuggerLayout.create(graphics.guiWidth(), graphics.guiHeight(), false).header();
@@ -392,7 +392,7 @@ public final class DebuggerOverlay {
 
     private void renderViewMenu(GuiGraphicsExtractor graphics) {
         int menuWidth = Math.min(154, graphics.guiWidth() - 12);
-        int menuHeight = 5 * 19 + 4;
+        int menuHeight = 6 * 19 + 4;
         int x = Math.clamp(viewTriggerBounds.x(), 6, graphics.guiWidth() - menuWidth - 6);
         int below = viewTriggerBounds.y() + viewTriggerBounds.height() + 2;
         int y = below + menuHeight <= graphics.guiHeight() - 6 ? below
@@ -417,7 +417,10 @@ public final class DebuggerOverlay {
         boolean command = state.preferences().commandVisible();
         viewMenuItem(3, component("codon.ui.command"), command,
             () -> state.preferences().setCommandVisible(!command));
-        viewMenuItem(4, component("codon.ui.scale.title"), false,
+        boolean idleBadge = state.preferences().idleBadgeVisible();
+        viewMenuItem(4, component("codon.ui.idle_badge"), idleBadge,
+            () -> state.preferences().setIdleBadgeVisible(!idleBadge));
+        viewMenuItem(5, component("codon.ui.scale.title"), false,
             () -> { if (client.gui.screen() != null) client.gui.setScreen(new UiScaleScreen(client.gui.screen(), state.preferences())); });
     }
 

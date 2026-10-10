@@ -163,8 +163,10 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
         threshold.setValue(thresholdText);
         threshold.setResponder(value -> { thresholdText = value; refreshControls(); });
         threshold.setTooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable("codon.breakpoint.count")));
-        saveButton = addRenderableWidget(WatchUi.button(left + panelWidth - 60, top, 52, 20,
-            Component.translatable("codon.breakpoint.save"), this::save));
+        Component saveLabel = Component.translatable("codon.breakpoint.save");
+        int saveWidth = Math.min(Math.max(52, font.width(saveLabel) + 12), Math.max(1, panelWidth - 56));
+        saveButton = addRenderableWidget(WatchUi.button(left + panelWidth - 8 - saveWidth, top, saveWidth, 20,
+            saveLabel, this::save));
         saveButton.withStatusColor(TEAL, TEAL_SURFACE);
         cancelButton = addRenderableWidget(WatchUi.button(left + panelWidth - 28, top + 5, 20, 20,
             Component.translatable("codon.breakpoint.cancel"), this::onClose)).withIcon(DebuggerIcon.REMOVE);
@@ -256,7 +258,8 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
         if (saveButton != null) saveButton.active = validCount() && supportedCondition() && state.breakpoints().ready()
             && !state.breakpoints().pending(original.target());
         if (deleteButton != null) {
-            deleteButton.active = state.breakpoints().ready() && !state.breakpoints().pending(original.target());
+            deleteButton.active = state.breakpoints().get(original.target()) != null
+                && state.breakpoints().ready() && !state.breakpoints().pending(original.target());
             panelHeight = contentHeight();
             int nextTop = Math.max(6, Math.min(top, height - panelHeight - 6));
             if (nextTop != top) {
@@ -385,7 +388,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
 
     private void delete() {
         if (!validContext()) return;
-        if (state.breakpoints().pending(original.target())) return;
+        if (state.breakpoints().get(original.target()) == null || state.breakpoints().pending(original.target())) return;
         saving = false;
         deleting = ClientNetworking.sendBreakpointEdit(state, ClientBreakpointState.Action.DELETE, original);
         sendFailed = !deleting;
