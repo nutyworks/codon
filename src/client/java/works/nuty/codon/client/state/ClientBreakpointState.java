@@ -10,14 +10,16 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.LongSupplier;
+import java.util.function.Consumer;
 
 /** Server-confirmed breakpoint definitions, paged snapshots, and per-target edit status. */
 public final class ClientBreakpointState {
     public enum Action { TOGGLE, SAVE, DELETE }
-    public enum Result { APPLIED, STALE_SOURCE, INVALID_TARGET, NO_PERMISSION, FAILED }
+    public enum Result { APPLIED, STALE_SOURCE, INVALID_TARGET, NO_PERMISSION, FAILED, TIMED_OUT }
     public record Edit(long requestId, Action action, BreakpointDefinition definition) { }
     private static final long TIMEOUT_NANOS = 10_000_000_000L;
     private final LongSupplier clock;
+    private final Consumer<Result> inlineFailure;
     private final Map<BreakpointTarget, BreakpointDefinition> definitions = new HashMap<>();
     private final Map<BreakpointTarget, Pending> pending = new HashMap<>();
     private final Map<BreakpointTarget, Result> errors = new HashMap<>();
@@ -27,7 +29,11 @@ public final class ClientBreakpointState {
     private long nextRequestId;
 
     public ClientBreakpointState() { this(System::nanoTime); }
-    public ClientBreakpointState(LongSupplier clock) { this.clock = clock; }
+    public ClientBreakpointState(LongSupplier clock) { this(clock, result -> { }); }
+    public ClientBreakpointState(LongSupplier clock, Consumer<Result> inlineFailure) {
+        this.clock = clock;
+        this.inlineFailure = inlineFailure;
+    }
 
     public synchronized boolean acceptPage(long transferId, int offset, boolean last,
                                            List<BreakpointDefinition> page) {
@@ -54,19 +60,23 @@ public final class ClientBreakpointState {
         if (pending.containsKey(target)) return null;
         long id = ++nextRequestId;
         if (id <= 0) id = nextRequestId = 1;
-        pending.put(target, new Pending(id, clock.getAsLong()));
+        pending.put(target, new Pending(id, clock.getAsLong(), action));
         errors.remove(target);
         return new Edit(id, action, definition);
     }
 
     public synchronized void finish(long requestId, Result result) {
+        expirePending();
         BreakpointTarget target = null;
         for (var entry : pending.entrySet()) {
             if (entry.getValue().requestId() == requestId) { target = entry.getKey(); break; }
         }
         if (target == null) return;
-        pending.remove(target);
-        if (result != Result.APPLIED) errors.put(target, result);
+        Pending entry = pending.remove(target);
+        if (result != Result.APPLIED) {
+            errors.put(target, result);
+            if (entry.action() == Action.TOGGLE) inlineFailure.accept(result);
+        }
     }
 
     public synchronized @Nullable BreakpointDefinition get(BreakpointTarget target) {
@@ -96,8 +106,14 @@ public final class ClientBreakpointState {
         Pending entry = pending.get(target);
         if (entry != null && clock.getAsLong() - entry.startedAt() >= TIMEOUT_NANOS) {
             pending.remove(target);
-            errors.put(target, Result.FAILED);
+            errors.put(target, Result.TIMED_OUT);
+            if (entry.action() == Action.TOGGLE) inlineFailure.accept(Result.TIMED_OUT);
         }
+    }
+
+    /** Poll even when the marker is hidden; no automatic retry or optimistic edit. */
+    public synchronized void expirePending() {
+        for (var target : List.copyOf(pending.keySet())) expire(target);
     }
 
     public synchronized void reset() {
@@ -105,8 +121,8 @@ public final class ClientBreakpointState {
         pending.clear();
         errors.clear();
         incoming.clear();
-        incomingTransferId = completedTransferId = nextRequestId = 0;
+        incomingTransferId = completedTransferId = 0;
     }
 
-    private record Pending(long requestId, long startedAt) { }
+    private record Pending(long requestId, long startedAt, Action action) { }
 }

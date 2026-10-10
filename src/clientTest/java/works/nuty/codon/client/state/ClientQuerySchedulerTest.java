@@ -24,6 +24,7 @@ class ClientQuerySchedulerTest {
         assertTrue(sender.controls.isEmpty());
         clock.set(3_000_000_000L);
         assertTrue(state.controlPending(), "a deferred step stays disabled beyond the ordinary control timeout");
+        assertNull(state.feedback().current(), "waiting for reads is not a sent-control timeout");
 
         int replied = 0;
         while (replied < 33) {
@@ -42,6 +43,12 @@ class ClientQuerySchedulerTest {
         assertEquals(33, sender.watches.size());
         assertEquals(List.of("1:stepinto"), sender.controls);
         assertTrue(state.watches().entries().stream().allMatch(entry -> entry.result().status() == WatchResult.Status.VALUE));
+        clock.set(4_999_999_999L);
+        assertTrue(state.controlPending(), "the reply deadline starts when the control is sent after the reads");
+        assertNull(state.feedback().current());
+        clock.incrementAndGet();
+        assertFalse(state.controlPending());
+        assertEquals("codon.ui.control_timeout_detail", state.feedback().current().messageKey());
     }
 
     @Test void editorAndNbtKeepReservedCreditsDuringWatchBurst() {

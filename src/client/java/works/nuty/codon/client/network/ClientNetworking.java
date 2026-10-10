@@ -19,6 +19,7 @@ import works.nuty.codon.network.BreakpointSyncPayload;
 import works.nuty.codon.network.BreakpointDefinitionsSyncPayload;
 import works.nuty.codon.network.BreakpointEditPayload;
 import works.nuty.codon.network.BreakpointEditResultPayload;
+import works.nuty.codon.network.ControlRejectedPayload;
 import works.nuty.codon.network.BreakpointStagePreviewRequestPayload;
 import works.nuty.codon.network.BreakpointStagePreviewSyncPayload;
 import works.nuty.codon.network.ExecutionFlowSyncPayload;
@@ -156,6 +157,9 @@ public final class ClientNetworking {
         ClientPlayNetworking.registerGlobalReceiver(BreakpointEditResultPayload.TYPE, (payload, context) ->
             context.client().execute(() -> state.breakpoints().finish(payload.requestId(),
                 ClientBreakpointState.Result.valueOf(payload.status().name()))));
+        ClientPlayNetworking.registerGlobalReceiver(ControlRejectedPayload.TYPE, (payload, context) ->
+            context.client().execute(() -> state.rejectControl(payload.pauseId(), payload.requestId(),
+                "command.codon.error." + payload.reason().name().toLowerCase(java.util.Locale.ROOT))));
         ClientPlayNetworking.registerGlobalReceiver(BreakpointStagePreviewSyncPayload.TYPE, (payload, context) ->
             context.client().execute(() -> state.stagePreviews().accept(payload.requestId(), payload.location(),
                 ClientStagePreviewState.Status.valueOf(payload.status().name()), payload.savedCommand(),
@@ -269,16 +273,16 @@ public final class ClientNetworking {
     /** Send only credited reads; a pending step waits for every Watch from its pause. */
     public static void sendWatchQueries(Minecraft client, ClientDebuggerState state) {
         if (client.player == null) return;
-        queryScheduler.pump(state, sender(client));
+        queryScheduler.pump(state, sender(client, state));
     }
 
     public static void requestControl(Minecraft client, ClientDebuggerState state, long pauseId,
                                       String command, boolean readBeforeStep) {
         if (client.player == null) return;
-        queryScheduler.requestControl(state, pauseId, command, readBeforeStep, sender(client));
+        queryScheduler.requestControl(state, pauseId, command, readBeforeStep, sender(client, state));
     }
 
-    private static ClientQueryScheduler.Sender sender(Minecraft client) {
+    private static ClientQueryScheduler.Sender sender(Minecraft client, ClientDebuggerState state) {
         return new ClientQueryScheduler.Sender() {
             @Override public void editor(works.nuty.codon.client.state.ClientWatchEditorState.Query query) {
                 ClientPlayNetworking.send(new WatchEditorQueryPayload(query.pauseId(), query.requestId(),
@@ -293,7 +297,8 @@ public final class ClientNetworking {
                     query.offset(), query.path()));
             }
             @Override public void control(long pauseId, String command) {
-                if (client.player != null) client.player.connection.sendCommand("codon " + command + " " + pauseId);
+                if (client.player != null) client.player.connection.sendCommand("codon " + command + " " + pauseId
+                    + " " + state.controlRequestId());
             }
         };
     }

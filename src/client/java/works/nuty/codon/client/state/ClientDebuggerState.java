@@ -39,6 +39,8 @@ public final class ClientDebuggerState {
     private boolean controlAwaitingReads;
     private boolean watchReadsFailed;
     private long controlRequestedAt;
+    private long controlRequestId;
+    private final ClientRequestFeedback feedback;
     private final LongSupplier clock;
     private final ClientWatchState watches;
     private final ClientWatchEditorState watchEditor;
@@ -67,10 +69,13 @@ public final class ClientDebuggerState {
     public ClientDebuggerState(LongSupplier clock, DebuggerPreferences preferences) {
         this.clock = Objects.requireNonNull(clock);
         this.preferences = Objects.requireNonNull(preferences);
+        this.feedback = new ClientRequestFeedback(clock);
         this.watches = new ClientWatchState(clock);
         this.watchEditor = new ClientWatchEditorState(clock);
         this.nbt = new ClientNbtState(clock);
-        this.breakpoints = new ClientBreakpointState(clock);
+        this.breakpoints = new ClientBreakpointState(clock, result -> feedback.show(ClientRequestFeedback.Kind.BREAKPOINT,
+            "codon.ui.breakpoint_rejected",
+            "codon.breakpoint.error." + result.name().toLowerCase(java.util.Locale.ROOT)));
         this.stagePreviews = new ClientStagePreviewState();
         this.nbt.setEnabled(preferences.nbtExpanded());
         this.nbt.setEnabledListener(preferences::setNbtExpanded);
@@ -85,6 +90,7 @@ public final class ClientDebuggerState {
     }
 
     public void applyPause(PauseSnapshot snapshot) {
+        feedback.clearControl();
         boolean repeatedPause = paused && this.snapshot != null && this.snapshot.pauseId() == snapshot.pauseId();
         boolean interruptedReads = repeatedPause && (controlAwaitingReads || watchReadsFailed);
         unobservedSelection = null;
@@ -144,6 +150,7 @@ public final class ClientDebuggerState {
     }
 
     private void clearPause(boolean stepping) {
+        feedback.clearControl();
         unobservedSelection = null;
         if (stepping) watchEditor.invalidate();
         else watchEditor.cancel();
@@ -748,7 +755,9 @@ public final class ClientDebuggerState {
     /** Only a fresh server packet completes a control request; UI never fabricates a pause. */
     public boolean beginControlRequest() {
         if (!paused || snapshot == null || controlPending()) return false;
+        feedback.clearControl();
         controlPending = true;
+        controlRequestId = controlRequestId == Long.MAX_VALUE ? 1 : controlRequestId + 1;
         controlRequestedAt = clock.getAsLong();
         return true;
     }
@@ -773,9 +782,21 @@ public final class ClientDebuggerState {
     }
 
     public boolean controlPending() {
-        if (controlPending && !controlAwaitingReads && clock.getAsLong() - controlRequestedAt >= 2_000_000_000L)
+        if (controlPending && !controlAwaitingReads && clock.getAsLong() - controlRequestedAt >= 2_000_000_000L) {
             controlPending = false;
+            feedback.show(ClientRequestFeedback.Kind.CONTROL, "codon.ui.control_timed_out", "codon.ui.control_timeout_detail");
+        }
         return controlPending;
+    }
+
+    public long controlRequestId() { return controlRequestId; }
+    public ClientRequestFeedback feedback() { return feedback; }
+
+    /** Ignore expired/replaced requests, even if another attempt targets the same pause. */
+    public void rejectControl(long pauseId, long requestId, String messageKey) {
+        if (!controlPending() || snapshot == null || snapshot.pauseId() != pauseId || controlRequestId != requestId) return;
+        controlPending = false;
+        feedback.show(ClientRequestFeedback.Kind.CONTROL, "codon.ui.control_rejected", messageKey);
     }
 
     /** Delay only the waiting label; controlPending() still disables actions immediately. */
@@ -784,6 +805,7 @@ public final class ClientDebuggerState {
     }
 
     public void reset() {
+        feedback.clear();
         applyResume();
         recentFlowSnapshot = null;
         displayedCallStack = List.of();

@@ -22,6 +22,7 @@ import works.nuty.codon.client.state.DebuggerPreferences;
 import works.nuty.codon.client.state.ClientPauseEffects;
 import works.nuty.codon.client.ui.CodonScreen;
 import works.nuty.codon.client.ui.DebuggerOverlay;
+import works.nuty.codon.client.ui.DebuggerFeedbackToast;
 import works.nuty.codon.client.ui.ScreenLayers;
 
 /**
@@ -75,6 +76,7 @@ public final class CodonClientMod implements ClientModInitializer {
         input = inputManager;
 
         ClientNetworking.register(state, camera, effects);
+        DebuggerFeedbackToast.register(state);
         sourceState = ClientSourceBrowseNetworking.register();
         ClientTickEvents.START_CLIENT_TICK.register(camera::tick);
         ClientTickEvents.END_CLIENT_TICK.register(inputManager);

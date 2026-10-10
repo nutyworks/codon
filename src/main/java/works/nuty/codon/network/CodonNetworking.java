@@ -53,6 +53,7 @@ public final class CodonNetworking {
         PayloadTypeRegistry.clientboundPlay().register(BreakpointSyncPayload.TYPE, BreakpointSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(BreakpointDefinitionsSyncPayload.TYPE, BreakpointDefinitionsSyncPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(BreakpointEditResultPayload.TYPE, BreakpointEditResultPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(ControlRejectedPayload.TYPE, ControlRejectedPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(ExecutionFlowSyncPayload.TYPE, ExecutionFlowSyncPayload.CODEC);
         SourceBrowseNetworking.registerPayloadTypes();
         BreakpointStagePreviewNetworking.registerPayloadTypes();
