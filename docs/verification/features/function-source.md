@@ -17,6 +17,12 @@ be checked. The viewer lists functions actually loaded by the current server.
 1. Press `V`, then the toolbar's **Source** (`</>`) icon. Search by namespace/path, expand
    folders and select the function. Its source appears read-only; browsing does
    not require executing it.
+   Search treats whitespace-separated terms (any Java whitespace) as literal,
+   case-insensitive text that must all occur in `namespace:path`, in any order:
+   `pack tick` finds `pack:util/tick`. A single term, including `:` and `/`, keeps
+   its substring meaning; blank or whitespace-only input is no filter. A filter
+   shows matching folders open without changing the folders you collapsed, and
+   clearing it returns to them.
    The Functions tree shows a separate scrollbar only while its expanded or
    filtered rows overflow. Click its track or drag its thumb to navigate without
    selecting a row or scrolling Source. Search, folder collapse and resizing
@@ -83,6 +89,21 @@ be checked. The viewer lists functions actually loaded by the current server.
    stops at the selected location. Reopen Source at the pause and distinguish the
    actual stopped line from a manually inspected line/record. A live pause has an
    arrow and amber row; ordinary line selection uses a neutral line-number cue.
+   Use **Go to stop** in the Source header immediately after **Reread file**. In the paused
+   function it selects and reveals the live paused line, resetting horizontal scrolling to its
+   beginning; in any other file it opens the paused function's source and reveals that line
+   once it loads. The action supports normal Tab/Enter activation and leaves debugger
+   frame/flow selection intact. The button carries no line number. In the paused function it
+   appears only for a ready document with an in-range line whose command matches the live
+   pause; elsewhere it appears whenever a pause is live and no source is loading, and a
+   command that no longer matches after loading opens the file without moving. Pending
+   debugger controls disable it, and a control that becomes pending while another file
+   loads cancels the deferred reveal. A macro line matches when the text around its
+   `$(name)` substitutions equals the paused command. Loading, changed source commands and
+   resumed records cannot supply a live destination. Tight headers use an arrow with the full action tooltip;
+   Back and Close remain separate. Tab reaches the action immediately after Reread
+   file; hiding or disabling it releases its focus for code navigation. The status
+   row retains the execution status and truncated-source warning.
    Actual pause highlighting remains independent of that navigation position. After Continue, the retained
    location is labelled as a recorded line and has no live-pause arrow.
 4. With execution resumed, change/reload the scratch datapack. Use **Refresh list**
@@ -119,7 +140,19 @@ be checked. The viewer lists functions actually loaded by the current server.
    When the query survives a function switch or Reload, the first new result is
    selected and revealed without pressing Next if the previous result cannot be
    restored. An unchanged rebuild retains the selected result and viewport.
-7. Click a code line, or press Esc from Find, to focus code navigation. Up/Down,
+7. Use **Go to line** (`Ctrl/Cmd+G`) to enter an original physical line number in the
+   loaded function. Enter (including keypad Enter) or Go selects and reveals that line; blank, non-integer
+   and out-of-range input stays in the dialog with Go disabled. The range is only
+   the loaded lines, including comments and blank lines, even when the document is
+   truncated. Escape/Cancel restores the original control focus, including after
+   resize. A reread, changed selected document or connection reset invalidates an
+   open dialog; an unloaded or loading source cannot open it. Navigation changes
+   only client selection/scroll, and opening the dialog ends any held tree-divider,
+   scrollbar or parent-drag capture, while the existing Find and Go to stop behavior
+   remains available. Help > Source viewer keys lists the shortcut in English and
+   Korean. This checks known client source state, not automatic server reload
+   notifications or disk monitoring.
+8. Click a code line, or press Esc from Find, to focus code navigation. Up/Down,
    PageUp/PageDown and Home/End select original lines. Tab/Shift+Tab traverses visible
    controls; with no focused widget, Tab starts at the first active visible control
    and Shift+Tab starts at the last.
@@ -128,6 +161,11 @@ be checked. The viewer lists functions actually loaded by the current server.
    when a typed key is bound to a debugger shortcut, including cursor-mode `V` and
    Keep Freecam `G`. Escape, Tab and Find shortcuts retain their behavior; parent
    debugger shortcuts remain available after text focus leaves the field.
+   In function-list Search, Enter or numpad Enter opens the function when a nonblank
+   filter leaves exactly one function row; namespace and folder rows do not count.
+   Several or no matches and a blank query consume the key without selecting or reading.
+   It selects like a row click: the compact drawer closes to show Source, and a held key
+   acts once until released.
    Follow underlined loaded function references and use Back; the caller's
    line/stage and horizontal viewport must return. References in `return run function`
    and `schedule function` are linked; matching words in `say` text or comments are not.
@@ -174,11 +212,13 @@ scroll settings. Synthetic callback input does not verify a physical trackpad.
 | Network payloads | `test`: `FunctionSourcePayloadTest`, `BreakpointStagePreviewPayloadTest` |
 | Line gutter, one-stage suppression, EN/KO/custom scale and hit boxes | `FunctionLineBreakpointGameTest` |
 | Real rendering, selection, resize and inline stage markers | `FunctionSourceScreenGameTest`, `FunctionSourceInteractionGameTest`, `FunctionSourceReviewGameTest` |
+| Header stop navigation, Reread/stop Tab order, focus lifecycle, EN/KO minimum and custom scales | `FunctionSourceScreenGameTest` |
 | Active stage readability, adjacent stages, horizontal clipping and representative scales | `FunctionSourceStageHighlightGameTest` |
 | Source toolbar icon, state styling, scale readability and native activation | `DebuggerSourceIconGameTest` |
-| F3/Shift+F3 press/repeat/release ownership and vanilla behavior outside Source | `FunctionSourceKeyboardGameTest` |
+| F3/Shift+F3 ownership; Ctrl/Cmd+G range, English/Korean minimum viewport, Cancel/focus, resize and stale-source guards | `FunctionSourceKeyboardGameTest` |
 | Exact gutter target with missing/loading/stale previews, direct marker editor/cancel, parsed as/at/run/function marker targets | `FunctionLineBreakpointGameTest`, `FlowBreakpointInteractionGameTest` |
 | Focused Find/function-list Search key press before character input, bound/unbound/remapped cursor-mode keys, parent shortcuts and focus navigation | `FunctionSourceTextInputGameTest` |
+| Functions search: literal case-insensitive all-terms matching, whitespace-only as no filter, collapsed `+` rows, filter expansion and clearing | `clientTest`: `SourceInteractionTest`; `FunctionSourceScreenGameTest` |
 
 Example: `./gradlew runClientGameTest -PclientGameTest=FunctionSourceScreenGameTest`.
 
@@ -213,6 +253,16 @@ cursor movement, Find shortcuts, Tab traversal and parent shortcuts after focus
 leaves the field. Its source document is a client fixture; it does not establish
 physical keyboard/IME behavior or server-driven breakpoint execution.
 
+The same test covers Enter in Functions Search with a synthetic three-function list
+at a docked wide layout and a compact drawer (`codon-source-unique-enter-*`). Return and
+numpad Enter open the exact sole match with one read; two matches, no match and blank
+or whitespace queries select and read nothing; held repeats, including after the drawer
+closes or a resize restores Search focus, add no read and do not reach the parent
+(Return is bound to its menu key); release and Source removal clear that ownership; and
+Find Enter still advances matches. Inspect the screenshots for the selected row and source.
+The fixture IDs and lines are not datapack functions, so this does not establish server
+function discovery or a physical key repeat.
+
 `DebuggerSourceIconGameTest` captures normal, hovered, keyboard-focused and disabled
 Source buttons at every quarter step from 1.00× to 4.50× (including the larger-window
 extension at 1920×1080). Native pixel assertions require separate outward chevrons
@@ -225,6 +275,13 @@ Source owns F3/Shift+F3 releases as well as their Find navigation presses, so th
 vanilla debug overlay retains its current visibility. `FunctionSourceKeyboardGameTest`
 calls the real KeyboardHandler with press/repeat/release events, checks both overlay
 states and unfocused/empty Find, then verifies vanilla F3/Shift+F3 after closing Source.
+If Source closes (a real Escape) while an F3 it consumed is still held, `KeyboardHandlerMixin`
+keeps that release from toggling the overlay by marking vanilla's shared debug-modifier
+release as used; the key mapping still clears and a fresh F3 outside Source toggles normally.
+The GameTest covers F3 and Shift+F3 in both overlay states with a parent or world release,
+a held repeat, a lost release and a release from another window; inspect
+`*codon-source-f3-close-release.png`. It does not exercise remapped overlay/modifier keys or
+a physical keyboard.
 The same GameTest checks the proportional default font, Unicode geometry, inline
 stage targeting and condition preservation, keyboard selection, horizontal-wheel
 state, literal search next/previous,
@@ -265,6 +322,17 @@ not installed in the server's datapack. It proves presentation/interaction, not
 server source discovery, permission enforcement or native function breakpoints.
 Use the manual loaded-function path for those acceptance criteria.
 
+The same GameTest verifies the header's **Go to stop** with native mouse and keyboard
+activation, adjacent Reread/stop Tab order, an independently inspected historical
+frame, pending-control and source-loading gates, stale command/resume changes
+between render and activation, and focus release/retention across state changes
+and resize. Back/Close remain separate in EN/KO minimum layouts and Korean 1.25×/4.50×
+views; a second scenario opens it from a different file. Inspect `go-to-stop-live`, `go-to-stop-english-minimum`,
+`go-to-stop-korean-minimum`, `go-to-stop-korean-1.25x` and `go-to-stop-korean-4.5x`.
+These injected pause/source fixtures establish client
+navigation and presentation; they do not establish server breakpoint execution
+or unsolicited datapack revision detection.
+
 For search rebuilds, enter a query that excludes another known function, resize
 the window, and open the compact Functions drawer. The query and filtered list
 must survive both rebuilds (`FunctionSourceScreenGameTest`).
@@ -273,6 +341,20 @@ After each rebuild, click the remaining result and the row where the excluded
 function used to appear: only the matching function may be selected. With a long
 list, scroll down, enter a new query, then resize; the first filtered result must
 still be at the top instead of restoring the old scroll position.
+
+`SourceInteractionTest` covers the query value: every Java-whitespace code point
+agrees with `String.isBlank`, mixed separators, all terms in any order, `Locale.ROOT`
+folding under a Turkish default locale, and literal `namespace:path`/punctuation
+text without pattern semantics. `FunctionSourceScreenGameTest` then collapses a
+namespace and folder with native clicks and compares the first three tree rows of
+`codon-function-source-tree-collapsed-*` captures: blank, ASCII-whitespace and
+Unicode-whitespace input must leave identical pixels. A comparison on the state alone
+would miss the old defect, where the raw text drew the collapsed namespace open
+with its children hidden. `PACK  tick` (`codon-function-source-tree-multi-term-filter`)
+opens the preserved folders, group and nonmatching rows cannot be selected and only
+`pack:util/tick` is; clearing (`codon-function-source-tree-cleared-collapsed`) restores
+the collapsed rows and folder state. The function list is an injected fixture, not
+real server discovery.
 
 `FunctionSourceInteractionGameTest` exercises Minecraft's native horizontal callback,
 fractional X accumulation, Shift+vertical/native-X precedence, native vertical wheel
