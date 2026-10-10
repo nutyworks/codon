@@ -7,7 +7,6 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -49,6 +48,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
     private final Screen parent;
     private final ClientFunctionSourceState sources;
     private final Set<String> collapsed = new HashSet<>();
+    private SourceInteraction.FunctionQuery query = SourceInteraction.FunctionQuery.NONE;
     private final List<Entry> entries = new ArrayList<>();
     private int left, top, panelWidth, panelHeight, treeWidth;
     private boolean compactSourceControls;
@@ -286,9 +286,9 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
 
     private void rebuildEntries() {
         entries.clear();
-        String needle = search == null ? "" : search.getValue().trim().toLowerCase(Locale.ROOT);
+        query = search == null ? SourceInteraction.FunctionQuery.NONE : SourceInteraction.FunctionQuery.parse(search.getValue());
         List<FunctionId> matches = sources.functions().stream()
-            .filter(id -> needle.isEmpty() || id.toString().toLowerCase(Locale.ROOT).contains(needle))
+            .filter(id -> query.matches(id.toString()))
             .sorted(Comparator.comparing(FunctionId::namespace).thenComparing(FunctionId::path)).toList();
         String namespace = null;
         Set<String> emittedFolders = new HashSet<>();
@@ -298,14 +298,14 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                 emittedFolders.clear();
                 entries.add(new Entry.Group(namespace, namespace, 0));
             }
-            if (!expanded(namespace, needle)) continue;
+            if (!expanded(namespace)) continue;
             String[] parts = id.path().split("/");
             String prefix = namespace;
             boolean hidden = false;
             for (int index = 0; index < parts.length - 1; index++) {
                 prefix += "/" + parts[index];
                 if (emittedFolders.add(prefix)) entries.add(new Entry.Group(prefix, parts[index], index + 1));
-                if (!expanded(prefix, needle)) { hidden = true; break; }
+                if (!expanded(prefix)) { hidden = true; break; }
             }
             if (!hidden) entries.add(new Entry.Function(id, parts[parts.length - 1], parts.length));
         }
@@ -313,7 +313,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         if (listOffset != clamped) { listOffset = clamped; rememberView(); }
     }
 
-    private boolean expanded(String key, String needle) { return !needle.isEmpty() || !collapsed.contains(key); }
+    private boolean expanded(String key) { return query.active() || !collapsed.contains(key); }
     private int visibleRows() { return Math.max(1, (panelHeight - 76) / ROW_HEIGHT); }
     private int maximumListOffset() { return Math.max(0, entries.size() - visibleRows()); }
     private int treeRowRight() { return left + treeWidth - (maximumListOffset() > 0 ? 12 : 5); }
@@ -381,7 +381,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             if (selected) graphics.fill(left + 5, y, left + 7, y + ROW_HEIGHT - 1, TEAL);
             switch (entry) {
                 case Entry.Group group -> {
-                    boolean open = expanded(group.key(), search.getValue());
+                    boolean open = expanded(group.key());
                     WatchUi.line(graphics, font, (open ? "− " : "+ ") + group.label(), left + 9 + group.depth() * 10,
                         y + 5, treeWidth - 16 - reserved - group.depth() * 10, open ? TEXT : MUTED);
                 }
@@ -1129,7 +1129,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                 if (index < entries.size()) {
                     switch (entries.get(index)) {
                         case Entry.Group group -> {
-                            if (search.getValue().isBlank()) {
+                            if (!query.active()) {
                                 if (!collapsed.add(group.key())) collapsed.remove(group.key());
                                 rebuildEntries();
                             }
