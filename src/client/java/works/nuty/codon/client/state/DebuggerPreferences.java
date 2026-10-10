@@ -18,6 +18,7 @@ public final class DebuggerPreferences {
     private boolean keepFreecam;
     private boolean watchesVisible = true;
     private boolean commandVisible = true;
+    private boolean idleBadgeVisible = true;
     public static final int DEFAULT_WATCH_WIDTH = 280;
     public static final int DEFAULT_INSPECTOR_WIDTH = 190;
     public static final int MIN_WATCH_WIDTH = 220;
@@ -79,6 +80,11 @@ public final class DebuggerPreferences {
         backgroundOpacity = Math.clamp(opacity, 0, 100);
     }
 
+    /** Persist the final preview even if another setting saved an intermediate value. */
+    public void commitBackgroundOpacity() {
+        changed();
+    }
+
     public void setBackgroundOpacity(int opacity) {
         opacity = Math.clamp(opacity, 0, 100);
         if (backgroundOpacity != opacity) {
@@ -97,6 +103,16 @@ public final class DebuggerPreferences {
     }
 
     public boolean commandVisible() { return commandVisible; }
+
+    /** Only the passive running badge; paused panels and cursor mode never consult this. */
+    public boolean idleBadgeVisible() { return idleBadgeVisible; }
+
+    public void setIdleBadgeVisible(boolean visible) {
+        if (idleBadgeVisible != visible) {
+            idleBadgeVisible = visible;
+            changed();
+        }
+    }
 
     public int watchWidth() { return watchWidth; }
     public int inspectorWidth() { return inspectorWidth; }

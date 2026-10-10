@@ -91,6 +91,14 @@ public final class WatchFormatting {
         return changeBadge(entry.change());
     }
 
+    /** Whether a row's status or change carries meaning that its compact text does not. */
+    public static boolean needsExplanation(ClientWatchState.Entry entry) {
+        var result = entry.displayedResult();
+        return result != null && result.status() != WatchResult.Status.VALUE || entry.completedStep() != null
+            || entry.change() == ClientWatchState.Change.TARGET_CHANGED
+            || entry.change() == ClientWatchState.Change.AVAILABILITY_CHANGED;
+    }
+
     public static List<Component> tooltip(ClientWatchState.Entry entry, boolean paused) {
         List<Component> lines = new ArrayList<>(List.of(specification(entry), fullValue(entry, paused)));
         UUID executor = entry.spec().executor();

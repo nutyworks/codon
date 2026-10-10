@@ -17,6 +17,7 @@ import net.minecraft.client.input.KeyEvent;
 import works.nuty.codon.core.model.PauseSnapshot;
 import works.nuty.codon.core.model.PauseReason;
 import works.nuty.codon.core.model.CommandSnippet;
+import works.nuty.codon.core.model.CallFrame;
 import net.minecraft.network.chat.Component;
 import works.nuty.codon.client.state.ClientFunctionSourceState;
 import works.nuty.codon.client.state.ClientStagePreviewState;
@@ -26,6 +27,8 @@ import works.nuty.codon.client.ui.DebuggerOverlay;
 import works.nuty.codon.client.ui.FunctionSourceScreen;
 import works.nuty.codon.client.ui.ScaledCodonScreen;
 import works.nuty.codon.client.ui.DebuggerTheme;
+import works.nuty.codon.client.ui.DebuggerButton;
+import works.nuty.codon.client.ui.DebuggerIcon;
 import works.nuty.codon.client.ui.layout.SourceLineLayout;
 import works.nuty.codon.client.ui.layout.SourceSyntax;
 import works.nuty.codon.client.state.DebuggerPreferences;
@@ -186,6 +189,7 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             context.takeScreenshot("codon-function-source-filtered-drawer");
             context.runOnClient(client -> verifyFilteredSelection(client.gui.screen(), sourceState));
             verifySearchScrollReset(context);
+            verifyCollapsedTreeFollowsNormalizedSearch(context);
             verifyInlineStagesBetweenSourceRows(context);
             verifyFinalRowAtMinimumHeight(context);
             verifyNestedFunctionLinks(context);
@@ -193,8 +197,327 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
             verifyBoundedFind(context);
             verifyStageVisibility(context);
             verifySelectionVisibilityMatrix(context);
+            verifyGoToStop(context);
+            verifyGoToStopFromOtherFile(context);
             context.runOnClient(client -> client.setScreenAndShow(null));
         }
+    }
+
+    private static void verifyGoToStop(ClientGameTestContext context) {
+        context.getInput().resizeWindow(1600, 1000);
+        String command = "say actual_stop";
+        var location = new SourceLocation.Function(new FunctionLocation(FUNCTION, 2));
+        var historical = new SourceLocation.Function(new FunctionLocation(FUNCTION, 20));
+        var pause = new PauseSnapshot(location, CommandSnippet.plain(command), 0,
+            List.of(new CallFrame(0, location, CommandSnippet.plain(command)),
+                new CallFrame(1, historical, CommandSnippet.plain("say history"))), List.of(), PauseReason.BREAKPOINT);
+        List<String> lines = new java.util.ArrayList<>(java.util.Collections.nCopies(30, "# original source"));
+        lines.set(1, command);
+        ClientFunctionSourceState sources = context.computeOnClient(client -> {
+            client.options.guiScale().set(2); client.resizeGui();
+            var state = new ClientFunctionSourceState();
+            var caller = new FunctionId("codon_test", "caller");
+            state.open();
+            long listRequest = state.drainRequests().getFirst().requestId();
+            state.accept(new ClientFunctionSourceState.ListPage(listRequest, ClientFunctionSourceState.Status.READY,
+                0, true, List.of(caller, FUNCTION)));
+            state.select(caller);
+            state.drainRequests();
+            require(state.follow(FUNCTION), "fixture retains Back beside the stop control");
+            long request = state.drainRequests().getFirst().requestId();
+            state.accept(new ClientFunctionSourceState.SourcePage(request, ClientFunctionSourceState.Status.READY,
+                FUNCTION, "gametest", "go-to-stop", false, 0, true, lines));
+            state.rememberBrowseView(0, 23, 24, -1, 0, 12);
+            var debugger = require(CodonClientMod.state(), "debugger exists for stop navigation");
+            debugger.applyPause(pause);
+            debugger.selectFrame(1);
+            client.setScreenAndShow(new FunctionSourceScreen(new Screen(Component.empty()) { }, state));
+            return state;
+        });
+        context.waitTicks(2);
+        double[] point = context.computeOnClient(client -> {
+            var screen = (ScaledCodonScreen) client.gui.screen();
+            var button = stopButton(screen);
+            require(button.visible && button.active, "matching live stop exposes an active navigation button");
+            assertStopHeader(screen);
+            var window = client.getWindow();
+            return new double[]{screen.uiScale().toGame(button.getX() + button.getWidth() / 2.0)
+                    * window.getScreenWidth() / window.getGuiScaledWidth(),
+                screen.uiScale().toGame(button.getY() + button.getHeight() / 2.0)
+                    * window.getScreenHeight() / window.getGuiScaledHeight()};
+        });
+        context.getInput().setCursorPos(point[0], point[1]);
+        context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_LEFT);
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            require(sources.browseView().selectedLine() == 2 && sources.browseView().lineOffset() == 1
+                && sources.browseView().selectedStageIndex() == -1 && sources.browseView().horizontalOffset() == 0,
+                "native Go to stop selects and reveals the live line, including its beginning");
+            require(CodonClientMod.state().selectedFrameIndex() == 1 && CodonClientMod.state().snapshot() == pause,
+                "source navigation does not change the inspected historical frame or live pause");
+        });
+        context.getInput().setCursorPos(0, 0);
+        assertStopLabelPixels(context, "codon-function-source-go-to-stop-live");
+        context.runOnClient(client -> {
+            var screen = client.gui.screen();
+            screen.setFocused(null);
+            screen.keyPressed(new KeyEvent(InputConstants.KEY_END, 0, 0));
+            var button = stopButton(screen);
+            screen.setFocused(button);
+            client.setLastInputType(InputType.KEYBOARD_TAB);
+            require(screen.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0)),
+                "the stop button supports normal keyboard activation");
+            require(sources.browseView().selectedLine() == 2, "keyboard activation returns to the live line");
+            screen.keyPressed(new KeyEvent(InputConstants.KEY_END, 0, 0));
+            var debugger = CodonClientMod.state();
+            require(debugger.beginControlRequest(), "fixture begins a pending control");
+            screen.setFocused(button);
+            debugger.deferControlForReads();
+            button.onPress(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
+            require(sources.browseView().selectedLine() == 30,
+                "an action from the previous rendered frame rechecks pending control state");
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            require(stopButton(client.gui.screen()).visible && !stopButton(client.gui.screen()).active,
+                "pending controls disable stop navigation");
+            require(client.gui.screen().getFocused() == null, "a disabled stop control releases focus");
+            CodonClientMod.state().applyPause(pause);
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            client.gui.screen().setFocused(stopButton(client.gui.screen()));
+            CodonClientMod.state().applyPause(new PauseSnapshot(location, CommandSnippet.plain("say replaced"),
+                0, List.of(), List.of(), PauseReason.BREAKPOINT));
+            stopButton(client.gui.screen()).onPress(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
+            require(sources.browseView().selectedLine() == 30, "a stale source command cannot navigate via old render state");
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            require(!stopButton(client.gui.screen()).visible, "a changed command does not offer a false source destination");
+            require(client.gui.screen().getFocused() == null, "a mismatched source releases stop control focus");
+            CodonClientMod.state().applyPause(pause);
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            var screen = client.gui.screen();
+            screen.setFocused(searchBox(screen));
+            CodonClientMod.state().applyPause(new PauseSnapshot(location, CommandSnippet.plain("say replaced"),
+                0, List.of(), List.of(), PauseReason.BREAKPOINT));
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            require(client.gui.screen().getFocused() == searchBox(client.gui.screen()),
+                "hiding stop does not disturb another visible field's focus");
+            CodonClientMod.state().applyPause(pause);
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            var screen = client.gui.screen();
+            screen.setFocused(stopButton(screen));
+            CodonClientMod.state().applyResume();
+            stopButton(screen).onPress(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
+            require(sources.browseView().selectedLine() == 30, "resumed history does not become a live stop destination");
+            require(screen.keyPressed(new KeyEvent(InputConstants.KEY_HOME, 0, 0))
+                && screen.getFocused() == null && sources.browseView().selectedLine() == 1,
+                "Resume releases hidden focus before the next render and code navigation works immediately");
+            screen.keyPressed(new KeyEvent(InputConstants.KEY_END, 0, 0));
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            require(!stopButton(client.gui.screen()).visible, "a recorded line keeps its read-only status after resume");
+            CodonClientMod.state().applyPause(pause);
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            client.gui.screen().setFocused(stopButton(client.gui.screen()));
+            sources.refreshSource();
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            require(!stopButton(client.gui.screen()).visible, "a loading source cannot navigate to a stale destination");
+            require(client.gui.screen().getFocused() == null, "rereading source releases stop control focus");
+            long request = sources.drainRequests().stream().filter(ClientFunctionSourceState.Request.ReadFunction.class::isInstance)
+                .map(ClientFunctionSourceState.Request.ReadFunction.class::cast).reduce((first, last) -> last).orElseThrow().requestId();
+            sources.accept(new ClientFunctionSourceState.SourcePage(request, ClientFunctionSourceState.Status.READY,
+                FUNCTION, "gametest", "go-to-stop-truncated", true, 0, true, lines));
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> client.gui.screen().setFocused(stopButton(client.gui.screen())));
+        context.getInput().resizeWindow(960, 720);
+        context.runOnClient(client -> { client.options.guiScale().set(3); client.resizeGui(); });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            var screen = client.gui.screen();
+            require(screen.width == 320 && screen.getFocused() == stopButton(screen),
+                "resizing retains focus on the current visible stop control");
+            assertStopHeader(screen);
+        });
+        assertStopLabelPixels(context, "codon-function-source-go-to-stop-english-minimum");
+        String language = context.computeOnClient(client -> client.getLanguageManager().getSelected());
+        var reload = context.computeOnClient(client -> {
+            client.getLanguageManager().setSelected("ko_kr");
+            return client.reloadResourcePacks();
+        });
+        context.waitFor(client -> reload.isDone() && client.gui.overlay() == null, 200);
+        context.getInput().resizeWindow(960, 720);
+        context.runOnClient(client -> { client.options.guiScale().set(3); client.resizeGui(); });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            var screen = client.gui.screen();
+            var button = stopButton(screen);
+            require(screen.width == 320 && button.visible && button.active && button.getWidth() == 20,
+                "the Korean minimum header retains the full action in a compact icon and tooltip");
+            assertStopHeader(screen);
+            screen.setFocused(button);
+            client.setLastInputType(InputType.KEYBOARD_TAB);
+            screen.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
+            require(sources.browseView().selectedLine() == 2, "minimum-size Korean action reaches the live line");
+        });
+        context.waitTicks(2);
+        assertStopLabelPixels(context, "codon-function-source-go-to-stop-korean-minimum");
+        context.getInput().resizeWindow(1920, 1080);
+        context.runOnClient(client -> {
+            var screen = (ScaledCodonScreen) client.gui.screen();
+            screen.uiPreferences().setCustomUiScale(5);
+            screen.uiPreferences().setUiScaleMode(DebuggerPreferences.UiScaleMode.CUSTOM);
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> assertStopHeader(client.gui.screen()));
+        assertStopLabelPixels(context, "codon-function-source-go-to-stop-korean-1.25x");
+        context.runOnClient(client -> ((ScaledCodonScreen) client.gui.screen()).uiPreferences().setCustomUiScale(18));
+        context.waitTicks(2);
+        context.runOnClient(client -> assertStopHeader(client.gui.screen()));
+        assertStopLabelPixels(context, "codon-function-source-go-to-stop-korean-4.5x");
+        var restore = context.computeOnClient(client -> {
+            client.getLanguageManager().setSelected(language);
+            ((ScaledCodonScreen) client.gui.screen()).uiPreferences().resetUiScale();
+            CodonClientMod.state().applyResume();
+            return client.reloadResourcePacks();
+        });
+        context.waitFor(client -> restore.isDone() && client.gui.overlay() == null, 200);
+    }
+
+    private static void verifyGoToStopFromOtherFile(ClientGameTestContext context) {
+        context.getInput().resizeWindow(1600, 1000);
+        String command = "say actual_stop";
+        var location = new SourceLocation.Function(new FunctionLocation(FUNCTION, 2));
+        var pause = new PauseSnapshot(location, CommandSnippet.plain(command), 0,
+            List.of(new CallFrame(0, location, CommandSnippet.plain(command))), List.of(), PauseReason.BREAKPOINT);
+        List<String> lines = new java.util.ArrayList<>(java.util.Collections.nCopies(30, "# original source"));
+        lines.set(1, command);
+        var other = new FunctionId("codon_test", "other");
+        ClientFunctionSourceState sources = context.computeOnClient(client -> {
+            client.options.guiScale().set(2); client.resizeGui();
+            var state = new ClientFunctionSourceState();
+            state.select(other);
+            state.accept(new ClientFunctionSourceState.SourcePage(state.drainRequests().getFirst().requestId(),
+                ClientFunctionSourceState.Status.READY, other, "gametest", "other", false, 0, true, List.of("say other")));
+            require(CodonClientMod.state(), "debugger exists for stop navigation").applyPause(pause);
+            client.setScreenAndShow(new FunctionSourceScreen(new Screen(Component.empty()) { }, state));
+            return state;
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            var button = stopButton(client.gui.screen());
+            require(button.visible && button.active && button.getMessage().getString().equals(
+                    Component.translatable("codon.source.go_to_stop").getString()),
+                "a file other than the live stop still offers Go to stop, without a line number");
+            button.onPress(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
+            require(FUNCTION.equals(sources.selected()), "Go to stop opens the paused function's source");
+            require(CodonClientMod.state().beginControlRequest(), "fixture begins a pending control while the source loads");
+            long request = sources.drainRequests().stream().filter(ClientFunctionSourceState.Request.ReadFunction.class::isInstance)
+                .map(ClientFunctionSourceState.Request.ReadFunction.class::cast).reduce((first, last) -> last).orElseThrow().requestId();
+            sources.accept(new ClientFunctionSourceState.SourcePage(request, ClientFunctionSourceState.Status.READY,
+                FUNCTION, "gametest", "go-to-stop-other", false, 0, true, lines));
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            require(sources.browseView().selectedLine() != 2,
+                "a control pending before the source loads cancels the deferred stop navigation");
+            CodonClientMod.state().applyPause(pause);
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            stopButton(client.gui.screen()).onPress(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
+            require(sources.browseView().selectedLine() == 2 && sources.browseView().lineOffset() == 1
+                    && sources.browseView().horizontalOffset() == 0,
+                "the loaded paused function reveals and selects its live line");
+            CodonClientMod.state().applyResume();
+        });
+    }
+
+    private static AbstractButton stopButton(Screen screen) {
+        return sourceButton(screen, "goToStop");
+    }
+
+    private static DebuggerButton sourceButton(Screen screen, String name) {
+        try {
+            var field = FunctionSourceScreen.class.getDeclaredField(name);
+            field.setAccessible(true);
+            return (DebuggerButton) field.get(screen);
+        } catch (ReflectiveOperationException error) { throw new AssertionError(error); }
+    }
+
+    private static void assertStopHeader(Screen screen) {
+        var button = sourceButton(screen, "goToStop");
+        var reread = sourceButton(screen, "reread");
+        var back = sourceButton(screen, "backButton");
+        var close = sourceButton(screen, "close");
+        require(button.visible && button.active && button.getX() == reread.getRight() + 4
+            && button.getY() == reread.getY() && button.getHeight() == reread.getHeight()
+            && button.getHeight() == 18 && button.getRight() <= (back.visible ? back.getX() : close.getX()) - 4,
+            "stop control shares the Reread header row without overlapping Back or Close");
+        var focused = screen.getFocused();
+        screen.setFocused(reread);
+        screen.keyPressed(new KeyEvent(InputConstants.KEY_TAB, 0, 0));
+        require(screen.getFocused() == button, "Tab visits stop immediately after Reread");
+        screen.keyPressed(new KeyEvent(InputConstants.KEY_TAB, 0, 1));
+        require(screen.getFocused() == reread, "Shift+Tab returns directly to Reread");
+        screen.setFocused(focused);
+    }
+
+    private static void assertStopLabelPixels(ClientGameTestContext context, String name) {
+        int[] geometry = context.computeOnClient(client -> {
+            Screen screen = client.gui.screen();
+            AbstractButton button = stopButton(screen);
+            return new int[]{screen.width, screen.height, button.getX(), button.getY(),
+                button.getWidth(), button.getHeight(), ((DebuggerButton) button).icon() == null
+                    ? client.font.width(button.getMessage()) : DebuggerIcon.SIZE};
+        });
+        try {
+            var image = javax.imageio.ImageIO.read(context.takeScreenshot(name).toFile());
+            double sx = (double) image.getWidth() / geometry[0], sy = (double) image.getHeight() / geometry[1];
+            int left = (int) Math.ceil((geometry[2] + 2) * sx);
+            int top = (int) Math.ceil((geometry[3] + 2) * sy);
+            int right = (int) Math.floor((geometry[2] + geometry[4] - 2) * sx);
+            int bottom = (int) Math.floor((geometry[3] + geometry[5] - 2) * sy);
+            var ink = image.getSubimage(left, top, right - left, bottom - top);
+            double required = (geometry[6] - 4) * sx;
+            require(stopInkSpan(ink) >= required,
+                name + ": native button retains the full label or compact arrow, ink="
+                    + stopInkSpan(ink) + ", expected=" + required);
+            var missing = new java.awt.image.BufferedImage(ink.getWidth(), ink.getHeight(), java.awt.image.BufferedImage.TYPE_INT_RGB);
+            require(stopInkSpan(missing) == 0, name + ": neutral background cannot supply label ink");
+            for (int x = 0; x < ink.getWidth() / 2; x++)
+                for (int y = 0; y < ink.getHeight(); y++) missing.setRGB(x, y, ink.getRGB(x, y));
+            require(stopInkSpan(missing) < required, name + ": a label clipped to half the button fails the same span threshold");
+        } catch (java.io.IOException error) { throw new AssertionError(error); }
+    }
+
+    private static int stopInkSpan(java.awt.image.BufferedImage image) {
+        int first = image.getWidth(), last = -1;
+        // Fractional font sampling blends teal glyphs with the neutral surface. Inspect
+        // cyan ink inside the chrome, retaining the same full-label/arrow span requirement.
+        for (int x = 0; x < image.getWidth(); x++)
+            for (int y = 0; y < image.getHeight(); y++) {
+                int pixel = image.getRGB(x, y);
+                int red = pixel >> 16 & 255, green = pixel >> 8 & 255, blue = pixel & 255;
+                if (green - red >= 20 && blue - red >= 20 && Math.abs(green - blue) <= 16) {
+                    first = Math.min(first, x); last = Math.max(last, x);
+                }
+            }
+        return Math.max(0, last - first + 1);
     }
 
     private static void verifyFilteredSelection(Screen screen, ClientFunctionSourceState sources) {
@@ -239,6 +562,94 @@ public final class FunctionSourceScreenGameTest implements FabricClientGameTest 
         context.runOnClient(client -> require(clickTreeRow(client.gui.screen(), 1)
             && new FunctionId("codon_test", "match_00").equals(sources.selected()),
             "query change stays at the first filtered result after resizing; selected=" + sources.selected()));
+    }
+
+    private static void verifyCollapsedTreeFollowsNormalizedSearch(ClientGameTestContext context) {
+        context.getInput().resizeWindow(1280, 720);
+        context.getInput().setCursorPos(0, 0);
+        FunctionId packTick = new FunctionId("pack", "util/tick"), zetaTick = new FunctionId("zeta", "tick");
+        ClientFunctionSourceState sources = context.computeOnClient(client -> {
+            client.options.guiScale().set(2);
+            client.resizeGui();
+            var state = new ClientFunctionSourceState();
+            state.open();
+            long request = state.drainRequests().getFirst().requestId();
+            state.accept(new ClientFunctionSourceState.ListPage(request, ClientFunctionSourceState.Status.READY, 0, true,
+                List.of(new FunctionId("pack", "main"), new FunctionId("pack", "util/clean"), packTick, zetaTick)));
+            client.setScreenAndShow(new FunctionSourceScreen(new Screen(Component.empty()) { }, state));
+            return state;
+        });
+        context.waitTicks(2);
+        // Expanded rows are pack, main, util, clean, tick, zeta, tick. Collapse the folder, then its namespace.
+        context.runOnClient(client -> {
+            require(clickTreeRow(client.gui.screen(), 2) && clickTreeRow(client.gui.screen(), 0)
+                && sources.selected() == null, "native clicks collapse the folder and namespace without selecting");
+        });
+        context.waitTicks(2);
+        var collapsed = treeRows(context, "codon-function-source-tree-collapsed-blank");
+        String[] names = {"whitespace", "unicode-whitespace"}, blanks = {"   ", "　  "};
+        for (int index = 0; index < blanks.length; index++) {
+            String blank = blanks[index];
+            context.runOnClient(client -> searchBox(client.gui.screen()).setValue(blank));
+            context.waitTicks(2);
+            // The old '+'/'-' glyph read the raw search text, so whitespace drew the collapsed namespace open.
+            int differing = differingPixels(collapsed, treeRows(context, "codon-function-source-tree-collapsed-" + names[index]));
+            require(differing == 0, names[index] + " input must render the same collapsed '+' rows as blank input, "
+                + differing + " pixels differ");
+        }
+        context.runOnClient(client -> searchBox(client.gui.screen()).setValue("PACK  tick"));
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            Screen screen = client.gui.screen();
+            // Filtered rows are pack, util, tick. Group rows do nothing and the rest of the old list is gone.
+            for (int row : new int[]{0, 1})
+                require(clickTreeRow(screen, row) && sources.selected() == null, "filtered group row " + row + " is not selectable");
+            for (int row : new int[]{3, 4, 5, 6})
+                require(!clickTreeRow(screen, row) && sources.selected() == null, "nonmatching row " + row + " is not selectable");
+            require(clickTreeRow(screen, 2) && packTick.equals(sources.selected()),
+                "the multi-term filter expands the collapsed folders and selects the real matching function");
+        });
+        context.waitTicks(2);
+        var filtered = treeRows(context, "codon-function-source-tree-multi-term-filter");
+        require(differingPixels(firstRow(collapsed), firstRow(filtered)) > 0,
+            "an open '-' namespace row is pixel-distinct from the collapsed '+' row, so the comparison can detect the old glyph");
+        context.runOnClient(client -> searchBox(client.gui.screen()).setValue(""));
+        context.waitTicks(2);
+        int cleared = differingPixels(collapsed, treeRows(context, "codon-function-source-tree-cleared-collapsed"));
+        require(cleared == 0, "clearing the filter returns to the collapsed rows, " + cleared + " pixels differ");
+        context.runOnClient(client -> {
+            Screen screen = client.gui.screen();
+            // Expanding the namespace shows pack, main, util(+), zeta, tick: util stayed collapsed through filtering.
+            require(clickTreeRow(screen, 0) && clickTreeRow(screen, 4) && zetaTick.equals(sources.selected()),
+                "the folder collapse state survives filtering and clearing");
+        });
+    }
+
+    private static java.awt.image.BufferedImage treeRows(ClientGameTestContext context, String name) {
+        int[] box = context.computeOnClient(client -> {
+            Screen screen = client.gui.screen();
+            EditBox search = searchBox(screen);
+            // The list starts five pixels below the search box; three 18-pixel rows hold the collapsed fixture.
+            return new int[]{screen.width, screen.height, search.getX(), search.getBottom() + 5, search.getWidth(), 3 * 18};
+        });
+        try {
+            var image = javax.imageio.ImageIO.read(context.takeScreenshot(name).toFile());
+            double sx = (double) image.getWidth() / box[0], sy = (double) image.getHeight() / box[1];
+            return image.getSubimage((int) Math.round(box[2] * sx), (int) Math.round(box[3] * sy),
+                (int) Math.round(box[4] * sx), (int) Math.round(box[5] * sy));
+        } catch (java.io.IOException error) { throw new AssertionError(error); }
+    }
+
+    private static java.awt.image.BufferedImage firstRow(java.awt.image.BufferedImage rows) {
+        return rows.getSubimage(0, 0, rows.getWidth(), rows.getHeight() / 3);
+    }
+
+    private static int differingPixels(java.awt.image.BufferedImage expected, java.awt.image.BufferedImage actual) {
+        if (expected.getWidth() != actual.getWidth() || expected.getHeight() != actual.getHeight()) return Integer.MAX_VALUE;
+        int differing = 0;
+        for (int x = 0; x < expected.getWidth(); x++)
+            for (int y = 0; y < expected.getHeight(); y++) if (expected.getRGB(x, y) != actual.getRGB(x, y)) differing++;
+        return differing;
     }
 
     private static void verifyInlineStagesBetweenSourceRows(ClientGameTestContext context) {

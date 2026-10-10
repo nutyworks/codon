@@ -25,6 +25,12 @@ public record DebuggerLayout(Bounds header, Bounds controls, Bounds world, Bound
 
     public static DebuggerLayout create(int width, int height, boolean showInspector, int requestedCommandHeight,
                                         int requestedInspectorWidth) {
+        return create(width, height, showInspector, requestedCommandHeight, requestedInspectorWidth, 0);
+    }
+
+    /** Keep the workspace above vanilla HUD/chat without changing retained panel sizes. */
+    public static DebuggerLayout create(int width, int height, boolean showInspector, int requestedCommandHeight,
+                                        int requestedInspectorWidth, int bottomInset) {
         int margin = width < 360 ? 3 : 6;
         int usableWidth = Math.max(1, width - margin * 2);
         int headerWidth = Math.min(240, usableWidth);
@@ -34,10 +40,20 @@ public record DebuggerLayout(Bounds header, Bounds controls, Bounds world, Bound
         int controlHeight = ICON_BUTTON_SIZE + 4;
         int footerHeight = 0;
         int worldY = margin + headerHeight + controlHeight + 3;
+        int workspaceBottom = Math.max(worldY, height - margin - Math.max(0, bottomInset));
         int minimumWorldHeight = height < 180 ? 16 : height < 300 ? 42 : 80;
+        // Retain a context row, detail actions and NBT rows when the HUD takes space.
+        if (bottomInset > 0) {
+            if (showInspector && height >= 300) minimumWorldHeight = 116;
+            // Chat may consume most of the workspace. Prefer one selectable Command
+            // row over world/detail space, without extending into the vanilla HUD.
+            int availableHeight = Math.max(0, workspaceBottom - worldY - 3);
+            minimumWorldHeight = Math.min(minimumWorldHeight,
+                Math.max(0, availableHeight - Math.min(requestedCommandHeight, 58)));
+        }
         int commandHeight = Math.clamp(requestedCommandHeight, 0,
-            Math.max(0, height - margin - footerHeight - worldY - minimumWorldHeight - 3));
-        int commandY = Math.max(worldY, height - margin - footerHeight - commandHeight);
+            Math.max(0, workspaceBottom - footerHeight - worldY - minimumWorldHeight - 3));
+        int commandY = Math.max(worldY, workspaceBottom - footerHeight - commandHeight);
         int worldHeight = Math.max(0, commandY - worldY - 3);
         int panelWidth = showInspector ? width < 600 ? Math.min(DEFAULT_INSPECTOR_WIDTH, Math.max(144, usableWidth / 3))
             : Math.clamp(requestedInspectorWidth, MIN_INSPECTOR_WIDTH, maximumInspectorWidth(width, false)) : 0;

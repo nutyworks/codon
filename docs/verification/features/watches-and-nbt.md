@@ -143,12 +143,13 @@ data modify storage codon:verify counter set value 0
    Click the scrollbar track, grab its thumb without a jump, drag outside the
    list and release. Capture must end on release, resize, page loss or closing.
 9. At 427x240, open View → Watches. Compact rows put a full-width name above a value
-   line; scope moves into the row tooltip and full-text inspector. Inspect shortened
+   line; scope moves into the full-text inspector (and into a row tooltip only when
+   the row is clipped or has a status to explain). Inspect shortened
    names and long values, check numeric/error states, scroll past the visible rows,
    and use Add, pin/unpin, Copy, Edit, Delete and Undo. Compare a regular viewport
    in English/Korean, following game scale and using a custom Codon scale.
-   Hover the far right of the compact value line: its tooltip must appear. Click
-   the same point to open Details. Right-click either line to manage that Watch.
+   Hover the far right of a clipped compact value line: its full-text tooltip must
+   appear, while a healthy, fully drawn row stays silent. Click the same point to open Details. Right-click either line to manage that Watch.
    Focus the row and press Shift+F10, then use Up/Down, Tab and Enter/Space.
    Check Copy/Edit/Delete, target fixing/following, disabled fixing without an
    executor, and automatic-change Add to Watches. Storage rows have no executor

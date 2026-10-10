@@ -163,8 +163,10 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
         threshold.setValue(thresholdText);
         threshold.setResponder(value -> { thresholdText = value; refreshControls(); });
         threshold.setTooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable("codon.breakpoint.count")));
-        saveButton = addRenderableWidget(WatchUi.button(left + panelWidth - 60, top, 52, 20,
-            Component.translatable("codon.breakpoint.save"), this::save));
+        Component saveLabel = Component.translatable("codon.breakpoint.save");
+        int saveWidth = Math.min(Math.max(52, font.width(saveLabel) + 12), Math.max(1, panelWidth - 56));
+        saveButton = addRenderableWidget(WatchUi.button(left + panelWidth - 8 - saveWidth, top, saveWidth, 20,
+            saveLabel, this::save));
         saveButton.withStatusColor(TEAL, TEAL_SURFACE);
         cancelButton = addRenderableWidget(WatchUi.button(left + panelWidth - 28, top + 5, 20, 20,
             Component.translatable("codon.breakpoint.cancel"), this::onClose)).withIcon(DebuggerIcon.REMOVE);
@@ -256,7 +258,8 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
         if (saveButton != null) saveButton.active = validCount() && supportedCondition() && state.breakpoints().ready()
             && !state.breakpoints().pending(original.target());
         if (deleteButton != null) {
-            deleteButton.active = state.breakpoints().ready() && !state.breakpoints().pending(original.target());
+            deleteButton.active = state.breakpoints().get(original.target()) != null
+                && state.breakpoints().ready() && !state.breakpoints().pending(original.target());
             panelHeight = contentHeight();
             int nextTop = Math.max(6, Math.min(top, height - panelHeight - 6));
             if (nextTop != top) {
@@ -385,7 +388,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
 
     private void delete() {
         if (!validContext()) return;
-        if (state.breakpoints().pending(original.target())) return;
+        if (state.breakpoints().get(original.target()) == null || state.breakpoints().pending(original.target())) return;
         saving = false;
         deleting = ClientNetworking.sendBreakpointEdit(state, ClientBreakpointState.Action.DELETE, original);
         sendFailed = !deleting;
@@ -431,9 +434,9 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
             BreakpointDefinition saved = state.breakpoints().get(original.target());
             if (saved != null && saved.enabled() && saved.condition().equals(draft())) { ScreenLayers.close(this); return; }
         }
-        graphics.fill(0, 0, width, height, DebuggerTheme.color(0x70000000));
-        graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.color(PANEL));
-        graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.color(BORDER));
+        graphics.fill(0, 0, width, height, DebuggerTheme.modalColor(0x70000000));
+        graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.modalColor(PANEL));
+        graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.modalColor(BORDER));
         WatchUi.line(graphics, font, tr(confirmingDiscard ? "codon.breakpoint.discard_title"
             : "codon.breakpoint.condition_title"), left + 8, top + 10, panelWidth - (confirmingDiscard ? 16 : 44), TEXT);
         WatchUi.line(graphics, font, BreakpointUi.target(original.target()), left + 8, top + 29,
@@ -447,7 +450,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
         }
         if (menu == Menu.NONE && font.width(fragment) > panelWidth - 16
             && mouseX >= left + 8 && mouseX < left + panelWidth - 8
-            && mouseY >= top + 41 && mouseY < top + 52)
+            && mouseY >= top + 41 && mouseY < top + 52 && HoverDelay.elapsed("condition.fragment"))
             graphics.setTooltipForNextFrame(font, Component.literal(fragment), mouseX, mouseY);
         int hintColor = !validCount() || !supportedCondition() && !previewLoading() ? AMBER : MUTED;
         int hintY = drawLines(graphics, hint(), top + 86, hintColor);

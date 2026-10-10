@@ -370,7 +370,8 @@ unavailable replies have distinct states and do not imply a value change. Rows u
 with `↔` for availability changes. Entity names and short UUIDs identify both current and previous executors
 without selector badges.
 Hovering a row in the Watch editor or the interactive HUD shows full descriptions and the current
-selection's status. Ordinary Continue/leaving
+selection's status when its text is clipped or its status needs explaining; a healthy, fully drawn HUD
+row has no tooltip. Ordinary Continue/leaving
 final inspection drops comparisons and stale values. An
 unanswered query expires after five seconds, without automatic retry loops. Definitions added at a
 stop get an initial observation; they cannot retroactively sample the preceding step.

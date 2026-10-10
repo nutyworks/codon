@@ -50,8 +50,9 @@ public final class DebuggerOverlay {
     private static final int SOURCE_LIST_MAX_HEIGHT = 109;
     private static final int SOURCE_ROWS_TOP = 32;
     private static final int SOURCE_DETAILS_VIEWPORT_HEIGHT = 102;
+    private static final int SOURCE_DETAILS_MIN_HEIGHT = 22;
     private static final int NBT_HEADER_VIEWPORT_HEIGHT = 20;
-    private static final int NBT_MIN_VIEWPORT_HEIGHT = 54;
+    private static final int NBT_PREFERRED_VIEWPORT_HEIGHT = 71;
     /** Blank advance (see font/inline_icon.json) reserving room for a toolbar icon inside wrapped text. */
     private static final int ICON_SLOT = 0xE000;
     private static final FontDescription ICON_SLOT_FONT =
@@ -112,6 +113,7 @@ public final class DebuggerOverlay {
     public WatchPanel watchPanel() { return watchPanel; }
     void revealSelectedFlow(CodonScreen screen, String focusId) {
         preferences().setCommandVisible(true);
+        closeAuxiliaryPanel();
         commandPanel.revealSelection();
         var level = client.level;
         var snapshot = state.snapshot();
@@ -178,17 +180,19 @@ public final class DebuggerOverlay {
         }
         Font font = client.font;
         if ((!state.isPaused() || snapshot == null) && !interactive) {
-            Component text = Component.literal("CODON · " + statusText() + " ")
-                .append(keybind(Component.literal("[").append(input.menuKey.getTranslatedKeyMessage()).append("]")));
-            Bounds header = DebuggerLayout.create(graphics.guiWidth(), graphics.guiHeight(), false).header();
-            Bounds badge = new Bounds(header.x(), header.y(),
-                Math.min(graphics.guiWidth() - 2 * header.x(), font.width(text) + 14), header.height());
-            graphics.fill(badge.x(), badge.y(), badge.x() + badge.width(), badge.y() + badge.height(), PANEL);
-            graphics.outline(badge.x(), badge.y(), badge.width(), badge.height(), BORDER);
-            graphics.enableScissor(header.x() + 7, header.y(),
-                header.x() + Math.max(7, badge.width() - 7), header.y() + header.height());
-            graphics.text(font, text, header.x() + 7, header.y() + 5, MUTED, false);
-            graphics.disableScissor();
+            if (state.preferences().idleBadgeVisible() && !client.gui.hud.getDebugOverlay().showDebugScreen()) {
+                Component text = Component.literal("CODON · " + statusText() + " ")
+                    .append(keybind(Component.literal("[").append(input.menuKey.getTranslatedKeyMessage()).append("]")));
+                Bounds header = DebuggerLayout.create(graphics.guiWidth(), graphics.guiHeight(), false).header();
+                Bounds badge = new Bounds(header.x(), header.y(),
+                    Math.min(graphics.guiWidth() - 2 * header.x(), font.width(text) + 14), header.height());
+                graphics.fill(badge.x(), badge.y(), badge.x() + badge.width(), badge.y() + badge.height(), PANEL);
+                graphics.outline(badge.x(), badge.y(), badge.width(), badge.height(), BORDER);
+                graphics.enableScissor(header.x() + 7, header.y(),
+                    header.x() + Math.max(7, badge.width() - 7), header.y() + header.height());
+                graphics.text(font, text, header.x() + 7, header.y() + 5, MUTED, false);
+                graphics.disableScissor();
+            }
             buttonCache.clear();
             navigation.endFrame();
             scrollbars.endFrame();
@@ -212,10 +216,14 @@ public final class DebuggerOverlay {
         int maximumInspectorWidth = DebuggerLayout.maximumInspectorWidth(graphics.guiWidth(), showWatches);
         int inspectorWidth = Math.min(maximumInspectorWidth,
             panelResizing.requestedWidth("inspector", preferences().inspectorWidth()));
+        // Explicit compact Watches and narrow Details use the workspace until closed.
+        boolean showCommand = state.preferences().commandVisible()
+            && !(narrowAuxiliary && auxiliaryPanel != AuxiliaryPanel.NONE
+                || compactAuxiliary && auxiliaryPanel == AuxiliaryPanel.WATCHES);
         DebuggerLayout layout = DebuggerLayout.create(graphics.guiWidth(), graphics.guiHeight(), reserveSide,
-            state.preferences().commandVisible()
+            showCommand
                 ? commandPanel.preferredHeight(graphics.guiWidth(), graphics.guiHeight(), snapshot) : 0,
-            inspectorWidth);
+            inspectorWidth, DebuggerHudInsets.bottom(preferences()));
         Bounds auxiliaryBounds = narrowAuxiliary
             ? new Bounds(layout.world().x(), layout.world().y(),
                 Math.min(240, Math.max(0, layout.world().width() - 32)), layout.world().height())
@@ -242,7 +250,7 @@ public final class DebuggerOverlay {
             if (showWatches) panelResizing.add("watch", watchPanel.bounds(), true,
                 MIN_WATCH_WIDTH, WatchPanelLayout.maximumWidth(layout), preferences()::setWatchWidth);
         }
-        if (state.preferences().commandVisible()) {
+        if (showCommand) {
             controls.addAll(commandPanel.render(graphics, layout.command(), snapshot, input, this, navigation));
         }
         buttonCache.keySet().retainAll(usedButtons);
@@ -270,7 +278,7 @@ public final class DebuggerOverlay {
             }
         }
         if (interactive && !viewMenuOpen && !watchPanel.groupingMenuOpen())
-            panelResizing.paint(graphics, font, mouseX, mouseY);
+            panelResizing.paint(graphics, mouseX, mouseY);
         return List.copyOf(controls);
     }
 
@@ -285,27 +293,32 @@ public final class DebuggerOverlay {
         Component menuKey = keybind(Component.literal("[").append(input.menuKey.getTranslatedKeyMessage()).append("]"));
         int menuKeyWidth = client.font.width(menuKey);
         int menuKeyGap = client.font.width(" ");
-        int rightControlsWidth = 52 + menuKeyWidth + menuKeyGap;
+        int percentWidth = client.font.width("100%");
         int prefixWidth = client.font.width(prefix);
         Bounds toolbar = layout.controls();
+        // The title row spans the whole header panel, which the toolbar below already widens.
         Bounds header = new Bounds(layout.header().x(), layout.header().y(),
-            Math.min(layout.header().width(), Math.max(toolbar.width(), rightControlsWidth + prefixWidth + client.font.width(status))),
-            layout.header().height());
-        Bounds headerPanel = new Bounds(header.x(), header.y(), Math.max(header.width(), toolbar.width()),
+            Math.max(layout.header().width(), toolbar.width()), layout.header().height());
+        Bounds headerPanel = new Bounds(header.x(), header.y(), header.width(),
             toolbar.y() + toolbar.height() - header.y());
         graphics.fill(headerPanel.x(), headerPanel.y(), headerPanel.x() + headerPanel.width(),
             headerPanel.y() + headerPanel.height(), PANEL);
         graphics.outline(headerPanel.x(), headerPanel.y(), headerPanel.width(), headerPanel.height(), BORDER);
-        opacitySlider.position(header.x() + header.width() - 39, header.y() + 1, 34);
+        var headerText = DebuggerHeaderLayout.create(header, prefixWidth, client.font.width(status), menuKeyWidth,
+            percentWidth, menuKeyGap);
+        opacitySlider.position(headerText.sliderX(), header.y() + 1, DebuggerHeaderLayout.SLIDER_WIDTH);
         controls.add(opacitySlider);
         navigation.bind("background-opacity", DebuggerNavigation.Group.TOOLBAR, opacitySlider);
-        var headerText = DebuggerHeaderLayout.create(header, prefixWidth, client.font.width(status), menuKeyWidth, menuKeyGap);
         text(graphics, prefix, header.x() + 7, header.y() + 5, headerText.prefixWidth(), TEXT, true);
         text(graphics, status, headerText.statusX(), header.y() + 5, headerText.statusWidth(),
             state.isPaused() ? AMBER : MUTED, true);
 
         graphics.text(client.font, menuKey, headerText.menuKeyX(),
             header.y() + 5, MUTED, false);
+        // Always visible and right-aligned, so dragging never needs hover to reveal the value.
+        String percent = state.preferences().backgroundOpacity() + "%";
+        graphics.text(client.font, percent, headerText.percentX() + percentWidth - client.font.width(percent),
+            header.y() + 5, TEXT, false);
 
         int gap = DebuggerLayout.ICON_BUTTON_GAP;
         int width = Math.min(DebuggerLayout.ICON_BUTTON_SIZE,
@@ -379,7 +392,7 @@ public final class DebuggerOverlay {
 
     private void renderViewMenu(GuiGraphicsExtractor graphics) {
         int menuWidth = Math.min(154, graphics.guiWidth() - 12);
-        int menuHeight = 5 * 19 + 4;
+        int menuHeight = 6 * 19 + 4;
         int x = Math.clamp(viewTriggerBounds.x(), 6, graphics.guiWidth() - menuWidth - 6);
         int below = viewTriggerBounds.y() + viewTriggerBounds.height() + 2;
         int y = below + menuHeight <= graphics.guiHeight() - 6 ? below
@@ -404,7 +417,10 @@ public final class DebuggerOverlay {
         boolean command = state.preferences().commandVisible();
         viewMenuItem(3, component("codon.ui.command"), command,
             () -> state.preferences().setCommandVisible(!command));
-        viewMenuItem(4, component("codon.ui.scale.title"), false,
+        boolean idleBadge = state.preferences().idleBadgeVisible();
+        viewMenuItem(4, component("codon.ui.idle_badge"), idleBadge,
+            () -> state.preferences().setIdleBadgeVisible(!idleBadge));
+        viewMenuItem(5, component("codon.ui.scale.title"), false,
             () -> { if (client.gui.screen() != null) client.gui.setScreen(new UiScaleScreen(client.gui.screen(), state.preferences())); });
     }
 
@@ -531,21 +547,23 @@ public final class DebuggerOverlay {
                                           PauseSnapshot snapshot, int headingInset) {
         // Inspector regions are viewport allocations. Tree loading and expansion must never move controls.
         boolean hasNbt = nbtPanel.hasSelectedSource();
+        int nbtMinimum = hasNbt ? Math.min(NBT_PREFERRED_VIEWPORT_HEIGHT,
+            Math.max(0, body.height() - SOURCE_COMPACT_MIN_HEIGHT - SOURCE_DETAILS_MIN_HEIGHT)) : 0;
         int listHeight = Math.min(body.height(),
             Math.max(SOURCE_LIST_MIN_HEIGHT, Math.min(SOURCE_LIST_MAX_HEIGHT, body.height() / 3)));
         // The compact caption and one source row need 40 pixels. Reserve the rest
         // for actual NBT rows when the taller Flow detail band leaves a short inspector.
         if (hasNbt) listHeight = Math.min(listHeight,
-            Math.max(SOURCE_COMPACT_MIN_HEIGHT, body.height() - NBT_MIN_VIEWPORT_HEIGHT));
+            Math.max(SOURCE_COMPACT_MIN_HEIGHT, body.height() - nbtMinimum - SOURCE_DETAILS_MIN_HEIGHT));
         int remainingHeight = body.height() - listHeight;
         if (hasNbt && remainingHeight < NBT_HEADER_VIEWPORT_HEIGHT) {
             listHeight = body.height();
             remainingHeight = 0;
         }
-        int nbtMinimum = hasNbt ? NBT_MIN_VIEWPORT_HEIGHT : 0;
         int detailHeight = Math.min(SOURCE_DETAILS_VIEWPORT_HEIGHT,
             Math.max(0, remainingHeight - nbtMinimum));
-        if (detailHeight < 22) detailHeight = 0;
+        if (detailHeight < SOURCE_DETAILS_MIN_HEIGHT
+            || hasNbt && remainingHeight - detailHeight < NBT_HEADER_VIEWPORT_HEIGHT) detailHeight = 0;
         int nbtHeight = Math.max(0, remainingHeight - detailHeight);
         navigationGroup = DebuggerNavigation.Group.SOURCES;
         renderSources(graphics, new Bounds(body.x(), body.y(), body.width(), listHeight), snapshot, headingInset);
@@ -746,7 +764,8 @@ public final class DebuggerOverlay {
     private void sourceStatusIcon(GuiGraphicsExtractor graphics, int x, int y, DebuggerIcon icon,
                                   int color, Component description) {
         icon.draw(graphics, x + 2, y + 2, DebuggerTheme.foreground(color));
-        if (hoverX >= x && hoverX < x + 16 && hoverY >= y && hoverY < y + 16) {
+        if (hoverX >= x && hoverX < x + 16 && hoverY >= y && hoverY < y + 16
+            && HoverDelay.elapsed(List.of("overlay.status", x, y))) {
             graphics.setTooltipForNextFrame(client.font, description, hoverX, hoverY);
         }
     }
@@ -831,7 +850,7 @@ public final class DebuggerOverlay {
         else graphics.text(client.font, trimmed(value, width), x, y, DebuggerTheme.foreground(color), false);
         graphics.disableScissor();
         if (client.font.width(value) > width && hoverX >= x && hoverX < x + width
-            && hoverY >= y && hoverY < y + client.font.lineHeight + 1) {
+            && hoverY >= y && hoverY < y + client.font.lineHeight + 1 && HoverDelay.elapsed(List.of("overlay.text", x, y))) {
             graphics.setTooltipForNextFrame(client.font, Component.literal(value), hoverX, hoverY);
         }
     }

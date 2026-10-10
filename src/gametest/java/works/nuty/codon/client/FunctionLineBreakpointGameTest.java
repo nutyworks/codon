@@ -114,6 +114,11 @@ public final class FunctionLineBreakpointGameTest implements FabricClientGameTes
                     }
                 }
                 click(screen, x, y, true);
+                if (phase.equals("matching READY")) {
+                    require(ScreenLayers.get(screen).getClass().getSimpleName().equals("DebuggerContextMenu"),
+                        "A saved sole-stage definition has explicit management options");
+                    ScreenLayers.get(screen).keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
+                }
                 require(ScreenLayers.get(screen) instanceof BreakpointConditionScreen, "Gutter opens its editor directly: " + phase);
                 var editor = (BreakpointConditionScreen) ScreenLayers.get(screen);
                 require(((BreakpointDefinition) field(editor, "original")).target().equals(whole),
@@ -122,6 +127,7 @@ public final class FunctionLineBreakpointGameTest implements FabricClientGameTes
                 require(state.breakpoints().definitions().equals(List.of(legacy)) && !state.breakpoints().pending(whole),
                     "Open/cancel leaves the legacy definition and unset line unchanged");
                 screen.keyPressed(new KeyEvent(InputConstants.KEY_F10, 0, InputConstants.MOD_SHIFT));
+                if (phase.equals("matching READY")) ScreenLayers.get(screen).keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
                 require(ScreenLayers.get(screen) instanceof BreakpointConditionScreen
                     && ((BreakpointConditionScreen) ScreenLayers.get(screen)).editsMarker(whole, COMMAND),
                     "Shift+F10 returns to the same gutter target after cancel");
@@ -152,7 +158,7 @@ public final class FunctionLineBreakpointGameTest implements FabricClientGameTes
         });
         move(context, point[0], point[1]);
         context.runOnClient(client -> DebuggerTooltipGameTest.beginObservation());
-        context.waitTicks(3);
+        context.waitTicks(12);
         context.runOnClient(client -> {
             String text = DebuggerTooltipGameTest.endObservation().replaceAll("\\s", "");
             String expected = Component.translatable("codon.breakpoint.error.stale_source").getString().replaceAll("\\s", "");

@@ -70,6 +70,10 @@ public final class BreakpointConditionVisibilityGameTest implements FabricClient
             context.waitFor(client -> reload.isDone() && client.gui.overlay() == null, 200);
             verify(context, world, 6, true, "ko-custom-stage", false);
             verify(context, world, 7, true, "ko-custom-legacy-line", false);
+            var newTarget = BreakpointTarget.whole(location(8));
+            world.getServer().runOnServer(server -> CodonMod.engine().deleteBreakpoint(newTarget));
+            context.waitFor(client -> CodonClientMod.state().breakpoints().get(newTarget) == null, 200);
+            verify(context, world, 8, false, "ko-custom-new-line", false, true);
             world.getServer().runOnServer(server -> CodonMod.engine().clearBreakpoints());
             var restore = context.computeOnClient(client -> {
                 client.getLanguageManager().setSelected(language);
@@ -120,11 +124,35 @@ public final class BreakpointConditionVisibilityGameTest implements FabricClient
             var event = new MouseButtonEvent(point[0] + 3, point[1] + 3, new MouseButtonInfo(InputConstants.MOUSE_BUTTON_RIGHT, 0));
             require(screen.mouseClicked(event, false), "right click is consumed by Source");
             screen.mouseReleased(event);
+            if (line == 7) require(ScreenLayers.get(screen).getClass().getSimpleName().equals("DebuggerContextMenu"),
+                "saved sole stage exposes explicit choices while retaining line Condition");
+        });
+        if (line == 7) context.takeScreenshot("codon-condition-" + name + "-saved-stage-options");
+        context.runOnClient(client -> {
+            var screen = client.gui.screen();
+            chooseLineCondition(screen);
             var layer = (BreakpointConditionScreen) ScreenLayers.get(screen);
             require(layer != null, "right click opens the condition editor for " + name);
             require(((BreakpointDefinition) FunctionLineBreakpointGameTest.field(layer, "original")).target().equals(target),
                 "editor retains exact original identity for " + name);
             require(!CodonClientMod.state().breakpoints().pending(target), "Open does not edit or enable " + name);
+            var delete = (AbstractWidget) FunctionLineBreakpointGameTest.field(layer, "deleteButton");
+            require(delete.active == (CodonClientMod.state().breakpoints().get(target) != null),
+                "Delete is available only for the exact acknowledged target: " + name);
+            var saveAction = (AbstractWidget) FunctionLineBreakpointGameTest.field(layer, "saveButton");
+            String expected = client.getLanguageManager().getSelected().equals("ko_kr")
+                ? "저장하고 활성화" : "Save and enable";
+            require(saveAction.getMessage().getString().equals(expected), "Save states that it enables the breakpoint: " + name);
+            require(client.font.width(saveAction.getMessage()) + 12 <= saveAction.getWidth(),
+                "The complete Save-and-enable action fits without clipping: " + name);
+            if (!delete.active) {
+                var click = new MouseButtonEvent(delete.getX() + delete.getWidth() / 2.0,
+                    delete.getY() + delete.getHeight() / 2.0, new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
+                layer.mouseClicked(click, false);
+                layer.mouseReleased(click);
+                require(ScreenLayers.get(screen) == layer && !CodonClientMod.state().breakpoints().pending(target),
+                    "An unavailable Delete neither submits a request nor dismisses the new draft: " + name);
+            }
         });
         context.getInput().setCursorPos(0, 0);
         context.waitTicks(3);
@@ -198,6 +226,7 @@ public final class BreakpointConditionVisibilityGameTest implements FabricClient
                 new MouseButtonInfo(InputConstants.MOUSE_BUTTON_RIGHT, 0));
             require(screen.mouseClicked(event, false), "The exact Source marker reopens its editor for Save");
             screen.mouseReleased(event);
+            chooseLineCondition(screen);
         });
         context.waitTicks(2);
         context.runOnClient(client -> {
@@ -243,6 +272,7 @@ public final class BreakpointConditionVisibilityGameTest implements FabricClient
         context.runOnClient(client -> {
             var screen = client.gui.screen();
             screen.keyPressed(new KeyEvent(InputConstants.KEY_F10, 0, InputConstants.MOD_SHIFT));
+            chooseLineCondition(screen);
             var layer = ScreenLayers.get(screen);
             require(layer instanceof BreakpointConditionScreen editor && editor.editsMarker(target, LINES.get(line - 1)),
                 "Shift+F10 reopens the visible retained marker for " + name);
@@ -251,6 +281,12 @@ public final class BreakpointConditionVisibilityGameTest implements FabricClient
         });
         context.waitTicks(2);
         assertInk(context, point, name + "-escape", true);
+    }
+
+    private static void chooseLineCondition(Screen screen) {
+        var layer = ScreenLayers.get(screen);
+        if (layer != null && layer.getClass().getSimpleName().equals("DebuggerContextMenu"))
+            layer.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
     }
 
     private static void clearMarkerFocus(ClientGameTestContext context, int[] point, String name) {

@@ -150,7 +150,10 @@ public final class BreakpointListScreen extends ScaledCodonScreen {
             if (target.wholeCommand()) return new FlowTarget(index, 0, false);
             String command = flow.stages().getFirst().command().text();
             if (!target.commandFingerprint().equals(BreakpointTarget.fingerprint(command))) continue;
-            if (BreakpointTargetPolicy.stageCount(command, state.stagePreviews().get(flow.location()), flow) == 1) continue;
+            if (BreakpointTargetPolicy.stageCount(command, state.stagePreviews().get(flow.location()), flow) == 1) {
+                if (target.stageIndex() == 0) return new FlowTarget(index, 0, false);
+                continue;
+            }
             for (int stage = 0; stage < flow.stages().size(); stage++)
                 if (flow.stages().get(stage).index() == target.stageIndex()) return new FlowTarget(index, stage, false);
             var preview = state.stagePreviews().get(flow.location());
@@ -182,16 +185,19 @@ public final class BreakpointListScreen extends ScaledCodonScreen {
         if (destination.unobserved()) state.selectUnobservedExecutionFlowStage(destination.stage());
         else state.selectExecutionFlowStage(destination.stage());
         var flow = state.selectedExecutionFlow();
-        screen.revealSelectedFlow(CommandPanel.breakpointFocusId(flow, target));
+        var marker = !target.wholeCommand() && target.stageIndex() == 0
+            && BreakpointTargetPolicy.stageCount(flow.stages().getFirst().command().text(), state.stagePreviews().get(flow.location()), flow) == 1
+            ? BreakpointTarget.whole(target.location()) : target;
+        screen.revealSelectedFlow(CommandPanel.breakpointFocusId(flow, marker));
         Minecraft.getInstance().gui.setScreen(screen);
     }
 
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         // Reuse button identities while reflecting newly available navigation destinations.
         rebuild();
-        graphics.fill(0, 0, width, height, DebuggerTheme.color(0x70000000));
-        graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.color(PANEL));
-        graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.color(BORDER));
+        graphics.fill(0, 0, width, height, DebuggerTheme.modalColor(0x70000000));
+        graphics.fill(left, top, left + panelWidth, top + panelHeight, DebuggerTheme.modalColor(PANEL));
+        graphics.outline(left, top, panelWidth, panelHeight, DebuggerTheme.modalColor(BORDER));
         WatchUi.line(graphics, font, countHeader(),
             left + 8, top + 10, panelWidth - 16, TEXT);
         if (displayed.isEmpty()) WatchUi.line(graphics, font, tr("codon.breakpoint.list_empty"), left + 12, top + 43,

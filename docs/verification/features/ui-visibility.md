@@ -23,6 +23,46 @@ also provides the existing getting-started workflow with live binding labels.
 6. Resume and step normally: hiding does not send a debugger control request or change
    client/server pause snapshots. Visibility is session state and is not saved to settings.
 
+The running idle badge (no screen, nothing paused) is shown by default and yields to
+the vanilla F3 debug screen even when its preference says visible. **View → Idle badge**,
+reached in cursor mode, saves `idleBadgeVisible` in `config/codon.json`: a missing field
+means shown, and a non-boolean value is rejected like the adjacent settings, leaving the
+file untouched. Hiding the badge changes nothing else: paused panels, cursor mode, world
+markers, execution state and the H gesture keep their existing visibility. The preference
+survives state reset, disconnect and restart; H remains the temporary session gesture and
+is never saved. The Command workspace
+reserves 60 vanilla GUI pixels above the hotbar/health and expands this inset to
+clear recent wrapped chat rows, honoring vanilla chat scale/spacing. The inset is
+converted to Codon's scale; fitting does not rewrite saved panel widths. Recent
+chat first reduces the world/detail viewport to retain selectable Command rows.
+If fewer than 58 pixels remain, the call path shares the action row to preserve an
+18-pixel command/marker row in a 40-pixel panel. Opening
+chat continues to suppress the passive debugger HUD.
+
+At compact widths, explicitly opened Watches use the available workspace above the
+HUD; narrow Details drawers do the same, and closing them restores Command. Taller
+layouts retain context detail actions and NBT rows by reducing Command height before
+removing those controls. Short inspector viewports reserve the full NBT heading
+before source details; details disappear when they would push that heading outside
+the workspace.
+
+HUD background opacity still follows the saved 0–100% preference. Modal forms,
+pickers, Details, breakpoint dialogs, Help and UI-scale settings keep an opaque
+reading surface and their dim scrim independently of that preference. Text alpha
+is not the cause of low-opacity world contrast. English/Korean Help describes this
+boundary.
+
+The header's opacity slider always shows its current percentage to the right of the
+track, without hover, in English and Korean at 0 and 100%. The title row spans the
+header panel and keeps its 18-pixel height; the menu key and toolbar stay clear, and
+the percentage is reserved before live status, which still takes priority over the
+CODON prefix. A focused slider uses Left/Right for 1 percent and Shift+Left/Right for
+10 percent, clamped to 0–100; an adjustment at an endpoint writes no settings. Mouse
+click and drag still preview live and write once when the gesture ends, including a
+return to the starting value after another setting saved an intermediate preview. English/Korean
+usage narration and Help describe both steps. In very narrow GUIs (roughly under 255
+pixels wide) a long status can be ellipsized earlier than before; hover shows its full text.
+
 Gizmo collision cells retain at most 128 exact candidates before becoming a spatial
 aggregate, including cells whose rectangles have no common intersection. Coarse groups
 retain every source and the selected member; the existing 20-label spatial budget and
@@ -30,27 +70,81 @@ obstacle rules remain. `GizmoLabelLayoutTest` covers 10,000 split-height sources
 input orders, plus grouping, selection, obstacle and visible-budget controls. Native
 world projection and rendering remain separate acceptance checks.
 
+`DebuggerIdleBadgeGameTest` clicks the real View row at the smallest 320×240 viewport,
+writes a temporary settings file (never the live `config/codon.json`) and reloads it into
+a new settings/state instance. Inspect `codon-idle-badge-*`: default, hidden, hidden after
+reload, restored, F3 with a visible preference, the open View menu in both languages, and
+the `-synthetic-pause` HUD/cursor captures. Presence of the badge or paused header is
+asserted from dark panel pixels at their shared corner, with sky behind it; F3's own text
+and the screenshots themselves still need inspection. The production HUD element would draw
+its own badge, so the test wraps it once in place with `HudElementRegistry.replaceElement`: the
+wrapper draws the test-owned HUD while the fixture is active. Fabric's registry keeps removed
+ids and rejects adding them again, so nothing is removed; after cleanup the wrapper stays
+registered but renders the original production element again, in its original id and order.
+The paused captures inject a client snapshot: they do not prove a server breakpoint, and world
+markers remain the world-marker regression's concern (the renderer never reads the
+preference).
+
+```sh
+./gradlew test --tests '*ClientSettingsStoreTest'
+./gradlew runClientGameTest -PclientGameTest=DebuggerIdleBadgeGameTest
+```
+
 ## Code entry points
 
 - [UiHideGesture](../../../src/client/java/works/nuty/codon/client/input/UiHideGesture.java): monotonic press/release classification and cancelled gestures.
 - [InputManager](../../../src/client/java/works/nuty/codon/client/input/InputManager.java): binding, typing guard and lifecycle reset.
 - [DebugLevelRenderer](../../../src/client/java/works/nuty/codon/client/render/DebugLevelRenderer.java): submits Codon's markers at `BEFORE_GIZMOS`, before the current frame is finalized. Skipping submission when hidden leaves vanilla and other mods' gizmos intact.
 - [CodonScreen](../../../src/client/java/works/nuty/codon/client/ui/CodonScreen.java): hidden interaction suppression.
+- [DebuggerOverlay](../../../src/client/java/works/nuty/codon/client/ui/DebuggerOverlay.java): idle-badge condition (F3 and the saved preference) and the View menu row.
+- [ClientSettingsStore](../../../src/client/java/works/nuty/codon/client/config/ClientSettingsStore.java) and [DebuggerPreferences](../../../src/client/java/works/nuty/codon/client/state/DebuggerPreferences.java): `idleBadgeVisible` schema and change callback.
 - [Client mixins](../../../src/client/resources/codon.client.mixins.json): native keyboard/mouse events and screen transitions.
 
 ## Choose verification
 
 | Concern | Existing tests |
 | --- | --- |
+| HUD/chat inset, modal backing and EN/KO compact/default readability | `clientTest`: `DebuggerLayoutTest`; `test`: `DebuggerThemeTest`, `UiScaleScreenRenderTest`; native: `DebuggerReadabilityGameTest`, `DebuggerOpacityGameTest`, `DebuggerPresentationGameTest`, `DebuggerNbtTreeGameTest`, `DebuggerUiScaleGameTest` |
 | Short/long boundary, repeated events and cancellation | `clientTest`: `UiHideGestureTest` |
+| Opacity percentage in the header, Shift steps, endpoints and commit counts | `clientTest`: `DebuggerHeaderLayoutTest`; `test`: `BackgroundOpacitySliderTest` (real temporary settings file and an intervening setting save); native: `DebuggerOpacityGameTest` |
 | Native keyboard/mouse dispatch, screen input, rebind, chat, missed mouse release, focus flag and rejoin | `DebuggerPeekUiGameTest` |
 | Real server breakpoint stays paused, then each command executes once after Resume | `DebuggerFreecamResumeGameTest` |
 | First hidden/restored frame and sustained holds in world/cursor mode at a real entity-context pause; running breakpoint outlines, unrelated gizmos, disconnect/rejoin | `DebuggerWorldMarkerVisibilityGameTest` |
+| Idle-badge preference: default, old file, round trip, invalid types, change callback, state reset | `test`: `ClientSettingsStoreTest` |
+| Native View toggle, saved-file reload, idle shown/hidden/restored, F3, paused HUD and cursor mode with the badge hidden, 320×240 menu reach, EN/KO label | `DebuggerIdleBadgeGameTest` |
 
 ```sh
 ./gradlew clientTest --tests '*UiHideGestureTest'
+./gradlew clientTest --tests '*DebuggerHeaderLayoutTest'
+./gradlew test --tests '*BackgroundOpacitySliderTest'
 ./gradlew runClientGameTest -PclientGameTest=DebuggerPeekUiGameTest,DebuggerFreecamResumeGameTest,DebuggerWorldMarkerVisibilityGameTest
+./gradlew runClientGameTest -PclientGameTest=DebuggerOpacityGameTest
 ```
+
+`DebuggerOpacityGameTest` uses a synthetic pause (`pauseId` zero, so no server pause is
+queryable) and a temporary settings listener (not the real settings file) to count
+writes. It restores the window size, GUI scale, language and global theme afterwards.
+Its evidence has three separate parts:
+
+- **Direct-call sweeps** call the screen/slider methods for mouse preview and commit,
+  1- and 10-percent steps, both endpoints and write counts.
+- **A short actual keyboard dispatch sample** focuses the slider and sends Right, Left,
+  Shift+Right and Shift+Left through Minecraft's `KeyboardHandler`. Plain keys use
+  Fabric's `pressKey`; Shift arrows go to the same handler with the Shift modifier set,
+  because Fabric's synthetic key events carry no modifier bits. It checks 51→50 and
+  60→50, one write per effective press, and that the same screen is open with the
+  slider focused after each waited tick. It does not repeat the endpoint sweep.
+- **Header ink scan** covers only these frames: `codon-opacity-inline-100`, `-inline-50`,
+  `-all-zero`, `-all-one`, `-inline-compact-50` (asserted to be a 320×240 GUI whose
+  slider and percentage lie in the header panel's title row), and the eight
+  `codon-opacity-header-{en_us,ko_kr}-{1280,640}-{100,0}` frames (final-inspection
+  status at 0 and 100%, default and compact). `codon-opacity-hover-50` and the two
+  `codon-opacity-editor-*` frames are not scanned; inspect them by eye.
+
+The scan counts text-coloured pixels beside the slider, so it shows that something is
+drawn there but does not recognize the digits. Inspect the screenshots to verify the
+exact values; the eight header captures in [run 37504892284](https://github.com/nutyworks/codon/actions/runs/37504892284)
+showed the correct 0%/100% text. The idle badge has no slider, so it shows no percentage.
 
 Inspect the `codon-peek-*` screenshots: compare world and cursor-mode baselines,
 held/toggled hidden presentation, and restored UI. The peek fixture injects a client
@@ -73,3 +167,21 @@ unrelated-gizmo sentinel. Hidden captures retain the sentinel, vanilla hotbar an
 The actual server pause and snapshot must remain unchanged across H gestures, and
 the scoreboard command must execute exactly once after Resume. This does not cover
 physical focus changes, a separate dedicated server, or the original packaged VM runtime.
+
+`DebuggerReadabilityGameTest` captures Command plus four recent chat messages and
+survival health/hotbar at 854×480 and 1280×720, EN/KO, default/zero opacity. Modal
+screenshots face bright sky and dark terrain for each combination. Additional
+captures show idle/no-F3, idle/F3, paused/F3 and open chat in both languages. The
+Targeted captures also check five/ten recent chat rows and the 299/300-pixel height
+boundary. `DebuggerNbtTreeGameTest` checks heading containment in a 64-pixel inspector
+with an actual paused entity source; an injected flow fixture has no live NBT executor.
+The fixture uses injected client snapshots, so use the real world-marker regression
+for H and server-pause safety. Inspect `codon-readable-*` images; this matrix does
+not establish arbitrary modded HUD placement or unusually many health rows.
+
+`UiScaleScreenRenderTest` checks that UI-scale settings extract a full-viewport
+dim scrim before the opaque panel at both 0% and 100% HUD opacity. The native
+`DebuggerUiScaleGameTest` opens settings through View and checks the actual GUI
+render-state rectangles at those two opacities. Inspect `codon-scale-scrim-hud-*`
+alongside the existing scale/input screenshots; the world outside the panel stays
+dim while the reading surface and the saved HUD-opacity intent remain intact.
