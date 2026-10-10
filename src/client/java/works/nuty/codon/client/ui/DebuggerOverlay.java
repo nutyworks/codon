@@ -293,27 +293,32 @@ public final class DebuggerOverlay {
         Component menuKey = keybind(Component.literal("[").append(input.menuKey.getTranslatedKeyMessage()).append("]"));
         int menuKeyWidth = client.font.width(menuKey);
         int menuKeyGap = client.font.width(" ");
-        int rightControlsWidth = 52 + menuKeyWidth + menuKeyGap;
+        int percentWidth = client.font.width("100%");
         int prefixWidth = client.font.width(prefix);
         Bounds toolbar = layout.controls();
+        // The title row spans the whole header panel, which the toolbar below already widens.
         Bounds header = new Bounds(layout.header().x(), layout.header().y(),
-            Math.min(layout.header().width(), Math.max(toolbar.width(), rightControlsWidth + prefixWidth + client.font.width(status))),
-            layout.header().height());
-        Bounds headerPanel = new Bounds(header.x(), header.y(), Math.max(header.width(), toolbar.width()),
+            Math.max(layout.header().width(), toolbar.width()), layout.header().height());
+        Bounds headerPanel = new Bounds(header.x(), header.y(), header.width(),
             toolbar.y() + toolbar.height() - header.y());
         graphics.fill(headerPanel.x(), headerPanel.y(), headerPanel.x() + headerPanel.width(),
             headerPanel.y() + headerPanel.height(), PANEL);
         graphics.outline(headerPanel.x(), headerPanel.y(), headerPanel.width(), headerPanel.height(), BORDER);
-        opacitySlider.position(header.x() + header.width() - 39, header.y() + 1, 34);
+        var headerText = DebuggerHeaderLayout.create(header, prefixWidth, client.font.width(status), menuKeyWidth,
+            percentWidth, menuKeyGap);
+        opacitySlider.position(headerText.sliderX(), header.y() + 1, DebuggerHeaderLayout.SLIDER_WIDTH);
         controls.add(opacitySlider);
         navigation.bind("background-opacity", DebuggerNavigation.Group.TOOLBAR, opacitySlider);
-        var headerText = DebuggerHeaderLayout.create(header, prefixWidth, client.font.width(status), menuKeyWidth, menuKeyGap);
         text(graphics, prefix, header.x() + 7, header.y() + 5, headerText.prefixWidth(), TEXT, true);
         text(graphics, status, headerText.statusX(), header.y() + 5, headerText.statusWidth(),
             state.isPaused() ? AMBER : MUTED, true);
 
         graphics.text(client.font, menuKey, headerText.menuKeyX(),
             header.y() + 5, MUTED, false);
+        // Always visible and right-aligned, so dragging never needs hover to reveal the value.
+        String percent = state.preferences().backgroundOpacity() + "%";
+        graphics.text(client.font, percent, headerText.percentX() + percentWidth - client.font.width(percent),
+            header.y() + 5, TEXT, false);
 
         int gap = DebuggerLayout.ICON_BUTTON_GAP;
         int width = Math.min(DebuggerLayout.ICON_BUTTON_SIZE,

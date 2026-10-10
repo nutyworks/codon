@@ -50,7 +50,18 @@ HUD background opacity still follows the saved 0–100% preference. Modal forms,
 pickers, Details, breakpoint dialogs, Help and UI-scale settings keep an opaque
 reading surface and their dim scrim independently of that preference. Text alpha
 is not the cause of low-opacity world contrast. English/Korean Help describes this
-boundary; slider behavior is unchanged.
+boundary.
+
+The header's opacity slider always shows its current percentage to the right of the
+track, without hover, in English and Korean at 0 and 100%. The title row spans the
+header panel and keeps its 18-pixel height; the menu key and toolbar stay clear, and
+the percentage is reserved before live status, which still takes priority over the
+CODON prefix. A focused slider uses Left/Right for 1 percent and Shift+Left/Right for
+10 percent, clamped to 0–100; an adjustment at an endpoint writes no settings. Mouse
+click and drag still preview live and write once when the gesture ends, including a
+return to the starting value after another setting saved an intermediate preview. English/Korean
+usage narration and Help describe both steps. In very narrow GUIs (roughly under 255
+pixels wide) a long status can be ellipsized earlier than before; hover shows its full text.
 
 Gizmo collision cells retain at most 128 exact candidates before becoming a spatial
 aggregate, including cells whose rectangles have no common intersection. Coarse groups
@@ -95,6 +106,7 @@ preference).
 | --- | --- |
 | HUD/chat inset, modal backing and EN/KO compact/default readability | `clientTest`: `DebuggerLayoutTest`; `test`: `DebuggerThemeTest`, `UiScaleScreenRenderTest`; native: `DebuggerReadabilityGameTest`, `DebuggerOpacityGameTest`, `DebuggerPresentationGameTest`, `DebuggerNbtTreeGameTest`, `DebuggerUiScaleGameTest` |
 | Short/long boundary, repeated events and cancellation | `clientTest`: `UiHideGestureTest` |
+| Opacity percentage in the header, Shift steps, endpoints and commit counts | `clientTest`: `DebuggerHeaderLayoutTest`; `test`: `BackgroundOpacitySliderTest` (real temporary settings file and an intervening setting save); native: `DebuggerOpacityGameTest` |
 | Native keyboard/mouse dispatch, screen input, rebind, chat, missed mouse release, focus flag and rejoin | `DebuggerPeekUiGameTest` |
 | Real server breakpoint stays paused, then each command executes once after Resume | `DebuggerFreecamResumeGameTest` |
 | First hidden/restored frame and sustained holds in world/cursor mode at a real entity-context pause; running breakpoint outlines, unrelated gizmos, disconnect/rejoin | `DebuggerWorldMarkerVisibilityGameTest` |
@@ -103,8 +115,36 @@ preference).
 
 ```sh
 ./gradlew clientTest --tests '*UiHideGestureTest'
+./gradlew clientTest --tests '*DebuggerHeaderLayoutTest'
+./gradlew test --tests '*BackgroundOpacitySliderTest'
 ./gradlew runClientGameTest -PclientGameTest=DebuggerPeekUiGameTest,DebuggerFreecamResumeGameTest,DebuggerWorldMarkerVisibilityGameTest
+./gradlew runClientGameTest -PclientGameTest=DebuggerOpacityGameTest
 ```
+
+`DebuggerOpacityGameTest` uses a synthetic pause (`pauseId` zero, so no server pause is
+queryable) and a temporary settings listener (not the real settings file) to count
+writes. It restores the window size, GUI scale, language and global theme afterwards.
+Its evidence has three separate parts:
+
+- **Direct-call sweeps** call the screen/slider methods for mouse preview and commit,
+  1- and 10-percent steps, both endpoints and write counts.
+- **A short actual keyboard dispatch sample** focuses the slider and sends Right, Left,
+  Shift+Right and Shift+Left through Minecraft's `KeyboardHandler`. Plain keys use
+  Fabric's `pressKey`; Shift arrows go to the same handler with the Shift modifier set,
+  because Fabric's synthetic key events carry no modifier bits. It checks 51→50 and
+  60→50, one write per effective press, and that the same screen is open with the
+  slider focused after each waited tick. It does not repeat the endpoint sweep.
+- **Header ink scan** covers only these frames: `codon-opacity-inline-100`, `-inline-50`,
+  `-all-zero`, `-all-one`, `-inline-compact-50` (asserted to be a 320×240 GUI whose
+  slider and percentage lie in the header panel's title row), and the eight
+  `codon-opacity-header-{en_us,ko_kr}-{1280,640}-{100,0}` frames (final-inspection
+  status at 0 and 100%, default and compact). `codon-opacity-hover-50` and the two
+  `codon-opacity-editor-*` frames are not scanned; inspect them by eye.
+
+The scan counts text-coloured pixels beside the slider, so it shows that something is
+drawn there but does not recognize the digits. Inspect the screenshots to verify the
+exact values; the eight header captures in [run 37504892284](https://github.com/nutyworks/codon/actions/runs/37504892284)
+showed the correct 0%/100% text. The idle badge has no slider, so it shows no percentage.
 
 Inspect the `codon-peek-*` screenshots: compare world and cursor-mode baselines,
 held/toggled hidden presentation, and restored UI. The peek fixture injects a client
