@@ -484,6 +484,8 @@
   "codon.breakpoint.disabled": "비활성",
   "codon.breakpoint.enable_short": "활성화",
   "codon.breakpoint.disable_short": "비활성화",
+  "codon.breakpoint.saved_stage_toggle": "저장된 단계 %s · %s",
+  "codon.breakpoint.saved_stage_options": "저장된 단계 %s · 옵션",
   "codon.nbt.current_pause": "NBT · 현재 정지 시점",
   "codon.watch.group.summary": "Δ 변화 %s개 · ! 조회 문제 %s개. 접어도 관측은 계속됩니다.",
   "codon.nbt.refreshing_previous": "NBT · 갱신 중 (이전 값)",

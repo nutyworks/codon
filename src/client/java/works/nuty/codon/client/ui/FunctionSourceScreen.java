@@ -236,7 +236,13 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                 break;
             }
         }
-        focusedBreakpoint = target.wholeCommand() || selectedStageIndex == target.stageIndex() ? target : null;
+        var debugger = CodonClientMod.state();
+        boolean savedSingleStage = debugger != null && !target.wholeCommand() && target.stageIndex() == 0 && selectedStageIndex < 0
+            && debugger.breakpoints().get(target) != null
+            && BreakpointTargetPolicy.stageCount(codeLines.get(line - 1).source().trim(),
+                debugger.stagePreviews().get(target.location()), null) == 1;
+        focusedBreakpoint = savedSingleStage ? BreakpointTarget.whole(target.location())
+            : target.wholeCommand() || selectedStageIndex == target.stageIndex() ? target : null;
         revealTarget = null;
         rememberView();
     }
@@ -979,12 +985,16 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                 && sources.sourceStatus() != ClientFunctionSourceState.Status.LOADING
                 && Objects.equals(sources.selected(), location.location().function())
                 && (target.wholeCommand() || matchingStageContext(debugger, document, line, target));
+        String command = document.lines().get(line - 1).trim();
+        int count = BreakpointTargetPolicy.stageCount(command, debugger.stagePreviews().get(target.location()), null);
         if (direct) {
             if (!current.getAsBoolean()) return;
             focusedBreakpoint = target;
             setFocused(null);
-            BreakpointContextMenu.openEditor(this, debugger, target, anchor, current, () -> focusedBreakpoint = target);
-        } else BreakpointContextMenu.open(this, debugger, target, anchor, current, () -> { });
+            BreakpointContextMenu.openEditor(this, debugger, target, command, count,
+                anchor, current, () -> focusedBreakpoint = target);
+        } else BreakpointContextMenu.open(this, debugger, target, command, count,
+            anchor, current, () -> { });
     }
 
     private boolean matchingStageContext(ClientDebuggerState debugger, FunctionSourceDocument document,

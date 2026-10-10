@@ -120,6 +120,13 @@ public final class BreakpointConditionVisibilityGameTest implements FabricClient
             var event = new MouseButtonEvent(point[0] + 3, point[1] + 3, new MouseButtonInfo(InputConstants.MOUSE_BUTTON_RIGHT, 0));
             require(screen.mouseClicked(event, false), "right click is consumed by Source");
             screen.mouseReleased(event);
+            if (line == 7) require(ScreenLayers.get(screen).getClass().getSimpleName().equals("DebuggerContextMenu"),
+                "saved sole stage exposes explicit choices while retaining line Condition");
+        });
+        if (line == 7) context.takeScreenshot("codon-condition-" + name + "-saved-stage-options");
+        context.runOnClient(client -> {
+            var screen = client.gui.screen();
+            chooseLineCondition(screen);
             var layer = (BreakpointConditionScreen) ScreenLayers.get(screen);
             require(layer != null, "right click opens the condition editor for " + name);
             require(((BreakpointDefinition) FunctionLineBreakpointGameTest.field(layer, "original")).target().equals(target),
@@ -198,6 +205,7 @@ public final class BreakpointConditionVisibilityGameTest implements FabricClient
                 new MouseButtonInfo(InputConstants.MOUSE_BUTTON_RIGHT, 0));
             require(screen.mouseClicked(event, false), "The exact Source marker reopens its editor for Save");
             screen.mouseReleased(event);
+            chooseLineCondition(screen);
         });
         context.waitTicks(2);
         context.runOnClient(client -> {
@@ -243,6 +251,7 @@ public final class BreakpointConditionVisibilityGameTest implements FabricClient
         context.runOnClient(client -> {
             var screen = client.gui.screen();
             screen.keyPressed(new KeyEvent(InputConstants.KEY_F10, 0, InputConstants.MOD_SHIFT));
+            chooseLineCondition(screen);
             var layer = ScreenLayers.get(screen);
             require(layer instanceof BreakpointConditionScreen editor && editor.editsMarker(target, LINES.get(line - 1)),
                 "Shift+F10 reopens the visible retained marker for " + name);
@@ -251,6 +260,12 @@ public final class BreakpointConditionVisibilityGameTest implements FabricClient
         });
         context.waitTicks(2);
         assertInk(context, point, name + "-escape", true);
+    }
+
+    private static void chooseLineCondition(Screen screen) {
+        var layer = ScreenLayers.get(screen);
+        if (layer != null && layer.getClass().getSimpleName().equals("DebuggerContextMenu"))
+            layer.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
     }
 
     private static void clearMarkerFocus(ClientGameTestContext context, int[] point, String name) {

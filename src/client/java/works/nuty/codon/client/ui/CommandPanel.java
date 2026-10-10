@@ -341,8 +341,8 @@ public final class CommandPanel {
                 && state.selectedExecutionFlow() == flow && (!unobserved || currentPreviewTarget(flow, target, command));
             Bounds anchor = new Bounds(button.getX(), button.getY(), button.getWidth(), button.getHeight());
             Runnable restore = () -> navigation.requestFocus(focusId);
-            if (direct) BreakpointContextMenu.openEditor(parent, state, target, anchor, current, restore);
-            else BreakpointContextMenu.open(parent, state, target, anchor, current, restore);
+            if (direct) BreakpointContextMenu.openEditor(parent, state, target, command, stageCount(flow, command), anchor, current, restore);
+            else BreakpointContextMenu.open(parent, state, target, command, stageCount(flow, command), anchor, current, restore);
         };
         button.withSecondaryAction(open);
         contextMenus.put(button, open);
