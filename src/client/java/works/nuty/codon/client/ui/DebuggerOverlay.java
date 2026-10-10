@@ -278,7 +278,7 @@ public final class DebuggerOverlay {
             }
         }
         if (interactive && !viewMenuOpen && !watchPanel.groupingMenuOpen())
-            panelResizing.paint(graphics, font, mouseX, mouseY);
+            panelResizing.paint(graphics, mouseX, mouseY);
         return List.copyOf(controls);
     }
 
@@ -763,7 +763,8 @@ public final class DebuggerOverlay {
     private void sourceStatusIcon(GuiGraphicsExtractor graphics, int x, int y, DebuggerIcon icon,
                                   int color, Component description) {
         icon.draw(graphics, x + 2, y + 2, DebuggerTheme.foreground(color));
-        if (hoverX >= x && hoverX < x + 16 && hoverY >= y && hoverY < y + 16) {
+        if (hoverX >= x && hoverX < x + 16 && hoverY >= y && hoverY < y + 16
+            && HoverDelay.elapsed(List.of("overlay.status", x, y))) {
             graphics.setTooltipForNextFrame(client.font, description, hoverX, hoverY);
         }
     }
@@ -848,7 +849,7 @@ public final class DebuggerOverlay {
         else graphics.text(client.font, trimmed(value, width), x, y, DebuggerTheme.foreground(color), false);
         graphics.disableScissor();
         if (client.font.width(value) > width && hoverX >= x && hoverX < x + width
-            && hoverY >= y && hoverY < y + client.font.lineHeight + 1) {
+            && hoverY >= y && hoverY < y + client.font.lineHeight + 1 && HoverDelay.elapsed(List.of("overlay.text", x, y))) {
             graphics.setTooltipForNextFrame(client.font, Component.literal(value), hoverX, hoverY);
         }
     }

@@ -253,8 +253,12 @@ public final class DebuggerWatchPinGameTest implements FabricClientGameTest {
                 (pin.getY() + 4.0) * client.getWindow().getScreenHeight() / client.gui.screen().height
             };
         });
+        DebuggerTooltipGameTest.beginObservation();
         context.getInput().setCursorPos(cursor[0], cursor[1]);
-        context.waitTicks(3);
+        // Past the hover delay: a healthy, fully drawn row explains nothing the row does not already show.
+        context.waitTicks(12);
+        String hover = DebuggerTooltipGameTest.endObservation();
+        require(hover.isEmpty(), "A healthy pinned Watch row shows no tooltip: " + hover);
         context.takeScreenshot("codon-watch-two-pins-tooltip");
     }
 

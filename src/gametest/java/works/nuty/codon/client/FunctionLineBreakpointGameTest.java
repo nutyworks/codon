@@ -158,7 +158,7 @@ public final class FunctionLineBreakpointGameTest implements FabricClientGameTes
         });
         move(context, point[0], point[1]);
         context.runOnClient(client -> DebuggerTooltipGameTest.beginObservation());
-        context.waitTicks(3);
+        context.waitTicks(12);
         context.runOnClient(client -> {
             String text = DebuggerTooltipGameTest.endObservation().replaceAll("\\s", "");
             String expected = Component.translatable("codon.breakpoint.error.stale_source").getString().replaceAll("\\s", "");

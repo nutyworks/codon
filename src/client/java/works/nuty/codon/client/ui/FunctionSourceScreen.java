@@ -359,10 +359,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                 boolean hovered = splitterContains(mouseX, mouseY);
                 graphics.fill(left + treeWidth, top + 25, left + treeWidth + 1, top + panelHeight - 8,
                     hovered || resizingTree ? TEAL : DIVIDER);
-                if (hovered) {
-                    graphics.requestCursor(CursorTypes.RESIZE_EW);
-                    graphics.setTooltipForNextFrame(font, Component.translatable("codon.source.resize_tree"), mouseX, mouseY);
-                }
+                if (hovered) graphics.requestCursor(CursorTypes.RESIZE_EW);
             }
             renderTree(graphics, mouseX, mouseY);
             if (!drawerOpen) renderSource(graphics, mouseX, mouseY);
@@ -424,7 +421,8 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         int pathY = top + ClientFunctionSourceState.ScreenLayout.pathInset(compactSourceControls);
         int statusY = top + ClientFunctionSourceState.ScreenLayout.statusInset(compactSourceControls);
         WatchUi.line(graphics, font, path, sourceLeft + 6, pathY, sourceWidth - 12, TEXT);
-        if (mouseX >= sourceLeft + 6 && mouseX < sourceLeft + sourceWidth - 6 && mouseY >= pathY && mouseY < pathY + 10) {
+        if (mouseX >= sourceLeft + 6 && mouseX < sourceLeft + sourceWidth - 6 && mouseY >= pathY && mouseY < pathY + 10
+            && HoverDelay.elapsed("source.path")) {
             // Show the full path only when it is clipped; provider and revision are never drawn elsewhere.
             List<String> details = new ArrayList<>();
             if (WatchUi.clipped(font, path, sourceWidth - 12)) details.add(path);
@@ -449,7 +447,8 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         int countY = sourceSearch.getY() + 6;
         WatchUi.line(graphics, font, matches.isEmpty() ? "0/0"
             : (matchIndex + 1) + "/" + matches.size() + (matchesLimited ? "+" : ""), countX, countY, 66, MUTED);
-        if (matchesLimited && mouseX >= countX && mouseX < countX + 66 && mouseY >= countY && mouseY < countY + 10)
+        if (matchesLimited && mouseX >= countX && mouseX < countX + 66 && mouseY >= countY && mouseY < countY + 10
+            && HoverDelay.elapsed("source.find-limit"))
             graphics.setTooltipForNextFrame(font, font.split(Component.translatable("codon.source.find_limit", SourceSyntax.MAX_MATCHES),
                 Math.min(200, width - 24)), mouseX, mouseY);
         int gutter = gutterWidth();
@@ -522,10 +521,12 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                 // A changed fingerprint has no valid marker in the new command. Keep a
                 // separate review warning; never disguise it as a current stage control.
                 graphics.text(font, "!", sourceLeft + 21, y + 5, DebuggerTheme.foreground(AMBER), false);
-                if (hovered && mouseX >= sourceLeft + 21 && mouseX < sourceLeft + 26)
+                if (hovered && mouseX >= sourceLeft + 21 && mouseX < sourceLeft + 26
+                    && HoverDelay.elapsed(List.of("source.stale", line)))
                     graphics.setTooltipForNextFrame(font, Component.translatable("codon.breakpoint.error.stale_source"), mouseX, mouseY);
             }
-            if (hovered && lineMarkerContains(mouseX, stopped) && wholeEligible(document, line)) {
+            if (hovered && lineMarkerContains(mouseX, stopped) && wholeEligible(document, line)
+                && HoverDelay.elapsed(List.of("source.line-marker", line))) {
                 var hint = Component.translatable("codon.source.line_breakpoint_hint",
                     definition == null ? tr("codon.source.no_breakpoint") : BreakpointUi.condition(definition.condition()));
                 if (counts.enabled() > 0)
@@ -662,7 +663,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                 addStageHit(markerX, y, start, x, width, stage.target(), true);
             }
             addStageHit(start, y, end, x, width, stage.target(), false);
-            if (hovered && mouseX < start)
+            if (hovered && mouseX < start && HoverDelay.elapsed(List.of("source.stage", line, stage.index())))
                 graphics.setTooltipForNextFrame(font, Component.translatable("codon.breakpoint.stage_target", stage.index() + 1)
                     .append(" · " + (definition == null ? tr("codon.source.no_breakpoint") : BreakpointUi.condition(definition.condition()))), mouseX, mouseY);
         }
