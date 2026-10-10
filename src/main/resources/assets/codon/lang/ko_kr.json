@@ -90,6 +90,7 @@
   "codon.ui.offscreen": "보이는 월드 영역 밖",
   "codon.ui.other_dimension": "다른 차원에 있음",
   "codon.ui.command": "명령",
+  "codon.ui.idle_badge": "유휴 배지",
   "codon.ui.position_source": "위치 컨텍스트",
   "codon.ui.command_block": "명령 블록",
   "codon.ui.breakpoint_actual": "실측 %s",

@@ -90,6 +90,7 @@
   "codon.ui.offscreen": "Outside the world viewport",
   "codon.ui.other_dimension": "In another dimension",
   "codon.ui.command": "Command",
+  "codon.ui.idle_badge": "Idle badge",
   "codon.ui.position_source": "Position context",
   "codon.ui.command_block": "Command block",
   "codon.ui.breakpoint_actual": "observed %s",
