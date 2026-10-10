@@ -178,5 +178,8 @@ public final class FlowLegacyConditionGameTest implements FabricClientGameTest {
             new net.minecraft.client.input.MouseButtonInfo(com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_RIGHT, 0));
         screen.mouseClicked(event, false);
         screen.mouseReleased(event);
+        var layer = ScreenLayers.get(screen);
+        if (layer != null && layer.getClass().getSimpleName().equals("DebuggerContextMenu"))
+            layer.keyPressed(new net.minecraft.client.input.KeyEvent(com.mojang.blaze3d.platform.InputConstants.KEY_RETURN, 0, 0));
     }
 }

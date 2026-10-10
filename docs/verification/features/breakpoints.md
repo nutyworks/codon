@@ -12,7 +12,14 @@ uses location, stage identity and command fingerprint, never a guessed row index
 Entries lacking an available Flow destination remain visible but disabled with an
 explanation; no world teleport or new block-source editor is implemented. Enabled
 and disabled saved entries remain listed. Activation sends no breakpoint edits.
-Source/Flow context menus provide condition editing at the destination. List focus
+Source/Flow context menus provide condition editing at the destination. A saved
+stage 1 on a confirmed single-stage command navigates to its sole line marker.
+Right-click or Shift+F10 exposes separate **Saved stage 1 · Disable/Enable** and
+**Saved stage 1 · Options** actions for that existing definition. Options retains
+its exact stage target and allows individual deletion after server acknowledgement.
+The normal Condition action still edits the line, and left-click still toggles only
+the line. These saved-stage actions require the matching command fingerprint and
+never create a missing stage definition. List focus
 and scroll are retained on return; native behavior still needs manual verification.
 Rows sort by source identity with numeric function lines, coordinates and stage indices.
 Each row shows state, whole-command/stage identity and location on its first line,
@@ -128,6 +135,9 @@ Screen; actual list navigation and focus remain a UI acceptance check.
 | Persistence/preview codec | `test`: `WorldBreakpointPersistenceTest`, `BreakpointStagePreviewPayloadTest` |
 | Native editor input, modal details without screen replacement, draft discard/cancel, pending/rejected saves, server edits, wrapping and narrow layouts | `DebuggerBreakpointUiGameTest` |
 | Single-stage editor/Flow target, legacy toggle/clear and native first-occurrence stop | `SingleStageBreakpointGameTest` |
+| Saved sole-stage list navigation, Source/Flow individual disable/delete ACK, loaded function/block stops and subsequent unpaused execution | `SingleStageLegacyManagementGameTest` |
+| Exact saved-stage actions, pending/deleted/stale guards and single-stage destinations | `test`: `SingleStageLegacyManagementTest` |
+| Saved v2/v3 sole-stage persistence, disable/delete stop semantics and denied edit permissions | `test`: `WorldBreakpointPersistenceTest`, `BreakpointEditHandlerTest` |
 | Inactive condition marker retention, menus/Cancel and server-acknowledged Save enabling | `BreakpointConditionVisibilityGameTest`, `DebuggerBreakpointUiGameTest` |
 | Flow legacy/line isolation, exact condition attribution, rejected toggle feedback and pending action gating (presentation fixture) | `FlowLegacyConditionGameTest` |
 | Native execution and measured-zero result breakpoints, created through `/codon breakpoint ... stage 2 condition ...` | `DebuggerBreakpointResultGameTest` |
@@ -183,11 +193,24 @@ first, then requests closing the layer (with discard confirmation for a dirty
 draft). Tab closes the menu and continues through the form.
 
 The exact edited marker remains visible while the layer or its menus are open. Opening
-and cancelling preserve its saved enabled state; Save always enables the exact definition
-with the chosen condition. Source/Flow marker menus now use the clicked target
-exactly: a line marker never opens an old stage-zero definition. Their pending state
-and Flow summary follow that same exact target. The native command-block editor's
+and cancelling preserve its saved enabled state; **Save and enable** always enables the exact
+definition with the chosen condition, including a previously disabled breakpoint.
+Delete is disabled until the exact target exists in acknowledged server state; opening
+a new condition draft cannot submit a delete request. `BreakpointConditionVisibilityGameTest`
+checks both actions in English/Korean at custom scale, including an unset line beside a
+saved legacy stage. Source/Flow line Condition actions use the clicked line
+target exactly; the explicit Saved stage 1 actions use only the existing stage-zero
+definition. Their pending state and Flow summary follow those exact targets. The native command-block editor's
 legacy alias handling remains separate from these Source/Flow rules.
+
+`SingleStageLegacyManagementGameTest` loads `codon_test:condition_visibility` from
+the server and creates a real command block. It triggers each command with an enabled
+saved sole-stage definition, navigates its list row to the line marker, disables and
+deletes through native input and waits for server ACK. Subsequent execution does not
+pause, while the separate disabled line and unrelated enabled breakpoint survive.
+Inspect `*codon-legacy-function-*.png` and `*codon-legacy-block-*.png` for the explicit
+menu and post-deletion parent. Persistence reopen is covered separately by the v2/v3
+file-adapter test; dedicated-server and physical-input verification remain manual.
 
 The menu opens above or below its trigger according to available space, with a
 scrollbar when the viewport cannot hold every row. Mouse wheel and Up/Down reach

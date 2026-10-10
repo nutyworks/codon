@@ -1,5 +1,8 @@
 package works.nuty.codon.client.ui.layout;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 import org.jspecify.annotations.Nullable;
 import works.nuty.codon.core.model.BreakpointDefinition;
 
@@ -17,6 +20,42 @@ public final class SourceInteraction {
 
     public static boolean markerVisible(boolean enabled, boolean hovered, boolean editing) {
         return markerVisible(enabled, hovered) || editing;
+    }
+
+    /**
+     * A Functions-tree search normalized once: terms are separated by Java whitespace (the same
+     * code points {@link String#isBlank()} accepts), folded with {@link Locale#ROOT} and matched
+     * literally, never as a pattern. A function matches only when every term occurs in its
+     * {@code namespace:path}; no terms means no filter.
+     */
+    public record FunctionQuery(List<String> terms) {
+        public static final FunctionQuery NONE = new FunctionQuery(List.of());
+
+        public FunctionQuery { terms = List.copyOf(terms); }
+
+        public static FunctionQuery parse(String text) {
+            List<String> terms = new ArrayList<>();
+            int start = -1;
+            for (int index = 0; index < text.length(); ) {
+                int codePoint = text.codePointAt(index);
+                if (Character.isWhitespace(codePoint)) {
+                    if (start >= 0) terms.add(text.substring(start, index).toLowerCase(Locale.ROOT));
+                    start = -1;
+                } else if (start < 0) start = index;
+                index += Character.charCount(codePoint);
+            }
+            if (start >= 0) terms.add(text.substring(start).toLowerCase(Locale.ROOT));
+            return terms.isEmpty() ? NONE : new FunctionQuery(terms);
+        }
+
+        public boolean active() { return !terms.isEmpty(); }
+
+        public boolean matches(String functionId) {
+            if (terms.isEmpty()) return true;
+            String folded = functionId.toLowerCase(Locale.ROOT);
+            for (String term : terms) if (!folded.contains(term)) return false;
+            return true;
+        }
     }
 
     public record HitBox(int x, int y, int width, int height) {

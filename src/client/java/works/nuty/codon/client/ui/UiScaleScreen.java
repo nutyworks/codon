@@ -101,6 +101,7 @@ public final class UiScaleScreen extends ScaledCodonScreen {
         buttons.get("minus").active = custom && requestedScale() > DebuggerPreferences.MIN_UI_SCALE;
         var window = minecraft.getWindow();
         buttons.get("plus").active = custom && requestedScale() < UiScale.maximumRequest(window.getWidth(), window.getHeight(), minecraft.isEnforceUnicode());
+        graphics.fill(0, 0, width, height, modalColor(0x70000000));
         graphics.fill(left, top, left + panelWidth, top + 218, modalColor(PANEL));
         graphics.outline(left, top, panelWidth, 218, modalColor(BORDER));
         graphics.text(font, title, left + 8, top + 10, modalColor(TEAL), false);

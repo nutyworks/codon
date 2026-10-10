@@ -93,7 +93,7 @@ preference).
 
 | Concern | Existing tests |
 | --- | --- |
-| HUD/chat inset, modal backing and EN/KO compact/default readability | `clientTest`: `DebuggerLayoutTest`; `test`: `DebuggerThemeTest`; native: `DebuggerReadabilityGameTest`, `DebuggerOpacityGameTest`, `DebuggerPresentationGameTest`, `DebuggerNbtTreeGameTest` |
+| HUD/chat inset, modal backing and EN/KO compact/default readability | `clientTest`: `DebuggerLayoutTest`; `test`: `DebuggerThemeTest`, `UiScaleScreenRenderTest`; native: `DebuggerReadabilityGameTest`, `DebuggerOpacityGameTest`, `DebuggerPresentationGameTest`, `DebuggerNbtTreeGameTest`, `DebuggerUiScaleGameTest` |
 | Short/long boundary, repeated events and cancellation | `clientTest`: `UiHideGestureTest` |
 | Native keyboard/mouse dispatch, screen input, rebind, chat, missed mouse release, focus flag and rejoin | `DebuggerPeekUiGameTest` |
 | Real server breakpoint stays paused, then each command executes once after Resume | `DebuggerFreecamResumeGameTest` |
@@ -138,3 +138,10 @@ with an actual paused entity source; an injected flow fixture has no live NBT ex
 The fixture uses injected client snapshots, so use the real world-marker regression
 for H and server-pause safety. Inspect `codon-readable-*` images; this matrix does
 not establish arbitrary modded HUD placement or unusually many health rows.
+
+`UiScaleScreenRenderTest` checks that UI-scale settings extract a full-viewport
+dim scrim before the opaque panel at both 0% and 100% HUD opacity. The native
+`DebuggerUiScaleGameTest` opens settings through View and checks the actual GUI
+render-state rectangles at those two opacities. Inspect `codon-scale-scrim-hud-*`
+alongside the existing scale/input screenshots; the world outside the panel stays
+dim while the reading surface and the saved HUD-opacity intent remain intact.
