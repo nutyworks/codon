@@ -70,6 +70,10 @@ public final class BreakpointConditionVisibilityGameTest implements FabricClient
             context.waitFor(client -> reload.isDone() && client.gui.overlay() == null, 200);
             verify(context, world, 6, true, "ko-custom-stage", false);
             verify(context, world, 7, true, "ko-custom-legacy-line", false);
+            var newTarget = BreakpointTarget.whole(location(8));
+            world.getServer().runOnServer(server -> CodonMod.engine().deleteBreakpoint(newTarget));
+            context.waitFor(client -> CodonClientMod.state().breakpoints().get(newTarget) == null, 200);
+            verify(context, world, 8, false, "ko-custom-new-line", false, true);
             world.getServer().runOnServer(server -> CodonMod.engine().clearBreakpoints());
             var restore = context.computeOnClient(client -> {
                 client.getLanguageManager().setSelected(language);
@@ -132,6 +136,23 @@ public final class BreakpointConditionVisibilityGameTest implements FabricClient
             require(((BreakpointDefinition) FunctionLineBreakpointGameTest.field(layer, "original")).target().equals(target),
                 "editor retains exact original identity for " + name);
             require(!CodonClientMod.state().breakpoints().pending(target), "Open does not edit or enable " + name);
+            var delete = (AbstractWidget) FunctionLineBreakpointGameTest.field(layer, "deleteButton");
+            require(delete.active == (CodonClientMod.state().breakpoints().get(target) != null),
+                "Delete is available only for the exact acknowledged target: " + name);
+            var saveAction = (AbstractWidget) FunctionLineBreakpointGameTest.field(layer, "saveButton");
+            String expected = client.getLanguageManager().getSelected().equals("ko_kr")
+                ? "저장하고 활성화" : "Save and enable";
+            require(saveAction.getMessage().getString().equals(expected), "Save states that it enables the breakpoint: " + name);
+            require(client.font.width(saveAction.getMessage()) + 12 <= saveAction.getWidth(),
+                "The complete Save-and-enable action fits without clipping: " + name);
+            if (!delete.active) {
+                var click = new MouseButtonEvent(delete.getX() + delete.getWidth() / 2.0,
+                    delete.getY() + delete.getHeight() / 2.0, new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
+                layer.mouseClicked(click, false);
+                layer.mouseReleased(click);
+                require(ScreenLayers.get(screen) == layer && !CodonClientMod.state().breakpoints().pending(target),
+                    "An unavailable Delete neither submits a request nor dismisses the new draft: " + name);
+            }
         });
         context.getInput().setCursorPos(0, 0);
         context.waitTicks(3);

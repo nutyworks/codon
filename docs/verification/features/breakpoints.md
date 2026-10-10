@@ -193,8 +193,12 @@ first, then requests closing the layer (with discard confirmation for a dirty
 draft). Tab closes the menu and continues through the form.
 
 The exact edited marker remains visible while the layer or its menus are open. Opening
-and cancelling preserve its saved enabled state; Save always enables the exact definition
-with the chosen condition. Source/Flow line Condition actions use the clicked line
+and cancelling preserve its saved enabled state; **Save and enable** always enables the exact
+definition with the chosen condition, including a previously disabled breakpoint.
+Delete is disabled until the exact target exists in acknowledged server state; opening
+a new condition draft cannot submit a delete request. `BreakpointConditionVisibilityGameTest`
+checks both actions in English/Korean at custom scale, including an unset line beside a
+saved legacy stage. Source/Flow line Condition actions use the clicked line
 target exactly; the explicit Saved stage 1 actions use only the existing stage-zero
 definition. Their pending state and Flow summary follow those exact targets. The native command-block editor's
 legacy alias handling remains separate from these Source/Flow rules.

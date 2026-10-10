@@ -117,7 +117,7 @@
   "codon.breakpoint.short.removed_count": "Removed count",
   "codon.breakpoint.short.changed_count": "Changed count",
   "codon.breakpoint.count": "Context count",
-  "codon.breakpoint.save": "Save",
+  "codon.breakpoint.save": "Save and enable",
   "codon.breakpoint.cancel": "Cancel",
   "codon.breakpoint.discard_title": "Discard condition edits?",
   "codon.breakpoint.discard_prompt": "These changes have not been saved. Discard them?",

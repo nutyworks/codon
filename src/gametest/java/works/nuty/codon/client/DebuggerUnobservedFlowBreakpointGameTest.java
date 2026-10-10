@@ -218,7 +218,7 @@ public final class DebuggerUnobservedFlowBreakpointGameTest implements FabricCli
         context.takeScreenshot("codon-unobserved-flow-options-stage-" + target.stageIndex());
         context.runOnClient(client -> {
             Screen layer = ScreenLayers.get(client.gui.screen());
-            click(layer, button(layer, "Save"), InputConstants.MOUSE_BUTTON_LEFT);
+            click(layer, button(layer, "Save and enable"), InputConstants.MOUSE_BUTTON_LEFT);
         });
         context.waitFor(client -> state().breakpoints().get(target) != null && !state().breakpoints().pending(target)
             && ScreenLayers.get(client.gui.screen()) == null, 200);

@@ -117,7 +117,7 @@
   "codon.breakpoint.short.removed_count": "제거 수",
   "codon.breakpoint.short.changed_count": "변경 수",
   "codon.breakpoint.count": "컨텍스트 수",
-  "codon.breakpoint.save": "저장",
+  "codon.breakpoint.save": "저장하고 활성화",
   "codon.breakpoint.cancel": "취소",
   "codon.breakpoint.discard_title": "조건 변경을 버릴까요?",
   "codon.breakpoint.discard_prompt": "변경 사항을 아직 저장하지 않았습니다. 버릴까요?",
