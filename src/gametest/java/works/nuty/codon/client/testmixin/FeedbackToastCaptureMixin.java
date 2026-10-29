@@ -8,6 +8,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import works.nuty.codon.client.DebuggerRequestFeedbackGameTest;
+import works.nuty.codon.client.DebuggerControlOrderingGameTest;
 
 /** Observe actual toast draw submissions; queued notices never reach this hook. */
 @Mixin(SystemToast.class)
@@ -15,5 +16,6 @@ abstract class FeedbackToastCaptureMixin {
     @Inject(method = "extractRenderState", at = @At("TAIL"))
     private void codon$observeToast(GuiGraphicsExtractor graphics, Font font, long visibleFor, CallbackInfo ci) {
         DebuggerRequestFeedbackGameTest.observeToastDraw((SystemToast) (Object) this, graphics);
+        DebuggerControlOrderingGameTest.observeToastDraw((SystemToast) (Object) this, graphics);
     }
 }

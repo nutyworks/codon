@@ -120,6 +120,12 @@ Record the before/after command and call depth, not merely that the screen opene
 execution-complete stop, then continues. Its native command runs once; the client
 receives the completed record with a selected Flow stage and inactive controls.
 
+`DebuggerControlOrderingGameTest` delays real Step and Pause delivery in order,
+then sends a control from the older view. It verifies the matching server rejection
+survives both syncs and that the matching toast is fully inside the viewport and
+scissor while the HUD is visible. Inspect its screenshot for overlap. The server
+control is issued by the local console; this is not a two-client TCP test.
+
 `DebuggerRequestFeedbackGameTest` triggers a real two-block chain and uses a cached
 earlier pause to provoke actual server rejections for all four UI controls. Its
 connection-local observer deliberately withholds rejection replies to reproduce

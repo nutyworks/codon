@@ -3,6 +3,9 @@ import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.*;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.server.permissions.LevelBasedPermissionSet;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.toasts.SystemToast;
+import works.nuty.codon.client.ui.DebuggerFeedbackToast;
 import works.nuty.codon.CodonMod;
 import works.nuty.codon.adapter.DebuggerTaskQueue;
 import works.nuty.codon.client.input.InputManager;
@@ -16,6 +19,21 @@ import java.util.concurrent.atomic.*;
 @SuppressWarnings({"UnstableApiUsage","unchecked"})
 public final class DebuggerControlOrderingGameTest implements FabricClientGameTest {
     private static void require(boolean value,String message) { if(!value)throw new AssertionError(message); }
+    private static volatile ClientRequestFeedback.Notice expectedNotice;
+    private static volatile boolean expectedToastVisible;
+
+    public static void observeToastDraw(SystemToast toast, GuiGraphicsExtractor graphics) {
+        if (!(toast instanceof DebuggerFeedbackToast feedback) || feedback.notice() != expectedNotice
+            || feedback.getWantedVisibility() != SystemToast.Visibility.SHOW) return;
+        float x = graphics.pose().m20(), y = graphics.pose().m21();
+        if (x >= 0 && y >= 0 && x + toast.width() <= graphics.guiWidth()
+            && y + toast.height() <= graphics.guiHeight()
+            && graphics.containsPointInScissor((int) x, (int) y)
+            && graphics.containsPointInScissor((int) (x + toast.width() - 1), (int) (y + toast.height() - 1))) {
+            expectedToastVisible = true;
+        }
+    }
+
     private static ClientDebuggerState state() { return CodonClientMod.state(); }
     @Override public void runTest(ClientGameTestContext context) {
         try(TestSingleplayerContext world=context.worldBuilder().create()) {
@@ -81,13 +99,19 @@ public final class DebuggerControlOrderingGameTest implements FabricClientGameTe
                     require(!state().controlPending() && state().feedback().current() != null
                         && state().feedback().current().messageKey().equals("command.codon.error.stale_pause"),
                         "matching rejection is displayed after ordered sync");
+                    expectedNotice = state().feedback().current();
+                    expectedToastVisible = false;
                     events.add("final snapshot="+state().snapshot().pauseId()+", pending=false, feedback=stale_pause");
                     CodonMod.LOGGER.info("ORDERING REGRESSION PASSED {}",events);
                 });
                 context.waitTicks(20);
+                context.runOnClient(c -> require(expectedToastVisible,
+                    "the matching rejection toast must render fully within the viewport and scissor"));
                 context.takeScreenshot("codon-ordered-stale-rejection");
             } finally {
                 context.runOnClient(c->{
+                    expectedNotice = null;
+                    expectedToastVisible = false;
                     ClientPlayNetworking.unregisterReceiver(StepSyncPayload.TYPE.id());
                     ClientPlayNetworking.unregisterReceiver(PauseSyncPayload.TYPE.id());
                     ClientPlayNetworking.unregisterReceiver(ControlRejectedPayload.TYPE.id());
