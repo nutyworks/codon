@@ -47,6 +47,7 @@ public class DebuggerBreakpointDetachedGameTest implements FabricClientGameTest 
                 ScreenLayers.open(parent, modal);
                 var pending = state.breakpoints().begin(ClientBreakpointState.Action.SAVE, BreakpointDefinition.plain(target));
                 require(pending != null && ScreenLayers.get(parent) == modal, "SAVE pending and modal open");
+                modal.trackPending(pending.requestId());
                 return pending;
             });
             require(DebuggerTaskQueue.execute(server, () -> server.getCommands().performPrefixedCommand(
@@ -63,6 +64,30 @@ public class DebuggerBreakpointDetachedGameTest implements FabricClientGameTest 
             });
             context.waitTicks(20);
             context.takeScreenshot("codon-detached-modal-save-failure");
+            context.runOnClient(c -> {
+                var live = state.snapshot();
+                for (boolean replyFirst : new boolean[]{false, true}) {
+                    state.applyPause(live);
+                    var parent = c.gui.screen();
+                    var flow = state.selectedExecutionFlow();
+                    var modal = new BreakpointConditionScreen(parent, state, BreakpointDefinition.plain(target))
+                        .withContextGuard(() -> state.snapshot() == live && state.selectedExecutionFlow() == flow);
+                    ScreenLayers.open(parent, modal);
+                    var pending = state.breakpoints().begin(ClientBreakpointState.Action.SAVE, BreakpointDefinition.plain(target));
+                    require(pending != null, "start same-frame SAVE");
+                    modal.trackPending(pending.requestId());
+                    if (replyFirst) state.breakpoints().finish(pending.requestId(), ClientBreakpointState.Result.INVALID_TARGET);
+                    state.applyStep();
+                    if (!replyFirst) state.breakpoints().finish(pending.requestId(), ClientBreakpointState.Result.INVALID_TARGET);
+                    modal.tick();
+                    var notice = state.feedback().current(ClientRequestFeedback.Kind.BREAKPOINT);
+                    require(notice != null && notice.messageKey().equals("codon.breakpoint.error.invalid_target"),
+                        "same-frame sync and failure must survive either ordering");
+                }
+                CodonMod.LOGGER.info("MODAL SAME-FRAME PASS: sync-first and reply-first both retain notice");
+            });
+            context.waitTicks(20);
+            context.takeScreenshot("codon-same-frame-modal-failure");
             var done = new AtomicBoolean();
             DebuggerTaskQueue.execute(server, () -> { CodonMod.engine().clearBreakpoints(); CodonMod.engine().resetSession(); done.set(true); });
             context.waitFor(c -> done.get(), 200);

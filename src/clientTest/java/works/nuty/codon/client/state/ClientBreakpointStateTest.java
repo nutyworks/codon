@@ -91,7 +91,7 @@ class ClientBreakpointStateTest {
                 var state = new ClientBreakpointState(now::get, notices::add);
                 var definition = definition();
                 var edit = state.begin(action, definition);
-                state.detachPending(definition.target());
+                state.detachPending(definition.target(), edit.requestId());
                 if (timeout) {
                     now.set(10_000_000_000L);
                     state.expirePending();
@@ -108,12 +108,48 @@ class ClientBreakpointStateTest {
     }
 
     @Test
+    void finishedModalFailureCanBeReportedOnLaterContextChangeOnlyForItsOwnRequest() {
+        var notices = new ArrayList<ClientBreakpointState.Result>();
+        var state = new ClientBreakpointState(System::nanoTime, notices::add);
+        var definition = definition();
+        var first = state.begin(ClientBreakpointState.Action.SAVE, definition);
+        state.finish(first.requestId(), ClientBreakpointState.Result.INVALID_TARGET);
+        assertTrue(notices.isEmpty());
+        state.detachPending(definition.target(), first.requestId());
+        state.detachPending(definition.target(), first.requestId());
+        assertEquals(List.of(ClientBreakpointState.Result.INVALID_TARGET), notices);
+        var second = state.begin(ClientBreakpointState.Action.SAVE, definition);
+        state.detachPending(definition.target(), first.requestId());
+        state.finish(second.requestId(), ClientBreakpointState.Result.INVALID_TARGET);
+        assertEquals(1, notices.size());
+        state.detachPending(definition.target(), second.requestId());
+        assertEquals(2, notices.size());
+    }
+
+    @Test
+    void modalTimeoutBeforeContextChangeCanBeReportedOrForgotten() {
+        for (boolean forget : List.of(false, true)) {
+            var now = new AtomicLong();
+            var notices = new ArrayList<ClientBreakpointState.Result>();
+            var state = new ClientBreakpointState(now::get, notices::add);
+            var definition = definition();
+            var edit = state.begin(ClientBreakpointState.Action.DELETE, definition);
+            now.set(10_000_000_000L);
+            state.expirePending();
+            assertTrue(notices.isEmpty(), "an open modal owns its error");
+            if (forget) state.forgetModalFailure(definition.target(), edit.requestId());
+            state.detachPending(definition.target(), edit.requestId());
+            assertEquals(forget ? List.of() : List.of(ClientBreakpointState.Result.TIMED_OUT), notices);
+        }
+    }
+
+    @Test
     void successfulDetachedEditDoesNotReportFailure() {
         var notices = new ArrayList<ClientBreakpointState.Result>();
         var state = new ClientBreakpointState(System::nanoTime, notices::add);
         var definition = definition();
         var edit = state.begin(ClientBreakpointState.Action.SAVE, definition);
-        state.detachPending(definition.target());
+        state.detachPending(definition.target(), edit.requestId());
         state.finish(edit.requestId(), ClientBreakpointState.Result.APPLIED);
         assertTrue(notices.isEmpty());
     }
