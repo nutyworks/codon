@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.LongSupplier;
 import java.util.function.Consumer;
+import java.util.function.BiConsumer;
 
 /** Server-confirmed breakpoint definitions, paged snapshots, and per-target edit status. */
 public final class ClientBreakpointState {
@@ -19,10 +20,12 @@ public final class ClientBreakpointState {
     public record Edit(long requestId, Action action, BreakpointDefinition definition) { }
     private static final long TIMEOUT_NANOS = 10_000_000_000L;
     private final LongSupplier clock;
-    private final Consumer<Result> inlineFailure;
+    private final BiConsumer<BreakpointTarget, Result> inlineFailure;
+    private final Consumer<BreakpointTarget> editStarted;
     private final Map<BreakpointTarget, BreakpointDefinition> definitions = new HashMap<>();
     private final Map<BreakpointTarget, Pending> pending = new HashMap<>();
     private final Map<BreakpointTarget, Result> errors = new HashMap<>();
+    private final Map<BreakpointTarget, ModalFailure> modalFailures = new HashMap<>();
     private final List<BreakpointDefinition> incoming = new ArrayList<>();
     private long incomingTransferId;
     private long completedTransferId;
@@ -31,8 +34,13 @@ public final class ClientBreakpointState {
     public ClientBreakpointState() { this(System::nanoTime); }
     public ClientBreakpointState(LongSupplier clock) { this(clock, result -> { }); }
     public ClientBreakpointState(LongSupplier clock, Consumer<Result> inlineFailure) {
+        this(clock, (target, result) -> inlineFailure.accept(result), target -> { });
+    }
+    public ClientBreakpointState(LongSupplier clock, BiConsumer<BreakpointTarget, Result> inlineFailure,
+                                 Consumer<BreakpointTarget> editStarted) {
         this.clock = clock;
         this.inlineFailure = inlineFailure;
+        this.editStarted = editStarted;
     }
 
     public synchronized boolean acceptPage(long transferId, int offset, boolean last,
@@ -60,8 +68,10 @@ public final class ClientBreakpointState {
         if (pending.containsKey(target)) return null;
         long id = ++nextRequestId;
         if (id <= 0) id = nextRequestId = 1;
-        pending.put(target, new Pending(id, clock.getAsLong(), action));
+        pending.put(target, new Pending(id, clock.getAsLong(), action, false));
         errors.remove(target);
+        modalFailures.remove(target);
+        editStarted.accept(target);
         return new Edit(id, action, definition);
     }
 
@@ -75,8 +85,34 @@ public final class ClientBreakpointState {
         Pending entry = pending.remove(target);
         if (result != Result.APPLIED) {
             errors.put(target, result);
-            if (entry.action() == Action.TOGGLE) inlineFailure.accept(result);
+            if (entry.action() == Action.TOGGLE || entry.detached()) inlineFailure.accept(target, result);
+            else modalFailures.put(target, new ModalFailure(requestId, result));
         }
+    }
+
+    /** Associate a closing editor with only the request it submitted. */
+    public synchronized void detachPending(BreakpointTarget target, long requestId) {
+        Pending entry = pending.get(target);
+        if (entry != null && entry.requestId() == requestId && entry.action() != Action.TOGGLE) {
+            pending.put(target, new Pending(entry.requestId(), entry.startedAt(), entry.action(), true));
+            return;
+        }
+        ModalFailure failure = modalFailures.get(target);
+        if (failure != null && failure.requestId() == requestId) {
+            modalFailures.remove(target);
+            inlineFailure.accept(target, failure.result());
+        }
+    }
+
+    public synchronized long pendingRequestId(BreakpointTarget target) {
+        Pending entry = pending.get(target);
+        return entry == null ? 0 : entry.requestId();
+    }
+
+    /** Closing an editor normally discards its already-presented inline failure. */
+    public synchronized void forgetModalFailure(BreakpointTarget target, long requestId) {
+        ModalFailure failure = modalFailures.get(target);
+        if (failure != null && failure.requestId() == requestId) modalFailures.remove(target);
     }
 
     public synchronized @Nullable BreakpointDefinition get(BreakpointTarget target) {
@@ -107,7 +143,8 @@ public final class ClientBreakpointState {
         if (entry != null && clock.getAsLong() - entry.startedAt() >= TIMEOUT_NANOS) {
             pending.remove(target);
             errors.put(target, Result.TIMED_OUT);
-            if (entry.action() == Action.TOGGLE) inlineFailure.accept(Result.TIMED_OUT);
+            if (entry.action() == Action.TOGGLE || entry.detached()) inlineFailure.accept(target, Result.TIMED_OUT);
+            else modalFailures.put(target, new ModalFailure(entry.requestId(), Result.TIMED_OUT));
         }
     }
 
@@ -120,9 +157,11 @@ public final class ClientBreakpointState {
         definitions.clear();
         pending.clear();
         errors.clear();
+        modalFailures.clear();
         incoming.clear();
         incomingTransferId = completedTransferId = 0;
     }
 
-    private record Pending(long requestId, long startedAt, Action action) { }
+    private record ModalFailure(long requestId, Result result) { }
+    private record Pending(long requestId, long startedAt, Action action, boolean detached) { }
 }

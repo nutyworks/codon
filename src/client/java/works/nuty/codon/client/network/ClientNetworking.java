@@ -73,6 +73,8 @@ public final class ClientNetworking {
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             joinedDefinitions.isActive(); // Expire incomplete join transfers even when no further packets arrive.
             expireWatchUpload();
+            state.expireControlRequest();
+            state.breakpoints().expirePending();
             sendWatchQueries(client, state);
         });
         ClientPlayNetworking.registerGlobalReceiver(WatchEditorSyncPayload.TYPE, (payload, context) ->
@@ -116,6 +118,7 @@ public final class ClientNetworking {
             queryScheduler.reset();
             state.watches().endConnection();
             state.reset();
+            works.nuty.codon.client.ui.DebuggerFeedbackToast.clear();
             freecam.synchronize(client);
             effects.synchronize(client);
         });

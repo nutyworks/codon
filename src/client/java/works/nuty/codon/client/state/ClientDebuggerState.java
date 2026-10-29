@@ -1,6 +1,7 @@
 package works.nuty.codon.client.state;
 
 import org.jspecify.annotations.Nullable;
+import works.nuty.codon.core.model.BreakpointTarget;
 import works.nuty.codon.core.model.BlockLocation;
 import works.nuty.codon.core.model.CallFrame;
 import works.nuty.codon.core.model.CommandSnippet;
@@ -40,7 +41,10 @@ public final class ClientDebuggerState {
     private boolean watchReadsFailed;
     private long controlRequestedAt;
     private long controlRequestId;
+    private long controlReplyPauseId;
+    private boolean controlReplyEligible;
     private final ClientRequestFeedback feedback;
+    private @Nullable BreakpointTarget breakpointNoticeTarget;
     private final LongSupplier clock;
     private final ClientWatchState watches;
     private final ClientWatchEditorState watchEditor;
@@ -73,9 +77,17 @@ public final class ClientDebuggerState {
         this.watches = new ClientWatchState(clock);
         this.watchEditor = new ClientWatchEditorState(clock);
         this.nbt = new ClientNbtState(clock);
-        this.breakpoints = new ClientBreakpointState(clock, result -> feedback.show(ClientRequestFeedback.Kind.BREAKPOINT,
-            "codon.ui.breakpoint_rejected",
-            "codon.breakpoint.error." + result.name().toLowerCase(java.util.Locale.ROOT)));
+        this.breakpoints = new ClientBreakpointState(clock, (target, result) -> {
+            breakpointNoticeTarget = target;
+            feedback.show(ClientRequestFeedback.Kind.BREAKPOINT,
+                result == ClientBreakpointState.Result.TIMED_OUT ? "codon.ui.breakpoint_unconfirmed" : "codon.ui.breakpoint_rejected",
+                "codon.breakpoint.error." + result.name().toLowerCase(java.util.Locale.ROOT));
+        }, target -> {
+            if (target.equals(breakpointNoticeTarget)) {
+                feedback.clear(ClientRequestFeedback.Kind.BREAKPOINT);
+                breakpointNoticeTarget = null;
+            }
+        });
         this.stagePreviews = new ClientStagePreviewState();
         this.nbt.setEnabled(preferences.nbtExpanded());
         this.nbt.setEnabledListener(preferences::setNbtExpanded);
@@ -754,15 +766,18 @@ public final class ClientDebuggerState {
 
     /** Only a fresh server packet completes a control request; UI never fabricates a pause. */
     public boolean beginControlRequest() {
+        expireControlRequest();
         if (!paused || snapshot == null || controlPending()) return false;
         feedback.clearControl();
         controlPending = true;
+        controlReplyPauseId = snapshot.pauseId();
+        controlReplyEligible = true;
         controlRequestId = controlRequestId == Long.MAX_VALUE ? 1 : controlRequestId + 1;
         controlRequestedAt = clock.getAsLong();
         return true;
     }
 
-    public void deferControlForReads() { controlAwaitingReads = true; }
+    public void deferControlForReads() { controlAwaitingReads = true; controlReplyEligible = false; }
 
     /** Resume remains available if a deferred step cannot obtain a reply. */
     public boolean controlAwaitingReads() { return controlPending && controlAwaitingReads; }
@@ -773,20 +788,24 @@ public final class ClientDebuggerState {
     public void failWatchReads() {
         controlPending = false;
         controlAwaitingReads = false;
+        controlReplyEligible = false;
         watchReadsFailed = true;
     }
 
     public void controlSent() {
+        controlReplyEligible = true;
         controlAwaitingReads = false;
         controlRequestedAt = clock.getAsLong();
     }
 
-    public boolean controlPending() {
+    public boolean controlPending() { return controlPending; }
+
+    public void expireControlRequest() {
         if (controlPending && !controlAwaitingReads && clock.getAsLong() - controlRequestedAt >= 2_000_000_000L) {
             controlPending = false;
+            controlReplyEligible = false;
             feedback.show(ClientRequestFeedback.Kind.CONTROL, "codon.ui.control_timed_out", "codon.ui.control_timeout_detail");
         }
-        return controlPending;
     }
 
     public long controlRequestId() { return controlRequestId; }
@@ -794,7 +813,10 @@ public final class ClientDebuggerState {
 
     /** Ignore expired/replaced requests, even if another attempt targets the same pause. */
     public void rejectControl(long pauseId, long requestId, String messageKey) {
-        if (!controlPending() || snapshot == null || snapshot.pauseId() != pauseId || controlRequestId != requestId) return;
+        expireControlRequest();
+        if (!controlReplyEligible || controlReplyPauseId != pauseId || controlRequestId != requestId
+            || clock.getAsLong() - controlRequestedAt >= 2_000_000_000L) return;
+        controlReplyEligible = false;
         controlPending = false;
         feedback.show(ClientRequestFeedback.Kind.CONTROL, "codon.ui.control_rejected", messageKey);
     }
@@ -805,6 +827,8 @@ public final class ClientDebuggerState {
     }
 
     public void reset() {
+        controlReplyEligible = false;
+        breakpointNoticeTarget = null;
         feedback.clear();
         applyResume();
         recentFlowSnapshot = null;

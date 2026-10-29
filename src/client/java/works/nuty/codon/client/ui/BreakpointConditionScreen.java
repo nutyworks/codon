@@ -54,6 +54,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     private boolean confirmingDiscard;
     private final List<DebuggerButton> kinds = new ArrayList<>();
     private final List<DebuggerButton> comparisons = new ArrayList<>();
+    private long modalRequestId;
     private boolean saving;
     private boolean deleting;
     private boolean sendFailed;
@@ -90,6 +91,8 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
         this.thresholdText = Integer.toString(definition.condition().threshold());
     }
 
+    void trackPending(long requestId) { modalRequestId = requestId; }
+
     BreakpointConditionScreen withContextGuard(java.util.function.BooleanSupplier current) {
         contextCurrent = current;
         return this;
@@ -102,6 +105,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
 
     private boolean validContext() {
         if (contextCurrent.getAsBoolean()) return true;
+        state.breakpoints().detachPending(original.target(), modalRequestId);
         ScreenLayers.close(this);
         return false;
     }
@@ -382,6 +386,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
         BreakpointDefinition current = state.breakpoints().get(original.target());
         saving = ClientNetworking.sendBreakpointEdit(state, ClientBreakpointState.Action.SAVE,
             (current == null ? original : current).withCondition(draft()).withEnabled(true));
+        if (saving) trackPending(state.breakpoints().pendingRequestId(original.target()));
         sendFailed = !saving;
         refreshControls();
     }
@@ -391,6 +396,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
         if (state.breakpoints().get(original.target()) == null || state.breakpoints().pending(original.target())) return;
         saving = false;
         deleting = ClientNetworking.sendBreakpointEdit(state, ClientBreakpointState.Action.DELETE, original);
+        if (deleting) trackPending(state.breakpoints().pendingRequestId(original.target()));
         sendFailed = !deleting;
         refreshControls();
     }
@@ -580,6 +586,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
     }
 
     @Override public void removed() {
+        state.breakpoints().forgetModalFailure(original.target(), modalRequestId);
         super.removed();
         if (Minecraft.getInstance().gui.screen() == parent && contextCurrent.getAsBoolean()) restoreFocus.run();
     }

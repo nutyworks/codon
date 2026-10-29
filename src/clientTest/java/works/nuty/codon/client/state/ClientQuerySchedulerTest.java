@@ -47,6 +47,7 @@ class ClientQuerySchedulerTest {
         assertTrue(state.controlPending(), "the reply deadline starts when the control is sent after the reads");
         assertNull(state.feedback().current());
         clock.incrementAndGet();
+        state.expireControlRequest();
         assertFalse(state.controlPending());
         assertEquals("codon.ui.control_timeout_detail", state.feedback().current().messageKey());
     }
