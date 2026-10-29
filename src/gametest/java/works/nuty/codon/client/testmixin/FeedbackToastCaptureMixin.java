@@ -14,6 +14,6 @@ import works.nuty.codon.client.DebuggerRequestFeedbackGameTest;
 abstract class FeedbackToastCaptureMixin {
     @Inject(method = "extractRenderState", at = @At("TAIL"))
     private void codon$observeToast(GuiGraphicsExtractor graphics, Font font, long visibleFor, CallbackInfo ci) {
-        DebuggerRequestFeedbackGameTest.observeToastDraw((SystemToast) (Object) this);
+        DebuggerRequestFeedbackGameTest.observeToastDraw((SystemToast) (Object) this, graphics);
     }
 }
