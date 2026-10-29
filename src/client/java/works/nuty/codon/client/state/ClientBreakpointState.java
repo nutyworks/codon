@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.LongSupplier;
 import java.util.function.Consumer;
+import java.util.function.BiConsumer;
 
 /** Server-confirmed breakpoint definitions, paged snapshots, and per-target edit status. */
 public final class ClientBreakpointState {
@@ -19,7 +20,8 @@ public final class ClientBreakpointState {
     public record Edit(long requestId, Action action, BreakpointDefinition definition) { }
     private static final long TIMEOUT_NANOS = 10_000_000_000L;
     private final LongSupplier clock;
-    private final Consumer<Result> inlineFailure;
+    private final BiConsumer<BreakpointTarget, Result> inlineFailure;
+    private final Consumer<BreakpointTarget> editStarted;
     private final Map<BreakpointTarget, BreakpointDefinition> definitions = new HashMap<>();
     private final Map<BreakpointTarget, Pending> pending = new HashMap<>();
     private final Map<BreakpointTarget, Result> errors = new HashMap<>();
@@ -31,8 +33,13 @@ public final class ClientBreakpointState {
     public ClientBreakpointState() { this(System::nanoTime); }
     public ClientBreakpointState(LongSupplier clock) { this(clock, result -> { }); }
     public ClientBreakpointState(LongSupplier clock, Consumer<Result> inlineFailure) {
+        this(clock, (target, result) -> inlineFailure.accept(result), target -> { });
+    }
+    public ClientBreakpointState(LongSupplier clock, BiConsumer<BreakpointTarget, Result> inlineFailure,
+                                 Consumer<BreakpointTarget> editStarted) {
         this.clock = clock;
         this.inlineFailure = inlineFailure;
+        this.editStarted = editStarted;
     }
 
     public synchronized boolean acceptPage(long transferId, int offset, boolean last,
@@ -62,6 +69,7 @@ public final class ClientBreakpointState {
         if (id <= 0) id = nextRequestId = 1;
         pending.put(target, new Pending(id, clock.getAsLong(), action));
         errors.remove(target);
+        editStarted.accept(target);
         return new Edit(id, action, definition);
     }
 
@@ -75,7 +83,7 @@ public final class ClientBreakpointState {
         Pending entry = pending.remove(target);
         if (result != Result.APPLIED) {
             errors.put(target, result);
-            if (entry.action() == Action.TOGGLE) inlineFailure.accept(result);
+            if (entry.action() == Action.TOGGLE) inlineFailure.accept(target, result);
         }
     }
 
@@ -107,7 +115,7 @@ public final class ClientBreakpointState {
         if (entry != null && clock.getAsLong() - entry.startedAt() >= TIMEOUT_NANOS) {
             pending.remove(target);
             errors.put(target, Result.TIMED_OUT);
-            if (entry.action() == Action.TOGGLE) inlineFailure.accept(Result.TIMED_OUT);
+            if (entry.action() == Action.TOGGLE) inlineFailure.accept(target, Result.TIMED_OUT);
         }
     }
 
