@@ -102,6 +102,7 @@ public final class BreakpointConditionScreen extends ScaledCodonScreen {
 
     private boolean validContext() {
         if (contextCurrent.getAsBoolean()) return true;
+        state.breakpoints().detachPending(original.target());
         ScreenLayers.close(this);
         return false;
     }

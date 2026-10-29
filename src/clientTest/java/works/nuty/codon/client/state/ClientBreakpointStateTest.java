@@ -83,6 +83,42 @@ class ClientBreakpointStateTest {
     }
 
     @Test
+    void detachedModalReportsItsFailureOrTimeoutOnce() {
+        for (var action : List.of(ClientBreakpointState.Action.SAVE, ClientBreakpointState.Action.DELETE)) {
+            for (boolean timeout : List.of(false, true)) {
+                var now = new AtomicLong();
+                var notices = new ArrayList<ClientBreakpointState.Result>();
+                var state = new ClientBreakpointState(now::get, notices::add);
+                var definition = definition();
+                var edit = state.begin(action, definition);
+                state.detachPending(definition.target());
+                if (timeout) {
+                    now.set(10_000_000_000L);
+                    state.expirePending();
+                } else {
+                    state.finish(edit.requestId(), ClientBreakpointState.Result.INVALID_TARGET);
+                }
+                var expected = timeout ? ClientBreakpointState.Result.TIMED_OUT : ClientBreakpointState.Result.INVALID_TARGET;
+                assertEquals(expected, state.error(definition.target()));
+                assertEquals(List.of(expected), notices);
+                state.finish(edit.requestId(), ClientBreakpointState.Result.APPLIED);
+                assertEquals(List.of(expected), notices);
+            }
+        }
+    }
+
+    @Test
+    void successfulDetachedEditDoesNotReportFailure() {
+        var notices = new ArrayList<ClientBreakpointState.Result>();
+        var state = new ClientBreakpointState(System::nanoTime, notices::add);
+        var definition = definition();
+        var edit = state.begin(ClientBreakpointState.Action.SAVE, definition);
+        state.detachPending(definition.target());
+        state.finish(edit.requestId(), ClientBreakpointState.Result.APPLIED);
+        assertTrue(notices.isEmpty());
+    }
+
+    @Test
     void modalSaveAndDeleteRetainTheirErrorsWithoutDuplicateNoticesAndResetRejectsOldIds() {
         var notices = new ArrayList<ClientBreakpointState.Result>();
         var state = new ClientBreakpointState(System::nanoTime, notices::add);

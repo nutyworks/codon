@@ -67,7 +67,7 @@ public final class ClientBreakpointState {
         if (pending.containsKey(target)) return null;
         long id = ++nextRequestId;
         if (id <= 0) id = nextRequestId = 1;
-        pending.put(target, new Pending(id, clock.getAsLong(), action));
+        pending.put(target, new Pending(id, clock.getAsLong(), action, false));
         errors.remove(target);
         editStarted.accept(target);
         return new Edit(id, action, definition);
@@ -83,7 +83,15 @@ public final class ClientBreakpointState {
         Pending entry = pending.remove(target);
         if (result != Result.APPLIED) {
             errors.put(target, result);
-            if (entry.action() == Action.TOGGLE) inlineFailure.accept(target, result);
+            if (entry.action() == Action.TOGGLE || entry.detached()) inlineFailure.accept(target, result);
+        }
+    }
+
+    /** A context change closed the editor before its outstanding result could be shown. */
+    public synchronized void detachPending(BreakpointTarget target) {
+        Pending entry = pending.get(target);
+        if (entry != null && entry.action() != Action.TOGGLE) {
+            pending.put(target, new Pending(entry.requestId(), entry.startedAt(), entry.action(), true));
         }
     }
 
@@ -115,7 +123,7 @@ public final class ClientBreakpointState {
         if (entry != null && clock.getAsLong() - entry.startedAt() >= TIMEOUT_NANOS) {
             pending.remove(target);
             errors.put(target, Result.TIMED_OUT);
-            if (entry.action() == Action.TOGGLE) inlineFailure.accept(target, Result.TIMED_OUT);
+            if (entry.action() == Action.TOGGLE || entry.detached()) inlineFailure.accept(target, Result.TIMED_OUT);
         }
     }
 
@@ -132,5 +140,5 @@ public final class ClientBreakpointState {
         incomingTransferId = completedTransferId = 0;
     }
 
-    private record Pending(long requestId, long startedAt, Action action) { }
+    private record Pending(long requestId, long startedAt, Action action, boolean detached) { }
 }

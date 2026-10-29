@@ -12,7 +12,8 @@ after ten seconds reports that changes are unconfirmed, without changing the
 acknowledged definitions. Hidden markers also expire. Only the matching pending
 request may produce a rejection, so late/duplicate replies cannot release a retry.
 Notices disappear after six seconds. Save/Delete modal errors remain in the modal
-without a duplicate toast.
+without a duplicate toast. If a context change closes the modal while an edit is
+pending, a later rejection or timeout also appears in a toast.
 
 The breakpoint list now only navigates: its row overflow, toggle, condition,
 delete and Undo actions are removed.
@@ -151,6 +152,7 @@ Screen; actual list navigation and focus remain a UI acceptance check.
 | Definition/condition logic | `coreTest`: `BreakpointRegistryTest`, `BreakpointConditionEvaluatorTest`, `DebuggerEngineTest` |
 | Acknowledgement and pending UI state | `clientTest`: `ClientBreakpointStateTest` |
 | Non-hover inline rejection feedback (EN/KO), owner denial and unchanged definitions | `DebuggerRequestFeedbackGameTest` |
+| Context change closes a pending modal before an edit failure | `DebuggerBreakpointDetachedGameTest` (native console step; simulated edit result) |
 | Persistence/preview codec | `test`: `WorldBreakpointPersistenceTest`, `BreakpointStagePreviewPayloadTest` |
 | Native editor input, modal details without screen replacement, draft discard/cancel, pending/rejected saves, server edits, wrapping and narrow layouts | `DebuggerBreakpointUiGameTest` |
 | Single-stage editor/Flow target, legacy toggle/clear and native first-occurrence stop | `SingleStageBreakpointGameTest` |
