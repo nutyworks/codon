@@ -140,9 +140,12 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
         context.runOnClient(client -> require(screen(client).getFocused() == button(screen(client), text("codon.watch.edit")), "Tab after More reaches visible Edit"));
         click(context, "codon.watch.edit");
         closeInlineRow(context, "Expanded Details Edit hitbox opens the same inline editor");
-        context.runOnClient(client -> require(screen(client) instanceof WatchDetailsScreen
-            && button(screen(client), text("codon.watch.details.less")).visible,
-            "Edit cancellation returns to its original expanded Details screen"));
+        // Edit hands over to the inline row in the cursor screen; reopen Details expanded for the rest.
+        context.runOnClient(client -> require(!(screen(client) instanceof WatchDetailsScreen),
+            "Edit leaves Details for the inline row"));
+        if (!openDetailsFromValueRightEdge(context, fixture, name))
+            clickLabel(context, context.computeOnClient(client -> Component.translatable("codon.watch.inspect", WatchFormatting.specification(NBT).getString()).getString()));
+        click(context, "codon.watch.details.more");
         click(context, "codon.watch.details.less");
         click(context, "codon.watch.details.more");
         context.getInput().pressKey(InputConstants.KEY_END);

@@ -205,6 +205,8 @@ public final class DebuggerOverlay {
             auxiliaryPanel = auxiliarySize == 1 ? AuxiliaryPanel.INSPECTOR : AuxiliaryPanel.NONE;
             lastAuxiliarySize = auxiliarySize;
         }
+        // An open expression row lives in the Watches panel, so compact layouts must show it.
+        if (auxiliarySize != 0 && watchPanel.composerOpen()) auxiliaryPanel = AuxiliaryPanel.WATCHES;
         compactAuxiliary = auxiliarySize != 0;
         narrowAuxiliary = auxiliarySize == 2;
         showInspector = compactAuxiliary ? auxiliaryPanel == AuxiliaryPanel.INSPECTOR
