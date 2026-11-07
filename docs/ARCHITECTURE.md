@@ -291,22 +291,21 @@ context-following watch removes the redundant pin and reveals the existing row, 
 unpinning also works while running. Storage has no executor or pin control. Ungrouped entity rows with an executor show the expression and current value first, with the binding and executor on a second line. An unloaded or removed target
 reports `no target`. Unknown names use the UUID alone until the server or a pause context supplies a name.
 
-The Watches heading always includes a **+** button to open the definition editor, even when the
-list is empty. The add form contains only expression inputs: direct Score / Entity NBT / Storage tabs,
-separate drafts, inline syntax validation, and optional entity UUID selection. Blank entity follows the
-selected context; a specified UUID stays fixed. Objective, loaded-entity, storage and NBT pickers use
-owner-only read requests, paged at 32 options. NBT search filters the current page.
-The chooser aligns search, rows and right-side actions, centers single-line options, and fits
-short result pages without moving the title or search. Shared row bounds keep expansion controls,
-scrollbars, rendered gaps and native selection aligned at the applied Codon UI scale.
-Draft previews use pause/request/context correlation and never save definitions. Timeout retries are explicit. Input fields
-handle typing before global shortcuts; Tab visits each field and its Browse/Choose action,
-then Add/Save and Close. The first validation reason appears beside disabled Add/Save
-without attempting a submit. Enter adds and returns to Watches,
-Ctrl+Enter adds another with focus restored. Watches owns editing, binding and removal controls.
-All three forms share label, field and action columns. Inline choices leave room before the
-next label; visible validation replaces choices in that slot, and Retry aligns with the preview value.
-It uses upper-right whitespace down to the command panel, offers Context / Path / No group display modes, and
+The Watches heading always includes a **+** button that opens an inline expression row at the top of
+the panel, even when the list is empty; Edit on a row or its Details reuses the same row. The row takes a
+typed expression: `score <objective> [holder|uuid]`, `entity <path> [uuid]` or `storage <id> <path>`
+(`WatchExpression` in `src/core`; the client supplies vanilla `NbtPathArgument` to find where an NBT path
+ends). A blank holder or entity follows the selected context; a UUID stays fixed, and a quoted holder is a
+literal score-holder name. The slot being typed drives completion through the owner-only, 32-option
+editor read requests: objectives, score holders, storage IDs and NBT child names, with child paths spelled
+plainly even though the server quotes them. Entity paths are read from the paused executor; storage and
+named scores are also read while running. A finished valid expression switches to a read-only preview of
+its value. Requests use pause/request/context correlation, never save definitions, and time out into an
+explicit Retry. The row handles typing before global shortcuts. Enter adds (or saves an edit in place,
+keeping the watch identity), Ctrl+Enter keeps the kind for another watch, Tab completes, Up/Down move the
+highlight and Esc closes only the row; invalid text stays editable with its reason and is never added.
+Watches owns editing, binding and removal controls.
+The Watches panel uses upper-right whitespace down to the command panel, offers Context / Path / No group display modes, and
 reveals newly added or duplicate entries. Context groups by displayed executor UUID (including outgoing
 observations), falling back to the explicit binding or selected context, and by storage ID for storage rows.
 Small Score / NBT / Storage icons replace type prefixes. Path groups entity fields by kind, objective

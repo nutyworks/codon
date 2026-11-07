@@ -24,7 +24,6 @@ import works.nuty.codon.client.state.ClientWatchState;
 import works.nuty.codon.client.ui.DebuggerButton;
 import works.nuty.codon.client.ui.CodonScreen;
 import works.nuty.codon.client.ui.DebuggerOverlay;
-import works.nuty.codon.client.ui.WatchScreen;
 import works.nuty.codon.core.model.*;
 import works.nuty.codon.core.service.CommandStageEvent;
 import works.nuty.codon.network.PauseSyncPayload;
@@ -305,7 +304,9 @@ public final class DebuggerWatchGameTest implements FabricClientGameTest {
                     case "key.codon.step_into" -> input.stepIntoKey = key;
                 }
             }
-            client.setScreenAndShow(new WatchScreen(input, state, new DebuggerOverlay(state)));
+            var overlay = new DebuggerOverlay(state);
+            client.setScreenAndShow(new CodonScreen(input, overlay));
+            overlay.watchPanel().beginComposer(-1, input, overlay);
         });
         context.waitTicks(3);
         context.takeScreenshot("codon-watch-changed");
@@ -340,8 +341,11 @@ public final class DebuggerWatchGameTest implements FabricClientGameTest {
         context.takeScreenshot("codon-watch-compact");
         long id = context.computeOnClient(client -> CodonClientMod.state().watches().entries().getFirst().id());
         WatchGameTestUi.perform(context, id, "codon.watch.edit");
+        context.waitTicks(3);
         context.runOnClient(client -> {
-            require(client.gui.screen() instanceof WatchScreen, "Watch row menu opens its editor");
+            require(client.gui.screen() instanceof CodonScreen && client.gui.screen().children().stream()
+                    .anyMatch(child -> child instanceof net.minecraft.client.gui.components.EditBox),
+                "Watch row menu opens its inline editor");
             client.gui.screen().onClose();
         });
     }

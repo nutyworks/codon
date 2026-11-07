@@ -3,6 +3,7 @@ package works.nuty.codon.client.ui;
 import com.mojang.blaze3d.platform.InputConstants;
 
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
@@ -16,7 +17,7 @@ import java.util.List;
 public final class CodonScreen extends ScaledCodonScreen {
     private final InputManager input;
     private final DebuggerOverlay overlay;
-    private List<DebuggerButton> registered = List.of();
+    private List<AbstractWidget> registered = List.of();
 
     public CodonScreen(InputManager input, DebuggerOverlay overlay) {
         super(Component.translatable("codon.ui.title"), overlay.preferences());
@@ -41,13 +42,18 @@ public final class CodonScreen extends ScaledCodonScreen {
             cancelPanelResize();
         }
         List<DebuggerButton> buttons = overlay.render(graphics, covered ? -1 : mouseX, covered ? -1 : mouseY, partialTick, true, input);
-        if (!registered.equals(buttons)) {
+        List<AbstractWidget> widgets = new java.util.ArrayList<>(buttons);
+        var composerBox = overlay.watchPanel().composerBox();
+        if (composerBox != null) widgets.add(composerBox);
+        if (!registered.equals(widgets)) {
             setFocused(null);
             clearWidgets();
-            buttons.forEach(this::addWidget);
-            registered = buttons;
+            widgets.forEach(this::addWidget);
+            registered = widgets;
         }
-        setFocused(covered ? null : overlay.navigation().restoreFocus(focused, minecraft.getLastInputType().isKeyboard()));
+        if (composerBox != null && overlay.watchPanel().takeComposerFocusRequest()) setFocused(composerBox);
+        else if (composerBox != null && !covered && focused == composerBox) setFocused(composerBox);
+        else setFocused(covered ? null : overlay.navigation().restoreFocus(focused, minecraft.getLastInputType().isKeyboard()));
     }
 
     @Override
@@ -124,6 +130,7 @@ public final class CodonScreen extends ScaledCodonScreen {
         suspendPointerInteraction();
         overlay.closeViewMenu();
         overlay.watchPanel().closeGroupingMenu();
+        overlay.watchPanel().closeComposer();
         super.removed();
     }
 
@@ -150,6 +157,12 @@ public final class CodonScreen extends ScaledCodonScreen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
+        // Text entry owns every key, so menu, hide and execution shortcuts never fire while typing a watch.
+        if (overlay.watchPanel().composerKey(event)) return true;
+        if (event.key() == InputConstants.KEY_ESCAPE && overlay.watchPanel().composerOpen()) {
+            overlay.watchPanel().closeComposer();
+            return true;
+        }
         if (event.key() == InputConstants.KEY_ESCAPE) overlay.navigation().cancelDeferredFocus();
         if (event.key() == InputConstants.KEY_ESCAPE && overlay.panelResizing().cancel()) return true;
         if (!input.isUiHidden() && event.key() == InputConstants.KEY_F10 && event.hasShiftDown()

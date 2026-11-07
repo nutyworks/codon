@@ -120,28 +120,20 @@ data modify storage codon:verify counter set value 0
    watch editor at the viewport/GUI scale relevant to the reported issue.
 6. For persistence changes, save, leave and reopen the same world. Verify saved
    watch definitions and any affected client view preferences separately.
-7. In the Watch add/edit form, check Score, Entity NBT and Storage NBT in English
-   and Korean at normal and 320x240 GUI viewports. Labels sit above their fields;
-   field actions share row height and the right column. Recommendations leave a
-   gap before the next label, validation remains readable, and Retry sits beside
-   the preview value. Before submitting an empty form, the first validation reason
-   is visible beside disabled Add/Save. Tab visits each field followed by its
-   Browse/Choose action, then Add/Save and Close; reverse Tab retraces that order.
-   Use native clicks and Tab to check Browse, Retry, Add/Save
-   and focus after returning from the picker. Also check an independent Codon UI
-   scale when that option is available.
-8. Open both Browse/Choose buttons. In Objectives, check a blank search with two
-   short options: the search and list share their edges, labels are vertically
-   centered, and the footer follows the rows without a large empty panel. In
-   storage/entity NBT, inspect long details beside expansion arrows, expand and
-   go Up. Check page navigation, Retry, scroll and keyboard selection in English
-   and Korean at normal, narrow and custom Codon scales. Search retains its
-   position as result sizes change; native selection updates only its draft field.
-   Wheel over the search, title, footer and outside the panel must leave the
-   results at the same offset. Wheel over a row, row gap or the list's scrollbar
-   strip scrolls the results; confirm normal field drag and keyboard selection.
-   Click the scrollbar track, grab its thumb without a jump, drag outside the
-   list and release. Capture must end on release, resize, page loss or closing.
+7. In the inline Watch row (`+`, or Edit on a row/Details), type each of `score`,
+   `entity` and `storage` in English and Korean at normal and 320x240 viewports.
+   The first word offers the three kinds; completion rows list server objectives,
+   score holders (including fake players), storage IDs and NBT child names, with
+   plain path spelling. Up/Down move the highlight, Tab completes it, Enter adds or
+   saves, Ctrl+Enter keeps the kind for another watch, and Esc closes only the row.
+   While typing, menu, hide and execution shortcuts must not fire. A paused finished
+   expression shows its live preview value; a running one shows no value for entity
+   paths and reads storage directly. An invalid path (`entity Health[`) stays
+   editable with a reason and is never added. Retry appears beside a failed read.
+   Check focus survives a window resize and a GUI-scale change.
+8. Edit an existing Score watch bound to a fake player (`score name "#counter"`) and
+   a UUID-shaped quoted holder: the row shows the literal binding, saving keeps the
+   same watch identity, and quoting never binds a loaded entity.
 9. At 427x240, open View → Watches. Compact rows put a full-width name above a value
    line; scope moves into the full-text inspector (and into a row tooltip only when
    the row is clipped or has a status to explain). Inspect shortened
@@ -207,10 +199,9 @@ the repaired values and establish a complete baseline.
 - [WatchReader](../../../src/main/java/works/nuty/codon/adapter/WatchReader.java), [NbtTreeReader](../../../src/main/java/works/nuty/codon/adapter/NbtTreeReader.java): server-side reads.
 - [ClientWatchState](../../../src/client/java/works/nuty/codon/client/state/ClientWatchState.java), [ClientNbtState](../../../src/client/java/works/nuty/codon/client/state/ClientNbtState.java): requests, values and selected target.
 - [ClientQueryScheduler](../../../src/client/java/works/nuty/codon/client/state/ClientQueryScheduler.java): bounded paused-read dispatch and step ordering.
-- [WatchPanel](../../../src/client/java/works/nuty/codon/client/ui/WatchPanel.java), [WatchScreen](../../../src/client/java/works/nuty/codon/client/ui/WatchScreen.java), [NbtTreePanel](../../../src/client/java/works/nuty/codon/client/ui/NbtTreePanel.java): user interaction.
-- [WatchFormLayout](../../../src/client/java/works/nuty/codon/client/ui/layout/WatchFormLayout.java): shared form columns and vertical slots.
+- [WatchPanel](../../../src/client/java/works/nuty/codon/client/ui/WatchPanel.java), [WatchComposer](../../../src/client/java/works/nuty/codon/client/ui/WatchComposer.java), [NbtTreePanel](../../../src/client/java/works/nuty/codon/client/ui/NbtTreePanel.java): user interaction.
+- [WatchExpression](../../../src/core/java/works/nuty/codon/core/model/WatchExpression.java): the typed `score`/`entity`/`storage` grammar shared by parsing, completion slots and formatting.
 - [DebuggerContextMenu](../../../src/client/java/works/nuty/codon/client/ui/DebuggerContextMenu.java): shared modal dropdown hosted by ScreenLayers; Watch retains its existing guarded actions, row switching and keyboard/pointer handling.
-- [WatchPickerScreen](../../../src/client/java/works/nuty/codon/client/ui/WatchPickerScreen.java), [WatchPickerLayout](../../../src/client/java/works/nuty/codon/client/ui/layout/WatchPickerLayout.java): Browse dialog drawing, controls and hit bounds.
 - [WatchDetailsScreen](../../../src/client/java/works/nuty/codon/client/ui/WatchDetailsScreen.java), [WatchDetailsLayout](../../../src/client/java/works/nuty/codon/client/ui/layout/WatchDetailsLayout.java): full-value viewport and responsive footer.
 
 ## Choose verification
@@ -226,25 +217,16 @@ the repaired values and establish a complete baseline.
 | Watch readers and rendered values | `DebuggerWatchGameTest` |
 | Cold persisted Storage baseline, real restart/Continue, deletion/creation and entity/score history | `test`: `PersistedStorageNamespacesTest`; `DebuggerColdStorageWatchGameTest`, `PauseWatchChangesGameTest`, `DebuggerAutomaticWatchGameTest` |
 | Truncated/partial Storage decode, withheld baseline, and repaired-world reopen | `test`: `StorageReadFailureTest` (actual untransformed vanilla reader); `DebuggerStorageReadFailureGameTest` (actual mixin/snapshot/reopen) |
-| Editor and server request/reply | `DebuggerWatchEditorGameTest`, `WatchEditorTransportGameTest` |
-| Watch form alignment, languages and native input | `clientTest`: `WatchFormLayoutTest`; `DebuggerWatchFormLayoutGameTest` |
-| Browse dialog alignment, short Objectives, paging and selection | `clientTest`: `WatchPickerLayoutTest`; `DebuggerWatchPickerLayoutGameTest`, `WatchEditorTransportGameTest` |
+| Watch expression grammar | `coreTest`: `WatchExpressionTest` |
+| Inline row against a real server: completion, validation, Tab/Enter/Ctrl+Enter/Esc, resize focus, edit in place | `DebuggerWatchComposerGameTest` |
+| Inline row on a paused fixture: optional executors, literal holders, pin/delete, compact window | `DebuggerWatchEditorGameTest` |
+| Editor reader contract on the server thread | `WatchEditorTransportGameTest` |
 | Compact Watch values, Details footer, native actions and focus | `clientTest`: `WatchPanelLayoutTest`, `WatchDetailsLayoutTest`, `DebuggerHeaderLayoutTest`; `DebuggerCompactWatchGameTest` |
 | Empty Watches hint, visible `+` and editor route | `DebuggerNbtTreeGameTest` (`codon-nbt-tree-empty-watch-plus` capture) |
 | NBT reads, tree controls and stale buttons | `NbtTreeReaderGameTest`, `DebuggerNbtTreeGameTest`, `DebuggerNbtPendingButtonsGameTest` |
 | Pinning, grouping, persistence | `DebuggerWatchPinGameTest`, `DebuggerWatchGroupingGameTest`, `DebuggerWatchPersistenceGameTest` |
 | Pause-time changes and command chains | `PauseWatchChangesGameTest`, `DebuggerWatchChainGameTest`, `DebuggerAutomaticWatchGameTest` |
 
-The two layout GameTests use six representative cases each, not a language ×
-viewport × Watch-kind matrix. The form cases retain all three kinds in both
-languages, normal/compact layouts, custom-scale resize/clamping, validation,
-Retry, and Add/Save. The picker cases exercise each kind/field route once,
-including two short Objectives, paging/Retry, NBT expand/Up, narrow Korean
-scrolling, custom-scale selection, native wheel isolation at each list edge, and
-scrollbar track-click/thumb-drag/release outside the panel.
-The Korean Entity NBT case uses Custom 2.00 at 1364×1024 to match the manual
-search/footer wheel report. `WatchFormLayoutTest` and
-`WatchPickerLayoutTest` retain the focused geometry and viewport boundary checks.
 `DebuggerCompactWatchGameTest` uses six representative English/Korean cases at
 427x240, 320x240 and regular viewports, with following/custom scales. It checks
 native management and footer clicks, compact value right-edge click/tooltip hover,

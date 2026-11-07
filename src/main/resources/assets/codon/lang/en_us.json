@@ -517,5 +517,15 @@
   "codon.watch.menu.title": "Watch actions",
   "codon.watch.menu.hint": "Right-click or Shift+F10: Watch actions",
   "codon.watch.menu.add_watch": "Add to Watches",
-  "codon.watch.menu.delete": "Delete Watch"
+  "codon.watch.menu.delete": "Delete Watch",
+  "codon.watch.composer.label": "Watch expression",
+  "codon.watch.composer.hint": "score points · entity Health · storage demo:state counter",
+  "codon.watch.composer.syntax": "score <objective> [holder] · entity <path> [uuid] · storage <id> <path>",
+  "codon.watch.composer.keys": "Enter add · Ctrl+Enter more · Tab complete",
+  "codon.watch.composer.edit_keys": "Enter save · Tab complete · Esc cancel",
+  "codon.watch.composer.kw.score": "Scoreboard value of an objective",
+  "codon.watch.composer.kw.entity": "NBT path on the selected context",
+  "codon.watch.composer.kw.storage": "Command storage ID and NBT path",
+  "codon.watch.composer.error.keyword": "Start with score, entity or storage.",
+  "codon.watch.composer.error.path": "Not a valid NBT path."
 }

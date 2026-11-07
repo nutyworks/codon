@@ -81,7 +81,10 @@ public final class DebuggerReadabilityGameTest implements FabricClientGameTest {
                                 "Actual rendered command control clears the vanilla HUD/chat");
                         });
                         context.takeScreenshot("codon-readable-command-" + name);
-                        context.runOnClient(client -> client.setScreenAndShow(new WatchScreen(input, state, overlay)));
+                        context.runOnClient(client -> {
+                            client.setScreenAndShow(new CodonScreen(input, overlay));
+                            overlay.watchPanel().beginComposer(-1, input, overlay);
+                        });
                         context.waitTicks(3);
                         context.takeScreenshot("codon-readable-modal-sky-" + name);
                         context.getInput().lookAt(0, 65);
