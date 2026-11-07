@@ -301,8 +301,8 @@ public final class DebuggerKeyboardNavigationGameTest implements FabricClientGam
     }
 
     private static void checkWatchContainers(ClientGameTestContext context, ClientDebuggerState state) {
-        DebuggerOverlay overlay = new DebuggerOverlay(state);
         context.runOnClient(client -> {
+            var overlay = new DebuggerOverlay(state);
             var input = DebuggerPresentationGameTest.input(client, state);
             client.setScreenAndShow(new CodonScreen(input, overlay));
             overlay.watchPanel().beginComposer(-1, input, overlay);

@@ -26,7 +26,13 @@ public final class CodonScreen extends ScaledCodonScreen {
     }
 
     @Override
-    protected void init() { input.resetUiVisibility(); suspendPointerInteraction(); registered = List.of(); }
+    protected void init() {
+        input.resetUiVisibility();
+        suspendPointerInteraction();
+        registered = List.of();
+        // A resize rebuilds the widgets and clears focus; an open Watch row keeps keyboard focus.
+        overlay.watchPanel().refocusComposer();
+    }
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {

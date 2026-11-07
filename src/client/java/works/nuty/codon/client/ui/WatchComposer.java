@@ -60,6 +60,7 @@ final class WatchComposer {
 
     boolean open() { return box != null; }
     @Nullable EditBox box() { return box; }
+    void requestFocus() { if (box != null) wantsFocus = true; }
     boolean takeFocusRequest() { boolean value = wantsFocus; wantsFocus = false; return value; }
     boolean focused() { return box != null && box.isFocused(); }
 

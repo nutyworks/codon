@@ -83,6 +83,7 @@ public final class WatchPanel {
     @Nullable EditBox composerBox() { return composer.box(); }
     boolean composerOpen() { return composer.open(); }
     boolean composerFocused() { return composer.focused(); }
+    void refocusComposer() { composer.requestFocus(); }
     boolean takeComposerFocusRequest() { return composer.takeFocusRequest(); }
     boolean composerKey(KeyEvent event) { return composer.keyPressed(event, this); }
     void closeComposer() { composer.close(); }
