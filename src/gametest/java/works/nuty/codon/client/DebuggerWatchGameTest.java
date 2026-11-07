@@ -347,8 +347,11 @@ public final class DebuggerWatchGameTest implements FabricClientGameTest {
             require(client.gui.screen() instanceof CodonScreen && client.gui.screen().children().stream()
                     .anyMatch(child -> child instanceof net.minecraft.client.gui.components.EditBox),
                 "Watch row menu opens its inline editor");
-            client.gui.screen().onClose();
+            // Escape closes only the row; the cursor screen stays open for the checks that follow.
+            client.gui.screen().keyPressed(new net.minecraft.client.input.KeyEvent(
+                com.mojang.blaze3d.platform.InputConstants.KEY_ESCAPE, 0, 0));
         });
+        context.waitTicks(3);
     }
 
     private static void click(Screen screen, DebuggerButton button) {
