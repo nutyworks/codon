@@ -311,16 +311,17 @@ public final class DebuggerWatchGameTest implements FabricClientGameTest {
         context.waitTicks(3);
         context.takeScreenshot("codon-watch-changed");
         context.runOnClient(client -> {
-            Screen screen = client.gui.screen();
-            var field = screen.children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast)
+            var field = client.gui.screen().children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast)
                 .filter(EditBox::isVisible).findFirst().orElseThrow();
-            field.setValue("watch_added");
-            var add = screen.children().stream().filter(DebuggerButton.class::isInstance).map(DebuggerButton.class::cast)
-                .filter(b -> b.getMessage().getString().equals("Add")).findFirst().orElseThrow();
+            field.setValue("score watch_added");
+        });
+        context.waitTicks(3);
+        context.runOnClient(client -> {
             int before = CodonClientMod.state().watches().entries().size();
-            click(screen, add);
+            client.gui.screen().keyPressed(new net.minecraft.client.input.KeyEvent(
+                com.mojang.blaze3d.platform.InputConstants.KEY_RETURN, com.mojang.blaze3d.platform.InputConstants.KEYCODE_RETURN, 0));
             require(CodonClientMod.state().watches().entries().size() == before + 1, "UI adds a watch");
-            require(client.gui.screen() instanceof CodonScreen, "Add returns to the shared Watches HUD for management");
+            require(client.gui.screen() instanceof CodonScreen, "Add stays in the shared Watches HUD for management");
         });
         context.getInput().resizeWindow(640, 480);
         context.waitTicks(3);
