@@ -90,6 +90,10 @@ public final class DebuggerReadabilityGameTest implements FabricClientGameTest {
                         context.getInput().lookAt(0, 65);
                         context.waitTicks(3);
                         context.takeScreenshot("codon-readable-modal-ground-" + name);
+                        // Escape closes only the inline row; it would otherwise force the compact Watches panel.
+                        context.runOnClient(client -> client.gui.screen().keyPressed(
+                            new net.minecraft.client.input.KeyEvent(com.mojang.blaze3d.platform.InputConstants.KEY_ESCAPE, 0, 0)));
+                        context.waitTicks(3);
                     }
                 }
                 int[][] chatCases = language.equals("en_us")
