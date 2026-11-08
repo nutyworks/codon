@@ -207,14 +207,16 @@ and changes that require subsequent simulation ticks still wait for normal execu
   rendering at execution end; the paused body's third-person arms and equipment remain visible.
 - `CodonClientMod` — client composition root.
 
-`B` opens/closes cursor mode. `F9` continues, `F8` steps over, `F7` steps into, `Ctrl+F7` steps
+`V` opens/closes cursor mode. `F9` continues, `F8` steps over, `F7` steps into, `Ctrl+F7` steps
 out, and `F10` toggles the targeted block breakpoint; UI hints follow remapped keys. Gizmo modes
-are Grouped (default), Labels, and Focus. Context numbers identify entries in the current snapshot;
-selection survives a step only when an exact context or unambiguous entity/dimension match exists.
+are Grouped (default) and Labels. Context numbers identify entries in the current snapshot;
+selection survives a step only when the exact invocation, stage and occurrence can be
+restored, or (for legacy snapshots without occurrence identifiers) the exact `PauseSource`
+value is present.
 Transition trails are not inferred: they need execution history beyond the current snapshot.
 
 Pausing automatically enables freecam: movement keys follow the horizontal facing direction, jump/sneak move
-up/down, and sprint accelerates. `B` switches between freecam and the cursor UI; open screens stop
+up/down, and sprint accelerates. `V` switches between freecam and the cursor UI; open screens stop
 camera motion. `F10` targets the block under the camera. Gameplay actions and inventory input are
 disabled while freecam is active, and already-open containers close. Step and Continue retain the freecam viewpoint
 through later breakpoints in the current execution. Finishing the execution or leaving its final inspection stop
@@ -238,8 +240,9 @@ Resume/disconnect restores audio while preserving any ordinary singleplayer menu
 
 ### Watches
 
-While paused, open **B → Watch** in the command panel. Add scoreboard objectives,
-entity NBT paths, or storage ID/path pairs. Edit, remove and pin existing definitions in the Watches panel. Unpinned entity queries follow
+While paused, open **Watches** from the toolbar, then use **+** to add scoreboard objectives,
+entity NBT paths, or storage ID/path pairs. Edit, remove and pin existing definitions in the
+Watches panel. Unpinned entity queries follow
 the selected context in the inspector, not the selected caller frame. Examples: score objective
 `points`, entity path `Health` or `Pos[0]`, storage `demo:state` with path `counter`. Storage queries
 are independent of context selection. Definitions are saved per world and player, survive Continue,
@@ -566,11 +569,12 @@ does not run in the shipped mod or drain any additional server work.
 
 `DebuggerWatchChainGameTest` powers adjacent impulse/chain blocks containing `execute as @a run
 scoreboard players add @s a 3` and then `4`, starting at zero and with no initial score. It uses the
-actual F9 input path and requires `0 → 3` or `unset → 3` at the first next-block stop, while that stop
+actual Step Into input path (F7 by default) and requires `0 → 3` or `unset → 3` at the first
+next-block stop, while that stop
 still has no executor, without another key press. It then requires an unchanged `3` when the player
 becomes the executor again and `3 → 7` at execution completion. It also checks compact labels and
 detailed tooltip formatting. Screenshots record the immediate changes, and the final score confirms
-that each command ran exactly once in both scenarios. Each F9 logs control and Watch-read latency;
+that each command ran exactly once in both scenarios. Each Step Into logs control and Watch-read latency;
 the combined response must stay below 750 ms, including the outgoing executor's read when required.
 
 `NbtTreeReaderGameTest` checks exact generated paths (including punctuation, quotes, and backslashes),
@@ -585,7 +589,8 @@ Screenshots include four simultaneous watch rows.
 
 `DebuggerWatchPinGameTest` parks the actual server with two executor entities and clicks the Watches panel's
 pin/unpin controls. It checks independent score bindings, entity NBT pinning, context switches,
-per-target changes at a stop without an executor, duplicate unpin rejection, and removed-target status.
+per-target changes at a stop without an executor, merging a duplicate unpin into the existing
+context-following row, and removed-target status.
 Screenshots capture the two pinned rows and a detailed hover tooltip.
 
 `DebuggerWatchPersistenceGameTest` creates two real worlds, stores 256 definitions spanning three

@@ -193,8 +193,7 @@ java {
 jar {
 	inputs.property "archivesName", project.base.archivesName
 
-	// Bundle the Minecraft-free core into the mod jar (remapJar carries it through;
-	// remapping is a no-op for these non-Minecraft classes).
+	// Bundle the Minecraft-free core output into the mod jar.
 	from sourceSets.core.output
 
 	from("LICENSE") {

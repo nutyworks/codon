@@ -20,8 +20,8 @@ before expanding into a broad or repeated test campaign. Only run necessary test
   acknowledged server state; pending requests must not enable stale actions.
 - Observe real command execution. Never rerun commands to infer flow, or infer
   context lineage from UUID/position coincidence. Unmeasured is distinct from zero.
-- Client UI and Mixins belong in `src/client`; server adapters and network/persistence
-  code belong in `src/main`. Keep English/Korean translation keys in sync.
+- Client UI and client Mixins belong in `src/client`; server Mixins, adapters and
+  network/persistence code belong in `src/main`. Keep English/Korean translation keys in sync.
 
 ## Verification
 
@@ -38,8 +38,9 @@ to run in full for every edit. Run commands from the repository root.
 | Docs/CI only | Check links/configuration; validate changed Gradle task wiring when applicable |
 
 `RelevantTest` and `RelevantGameTest` are placeholders: take actual names from the
-feature map. `--tests` is for JUnit tasks, not `runClientGameTest`. The unfiltered
-client task runs every registered test; CI uses that full task.
+feature map. `--tests` is for JUnit tasks, not `runClientGameTest`. Unfiltered
+`clientTest` runs every registered client JUnit test. CI runs the complete registered
+client GameTest suite across eight shards using the same `runClientGameTest` task.
 
 For user-visible fixes, reproduce the relevant interaction, inspect the produced
 screenshot/log evidence, and report what it establishes. Compilation and unit
