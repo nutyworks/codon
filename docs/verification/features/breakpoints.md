@@ -80,8 +80,9 @@ and filtered captions in English/Korean, alongside all Watch-kind prefix permuta
 `CodonLabelsGameTest` retains one mixed snapshot per language at the 320×240 logical
 viewport, including the maximum-count header width, representative Watch Details
 and rotation. This produces eight screenshots rather than repeating every permutation.
-Limit failures retain client translation keys with a readable English fallback for
-console/RCON sources without client language assets. Disabling preserves the saved condition; use the
+Capacity failures from whole block/function toggles and stage/condition commands retain
+client translation keys with a readable English fallback for console/RCON sources
+without client language assets. Disabling preserves the saved condition; use the
 list to navigate to its source, then hover/focus its original marker to enable it again. The whole-command
 marker at the front of the command-block editor is always visible, including when
 unused or disabled. Text selection in the
@@ -123,7 +124,9 @@ usual server result; UI edits still require verifiable source. Existing enabled 
 their line changes. `CodonBreakpointCommandTest` verifies command dispatch and these
 adapter decisions with mocked server resources, including a real Minecraft-parsed
 20,001-command function returned by a mocked function manager. It also covers stage and
-condition creation/update/clear, rejected input leaving definitions unchanged, the owner
+condition creation/update/clear, real-registry capacity rejection through Minecraft's
+command source and RCON formatter (retained key, readable fallback and unchanged definitions),
+rejected input leaving definitions unchanged, the owner
 requirement, the loaded command-block path, `list` output and `/help` usage, with a tiny
 test-registered `execute` tree instead of vanilla's. It does not execute a
 native loaded function or prove execution beyond the Source response limits.

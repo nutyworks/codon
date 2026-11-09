@@ -25,13 +25,22 @@ import net.minecraft.server.packs.PackResources;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.permissions.LevelBasedPermissionSet;
+import net.minecraft.server.rcon.RconConsoleSource;
 import net.minecraft.world.level.BaseCommandBlock;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.CommandBlockEntity;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import works.nuty.codon.core.model.*;
+import works.nuty.codon.core.port.DebuggerEventSink;
+import works.nuty.codon.core.port.ExecutionController;
+import works.nuty.codon.core.service.BreakpointRegistry;
+import works.nuty.codon.core.service.CallStack;
 import works.nuty.codon.core.service.DebuggerEngine;
+import works.nuty.codon.core.service.StepController;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -177,6 +186,54 @@ class CodonBreakpointCommandTest {
         verify(fixture.engine, never()).saveBreakpoint(any());
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "function test:main 2 stage 2",
+        "function test:main 2 condition changed",
+        "function test:main 2 stage 2 condition changed",
+        "block 1 2 3 stage 2",
+        "block 1 2 3 condition changed",
+        "block 1 2 3 stage 2 condition changed"
+    })
+    void capacityFailureKeepsTheTranslationKeyAndReturnsReadableRconText(String command) throws Exception {
+        var registry = new BreakpointRegistry();
+        for (int line = 1; line <= BreakpointRegistry.MAX_DEFINITIONS; line++) {
+            registry.put(BreakpointDefinition.plain(BreakpointTarget.whole(new SourceLocation.Function(
+                new FunctionLocation(new FunctionId("test", "capacity"), line)))));
+        }
+        var before = registry.definitions();
+        var sink = mock(DebuggerEventSink.class);
+        var engine = new DebuggerEngine(registry, new StepController(), new CallStack(),
+            mock(ExecutionController.class), sink);
+        var fixture = new Fixture(STAGED_TEXT, engine).withParsing();
+        var level = mock(ServerLevel.class);
+        var entity = mock(CommandBlockEntity.class);
+        var block = mock(BaseCommandBlock.class);
+        when(level.dimension()).thenReturn(Level.OVERWORLD);
+        when(fixture.server.getAllLevels()).thenReturn(List.of(level));
+        when(level.isLoaded(any(BlockPos.class))).thenReturn(true);
+        when(level.getBlockEntity(any(BlockPos.class))).thenReturn(entity);
+        when(entity.getCommandBlock()).thenReturn(block);
+        when(block.getCommand()).thenReturn(STAGED);
+        var rcon = new RconConsoleSource(fixture.server);
+        var source = spy(new CommandSourceStack(rcon, net.minecraft.world.phys.Vec3.ZERO,
+            net.minecraft.world.phys.Vec2.ZERO, level, LevelBasedPermissionSet.OWNER,
+            Component.literal("Rcon"), fixture.server));
+
+        assertEquals(0, fixture.dispatcher.execute("codon breakpoint " + command, source));
+        var message = ArgumentCaptor.forClass(Component.class);
+        verify(source).sendFailure(message.capture());
+        var contents = assertInstanceOf(TranslatableContents.class, message.getValue().getContents());
+        assertAll(
+            () -> assertEquals("command.codon.breakpoint.invalid.limit", contents.getKey()),
+            () -> assertEquals("Breakpoint limit reached.", contents.getFallback()),
+            () -> assertEquals("Breakpoint limit reached.", rcon.getCommandResponse(),
+                "The real command source and RCON formatter must produce readable text without client assets"),
+            () -> assertEquals(before, registry.definitions(),
+                "Capacity rejection must leave every saved definition intact"));
+        verifyNoInteractions(sink);
+    }
+
     @Test void blockStageUsesTheLoadedCommandBlockSavedCommand() throws Exception {
         var fixture = new Fixture(STAGED_TEXT).withParsing();
         var level = mock(ServerLevel.class);
@@ -230,12 +287,19 @@ class CodonBreakpointCommandTest {
         final MinecraftServer server = mock(MinecraftServer.class);
         final ResourceManager resources = mock(ResourceManager.class);
         final ServerFunctionManager functions = mock(ServerFunctionManager.class);
-        final DebuggerEngine engine = mock(DebuggerEngine.class);
+        final DebuggerEngine engine;
         final CommandDispatcher<CommandSourceStack> dispatcher = new CommandDispatcher<>();
         final List<Component> successes = new ArrayList<>();
         Component failure;
 
         Fixture(String text) throws IOException {
+            this(text, mock(DebuggerEngine.class));
+            when(engine.breakpointDefinitions()).thenReturn(List.of());
+            when(engine.toggleFunctionBreakpoint(any())).thenReturn(true);
+        }
+
+        Fixture(String text, DebuggerEngine engine) throws IOException {
+            this.engine = engine;
             when(source.permissions()).thenReturn(LevelBasedPermissionSet.OWNER);
             when(source.getPosition()).thenReturn(net.minecraft.world.phys.Vec3.ZERO);
             when(source.getServer()).thenReturn(server);
@@ -246,8 +310,6 @@ class CodonBreakpointCommandTest {
             var bytes = text.getBytes(StandardCharsets.UTF_8);
             var resource = new Resource(mock(PackResources.class), () -> new ByteArrayInputStream(bytes));
             when(resources.getResource(FILE)).thenReturn(Optional.of(resource));
-            when(engine.breakpointDefinitions()).thenReturn(List.of());
-            when(engine.toggleFunctionBreakpoint(any())).thenReturn(true);
             doAnswer(call -> { failure = call.getArgument(0); return null; }).when(source).sendFailure(any());
             doAnswer(call -> {
                 Supplier<Component> feedback = call.getArgument(0);
