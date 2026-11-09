@@ -283,7 +283,10 @@ public final class DebuggerOverlay {
     }
 
     private String statusText() {
-        return tr(DebuggerStatus.translationKey(state));
+        String status = tr(DebuggerStatus.translationKey(state));
+        // The pause reason stays primary; withheld details only qualify it.
+        return state.isPaused() && state.withheldPauseDetails() != null
+            ? status + " · " + tr("codon.ui.details_withheld") : status;
     }
 
     private void renderHeader(GuiGraphicsExtractor graphics, DebuggerLayout layout, InputManager input,
@@ -625,8 +628,13 @@ public final class DebuggerOverlay {
             }
         }
         navigation.revealFocus(DebuggerNavigation.Group.SOURCES);
-        if (indices.isEmpty() && area.height() >= rowTop + 12)
-            text(graphics, tr("codon.ui.no_sources"), area.x() + 7, area.y() + rowTop + 3, area.width() - 14, MUTED);
+        if (indices.isEmpty() && area.height() >= rowTop + 12) {
+            var withheld = state.isPaused() ? state.withheldPauseDetails() : null;
+            String empty = withheld == null ? tr("codon.ui.no_sources")
+                : Component.translatable("codon.ui.details_withheld_counts",
+                    withheld.pauseSourceCount(), withheld.callStackSize()).getString();
+            text(graphics, empty, area.x() + 7, area.y() + rowTop + 3, area.width() - 14, MUTED);
+        }
         for (int row = 0; row < rows && sourceOffset + row < indices.size(); row++) {
             int index = indices.get(sourceOffset + row);
             PauseSource source = state.displayedSources().get(index);

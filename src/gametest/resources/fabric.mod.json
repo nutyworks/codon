@@ -32,6 +32,7 @@
       "works.nuty.codon.client.DebuggerStorageReadFailureGameTest",
       "works.nuty.codon.client.DebuggerAutomaticWatchGameTest",
       "works.nuty.codon.client.DebuggerWorldSyncGameTest",
+      "works.nuty.codon.client.DebuggerWithheldPauseGameTest",
       "works.nuty.codon.client.NbtTreeReaderGameTest",
       "works.nuty.codon.client.DebuggerNbtTreeGameTest",
       "works.nuty.codon.client.DebuggerWatchChainGameTest",

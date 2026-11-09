@@ -24,6 +24,7 @@ import works.nuty.codon.network.BreakpointStagePreviewRequestPayload;
 import works.nuty.codon.network.BreakpointStagePreviewSyncPayload;
 import works.nuty.codon.network.ExecutionFlowSyncPayload;
 import works.nuty.codon.network.PauseSyncPayload;
+import works.nuty.codon.network.PauseSummarySyncPayload;
 import works.nuty.codon.network.ResumeSyncPayload;
 import works.nuty.codon.network.StepSyncPayload;
 import works.nuty.codon.network.ContinueSyncPayload;
@@ -125,6 +126,14 @@ public final class ClientNetworking {
         ClientPlayNetworking.registerGlobalReceiver(PauseSyncPayload.TYPE, (payload, context) ->
             context.client().execute(() -> {
                 state.applyPause(payload.snapshot());
+                sendWatchQueries(context.client(), state);
+                freecam.synchronize(context.client());
+                effects.synchronize(context.client());
+            }));
+
+        ClientPlayNetworking.registerGlobalReceiver(PauseSummarySyncPayload.TYPE, (payload, context) ->
+            context.client().execute(() -> {
+                state.applyPauseSummary(payload.summary(), payload.callStackSize(), payload.pauseSourceCount());
                 sendWatchQueries(context.client(), state);
                 freecam.synchronize(context.client());
                 effects.synchronize(context.client());

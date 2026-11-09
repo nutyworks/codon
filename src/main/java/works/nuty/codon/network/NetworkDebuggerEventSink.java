@@ -66,12 +66,21 @@ public final class NetworkDebuggerEventSink implements DebuggerEventSink {
         }
     }
 
-    /** Shared live/JOIN boundary: never truncate source indices or disconnect an owner on encode. */
+    /**
+     * Shared live/JOIN boundary: never truncate source indices or disconnect an owner on encode.
+     * Returns whether the full snapshot was sent; an oversized pause sends a bounded summary instead.
+     */
     public boolean sendPauseSnapshot(ServerPlayer player, PauseSnapshot snapshot) {
         if (!authorized(player) || !ServerPlayNetworking.canSend(player, PauseSyncPayload.TYPE.id())) return false;
         if (!ClientboundLimits.supports(snapshot)) {
+            if (ServerPlayNetworking.canSend(player, PauseSummarySyncPayload.TYPE.id())) {
+                // The client stays paused with correlated controls; details are withheld, not truncated.
+                ServerPlayNetworking.send(player, PauseSummarySyncPayload.of(snapshot));
+                return false;
+            }
+            // Older peers cannot decode the summary. Only presentation is cleared; the engine remains
+            // paused and its controls remain usable.
             sendResume(player);
-            // Only presentation is cleared. The engine remains paused and its controls remain usable.
             player.sendSystemMessage(Component.translatableWithFallback("codon.pause.snapshot_too_large",
                 "Codon is paused, but this snapshot is too large to display. Use /codon resume to continue."));
             return false;

@@ -272,6 +272,36 @@ class NetworkCodecsTest {
         }
     }
 
+    @Test void pauseSummaryCarriesIdentityAndCountsWithoutDetails() {
+        SourceLocation location = new SourceLocation.Block(new BlockLocation(0, 64, 0, "minecraft:overworld"));
+        CommandSnippet command = new CommandSnippet("execute as @e run say hi", 8, 13);
+        var sources = java.util.Collections.nCopies(ClientboundLimits.MAX_PAUSE_SOURCES + 1, source(1));
+        var oversized = new PauseSnapshot(location, command, 3, List.of(new CallFrame(3, location, command)), sources,
+            PauseReason.BREAKPOINT, 51);
+        var payload = PauseSummarySyncPayload.of(oversized);
+        FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
+        try {
+            PauseSummarySyncPayload.CODEC.encode(buffer, payload);
+            var decoded = PauseSummarySyncPayload.CODEC.decode(buffer);
+            assertEquals(payload, decoded);
+            assertEquals(51, decoded.summary().pauseId());
+            assertEquals(PauseReason.BREAKPOINT, decoded.summary().reason());
+            assertEquals(location, decoded.summary().location());
+            assertEquals(1, decoded.callStackSize());
+            assertEquals(ClientboundLimits.MAX_PAUSE_SOURCES + 1, decoded.pauseSourceCount());
+            assertTrue(decoded.summary().pauseSources().isEmpty() && decoded.summary().callStack().isEmpty());
+
+            buffer.clear();
+            var withDetails = new PauseSummarySyncPayload(new PauseSnapshot(location, command, 0, List.of(),
+                List.of(source(2)), PauseReason.STEP, 52), 0, 1);
+            PauseSummarySyncPayload.CODEC.encode(buffer, withDetails);
+            assertThrows(DecoderException.class, () -> PauseSummarySyncPayload.CODEC.decode(buffer),
+                "A summary never carries a partial source list");
+        } finally {
+            buffer.release();
+        }
+    }
+
     private static PauseSource source(double x) {
         return new PauseSource(new Vec3d(x, 64, 0), 0, 90, null, "minecraft:overworld");
     }
