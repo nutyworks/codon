@@ -35,6 +35,11 @@ public final class NbtTreeReader {
     }
 
     public static NbtPage readPage(CompoundTag root, String path, int offset) {
+        return readPage(root, path, offset, "");
+    }
+
+    /** Lists the children whose names start with the prefix (ignoring case), so late children stay reachable. */
+    public static NbtPage readPage(CompoundTag root, String path, int offset, String prefix) {
         if (root == null || path == null || path.length() > NbtPage.MAX_PATH_LENGTH || offset < 0)
             return NbtPage.absent(WatchResult.Status.INVALID_PATH);
         if (root.sizeInBytes() > MAX_ROOT_BYTES) return NbtPage.absent(WatchResult.Status.TOO_LARGE);
@@ -52,11 +57,19 @@ public final class NbtTreeReader {
                 value = matches.getFirst();
             } catch (CommandSyntaxException e) { return NbtPage.absent(WatchResult.Status.VALUE_MISSING); }
         }
-        int total = childCount(value);
+        String needle = prefix == null ? "" : prefix.toLowerCase(java.util.Locale.ROOT);
+        List<String> keys = value instanceof CompoundTag compound
+            ? compound.entrySet().stream().map(java.util.Map.Entry::getKey)
+                .filter(key -> key.toLowerCase(java.util.Locale.ROOT).startsWith(needle)).sorted().toList() : List.of();
+        // Indices matching the prefix; null means every element.
+        List<Integer> indices = null;
+        if (value instanceof CollectionTag collection && !needle.isEmpty()) {
+            indices = new ArrayList<>();
+            for (int i = 0; i < collection.size(); i++) if (("[" + i + "]").startsWith(needle)) indices.add(i);
+        }
+        int total = value instanceof CompoundTag ? keys.size() : indices != null ? indices.size() : childCount(value);
         if (offset > total) return NbtPage.absent(WatchResult.Status.INVALID_PATH);
         int end = (int) Math.min(total, (long) offset + NbtPage.PAGE_SIZE);
-        List<String> keys = value instanceof CompoundTag compound
-            ? compound.entrySet().stream().map(java.util.Map.Entry::getKey).sorted().toList() : List.of();
         List<NbtPage.Node> page = new ArrayList<>();
         for (int i = offset; i < end; i++) {
             String name;
@@ -67,8 +80,9 @@ public final class NbtTreeReader {
                 child = compound.get(name);
                 childPath = (path.isEmpty() ? "" : path + ".") + quotedKey(name);
             } else {
-                name = "[" + i + "]";
-                child = ((CollectionTag) value).get(i);
+                int index = indices == null ? i : indices.get(i);
+                name = "[" + index + "]";
+                child = ((CollectionTag) value).get(index);
                 childPath = path + name;
             }
             if (childPath.length() > NbtPage.MAX_PATH_LENGTH

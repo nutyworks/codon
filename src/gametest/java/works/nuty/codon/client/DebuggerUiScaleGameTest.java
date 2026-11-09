@@ -11,7 +11,6 @@ import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.minecraft.client.InputType;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.state.gui.ColoredRectangleRenderState;
 import net.minecraft.client.renderer.state.gui.GuiRenderState;
@@ -310,10 +309,7 @@ public final class DebuggerUiScaleGameTest implements FabricClientGameTest {
     private static void checkScreens(ClientGameTestContext context, Fixture f) {
         long id = f.state().watches().addOrFind(new WatchSpec(WatchSpec.Kind.STORAGE_NBT, "demo:scale", "long.path"));
         List<ScaledCodonScreen> screens = context.computeOnClient(client -> List.of(
-            new WatchScreen(f.input(), f.state(), f.overlay()),
             new WatchDetailsScreen(f.input(), f.state(), f.overlay(), id),
-            new WatchPickerScreen(f.screen(), f.state(), new WatchEditorQuery(WatchEditorQuery.Mode.STORAGES,
-                WatchSpec.Kind.STORAGE_NBT, "", "", null, "", 0), ignored -> { }),
             new WatchGroupingScreen(f.screen(), WatchGrouping.Mode.NONE, ignored -> { }),
             new BreakpointListScreen(f.screen(), f.state()),
             new FunctionSourceScreen(f.screen(), new ClientFunctionSourceState())));
@@ -322,24 +318,6 @@ public final class DebuggerUiScaleGameTest implements FabricClientGameTest {
             context.waitTicks(3);
             context.runOnClient(client -> require(screen.width == f.screen().width && screen.height == f.screen().height,
                 "Every Codon screen shares logical scale: " + screen.getClass().getSimpleName()));
-            if (screen instanceof WatchScreen) {
-                EditBox field = context.computeOnClient(client -> screen.children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast).findFirst().orElseThrow());
-                hover(context, screen, new double[]{field.getX() + 8, field.getY() + 8});
-                context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_LEFT);
-                context.runOnClient(client -> require(field.isFocused(), "Native pointer focuses scaled text field"));
-                context.getInput().typeChars("scaled_focus");
-                context.getInput().resizeWindow(1200, 800);
-                context.waitTicks(3);
-                context.runOnClient(client -> require(screen.getFocused() instanceof EditBox resized
-                    && resized.getValue().equals("scaled_focus"), "Text and field focus survive a window resize"));
-                setGameScale(context, 3);
-                context.waitTicks(3);
-                context.runOnClient(client -> require(screen.getFocused() instanceof EditBox resized
-                    && resized.getValue().equals("scaled_focus"), "Text and field focus survive a game GUI-scale change"));
-                setGameScale(context, 2);
-                context.getInput().resizeWindow(1280, 800);
-                context.waitTicks(3);
-            }
             context.takeScreenshot("codon-scale-screen-" + screen.getClass().getSimpleName());
             click(context, screen, "Close");
             context.runOnClient(client -> require(client.gui.screen() instanceof CodonScreen, "Native Close hitbox returns from " + screen.getClass().getSimpleName()));

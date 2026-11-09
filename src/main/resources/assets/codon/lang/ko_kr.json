@@ -518,5 +518,15 @@
   "codon.watch.menu.title": "감시 항목 관리",
   "codon.watch.menu.hint": "우클릭 또는 Shift+F10: 감시 항목 관리",
   "codon.watch.menu.add_watch": "감시 항목에 추가",
-  "codon.watch.menu.delete": "감시 항목 삭제"
+  "codon.watch.menu.delete": "감시 항목 삭제",
+  "codon.watch.composer.label": "감시 식",
+  "codon.watch.composer.hint": "score points · entity Health · storage demo:state counter",
+  "codon.watch.composer.syntax": "score <목표> [대상] · entity <경로> [UUID] · storage <ID> <경로>",
+  "codon.watch.composer.keys": "Enter 추가 · Ctrl+Enter 연속 · Tab 완성",
+  "codon.watch.composer.edit_keys": "Enter 저장 · Tab 완성 · Esc 취소",
+  "codon.watch.composer.kw.score": "목표의 점수 값",
+  "codon.watch.composer.kw.entity": "선택한 컨텍스트의 NBT 경로",
+  "codon.watch.composer.kw.storage": "명령 저장소 ID와 NBT 경로",
+  "codon.watch.composer.error.keyword": "score, entity 또는 storage로 시작하세요.",
+  "codon.watch.composer.error.path": "올바른 NBT 경로가 아닙니다."
 }

@@ -81,12 +81,19 @@ public final class DebuggerReadabilityGameTest implements FabricClientGameTest {
                                 "Actual rendered command control clears the vanilla HUD/chat");
                         });
                         context.takeScreenshot("codon-readable-command-" + name);
-                        context.runOnClient(client -> client.setScreenAndShow(new WatchScreen(input, state, overlay)));
+                        context.runOnClient(client -> {
+                            client.setScreenAndShow(new CodonScreen(input, overlay));
+                            overlay.watchPanel().beginComposer(-1, input, overlay);
+                        });
                         context.waitTicks(3);
                         context.takeScreenshot("codon-readable-modal-sky-" + name);
                         context.getInput().lookAt(0, 65);
                         context.waitTicks(3);
                         context.takeScreenshot("codon-readable-modal-ground-" + name);
+                        // Escape closes only the inline row; it would otherwise force the compact Watches panel.
+                        context.runOnClient(client -> client.gui.screen().keyPressed(
+                            new net.minecraft.client.input.KeyEvent(com.mojang.blaze3d.platform.InputConstants.KEY_ESCAPE, 0, 0)));
+                        context.waitTicks(3);
                     }
                 }
                 int[][] chatCases = language.equals("en_us")

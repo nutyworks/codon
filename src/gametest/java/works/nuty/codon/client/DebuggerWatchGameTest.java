@@ -24,7 +24,6 @@ import works.nuty.codon.client.state.ClientWatchState;
 import works.nuty.codon.client.ui.DebuggerButton;
 import works.nuty.codon.client.ui.CodonScreen;
 import works.nuty.codon.client.ui.DebuggerOverlay;
-import works.nuty.codon.client.ui.WatchScreen;
 import works.nuty.codon.core.model.*;
 import works.nuty.codon.core.service.CommandStageEvent;
 import works.nuty.codon.network.PauseSyncPayload;
@@ -305,21 +304,24 @@ public final class DebuggerWatchGameTest implements FabricClientGameTest {
                     case "key.codon.step_into" -> input.stepIntoKey = key;
                 }
             }
-            client.setScreenAndShow(new WatchScreen(input, state, new DebuggerOverlay(state)));
+            var overlay = new DebuggerOverlay(state);
+            client.setScreenAndShow(new CodonScreen(input, overlay));
+            overlay.watchPanel().beginComposer(-1, input, overlay);
         });
         context.waitTicks(3);
         context.takeScreenshot("codon-watch-changed");
         context.runOnClient(client -> {
-            Screen screen = client.gui.screen();
-            var field = screen.children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast)
+            var field = client.gui.screen().children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast)
                 .filter(EditBox::isVisible).findFirst().orElseThrow();
-            field.setValue("watch_added");
-            var add = screen.children().stream().filter(DebuggerButton.class::isInstance).map(DebuggerButton.class::cast)
-                .filter(b -> b.getMessage().getString().equals("Add")).findFirst().orElseThrow();
+            field.setValue("score watch_added");
+        });
+        context.waitTicks(3);
+        context.runOnClient(client -> {
             int before = CodonClientMod.state().watches().entries().size();
-            click(screen, add);
+            client.gui.screen().keyPressed(new net.minecraft.client.input.KeyEvent(
+                com.mojang.blaze3d.platform.InputConstants.KEY_RETURN, com.mojang.blaze3d.platform.InputConstants.KEYCODE_RETURN, 0));
             require(CodonClientMod.state().watches().entries().size() == before + 1, "UI adds a watch");
-            require(client.gui.screen() instanceof CodonScreen, "Add returns to the shared Watches HUD for management");
+            require(client.gui.screen() instanceof CodonScreen, "Add stays in the shared Watches HUD for management");
         });
         context.getInput().resizeWindow(640, 480);
         context.waitTicks(3);
@@ -340,10 +342,16 @@ public final class DebuggerWatchGameTest implements FabricClientGameTest {
         context.takeScreenshot("codon-watch-compact");
         long id = context.computeOnClient(client -> CodonClientMod.state().watches().entries().getFirst().id());
         WatchGameTestUi.perform(context, id, "codon.watch.edit");
+        context.waitTicks(3);
         context.runOnClient(client -> {
-            require(client.gui.screen() instanceof WatchScreen, "Watch row menu opens its editor");
-            client.gui.screen().onClose();
+            require(client.gui.screen() instanceof CodonScreen && client.gui.screen().children().stream()
+                    .anyMatch(child -> child instanceof net.minecraft.client.gui.components.EditBox),
+                "Watch row menu opens its inline editor");
+            // Escape closes only the row; the cursor screen stays open for the checks that follow.
+            client.gui.screen().keyPressed(new net.minecraft.client.input.KeyEvent(
+                com.mojang.blaze3d.platform.InputConstants.KEY_ESCAPE, 0, 0));
         });
+        context.waitTicks(3);
     }
 
     private static void click(Screen screen, DebuggerButton button) {

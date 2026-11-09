@@ -187,11 +187,15 @@ public final class DebuggerOpacityGameTest implements FabricClientGameTest {
             context.runOnClient(client -> {
                 state.preferences().setBackgroundOpacity(50);
                 var input = DebuggerPresentationGameTest.input(client, state);
-                var editor = new works.nuty.codon.client.ui.WatchScreen(input, state, new DebuggerOverlay(state));
-                client.setScreenAndShow(editor);
-                var field = editor.children().stream().filter(net.minecraft.client.gui.components.EditBox.class::isInstance)
+                var overlay = new DebuggerOverlay(state);
+                client.setScreenAndShow(new CodonScreen(input, overlay));
+                overlay.watchPanel().beginComposer(-1, input, overlay);
+            });
+            context.waitTicks(3);
+            context.runOnClient(client -> {
+                var field = client.gui.screen().children().stream().filter(net.minecraft.client.gui.components.EditBox.class::isInstance)
                     .map(net.minecraft.client.gui.components.EditBox.class::cast).findFirst().orElseThrow();
-                field.setValue("demo:opacity");
+                field.setValue("score demo_opacity");
                 field.setHighlightPos(0);
             });
             context.waitTicks(3);

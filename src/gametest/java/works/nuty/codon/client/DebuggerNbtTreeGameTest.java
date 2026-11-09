@@ -21,7 +21,6 @@ import works.nuty.codon.client.ui.CodonScreen;
 import works.nuty.codon.client.ui.DebuggerButton;
 import works.nuty.codon.client.ui.DebuggerIcon;
 import works.nuty.codon.client.ui.DebuggerOverlay;
-import works.nuty.codon.client.ui.WatchScreen;
 import works.nuty.codon.client.ui.WatchFormatting;
 import works.nuty.codon.client.ui.layout.DebuggerLayout;
 import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds;
@@ -315,15 +314,19 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
         context.runOnClient(client -> {
             CodonScreen screen = codonScreen(client.gui.screen());
             click(screen, button(screen, message -> message.equals("+")));
-            require(client.gui.screen() instanceof WatchScreen, "CodonScreen watch summary plus opens WatchScreen");
-            require(client.gui.screen().children().stream().filter(DebuggerButton.class::isInstance).map(DebuggerButton.class::cast)
-                    .noneMatch(button -> button.getMessage().getString().equals("Remove") || button.icon() == DebuggerIcon.PIN
-                        || button.icon() == DebuggerIcon.WATCHES),
-                "the Watch editor is add-only; pinned NBT entries are managed in Watches HUD");
-            client.gui.screen().onClose();
         });
-        context.waitFor(client -> client.gui.screen() instanceof CodonScreen, 50);
         context.waitTicks(3);
+        context.runOnClient(client -> {
+            require(client.gui.screen() instanceof CodonScreen && client.gui.screen().children().stream()
+                    .anyMatch(child -> child instanceof net.minecraft.client.gui.components.EditBox),
+                "CodonScreen watch summary plus opens the inline Watch row");
+            client.gui.screen().keyPressed(new net.minecraft.client.input.KeyEvent(
+                com.mojang.blaze3d.platform.InputConstants.KEY_ESCAPE, 0, 0));
+        });
+        context.waitTicks(3);
+        context.runOnClient(client -> require(client.gui.screen() instanceof CodonScreen && client.gui.screen().children()
+                .stream().noneMatch(child -> child instanceof net.minecraft.client.gui.components.EditBox),
+            "Escape closes the inline Watch row and stays in cursor mode"));
     }
 
     private static void assertPermanentNbtHeading(ClientGameTestContext context) {

@@ -111,6 +111,11 @@ public final class DebuggerOverlay {
 
     public DebuggerNavigation navigation() { return navigation; }
     public WatchPanel watchPanel() { return watchPanel; }
+
+    /** Opening an expression row needs its panel: wide layouts show Watches, compact ones derive it per frame. */
+    void revealWatches() {
+        if (!compactAuxiliary) state.preferences().setWatchesVisible(true);
+    }
     void revealSelectedFlow(CodonScreen screen, String focusId) {
         preferences().setCommandVisible(true);
         closeAuxiliaryPanel();
@@ -205,21 +210,26 @@ public final class DebuggerOverlay {
             auxiliaryPanel = auxiliarySize == 1 ? AuxiliaryPanel.INSPECTOR : AuxiliaryPanel.NONE;
             lastAuxiliarySize = auxiliarySize;
         }
+        // An open expression row lives in the Watches panel, so compact layouts must show it.
+        // It is derived per frame, so closing the row restores the panel the user had chosen.
+        AuxiliaryPanel shownPanel = auxiliarySize != 0 && watchPanel.composerOpen() ? AuxiliaryPanel.WATCHES : auxiliaryPanel;
         compactAuxiliary = auxiliarySize != 0;
         narrowAuxiliary = auxiliarySize == 2;
-        showInspector = compactAuxiliary ? auxiliaryPanel == AuxiliaryPanel.INSPECTOR
+        showInspector = compactAuxiliary ? shownPanel == AuxiliaryPanel.INSPECTOR
             : state.preferences().inspectorVisible() != null ? state.preferences().inspectorVisible()
                 : graphics.guiWidth() >= 420 && graphics.guiHeight() >= 220;
-        showWatches = compactAuxiliary ? auxiliaryPanel == AuxiliaryPanel.WATCHES
+        showWatches = compactAuxiliary ? shownPanel == AuxiliaryPanel.WATCHES
             : state.preferences().watchesVisible();
+        // Hiding Watches (View menu) ends the row, so its field never lingers unpainted.
+        if (!showWatches && watchPanel.composerOpen()) watchPanel.closeComposer();
         boolean reserveSide = narrowAuxiliary ? false : showInspector || compactAuxiliary && showWatches;
         int maximumInspectorWidth = DebuggerLayout.maximumInspectorWidth(graphics.guiWidth(), showWatches);
         int inspectorWidth = Math.min(maximumInspectorWidth,
             panelResizing.requestedWidth("inspector", preferences().inspectorWidth()));
         // Explicit compact Watches and narrow Details use the workspace until closed.
         boolean showCommand = state.preferences().commandVisible()
-            && !(narrowAuxiliary && auxiliaryPanel != AuxiliaryPanel.NONE
-                || compactAuxiliary && auxiliaryPanel == AuxiliaryPanel.WATCHES);
+            && !(narrowAuxiliary && shownPanel != AuxiliaryPanel.NONE
+                || compactAuxiliary && shownPanel == AuxiliaryPanel.WATCHES);
         DebuggerLayout layout = DebuggerLayout.create(graphics.guiWidth(), graphics.guiHeight(), reserveSide,
             showCommand
                 ? commandPanel.preferredHeight(graphics.guiWidth(), graphics.guiHeight(), snapshot) : 0,
@@ -241,7 +251,7 @@ public final class DebuggerOverlay {
         }
         if (watchPanel.groupingMenuContains(mouseX, mouseY)) hoverX = hoverY = -1;
         navigationGroup = DebuggerNavigation.Group.WORLD;
-        if (!narrowAuxiliary || auxiliaryPanel == AuxiliaryPanel.NONE)
+        if (!narrowAuxiliary || shownPanel == AuxiliaryPanel.NONE)
             renderWorldLabels(graphics, layout.world(), snapshot);
         if (showInspector) renderInspector(graphics, auxiliaryBounds, snapshot, input);
         if (interactive && !compactAuxiliary) {

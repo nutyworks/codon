@@ -93,7 +93,7 @@ public final class WatchEditorReader {
             if (entity == null) return WatchEditorPage.absent(WatchResult.Status.TARGET_MISSING);
             root = NbtPredicate.getEntityTagToCompare(entity);
         }
-        NbtPage page = NbtTreeReader.readPage(root, query.path(), query.offset());
+        NbtPage page = NbtTreeReader.readPage(root, query.path(), query.offset(), query.search());
         if (page.status() != WatchResult.Status.VALUE) return WatchEditorPage.absent(page.status());
         List<WatchEditorPage.Option> options = page.children().stream().map(node -> new WatchEditorPage.Option(
             node.path(), node.name(), node.preview(), node.expandable())).toList();

@@ -15,7 +15,6 @@ import works.nuty.codon.client.ui.DebuggerButton;
 import works.nuty.codon.client.ui.DebuggerHelpScreen;
 import works.nuty.codon.client.ui.DebuggerIcon;
 import works.nuty.codon.client.ui.DebuggerOverlay;
-import works.nuty.codon.client.ui.WatchScreen;
 import net.minecraft.client.gui.components.EditBox;
 import works.nuty.codon.client.ui.layout.DebuggerLayout;
 import works.nuty.codon.core.model.CallFrame;
@@ -302,26 +301,27 @@ public final class DebuggerKeyboardNavigationGameTest implements FabricClientGam
     }
 
     private static void checkWatchContainers(ClientGameTestContext context, ClientDebuggerState state) {
-        WatchScreen watch = context.computeOnClient(client -> {
-            var result = new WatchScreen(DebuggerPresentationGameTest.input(client, state), state, new DebuggerOverlay(state));
-            client.setScreenAndShow(result);
-            return result;
-        });
-        context.waitTicks(2);
         context.runOnClient(client -> {
-            EditBox field = watch.children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast)
+            var overlay = new DebuggerOverlay(state);
+            var input = DebuggerPresentationGameTest.input(client, state);
+            client.setScreenAndShow(new CodonScreen(input, overlay));
+            overlay.watchPanel().beginComposer(-1, input, overlay);
+        });
+        context.waitTicks(3);
+        context.runOnClient(client -> {
+            var screen = client.gui.screen();
+            EditBox field = screen.children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast)
                 .filter(EditBox::isVisible).findFirst().orElseThrow();
-            require(watch.getFocused() == field, "Watch editor starts at the expression field");
-            field.setValue("keyboard_watch");
-            watch.setFocused(field);
-            press(client, watch, InputConstants.KEY_TAB, InputConstants.KEYCODE_TAB, 0, InputType.KEYBOARD_TAB);
-            require(watch.getFocused() != null && watch.getFocused() != field,
-                "Tab moves through the form instead of into Watch management");
-            watch.setFocused(field);
-            press(client, watch, InputConstants.KEY_RETURN, InputConstants.KEYCODE_RETURN, 0, InputType.KEYBOARD_ARROW);
+            require(screen.getFocused() == field, "the Watch row starts at the expression field");
+            field.setValue("score keyboard_watch");
+        });
+        context.waitTicks(3);
+        context.runOnClient(client -> {
+            press(client, client.gui.screen(), InputConstants.KEY_RETURN, InputConstants.KEYCODE_RETURN, 0, InputType.KEYBOARD_ARROW);
             require(state.watches().definitions().stream().anyMatch(spec -> spec.target().equals("keyboard_watch")),
                 "Enter saves a Watch expression without keyboard access to management rows");
         });
+        context.waitTicks(3);
         context.takeScreenshot("codon-keyboard-watch-editor");
     }
 

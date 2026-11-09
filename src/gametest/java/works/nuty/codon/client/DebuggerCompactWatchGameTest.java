@@ -121,8 +121,7 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
         context.runOnClient(client -> fixture.overlay().watchPanel().select(fixture.state().watches().findId(SCORE)));
         context.waitTicks(3);
         watchAction(context, SCORE, "codon.watch.edit");
-        context.runOnClient(client -> require(screen(client) instanceof WatchScreen, "Edit hitbox opens the editor"));
-        click(context, "codon.watch.close");
+        closeInlineRow(context, "Edit hitbox opens the inline editor");
         if (!openDetailsFromValueRightEdge(context, fixture, name))
             clickLabel(context, context.computeOnClient(client -> Component.translatable("codon.watch.inspect", WatchFormatting.specification(NBT).getString()).getString()));
         capture(context, name + "-details");
@@ -140,11 +139,13 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
         context.getInput().pressKey(InputConstants.KEY_TAB);
         context.runOnClient(client -> require(screen(client).getFocused() == button(screen(client), text("codon.watch.edit")), "Tab after More reaches visible Edit"));
         click(context, "codon.watch.edit");
-        context.runOnClient(client -> require(screen(client) instanceof WatchScreen, "Expanded Details Edit hitbox opens the same Watch editor"));
-        click(context, "codon.watch.close");
-        context.runOnClient(client -> require(screen(client) instanceof WatchDetailsScreen
-            && button(screen(client), text("codon.watch.details.less")).visible,
-            "Edit cancellation returns to its original expanded Details screen"));
+        closeInlineRow(context, "Expanded Details Edit hitbox opens the same inline editor");
+        // Edit hands over to the inline row in the cursor screen; reopen Details expanded for the rest.
+        context.runOnClient(client -> require(!(screen(client) instanceof WatchDetailsScreen),
+            "Edit leaves Details for the inline row"));
+        if (!openDetailsFromValueRightEdge(context, fixture, name))
+            clickLabel(context, context.computeOnClient(client -> Component.translatable("codon.watch.inspect", WatchFormatting.specification(NBT).getString()).getString()));
+        click(context, "codon.watch.details.more");
         click(context, "codon.watch.details.less");
         click(context, "codon.watch.details.more");
         context.getInput().pressKey(InputConstants.KEY_END);
@@ -178,8 +179,7 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
         click(context, "codon.watch.undo_deleted");
         context.runOnClient(client -> require(fixture.state().watches().findId(SCORE) >= 0, "Undo restores the removed row"));
         clickLabel(context, "+");
-        context.runOnClient(client -> require(screen(client) instanceof WatchScreen, "Add remains accessible above compact rows"));
-        click(context, "codon.watch.close");
+        closeInlineRow(context, "Add remains accessible above compact rows");
         context.runOnClient(client -> {
             var base = fixture.state().snapshot();
             fixture.state().applyPause(pause(base, 104, PauseReason.EXECUTION_COMPLETE));
@@ -323,6 +323,18 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
     private static List<DebuggerButton> buttons(Screen screen) { return screen.children().stream().filter(DebuggerButton.class::isInstance).map(DebuggerButton.class::cast).filter(button -> button.visible).toList(); }
     private static String text(String key) { return Component.translatable(key).getString(); }
     private static Screen screen(Minecraft client) { return client.gui.screen(); }
+
+    /** The inline Watch row is a text box in the cursor screen; Escape closes only that row. */
+    private static void closeInlineRow(ClientGameTestContext context, String message) {
+        context.waitTicks(3);
+        context.runOnClient(client -> {
+            require(screen(client).children().stream().anyMatch(child -> child instanceof net.minecraft.client.gui.components.EditBox),
+                message);
+            screen(client).keyPressed(new net.minecraft.client.input.KeyEvent(
+                com.mojang.blaze3d.platform.InputConstants.KEY_ESCAPE, 0, 0));
+        });
+        context.waitTicks(3);
+    }
     private static DebuggerButton button(Screen screen, String label) { return buttons(screen).stream().filter(button -> button.getMessage().getString().equals(label)
         || button.getMessage().getString().endsWith(" " + label)).findFirst().orElseThrow(() -> new AssertionError("Visible button: " + label)); }
     private static void click(ClientGameTestContext context, String key) { clickLabel(context, context.computeOnClient(client -> text(key))); }

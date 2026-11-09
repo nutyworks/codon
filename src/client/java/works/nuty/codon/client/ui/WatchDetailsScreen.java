@@ -105,7 +105,7 @@ public final class WatchDetailsScreen extends ScaledCodonScreen {
     private void edit() {
         if (entry() == null) return;
         setFocused(edit);
-        Minecraft.getInstance().gui.setScreen(WatchScreen.edit(input, state, overlay, entryId));
+        overlay.watchPanel().beginComposer(entryId, input, overlay);
     }
 
     private void toggleExpanded() {

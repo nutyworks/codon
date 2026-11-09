@@ -4,7 +4,9 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.components.events.GuiEventListener;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.KeyEvent;
 import net.minecraft.network.chat.Component;
 import org.jspecify.annotations.Nullable;
 import works.nuty.codon.client.input.InputManager;
@@ -71,7 +73,29 @@ public final class WatchPanel {
     private Bounds groupingMenuBounds = EMPTY;
     private final List<DebuggerButton> groupingChoices = new ArrayList<>();
 
-    public WatchPanel(ClientDebuggerState state) { this.state = state; }
+    private final WatchComposer composer;
+
+    public WatchPanel(ClientDebuggerState state) {
+        this.state = state;
+        composer = new WatchComposer(state);
+    }
+
+    @Nullable EditBox composerBox() { return composer.box(); }
+    boolean composerOpen() { return composer.open(); }
+    boolean composerFocused() { return composer.focused(); }
+    void refocusComposer() { composer.requestFocus(); }
+    boolean takeComposerFocusRequest() { return composer.takeFocusRequest(); }
+    boolean composerKey(KeyEvent event) { return composer.keyPressed(event, this); }
+    void closeComposer() { composer.close(); }
+
+    /** Add (id &lt; 0) or edit a watch in the row under the header; cursor mode owns its text input. */
+    public void beginComposer(long id, InputManager input, DebuggerOverlay overlay) {
+        var client = Minecraft.getInstance();
+        if (!(client.gui.screen() instanceof CodonScreen)) client.gui.setScreen(new CodonScreen(input, overlay));
+        closeGroupingMenu();
+        overlay.revealWatches();
+        composer.begin(id);
+    }
     public Bounds bounds() { return bounds; }
     public Bounds scrollBounds() { return scrollBounds; }
     public int offset() { return offset; }
@@ -118,7 +142,9 @@ public final class WatchPanel {
             && System.nanoTime() < undoUntil;
         if (!undoAvailable) removedWatch = null;
         boolean changesRejected = state.watches().changesRejected();
-        int bodyStart = HEADER + (undoAvailable ? 18 : 0) + (changesRejected ? 18 : 0);
+        int composerTop = HEADER + (undoAvailable ? 18 : 0) + (changesRejected ? 18 : 0);
+        int composerHeight = interactive ? composer.prepare(Math.max(0, available.height() - composerTop - BOTTOM_PADDING - 27)) : 0;
+        int bodyStart = composerTop + composerHeight;
         if (revealRevision != state.watches().revealRevision()) {
             revealRevision = state.watches().revealRevision();
             select(state.watches().revealId());
@@ -174,7 +200,7 @@ public final class WatchPanel {
         button("watch-add", new Bounds(bounds.x() + bounds.width() - 23, bounds.y() + 3, 18, 17), Component.literal("+"),
             true, false, () -> {
                 navigation.requestFocus("watch-add");
-                client.gui.setScreen(new WatchScreen(input, state, overlay));
+                beginComposer(-1, input, overlay);
             }, navigation, -4, 3)
             .withIcon(DebuggerIcon.WATCHES).withIconOffsetY(2).withSingleLineTooltip(text("keep"));
         groupingTriggerBounds = new Bounds(bounds.x() + bounds.width() - 44, bounds.y() + 3, 18, 17);
@@ -227,6 +253,11 @@ public final class WatchPanel {
             String warning = text(state.watches().changesTooLarge() ? "changes.too_large" : "changes.unavailable").getString();
             WatchUi.line(graphics, font, warning, bounds.x() + 7,
                 bounds.y() + HEADER + (undoAvailable ? 18 : 0) + 4, bounds.width() - 14, AMBER);
+        }
+        if (composerHeight > 0) {
+            composer.paint(graphics, font, new Bounds(bounds.x(), bounds.y() + composerTop, bounds.width(), composerHeight),
+                mouseX, mouseY, interactive);
+            controls.addAll(composer.buttons());
         }
         for (int index = 0; index < rows.size(); index++) {
             Row row = rows.get(index);
@@ -424,7 +455,7 @@ public final class WatchPanel {
                         : target == null ? text("pin_unavailable") : text("tooltip.pin_context", targetLabel), () -> togglePin(id)));
             }
             items.add(new DebuggerContextMenu.Item(text("edit"), DebuggerIcon.EDIT, true, null,
-                () -> Minecraft.getInstance().gui.setScreen(WatchScreen.edit(input, state, overlay, id))));
+                () -> beginComposer(id, input, overlay)));
             items.add(new DebuggerContextMenu.Item(text("menu.delete"), DebuggerIcon.DELETE, true, null, () -> {
                 removedWatch = state.watches().removeForUndo(id);
                 undoUntil = System.nanoTime() + 8_000_000_000L;
