@@ -109,8 +109,9 @@ public final class DebuggerWatchComposerGameTest implements FabricClientGameTest
                 require(box(client).getValue().equals("storage codon:composer_test "), "a chosen storage ID continues to the path");
                 box(client).setValue("storage codon:composer_test co");
             });
+            // The server filters children by the typed prefix, so only "count" matches "co".
             context.waitFor(client -> state.watchEditor().page() != null
-                && state.watchEditor().page().options().size() == 2, 200);
+                && state.watchEditor().page().options().size() == 1, 200);
             context.waitTicks(3);
             context.takeScreenshot("codon-watch-composer-storage-path");
             context.runOnClient(client -> {

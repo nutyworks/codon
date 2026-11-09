@@ -229,9 +229,9 @@ final class WatchComposer {
                 case STORAGE_ID -> new WatchEditorQuery(WatchEditorQuery.Mode.STORAGES, WatchSpec.Kind.STORAGE_NBT,
                     "", "", null, search, 0);
                 case ENTITY_PATH -> new WatchEditorQuery(WatchEditorQuery.Mode.NBT, WatchSpec.Kind.ENTITY_NBT,
-                    "", parentOf(prefix), null, "", 0);
+                    "", parentOf(prefix), null, nbtSearch(prefix), 0);
                 case STORAGE_PATH -> new WatchEditorQuery(WatchEditorQuery.Mode.NBT, WatchSpec.Kind.STORAGE_NBT,
-                    result.id(), parentOf(prefix), null, "", 0);
+                    result.id(), parentOf(prefix), null, nbtSearch(prefix), 0);
             };
         } catch (IllegalArgumentException unrepresentable) {
             return null;
@@ -247,6 +247,19 @@ final class WatchComposer {
         return all;
     }
 
+    private static String nbtSearch(String prefix) {
+        String needle = childNeedle(prefix);
+        return needle.length() > WatchEditorQuery.MAX_SEARCH_LENGTH
+            ? needle.substring(0, WatchEditorQuery.MAX_SEARCH_LENGTH) : needle;
+    }
+
+    /** The child name being typed after the last complete path segment, without its opening quote. */
+    private static String childNeedle(String prefix) {
+        String tail = prefix.substring(parentOf(prefix).length());
+        if (tail.startsWith(".")) tail = tail.substring(1);
+        return tail.startsWith("\"") ? tail.substring(1) : tail;
+    }
+
     private List<Choice> choicesFrom(WatchExpression.Result result, WatchEditorPage page) {
         boolean path = result.slot() == WatchExpression.Slot.ENTITY_PATH
             || result.slot() == WatchExpression.Slot.STORAGE_PATH;
@@ -254,14 +267,13 @@ final class WatchComposer {
         if (path) {
             // The server quotes every compound key; offer the plain spelling the user would type.
             String parent = parentOf(result.prefix());
-            String tail = result.prefix().substring(parent.length());
-            if (tail.startsWith(".")) tail = tail.substring(1);
-            String needle = (tail.startsWith("\"") ? tail.substring(1) : tail).toLowerCase(Locale.ROOT);
+            String needle = childNeedle(result.prefix()).toLowerCase(Locale.ROOT);
             for (var option : page.options()) {
                 String name = option.label();
                 String lower = name.toLowerCase(Locale.ROOT);
                 if (!lower.startsWith(needle) || lower.equals(needle)) continue;
-                String insert = name.startsWith("[") ? parent + name
+                // Only a list element's path is the parent plus its label; a compound key such as "[0]" is quoted.
+                String insert = name.startsWith("[") && option.value().equals(parent + name) ? parent + name
                     : name.matches("[A-Za-z0-9_+-]+") ? (parent.isEmpty() ? name : parent + "." + name) : option.value();
                 found.add(new Choice(insert, name, option.detail()));
             }

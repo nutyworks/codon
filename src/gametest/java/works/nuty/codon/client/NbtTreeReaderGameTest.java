@@ -71,6 +71,16 @@ public final class NbtTreeReaderGameTest implements FabricClientGameTest {
         require(first.children().size() == NbtPage.PAGE_SIZE && first.offset() == 0 && first.hasMore(), "first page is exactly 32 entries");
         require(second.offset() == NbtPage.PAGE_SIZE && second.children().size() == first.totalChildren() - NbtPage.PAGE_SIZE && !second.hasMore(),
             "second page has the remaining entries and exact offset");
+        // A prefix filters before paging, so children beyond the first page stay reachable.
+        NbtPage filtered = NbtTreeReader.readPage(root, "", 0, "PAGE3");
+        require(filtered.totalChildren() == 6 && filtered.children().size() == 6
+                && filtered.children().stream().allMatch(node -> node.name().startsWith("page3")),
+            "a case-insensitive prefix pages only the matching children");
+        NbtPage.Node bracketKey = rootChild(root, "[0]");
+        require(bracketKey.path().equals("\"[0]\""), "a compound key shaped like an index keeps its quoted path");
+        NbtPage.Node listChild = NbtTreeReader.readPage(root, "\"list\"", 0, "[1").children().getFirst();
+        require(listChild.name().equals("[1]") && listChild.path().equals("\"list\"[1]"),
+            "list elements are filtered by index and keep the parent-plus-index path");
         NbtPage.Node preview = rootChild(root, "preview");
         require(preview.preview().length() == NbtPage.MAX_PREVIEW_LENGTH && preview.preview().endsWith("…"), "long preview is bounded with an ellipsis");
         NbtPage.Node longName = rootChild(root, "k".repeat(129));
@@ -144,6 +154,7 @@ public final class NbtTreeReaderGameTest implements FabricClientGameTest {
         root.putString("quote\"key", "quote");
         root.putString("slash\\key", "slash");
         root.putString("preview", "x".repeat(200));
+        root.putString("[0]", "bracket");
         root.putString("k".repeat(129), "long-name");
         root.putString("p".repeat(511), "long-path");
         CompoundTag nested = new CompoundTag();
