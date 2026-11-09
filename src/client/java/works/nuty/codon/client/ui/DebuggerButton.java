@@ -126,6 +126,7 @@ public class DebuggerButton extends AbstractButton {
     }
 
     public void setSelected(boolean selected) { this.selected = selected; }
+    public boolean selected() { return selected; }
 
     public DebuggerButton withIcon(DebuggerIcon icon) {
         this.icon = icon;

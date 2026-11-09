@@ -220,13 +220,12 @@ public final class FlowBreakpointInteractionGameTest implements FabricClientGame
         var definitions = List.of(BreakpointDefinition.plain(target).withEnabled(false), BreakpointDefinition.plain(unavailable));
         context.runOnClient(client -> {
             state.breakpoints().acceptPage(4, 0, true, definitions);
-            client.setScreenAndShow(new BreakpointListScreen(screen, state));
         });
-        context.waitTicks(2);
+        BreakpointPanelGameTestUi.open(context);
         context.runOnClient(client -> {
             var list = client.gui.screen();
-            var rows = buttons(list);
-            require(rows.size() == 3, "List contains only its two destinations and Close, without row edit/delete/overflow controls");
+            var rows = BreakpointPanelGameTestUi.rows(list);
+            require(rows.size() == 2, "List contains only its two destinations, without row edit/delete/overflow controls");
             var unavailableRow = rows.stream().filter(button -> button.getMessage().getString().contains(BreakpointUi.target(unavailable))).findFirst().orElseThrow();
             require(!unavailableRow.active, "Unavailable destination stays listed but cannot mutate or retarget");
             var row = rows.stream().filter(button -> button.getMessage().getString().contains(BreakpointUi.target(target))).findFirst().orElseThrow();
@@ -237,6 +236,7 @@ public final class FlowBreakpointInteractionGameTest implements FabricClientGame
         });
         context.waitTicks(2);
         context.runOnClient(client -> require(screen.getFocused() == markers(screen).get(1), "Navigation reveals the exact BP keyboard target"));
+        BreakpointPanelGameTestUi.close(context);
     }
 
     private static void checkWrappedTraversal(ClientGameTestContext context, CodonScreen screen, ClientDebuggerState state) {
@@ -290,11 +290,10 @@ public final class FlowBreakpointInteractionGameTest implements FabricClientGame
                 state.stagePreviews().accept(request, destination, ClientStagePreviewState.Status.READY, command, spans);
             });
             context.waitTicks(2);
-            context.runOnClient(client -> client.setScreenAndShow(new BreakpointListScreen(screen, state)));
-            context.waitTicks(2);
+            BreakpointPanelGameTestUi.open(context);
             context.runOnClient(client -> {
                 var list = client.gui.screen();
-                var row = buttons(list).stream().filter(button -> button.getMessage().getString().contains(BreakpointUi.target(target)))
+                var row = BreakpointPanelGameTestUi.rows(list).stream().filter(button -> button.getMessage().getString().contains(BreakpointUi.target(target)))
                     .findFirst().orElseThrow();
                 client.setLastInputType(InputType.MOUSE);
                 click(list, row, InputConstants.MOUSE_BUTTON_LEFT);
@@ -315,6 +314,7 @@ public final class FlowBreakpointInteractionGameTest implements FabricClientGame
             });
             context.waitTicks(2);
             context.takeScreenshot("codon-flow-cross-navigation-" + (hidden ? "hidden" : "visible"));
+            BreakpointPanelGameTestUi.close(context);
         }
         // A changed selection before the first destination render invalidates the queued request.
         context.runOnClient(client -> {
@@ -322,11 +322,10 @@ public final class FlowBreakpointInteractionGameTest implements FabricClientGame
             state.selectExecutionFlowStage(0);
         });
         context.waitTicks(2);
-        context.runOnClient(client -> client.setScreenAndShow(new BreakpointListScreen(screen, state)));
-        context.waitTicks(2);
+        BreakpointPanelGameTestUi.open(context);
         context.runOnClient(client -> {
             var list = client.gui.screen();
-            click(list, buttons(list).stream().filter(button -> button.getMessage().getString().contains(BreakpointUi.target(target)))
+            click(list, BreakpointPanelGameTestUi.rows(list).stream().filter(button -> button.getMessage().getString().contains(BreakpointUi.target(target)))
                 .findFirst().orElseThrow(), InputConstants.MOUSE_BUTTON_LEFT);
             state.selectExecutionFlow(0);
             state.selectExecutionFlowStage(0);
@@ -342,6 +341,7 @@ public final class FlowBreakpointInteractionGameTest implements FabricClientGame
         context.waitTicks(2);
         context.runOnClient(client -> require(screen.getFocused() == null,
             "Returning to a former destination cannot revive a cancelled focus request"));
+        BreakpointPanelGameTestUi.close(context);
     }
 
     private static DebuggerButton exactFlowMarker(CodonScreen screen, String id) {

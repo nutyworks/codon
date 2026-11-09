@@ -21,19 +21,13 @@ import works.nuty.codon.core.model.SourceLocation;
 import works.nuty.codon.core.model.WatchSpec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.Mockito.CALLS_REAL_METHODS;
-import static org.mockito.Mockito.mock;
 
 class CodonLabelsTest {
     @Test
-    void countHeadersCoverEveryEnabledStateAndFilteredTotalsInBothLanguages() throws Exception {
+    void countHeadersCoverEveryEnabledStateInBothLanguages() throws Exception {
         var previous = Language.getInstance();
-        var method = BreakpointListScreen.class.getDeclaredMethod("countHeader");
-        method.setAccessible(true);
-        var displayed = BreakpointListScreen.class.getDeclaredField("displayed");
+        var displayed = BreakpointPanel.class.getDeclaredField("displayed");
         displayed.setAccessible(true);
-        var targets = BreakpointListScreen.class.getDeclaredField("targets");
-        targets.setAccessible(true);
         var first = BreakpointDefinition.plain(BreakpointTarget.whole(new SourceLocation.Block(
             new BlockLocation(1, 64, 1, "minecraft:overworld"))));
         var second = BreakpointDefinition.plain(BreakpointTarget.whole(new SourceLocation.Block(
@@ -42,25 +36,19 @@ class CodonLabelsTest {
             for (String language : List.of("en_us", "ko_kr")) {
                 useTranslations(language, previous);
                 var state = new ClientDebuggerState();
-                // Exercise the real caption without starting Minecraft's Screen/font constructor.
-                var screen = mock(BreakpointListScreen.class, CALLS_REAL_METHODS);
+                var panel = new BreakpointPanel(state);
                 long id = 0;
                 for (int enabled : List.of(2, 0, 1)) {
                     state.breakpoints().acceptPage(++id, 0, true,
                         List.of(first.withEnabled(enabled > 0), second.withEnabled(enabled == 2)));
-                    displayed.set(screen, state.breakpoints().definitions());
+                    displayed.set(panel, state.breakpoints().definitions());
                     assertEquals(enabled, state.breakpoints().definitions().stream().filter(BreakpointDefinition::enabled).count());
                     assertEquals(language.equals("ko_kr") ? "중단점 · 2개 (활성 " + enabled + "개)"
-                        : "Breakpoints · 2 (" + enabled + " enabled)", method.invoke(screen));
+                        : "Breakpoints · 2 (" + enabled + " enabled)", panel.countHeader());
                     assertEquals(language.equals("ko_kr") ? "중단점 · 활성 " + enabled + "개 / 전체 2개"
                         : "Breakpoints · " + enabled + " enabled / 2 total",
                         Component.translatable("codon.breakpoint.toolbar", enabled, 2).getString());
                 }
-                var filtered = mock(BreakpointListScreen.class, CALLS_REAL_METHODS);
-                targets.set(filtered, List.of(second.target()));
-                displayed.set(filtered, List.of(second));
-                assertEquals(language.equals("ko_kr") ? "저장된 중단점: 1개" : "Saved breakpoints: 1",
-                    method.invoke(filtered));
             }
         } finally { Language.inject(previous); }
     }

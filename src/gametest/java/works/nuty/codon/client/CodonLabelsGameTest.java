@@ -11,7 +11,6 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
 import works.nuty.codon.client.input.InputManager;
 import works.nuty.codon.client.state.ClientDebuggerState;
-import works.nuty.codon.client.ui.BreakpointListScreen;
 import works.nuty.codon.client.ui.CodonScreen;
 import works.nuty.codon.client.ui.DebuggerButton;
 import works.nuty.codon.client.ui.DebuggerOverlay;
@@ -89,23 +88,20 @@ public final class CodonLabelsGameTest implements FabricClientGameTest {
         hover(context, fixture.screen(), button);
         context.waitTicks(12);
         context.takeScreenshot(name + "-toolbar-" + enabled);
-        context.runOnClient(client -> client.setScreenAndShow(new BreakpointListScreen(fixture.screen(), fixture.state())));
+        BreakpointPanelGameTestUi.open(context);
         capture(context, name + "-list-" + enabled);
         context.runOnClient(client -> {
-            var list = (BreakpointListScreen) client.gui.screen();
+            var list = field(fixture.overlay(), "breakpointPanel");
             String header = (String) invoke(list, "countHeader", new Class<?>[0]);
             String expected = korean ? "중단점 · 2개 (활성 " + enabled + "개)" : "Breakpoints · 2 (" + enabled + " enabled)";
             require(header.equals(expected), "List header labels total and enabled: " + header);
-            int panelWidth = (int) field(list, "panelWidth");
-            require(client.font.width(header) <= panelWidth - 16, "Complete count header fits the native panel");
-            require(client.font.width(Component.translatable("codon.breakpoint.list_header", 4096, 4096)) <= panelWidth - 16,
+            var bounds = (works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds) invoke(list, "bounds", new Class<?>[0]);
+            require(client.font.width(header) <= bounds.width() - 14, "Complete count header fits the docked panel");
+            require(client.font.width(Component.translatable("codon.breakpoint.list_header", 4096, 4096)) <= bounds.width() - 14,
                 "Maximum breakpoint counts also fit the count header");
             require(fixture.state().breakpoints().definitions().size() == 2, "Viewing never drops disabled definitions");
         });
-        context.runOnClient(client -> client.setScreenAndShow(new BreakpointListScreen(fixture.screen(), fixture.state(), List.of(second.target()))));
-        context.waitTicks(3);
-        context.runOnClient(client -> require(invoke(client.gui.screen(), "countHeader", new Class<?>[0])
-            .equals(Component.translatable("codon.breakpoint.saved_definitions_header", 1).getString()), "Filtered saved list keeps its own total"));
+        BreakpointPanelGameTestUi.close(context);
         var spec = korean ? new WatchSpec(WatchSpec.Kind.ENTITY_NBT, "", "Pos[0]")
             : new WatchSpec(WatchSpec.Kind.STORAGE_NBT, "demo:state", "counter");
         context.runOnClient(client -> {

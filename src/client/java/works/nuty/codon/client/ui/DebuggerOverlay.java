@@ -42,7 +42,7 @@ import static works.nuty.codon.client.state.DebuggerPreferences.*;
 
 /** Shared HUD/screen presentation. Only the menu screen registers the rendered controls. */
 public final class DebuggerOverlay {
-    private enum AuxiliaryPanel { NONE, INSPECTOR, WATCHES }
+    private enum AuxiliaryPanel { NONE, INSPECTOR, WATCHES, BREAKPOINTS }
     private static final Bounds EMPTY = new Bounds(0, 0, 0, 0);
     private static final int MAX_WORLD_LABELS = 20;
     private static final int SOURCE_LIST_MIN_HEIGHT = 51;
@@ -80,6 +80,7 @@ public final class DebuggerOverlay {
     private int lastSelectedSource = -1;
     private Bounds watchSummaryBounds = EMPTY;
     private final WatchPanel watchPanel;
+    private final BreakpointPanel breakpointPanel;
     private Bounds sourceScrollBounds = EMPTY;
     private Bounds viewTriggerBounds = EMPTY;
     private Bounds viewMenuBounds = EMPTY;
@@ -87,6 +88,9 @@ public final class DebuggerOverlay {
     private boolean viewMenuOpen;
     private boolean showInspector;
     private boolean showWatches;
+    private boolean showBreakpoints;
+    /** Wide layouts dock Breakpoints beside Watches until toggled; compact ones use the auxiliary panel. */
+    private boolean breakpointsOpen;
     private boolean compactAuxiliary;
     private boolean narrowAuxiliary;
     private int lastAuxiliarySize = -1;
@@ -99,6 +103,7 @@ public final class DebuggerOverlay {
         this.opacitySlider = new BackgroundOpacitySlider(state.preferences());
         this.nbtPanel = new NbtTreePanel(state);
         this.watchPanel = new WatchPanel(state);
+        this.breakpointPanel = new BreakpointPanel(state);
         this.commandPanel = new CommandPanel(state, () -> { sourceOffset = 0; expandedGroup = List.of(); });
     }
 
@@ -166,6 +171,7 @@ public final class DebuggerOverlay {
         viewMenuButtons.clear();
         commandPanel.clearBounds();
         watchPanel.clearBounds();
+        breakpointPanel.clearBounds();
         watchSummaryBounds = EMPTY;
         nbtPanel.clearBounds();
         if (client.level == null || client.player == null) {
@@ -222,14 +228,17 @@ public final class DebuggerOverlay {
             : state.preferences().watchesVisible();
         // Hiding Watches (View menu) ends the row, so its field never lingers unpainted.
         if (!showWatches && watchPanel.composerOpen()) watchPanel.closeComposer();
-        boolean reserveSide = narrowAuxiliary ? false : showInspector || compactAuxiliary && showWatches;
-        int maximumInspectorWidth = DebuggerLayout.maximumInspectorWidth(graphics.guiWidth(), showWatches);
+        // The saved-breakpoint list is a cursor-mode panel; the passive HUD never shows it.
+        showBreakpoints = interactive && (compactAuxiliary ? shownPanel == AuxiliaryPanel.BREAKPOINTS : breakpointsOpen);
+        boolean sideColumn = showWatches || showBreakpoints;
+        boolean reserveSide = narrowAuxiliary ? false : showInspector || compactAuxiliary && sideColumn;
+        int maximumInspectorWidth = DebuggerLayout.maximumInspectorWidth(graphics.guiWidth(), sideColumn);
         int inspectorWidth = Math.min(maximumInspectorWidth,
             panelResizing.requestedWidth("inspector", preferences().inspectorWidth()));
         // Explicit compact Watches and narrow Details use the workspace until closed.
         boolean showCommand = state.preferences().commandVisible()
             && !(narrowAuxiliary && shownPanel != AuxiliaryPanel.NONE
-                || compactAuxiliary && shownPanel == AuxiliaryPanel.WATCHES);
+                || compactAuxiliary && (shownPanel == AuxiliaryPanel.WATCHES || shownPanel == AuxiliaryPanel.BREAKPOINTS));
         DebuggerLayout layout = DebuggerLayout.create(graphics.guiWidth(), graphics.guiHeight(), reserveSide,
             showCommand
                 ? commandPanel.preferredHeight(graphics.guiWidth(), graphics.guiHeight(), snapshot) : 0,
@@ -243,11 +252,25 @@ public final class DebuggerOverlay {
         if (viewMenuOpen) renderViewMenu(graphics);
         if (viewMenuBounds.contains(mouseX, mouseY)) hoverX = hoverY = -1;
         navigationGroup = DebuggerNavigation.Group.WATCH;
-        if (showWatches) {
-            Bounds available = compactAuxiliary ? auxiliaryBounds
+        if (sideColumn) {
+            Bounds column = compactAuxiliary ? auxiliaryBounds
                 : WatchPanelLayout.available(layout, graphics.guiWidth(),
                     panelResizing.requestedWidth("watch", preferences().watchWidth()));
-            renderWatchSummary(graphics, available, hoverX, hoverY, interactive, input);
+            // Wide layouts stack Breakpoints under Watches, leaving the list at least one row.
+            int stacked = showWatches && showBreakpoints ? Math.min(breakpointPanel.preferredHeight(),
+                Math.max(BreakpointPanel.MINIMUM_HEIGHT, column.height() / 2)) : 0;
+            if (showWatches) {
+                renderWatchSummary(graphics, stacked == 0 ? column : new Bounds(column.x(), column.y(), column.width(),
+                    Math.max(0, column.height() - stacked - 4)), hoverX, hoverY, interactive, input);
+            }
+            if (showBreakpoints) {
+                navigationGroup = DebuggerNavigation.Group.BREAKPOINT;
+                int top = stacked == 0 || watchPanel.bounds().height() == 0 ? column.y()
+                    : watchPanel.bounds().y() + watchPanel.bounds().height() + 4;
+                controls.addAll(breakpointPanel.render(graphics,
+                    new Bounds(column.x(), top, column.width(), Math.max(0, column.y() + column.height() - top)),
+                    navigation, scrollbars));
+            }
         }
         if (watchPanel.groupingMenuContains(mouseX, mouseY)) hoverX = hoverY = -1;
         navigationGroup = DebuggerNavigation.Group.WORLD;
@@ -258,6 +281,8 @@ public final class DebuggerOverlay {
             if (showInspector) panelResizing.add("inspector", auxiliaryBounds, false,
                 MIN_INSPECTOR_WIDTH, maximumInspectorWidth, preferences()::setInspectorWidth);
             if (showWatches) panelResizing.add("watch", watchPanel.bounds(), true,
+                MIN_WATCH_WIDTH, WatchPanelLayout.maximumWidth(layout), preferences()::setWatchWidth);
+            else if (showBreakpoints) panelResizing.add("watch", breakpointPanel.bounds(), true,
                 MIN_WATCH_WIDTH, WatchPanelLayout.maximumWidth(layout), preferences()::setWatchWidth);
         }
         if (showCommand) {
@@ -392,12 +417,16 @@ public final class DebuggerOverlay {
         button("breakpoints", new Bounds(breakpointX, toolbar.y() + 2, breakpointWidth,
                 DebuggerLayout.ICON_BUTTON_SIZE),
             Component.translatable("codon.breakpoint.short_count", breakpointCount),
-            true, false, false, false,
-            () -> { if (client.gui.screen() != null) client.gui.setScreen(new BreakpointListScreen(client.gui.screen(), state)); })
+            true, showBreakpoints, false, false, this::toggleBreakpoints)
             .withTextIcon(DebuggerIcon.BREAKPOINT_LIST)
             .setTooltip(Tooltip.create(Component.translatable("codon.breakpoint.toolbar",
                 breakpointCount, state.breakpoints().definitions().size())));
 
+    }
+
+    private void toggleBreakpoints() {
+        if (compactAuxiliary) auxiliaryPanel = showBreakpoints ? AuxiliaryPanel.NONE : AuxiliaryPanel.BREAKPOINTS;
+        else breakpointsOpen = !showBreakpoints;
     }
 
     private void renderViewMenu(GuiGraphicsExtractor graphics) {
@@ -812,7 +841,7 @@ public final class DebuggerOverlay {
     }
 
     public boolean scroll(double x, double y, double scrollX, double amount) {
-        if (watchPanel.scroll(x, y, amount)) return true;
+        if (watchPanel.scroll(x, y, amount) || breakpointPanel.scroll(x, y, amount)) return true;
         if (commandPanel.scroll(x, y, scrollX, amount) || nbtPanel.scroll(x, y, amount)) return true;
         int delta = amount > 0 ? -1 : amount < 0 ? 1 : 0;
         if (delta == 0) return false;

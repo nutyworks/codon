@@ -30,8 +30,9 @@ import works.nuty.codon.core.model.SourceLocation;
 import works.nuty.codon.client.state.ClientStagePreviewState;
 import works.nuty.codon.client.ui.BreakpointConditionScreen;
 import works.nuty.codon.client.ui.BreakpointUi;
+import works.nuty.codon.client.ui.CodonScreen;
+import works.nuty.codon.client.ui.DebuggerOverlay;
 import works.nuty.codon.client.ui.ScreenLayers;
-import works.nuty.codon.client.ui.BreakpointListScreen;
 import works.nuty.codon.client.ui.DebuggerButton;
 import works.nuty.codon.client.ui.WrappedCommandEditBox;
 import works.nuty.codon.client.ui.InlineBreakpointButton;
@@ -613,15 +614,18 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
                 state.breakpoints().get(stage).withCondition(condition));
         });
         context.waitFor(client -> !CodonClientMod.state().breakpoints().pending(stage), 200);
-        context.runOnClient(client -> client.setScreenAndShow(
-            new BreakpointListScreen(client.gui.screen(), CodonClientMod.state())));
-        context.waitTicks(2);
+        // The vanilla command-block editor has no docked panels; the Breakpoints panel lives on the Codon screen.
+        context.runOnClient(client -> {
+            var state = CodonClientMod.state();
+            client.setScreenAndShow(new CodonScreen(DebuggerPresentationGameTest.input(client, state), new DebuggerOverlay(state)));
+        });
+        context.waitTicks(3);
+        BreakpointPanelGameTestUi.open(context);
         context.runOnClient(client -> {
             Screen list = client.gui.screen();
-            var rows = controls(list).stream().filter(control -> !control.getMessage().equals(
-                Component.translatable("codon.breakpoint.close"))).toList();
-            require(rows.size() == 2 && controls(list).size() == 3,
-                "Navigation-only list has two saved destinations and Close, without edit/delete/overflow actions");
+            var rows = BreakpointPanelGameTestUi.rows(list);
+            require(rows.size() == 2,
+                "Navigation-only list has two saved destinations, without edit/delete/overflow actions");
             require(rows.stream().noneMatch(control -> control.active),
                 "Command-block destinations without a recorded Flow remain listed and unavailable");
             require(list.width == 320 && list.height == 240, "Breakpoint readability fixture uses the narrow viewport");
@@ -650,7 +654,7 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
                 && !CodonClientMod.state().breakpoints().pending(whole) && !CodonClientMod.state().breakpoints().pending(stage),
                 "Browsing the list leaves definitions and pending requests unchanged");
             require(!list.mouseScrolled(0, 0, 0, -1), "Scrolling outside the list is not consumed");
-            list.setFocused(button(list, "Close"));
+            list.setFocused(null);
         });
         context.takeScreenshot("codon-breakpoint-navigation-only-list");
         context.getInput().setCursorPos(0, 0);
@@ -665,8 +669,7 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
         }), 200);
         context.waitTicks(2);
         context.runOnClient(client -> {
-            require(controls(client.gui.screen()).stream().filter(control -> !control.getMessage().equals(
-                Component.translatable("codon.breakpoint.close"))).count() == 2,
+            require(BreakpointPanelGameTestUi.rows(client.gui.screen()).size() == 2,
                 "Open navigation list retains both disabled saved destinations after acknowledgement");
             require(CodonClientMod.state().breakpoints().definitions().size() == 2,
                 "Navigation retains disabled definitions without rewriting them");

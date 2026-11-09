@@ -132,7 +132,8 @@ class SingleStageLegacyManagementTest {
         var state = state(BLOCK_LOCATION);
         try (var minecraft = mockStatic(Minecraft.class)) {
             minecraft.when(Minecraft::getInstance).thenReturn(mock(Minecraft.class));
-            var list = new BreakpointListScreen(mock(CodonScreen.class), state);
+            var screen = mock(CodonScreen.class);
+            var list = new BreakpointPanel(state, () -> screen);
             assertEquals(true, call(list, "canNavigate", new Class<?>[] {BreakpointTarget.class}, BreakpointTarget.stage(BLOCK_LOCATION, 0, COMMAND)));
             assertEquals(false, call(list, "canNavigate", new Class<?>[] {BreakpointTarget.class}, BreakpointTarget.stage(BLOCK_LOCATION, 1, COMMAND)));
             assertEquals(false, call(list, "canNavigate", new Class<?>[] {BreakpointTarget.class}, BreakpointTarget.stage(BLOCK_LOCATION, 0, "say old")));

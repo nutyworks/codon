@@ -12,6 +12,7 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.input.MouseButtonInfo;
 import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.permissions.LevelBasedPermissionSet;
 import net.minecraft.world.level.block.Blocks;
@@ -73,6 +74,11 @@ public final class SingleStageLegacyManagementGameTest implements FabricClientGa
         }
     }
 
+    private static boolean stageRowShown(ClientGameTestContext context, String stage) {
+        return context.computeOnClient(client -> BreakpointPanelGameTestUi.rows(client.gui.screen()).stream()
+            .anyMatch(row -> row.getMessage().getString().contains(stage)));
+    }
+
     private static void verify(ClientGameTestContext context, MinecraftServer server, SourceLocation location, String command,
                                BlockPos position, BreakpointDefinition unrelated, AtomicBoolean completed) {
         var whole = BreakpointTarget.whole(location);
@@ -91,12 +97,25 @@ public final class SingleStageLegacyManagementGameTest implements FabricClientGa
             var flow = state.selectedExecutionFlow();
             check(flow != null && flow.stages().size() == 1 && flow.stages().getFirst().terminal(), "native command has one terminal stage");
             var parent = new CodonScreen(DebuggerPresentationGameTest.input(client, state), new DebuggerOverlay(state));
-            client.setScreenAndShow(new BreakpointListScreen(parent, state, List.of(legacy.target())));
+            // Watches share the side column; hide them so all three rows fit the panel.
+            state.preferences().setWatchesVisible(false);
+            client.setScreenAndShow(parent);
         });
         context.waitTicks(2);
+        BreakpointPanelGameTestUi.open(context);
+        // The side column's height follows the Flow panel, so scroll until the stage row is visible.
+        String stage = Component.translatable("codon.breakpoint.stage_target", 1).getString();
+        for (int attempt = 0; attempt < 4 && !stageRowShown(context, stage); attempt++) {
+            context.runOnClient(client -> {
+                var first = BreakpointPanelGameTestUi.rows(client.gui.screen()).getFirst();
+                client.gui.screen().mouseScrolled(first.getX() + 2, first.getY() + 2, 0, -1);
+            });
+            context.waitTicks(3);
+        }
         context.runOnClient(client -> {
-            var row = client.gui.screen().children().stream().filter(DebuggerButton.class::isInstance)
-                .map(DebuggerButton.class::cast).findFirst().orElseThrow();
+            var row = BreakpointPanelGameTestUi.rows(client.gui.screen()).stream()
+                .filter(candidate -> candidate.getMessage().getString().contains(stage)).findFirst()
+                .orElseThrow(() -> new AssertionError("no stage row among " + BreakpointPanelGameTestUi.rows(client.gui.screen()).stream().map(r -> r.getMessage().getString()).toList()));
             check(row.active, "saved single-stage row has a real destination");
             client.gui.screen().setFocused(row);
             client.gui.screen().keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
