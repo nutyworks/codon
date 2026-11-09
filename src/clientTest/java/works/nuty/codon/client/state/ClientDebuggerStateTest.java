@@ -33,6 +33,28 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ClientDebuggerStateTest {
     @Test
+    void withheldPauseDetailsKeepPausedStateAndCorrelatedControls() {
+        ClientDebuggerState state = new ClientDebuggerState();
+        PauseSnapshot summary = summary(7);
+        state.applyPauseSummary(summary, 1025, 4097);
+        assertTrue(state.isPaused(), "a parked server must not be presented as running");
+        assertSame(summary, state.snapshot());
+        assertEquals(new ClientDebuggerState.WithheldPauseDetails(1025, 4097), state.withheldPauseDetails());
+        assertEquals(-1, state.selectedSourceIndex());
+        assertTrue(state.beginControlRequest(), "Continue and Step stay available for the withheld pause");
+        state.applyStep();
+        assertNull(state.withheldPauseDetails());
+
+        state.applyPauseSummary(summary(8), 0, 5000);
+        state.applyPause(snapshot(List.of(source("next", 1)), 1));
+        assertNull(state.withheldPauseDetails(), "a complete pause replaces the withheld notice");
+        state.applyPauseSummary(summary(10), 0, 5000);
+        state.applyResume();
+        assertNull(state.withheldPauseDetails());
+        assertFalse(state.isPaused());
+    }
+
+    @Test
     void continueClearsStaleInspectionWhileAwaitingTheNextBreakpoint() {
         ClientDebuggerState state = new ClientDebuggerState();
         PauseSource selected = source("selected", 2);
@@ -954,6 +976,12 @@ class ClientDebuggerStateTest {
         var fixture = snapshot(List.of(), 0);
         return new PauseSnapshot(fixture.location(), fixture.command(), fixture.depth(), fixture.callStack(),
             fixture.pauseSources(), fixture.executionFlows(), fixture.reason(), id);
+    }
+
+    private static PauseSnapshot summary(long pauseId) {
+        SourceLocation location = new SourceLocation.Block(new BlockLocation(0, 64, 0, "overworld"));
+        return new PauseSnapshot(location, CommandSnippet.plain("execute as @e run say hi"), 0, List.of(), List.of(),
+            List.of(), PauseReason.BREAKPOINT, pauseId);
     }
 
     private static PauseSnapshot snapshot(List<PauseSource> sources, int frameCount) {

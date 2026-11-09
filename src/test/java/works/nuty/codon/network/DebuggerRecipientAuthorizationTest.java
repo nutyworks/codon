@@ -591,13 +591,31 @@ class DebuggerRecipientAuthorizationTest {
     }
 
     private void assertUnavailablePause() {
-        only(owner, ResumeSyncPayload.class);
+        var summary = only(owner, PauseSummarySyncPayload.class);
+        assertTrue(summary.summary().pauseId() > 0, "Controls stay correlated with the live pause");
+        assertTrue(summary.summary().callStack().isEmpty() && summary.summary().pauseSources().isEmpty()
+            && summary.summary().executionFlows().isEmpty(), "Withhold details instead of truncating them");
+        assertTrue(summary.callStackSize() > ClientboundLimits.MAX_CALL_STACK
+            || summary.pauseSourceCount() > ClientboundLimits.MAX_PAUSE_SOURCES);
+        assertTrue(payloads(owner, ResumeSyncPayload.class).isEmpty(), "Never present a parked server as running");
         assertTrue(payloads(owner, PauseSyncPayload.class).isEmpty());
         assertTrue(payloads(owner, WatchChangesSyncPayload.class).isEmpty());
+        verify(owner, never()).sendSystemMessage(any());
+    }
+
+    @Test void oversizedPauseFallsBackToResumeAndWarningForPeersWithoutSummary() {
+        unsupported.get(owner).add(PauseSummarySyncPayload.TYPE.id());
+        var sources = Collections.nCopies(ClientboundLimits.MAX_PAUSE_SOURCES + 1, SNAPSHOT.pauseSources().getFirst());
+        var snapshot = new PauseSnapshot(LOCATION, SNAPSHOT.command(), 0, List.of(), sources, PauseReason.BREAKPOINT, 44);
+        assertFalse(sink.sendPauseSnapshot(owner, snapshot));
+        only(owner, ResumeSyncPayload.class);
+        assertTrue(payloads(owner, PauseSyncPayload.class).isEmpty());
         verify(owner).sendSystemMessage(argThat(message ->
             message.getContents() instanceof TranslatableContents text
                 && text.getKey().equals("codon.pause.snapshot_too_large")
                 && text.getFallback().contains("/codon resume")));
+        assertFalse(sink.sendPauseSnapshot(visitor, snapshot));
+        assertTrue(sent.get(visitor).isEmpty());
     }
 
     private ServerPlayer player(boolean authorized) {

@@ -28,6 +28,7 @@ public final class ClientDebuggerState {
     private volatile boolean continuing;
     private volatile @Nullable PauseSnapshot snapshot;
     private volatile @Nullable PauseSnapshot recentFlowSnapshot;
+    private volatile @Nullable WithheldPauseDetails withheldPauseDetails;
     private volatile List<BlockLocation> blockBreakpoints = List.of();
     private int selectedSourceIndex = -1;
     private int selectedFrameIndex;
@@ -101,8 +102,24 @@ public final class ClientDebuggerState {
         }
     }
 
+    /** Counts the server withheld because the full pause exceeded the receive limits. */
+    public record WithheldPauseDetails(int callStackSize, int pauseSourceCount) { }
+
+    /**
+     * Server-confirmed pause whose details exceed the wire limits: keep the paused state and
+     * correlated controls, while presenting no stack, contexts or flows instead of a truncated subset.
+     */
+    public void applyPauseSummary(PauseSnapshot summary, int callStackSize, int pauseSourceCount) {
+        applyPause(summary);
+        withheldPauseDetails = new WithheldPauseDetails(callStackSize, pauseSourceCount);
+    }
+
+    /** Non-null only while paused at a pause whose details were withheld. */
+    public @Nullable WithheldPauseDetails withheldPauseDetails() { return withheldPauseDetails; }
+
     public void applyPause(PauseSnapshot snapshot) {
         feedback.clearControl();
+        withheldPauseDetails = null;
         boolean repeatedPause = paused && this.snapshot != null && this.snapshot.pauseId() == snapshot.pauseId();
         boolean interruptedReads = repeatedPause && (controlAwaitingReads || watchReadsFailed);
         unobservedSelection = null;
@@ -163,6 +180,7 @@ public final class ClientDebuggerState {
 
     private void clearPause(boolean stepping) {
         feedback.clearControl();
+        withheldPauseDetails = null;
         unobservedSelection = null;
         if (stepping) watchEditor.invalidate();
         else watchEditor.cancel();

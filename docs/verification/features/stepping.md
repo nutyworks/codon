@@ -109,6 +109,7 @@ captures a selected row alongside a keyboard-focused, truncated action label.
 | Stop after step/resume in a parked native command context | `DebuggerStopRoutingGameTest` |
 | Native conditional function chronology | `DebuggerConditionalFunctionFlowGameTest` |
 | Client camera across server-sent step/pause packets | `DebuggerFreecamStepGameTest` |
+| Pause above the 1,024-frame/4,096-context receive limits: summary stays paused, Continue works | `test`: `DebuggerRecipientAuthorizationTest`, `NetworkCodecsTest`; `clientTest`: `ClientDebuggerStateTest`; native: `DebuggerWithheldPauseGameTest` |
 | Keyboard focus/navigation | `DebuggerKeyboardNavigationGameTest` |
 
 Example: `./gradlew coreTest --tests '*CommandBlockSteppingTest'`.

@@ -218,13 +218,16 @@ public final class CommandPanel {
     private void renderPath(GuiGraphicsExtractor graphics, Bounds area, PauseSnapshot snapshot) {
         navigationGroup = DebuggerNavigation.Group.CALL_PATH;
         List<CallFrame> frames = state.displayedCallStack();
-        int titleWidth = Math.min(client.font.width(tr("codon.ui.call_stack", frames.size())) + 10,
-            Math.max(0, area.width() / 2));
-        drawText(graphics, tr("codon.ui.call_stack", frames.size()), area.x() + 3, area.y() + 4, titleWidth - 6, MUTED);
+        // Withheld frames were measured by the server; never present them as zero or unrecorded.
+        var withheld = frames.isEmpty() && state.isPaused() ? state.withheldPauseDetails() : null;
+        String title = tr("codon.ui.call_stack", withheld != null ? withheld.callStackSize() : frames.size());
+        int titleWidth = Math.min(client.font.width(title) + 10, Math.max(0, area.width() / 2));
+        drawText(graphics, title, area.x() + 3, area.y() + 4, titleWidth - 6, MUTED);
         int left = area.x() + titleWidth;
         int available = Math.max(0, area.width() - titleWidth);
         if (frames.isEmpty()) {
-            drawText(graphics, tr("codon.ui.stack_unavailable"), left + 3, area.y() + 4, available - 6, MUTED);
+            drawText(graphics, tr(withheld != null ? "codon.ui.details_withheld" : "codon.ui.stack_unavailable"),
+                left + 3, area.y() + 4, available - 6, MUTED);
             return;
         }
         if (available < 5) return;
@@ -770,7 +773,8 @@ public final class CommandPanel {
                 unobserved + 1, tr(key + ".short")), values, tr(key),
                 executionError(unobserved) ? RED : TEAL);
         }
-        if (stage == null) return new SelectionDetail(tr("codon.ui.no_flow"),
+        if (stage == null) return new SelectionDetail(tr(state.isPaused() && state.withheldPauseDetails() != null
+                ? "codon.ui.details_withheld" : "codon.ui.no_flow"),
             tr("codon.ui.flow_detail.no_counts"), tr("codon.ui.stage_unavailable"), MUTED);
         boolean error = executionError(stage.index());
         boolean incomplete = hasWarning(stage);
