@@ -45,6 +45,14 @@ class WatchExpressionTest {
         assertNull(parse("score points two words").spec());
     }
 
+    @Test void everyValidWatchFormatsWithinTheMaximumLengthAndParsesBack() {
+        String objective = "o".repeat(WatchSpec.MAX_INPUT_LENGTH);
+        WatchSpec worst = WatchSpec.scoreHolder(objective, "\\".repeat(WatchSpec.MAX_INPUT_LENGTH));
+        String text = WatchExpression.format(worst);
+        assertTrue(text.length() <= WatchExpression.MAX_LENGTH, "formatted length " + text.length());
+        assertEquals(worst, parse(text).spec());
+    }
+
     @Test void entityPathStopsAtNbtPathEndSoFiltersAndIndexesKeepTheirSpaces() {
         assertEquals(new WatchSpec(WatchSpec.Kind.ENTITY_NBT, "", "Pos[0]"), parse("entity Pos[0]").spec());
         String filtered = "Items[{id:\"minecraft:stone\", count:1}].count";

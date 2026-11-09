@@ -25,6 +25,12 @@ public final class WatchExpression {
     public static final String SCORE = "score", ENTITY = "entity", STORAGE = "storage";
 
     /**
+     * Longest formatted expression: the longest keyword, a full objective and a full holder whose every character
+     * needs an escape inside quotes. The text field must hold this so any saved watch can be edited unchanged.
+     */
+    public static final int MAX_LENGTH = WatchSpec.MAX_INPUT_LENGTH * 3 + 16;
+
+    /**
      * @param slot   what the final token is
      * @param prefix the text of that token as typed
      * @param start  index in the input where the token starts, so a completion can replace it

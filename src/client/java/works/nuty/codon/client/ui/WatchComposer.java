@@ -72,7 +72,7 @@ final class WatchComposer {
         lastText = "";
         Font font = Minecraft.getInstance().font;
         box = new DebuggerEditBox(font, 0, 0, 100, BOX_HEIGHT, text("composer.label"));
-        box.setMaxLength(WatchSpec.MAX_INPUT_LENGTH * 2 + 64);
+        box.setMaxLength(WatchExpression.MAX_LENGTH);
         box.setHint(text("composer.hint"));
         if (id > 0) {
             var entry = state.watches().entries().stream().filter(row -> row.id() == id).findFirst().orElse(null);
