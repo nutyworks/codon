@@ -47,8 +47,17 @@ public final class DebuggerWatchEditorGameTest implements FabricClientGameTest {
             checkRowManagement(context, state);
             context.takeScreenshot("codon-watches-top-management");
 
+            // Hiding Watches ends the row; opening a row shows Watches again.
             context.runOnClient(client -> overlay.watchPanel().beginComposer(-1, input, overlay));
             context.waitTicks(3);
+            context.runOnClient(client -> { box(client); state.preferences().setWatchesVisible(false); });
+            context.waitTicks(3);
+            context.runOnClient(client -> require(screen(client).children().stream().noneMatch(EditBox.class::isInstance),
+                "hiding Watches closes the expression row instead of leaving an invisible field"));
+            context.runOnClient(client -> overlay.watchPanel().beginComposer(-1, input, overlay));
+            context.waitTicks(3);
+            context.runOnClient(client -> require(box(client) != null && state.preferences().watchesVisible(),
+                "opening the expression row shows the hidden Watches panel"));
             context.runOnClient(client -> box(client).setValue("storage demo:state nested.counter"));
             context.getInput().resizeWindow(320, 240);
             context.waitTicks(3);

@@ -111,6 +111,11 @@ public final class DebuggerOverlay {
 
     public DebuggerNavigation navigation() { return navigation; }
     public WatchPanel watchPanel() { return watchPanel; }
+
+    /** Opening an expression row needs its panel: wide layouts show Watches, compact ones derive it per frame. */
+    void revealWatches() {
+        if (!compactAuxiliary) state.preferences().setWatchesVisible(true);
+    }
     void revealSelectedFlow(CodonScreen screen, String focusId) {
         preferences().setCommandVisible(true);
         closeAuxiliaryPanel();
@@ -215,6 +220,8 @@ public final class DebuggerOverlay {
                 : graphics.guiWidth() >= 420 && graphics.guiHeight() >= 220;
         showWatches = compactAuxiliary ? shownPanel == AuxiliaryPanel.WATCHES
             : state.preferences().watchesVisible();
+        // Hiding Watches (View menu) ends the row, so its field never lingers unpainted.
+        if (!showWatches && watchPanel.composerOpen()) watchPanel.closeComposer();
         boolean reserveSide = narrowAuxiliary ? false : showInspector || compactAuxiliary && showWatches;
         int maximumInspectorWidth = DebuggerLayout.maximumInspectorWidth(graphics.guiWidth(), showWatches);
         int inspectorWidth = Math.min(maximumInspectorWidth,

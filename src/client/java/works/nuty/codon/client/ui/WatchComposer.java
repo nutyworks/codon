@@ -253,6 +253,11 @@ final class WatchComposer {
             ? needle.substring(0, WatchEditorQuery.MAX_SEARCH_LENGTH) : needle;
     }
 
+    private static String unquote(String text) {
+        if (text.length() < 2 || !text.startsWith("\"") || !text.endsWith("\"")) return text;
+        return text.substring(1, text.length() - 1).replaceAll("\\\\(.)", "$1");
+    }
+
     /** The child name being typed after the last complete path segment, without its opening quote. */
     private static String childNeedle(String prefix) {
         String tail = prefix.substring(parentOf(prefix).length());
@@ -279,9 +284,11 @@ final class WatchComposer {
             }
             return found;
         }
+        // A finished entry (quoted or not) is not offered again, so its live preview can show.
+        String typed = unquote(result.prefix());
         for (var option : page.options()) {
             String value = option.value();
-            if (result.slot() == WatchExpression.Slot.HOLDER || !value.equalsIgnoreCase(result.prefix()))
+            if (!unquote(value).equalsIgnoreCase(typed))
                 found.add(new Choice(value, option.label().isBlank() ? value : option.label(), option.detail()));
         }
         return found;

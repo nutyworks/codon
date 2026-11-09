@@ -87,6 +87,13 @@ public final class DebuggerWatchComposerGameTest implements FabricClientGameTest
             context.waitFor(client -> state.watchEditor().page() != null, 200);
             context.waitTicks(3);
             context.runOnClient(client -> require(hasButton(client, "#counter"), "score holders are completed from the server"));
+            // A completed holder is not offered again, so its preview can replace the list.
+            context.runOnClient(client -> box(client).setValue("score composer_points #counter"));
+            context.waitTicks(20); // the previous page is still current until the new query answers
+            context.runOnClient(client -> require(!hasButton(client, "#counter"),
+                "an exactly typed holder is not suggested again"));
+            context.runOnClient(client -> box(client).setValue("score composer_points #c"));
+            context.waitTicks(3);
             context.getInput().resizeWindow(900, 600);
             context.waitTicks(3);
             context.runOnClient(client -> require(box(client).getValue().equals("score composer_points #c")

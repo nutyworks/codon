@@ -93,6 +93,7 @@ public final class WatchPanel {
         var client = Minecraft.getInstance();
         if (!(client.gui.screen() instanceof CodonScreen)) client.gui.setScreen(new CodonScreen(input, overlay));
         closeGroupingMenu();
+        overlay.revealWatches();
         composer.begin(id);
     }
     public Bounds bounds() { return bounds; }
