@@ -243,6 +243,7 @@ class ClientDebuggerStateTest {
         now.addAndGet(1_999_999_999L);
         assertTrue(state.controlPending());
         now.incrementAndGet();
+        state.expireControlRequest();
         assertFalse(state.controlPending());
         assertTrue(state.isPaused());
         assertSame(before, state.snapshot());
@@ -839,11 +840,114 @@ class ClientDebuggerStateTest {
             assertTrue(state.beginControlRequest());
             state.controlSent();
             now.set(2_000_000_000L);
+            state.expireControlRequest();
             assertFalse(state.controlPending());
             assertNotNull(state.feedback().current());
             acknowledgement.accept(state);
             assertNull(state.feedback().current(), "an authoritative response resolves control uncertainty");
         }
+    }
+
+    @Test
+    void correlatedRejectionAfterAdvancementIsStillReportedOnce() {
+        AtomicLong now = new AtomicLong();
+        ClientDebuggerState state = new ClientDebuggerState(now::get);
+        state.applyPause(controlPause(10));
+        assertTrue(state.beginControlRequest());
+        state.controlSent();
+        long request = state.controlRequestId();
+        state.applyStep();
+        state.applyPause(controlPause(11));
+        assertFalse(state.controlPending());
+        state.rejectControl(10, request, "command.codon.error.stale_pause");
+        var rejection = state.feedback().current(ClientRequestFeedback.Kind.CONTROL);
+        assertNotNull(rejection);
+        assertEquals("command.codon.error.stale_pause", rejection.messageKey());
+        assertEquals(11, state.snapshot().pauseId());
+        state.rejectControl(10, request, "command.codon.error.not_paused");
+        assertSame(rejection, state.feedback().current(ClientRequestFeedback.Kind.CONTROL));
+    }
+
+    @Test
+    void advancedRequestRejectsExpiredOrSupersededReplies() {
+        AtomicLong now = new AtomicLong();
+        ClientDebuggerState state = new ClientDebuggerState(now::get);
+        state.applyPause(controlPause(10));
+        assertTrue(state.beginControlRequest());
+        state.controlSent();
+        long old = state.controlRequestId();
+        state.applyStep();
+        state.applyPause(controlPause(11));
+        now.set(2_000_000_000L);
+        state.rejectControl(10, old, "command.codon.error.stale_pause");
+        assertNull(state.feedback().current());
+        assertTrue(state.beginControlRequest());
+        state.rejectControl(10, old, "command.codon.error.stale_pause");
+        assertTrue(state.controlPending());
+        assertNull(state.feedback().current());
+        state.reset();
+        state.rejectControl(11, state.controlRequestId(), "command.codon.error.not_paused");
+        assertNull(state.feedback().current());
+    }
+
+    @Test
+    void independentNoticesKeepDeadlinesAcrossControlTimeoutAndAdvancement() {
+        AtomicLong now = new AtomicLong();
+        ClientDebuggerState state = new ClientDebuggerState(now::get);
+        state.applyPause(controlPause(10));
+        var target = BreakpointTarget.whole(state.snapshot().location());
+        var edit = state.breakpoints().begin(ClientBreakpointState.Action.TOGGLE, BreakpointDefinition.plain(target));
+        state.breakpoints().finish(edit.requestId(), ClientBreakpointState.Result.STALE_SOURCE);
+        var breakpoint = state.feedback().current(ClientRequestFeedback.Kind.BREAKPOINT);
+        now.set(100_000_000L);
+        assertTrue(state.beginControlRequest());
+        state.controlSent();
+        now.set(2_100_000_000L);
+        state.expireControlRequest();
+        assertSame(breakpoint, state.feedback().current(ClientRequestFeedback.Kind.BREAKPOINT));
+        assertNotNull(state.feedback().current(ClientRequestFeedback.Kind.CONTROL));
+        state.applyPause(controlPause(11));
+        assertNull(state.feedback().current(ClientRequestFeedback.Kind.CONTROL));
+        now.set(5_999_999_999L);
+        assertSame(breakpoint, state.feedback().current(ClientRequestFeedback.Kind.BREAKPOINT));
+        now.incrementAndGet();
+        assertNull(state.feedback().current(ClientRequestFeedback.Kind.BREAKPOINT));
+    }
+
+    @Test
+    void simultaneousTimeoutsPreserveBothNotices() {
+        AtomicLong now = new AtomicLong();
+        ClientDebuggerState state = new ClientDebuggerState(now::get);
+        state.applyPause(controlPause(10));
+        var target = BreakpointTarget.whole(state.snapshot().location());
+        state.breakpoints().begin(ClientBreakpointState.Action.TOGGLE, BreakpointDefinition.plain(target));
+        now.set(8_000_000_000L);
+        assertTrue(state.beginControlRequest());
+        state.controlSent();
+        now.set(10_000_000_000L);
+        state.expireControlRequest();
+        state.breakpoints().expirePending();
+        assertNotNull(state.feedback().current(ClientRequestFeedback.Kind.CONTROL));
+        assertNotNull(state.feedback().current(ClientRequestFeedback.Kind.BREAKPOINT));
+    }
+
+    @Test
+    void breakpointRetryClearsOnlyItsOwnNotice() {
+        ClientDebuggerState state = new ClientDebuggerState(() -> 0);
+        state.applyPause(controlPause(10));
+        var target = BreakpointTarget.whole(state.snapshot().location());
+        var definition = BreakpointDefinition.plain(target);
+        var edit = state.breakpoints().begin(ClientBreakpointState.Action.TOGGLE, definition);
+        state.breakpoints().finish(edit.requestId(), ClientBreakpointState.Result.STALE_SOURCE);
+        var notice = state.feedback().current(ClientRequestFeedback.Kind.BREAKPOINT);
+        assertNotNull(notice);
+        var other = BreakpointTarget.whole(new SourceLocation.Block(new BlockLocation(1, 64, 0, "overworld")));
+        state.breakpoints().begin(ClientBreakpointState.Action.TOGGLE, BreakpointDefinition.plain(other));
+        assertSame(notice, state.feedback().current(ClientRequestFeedback.Kind.BREAKPOINT));
+        var retry = state.breakpoints().begin(ClientBreakpointState.Action.TOGGLE, definition);
+        assertNull(state.feedback().current(ClientRequestFeedback.Kind.BREAKPOINT));
+        state.breakpoints().finish(retry.requestId(), ClientBreakpointState.Result.APPLIED);
+        assertNull(state.feedback().current(ClientRequestFeedback.Kind.BREAKPOINT));
     }
 
     private static PauseSnapshot controlPause(long id) {

@@ -13,13 +13,14 @@ import works.nuty.codon.client.state.ClientRequestFeedback;
 
 /** Vanilla's topmost, wrapped toast stays readable in the HUD, Source and block editors. */
 public final class DebuggerFeedbackToast extends SystemToast {
-    private static final SystemToastId TOKEN = new SystemToastId();
+    private static final SystemToastId CONTROL_TOKEN = new SystemToastId();
+    private static final SystemToastId BREAKPOINT_TOKEN = new SystemToastId();
     private static @Nullable ToastManager manager;
     private final ClientRequestFeedback feedback;
     private ClientRequestFeedback.Notice notice;
 
     private DebuggerFeedbackToast(ClientRequestFeedback feedback, ClientRequestFeedback.Notice notice) {
-        super(TOKEN, Component.translatable(notice.titleKey()), Component.translatable(notice.messageKey()));
+        super(token(notice.kind()), Component.translatable(notice.titleKey()), Component.translatable(notice.messageKey()));
         this.feedback = feedback;
         this.notice = notice;
     }
@@ -30,28 +31,37 @@ public final class DebuggerFeedbackToast extends SystemToast {
                 manager = new ToastManager(client, client.options);
                 manager.setMusicToastDisplayState(MusicToastDisplayState.NEVER);
             }
-            state.controlPending();
-            state.breakpoints().expirePending();
-            var notice = state.feedback().current();
-            if (notice != null) {
-                var toast = manager.getToast(DebuggerFeedbackToast.class, TOKEN);
+            for (var kind : ClientRequestFeedback.Kind.values()) {
+                var notice = state.feedback().current(kind);
+                if (notice == null) continue;
+                var toast = manager.getToast(DebuggerFeedbackToast.class, token(kind));
                 if (toast == null) manager.addToast(new DebuggerFeedbackToast(state.feedback(), notice));
                 else if (toast.notice != notice) {
                     toast.notice = notice;
                     toast.reset(Component.translatable(notice.titleKey()), Component.translatable(notice.messageKey()));
                 }
             }
-            manager.update();
         });
+    }
+
+    private static SystemToastId token(ClientRequestFeedback.Kind kind) {
+        return kind == ClientRequestFeedback.Kind.CONTROL ? CONTROL_TOKEN : BREAKPOINT_TOKEN;
     }
 
     /** Feedback has its own slots; ordinary notifications retain their paused clocks and queue. */
     public static void extractRenderState(GuiGraphicsExtractor graphics) {
-        if (manager != null) manager.extractRenderState(graphics);
+        if (manager != null) {
+            manager.update();
+            manager.extractRenderState(graphics);
+        }
     }
+
+    public static void clear() { if (manager != null) manager.clear(); }
+
+    public ClientRequestFeedback.Notice notice() { return notice; }
 
     @Override public Visibility getWantedVisibility() {
         // Receipt-time expiry also clears queued notices, replacement and disconnect feedback.
-        return feedback.current() == notice && Minecraft.getInstance().level != null ? Visibility.SHOW : Visibility.HIDE;
+        return feedback.current(notice.kind()) == notice && Minecraft.getInstance().level != null ? Visibility.SHOW : Visibility.HIDE;
     }
 }

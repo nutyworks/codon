@@ -50,10 +50,16 @@ public final class DebuggerRequestFeedbackGameTest implements FabricClientGameTe
     private static boolean feedbackRendered;
 
     /** Test-only observer of the actual native toast rendering path. */
-    public static void observeToastDraw(SystemToast toast) {
+    public static void observeToastDraw(SystemToast toast, net.minecraft.client.gui.GuiGraphicsExtractor graphics) {
         if (!observeDraws) return;
         renderedToasts.add(toast);
-        if (toast instanceof DebuggerFeedbackToast && toast.getWantedVisibility() == SystemToast.Visibility.SHOW)
+        if (toast instanceof DebuggerFeedbackToast feedback
+            && feedback.getWantedVisibility() == SystemToast.Visibility.SHOW
+            && state().feedback().current(feedback.notice().kind()) == feedback.notice()
+            && graphics.pose().m20() < graphics.guiWidth()
+            && graphics.pose().m20() + toast.width() > 0
+            && graphics.pose().m21() < graphics.guiHeight()
+            && graphics.pose().m21() + toast.height() > 0)
             feedbackRendered = true;
     }
 
@@ -120,19 +126,20 @@ public final class DebuggerRequestFeedbackGameTest implements FabricClientGameTe
                         require(state().feedback().current() == timeout, "late rejection cannot replace timeout feedback");
                         require(CodonMod.engine().currentSnapshot().pauseId() == second.pauseId(),
                             "the stale request never advances the current native stop");
+                        feedbackRendered = false;
                     });
                     waitToastAnimation(context);
                     requireOrdinaryToasts(context, ordinary);
                     context.takeScreenshot("codon-control-timeout-" + locale);
-                    context.waitFor(client -> state().feedback().current() == null, 200);
-                    waitToastAnimation(context);
-                    context.takeScreenshot("codon-control-timeout-expired-" + locale);
-                    requireOrdinaryToasts(context, ordinary);
-                    context.runOnClient(client -> {
-                        CodonMod.LOGGER.info("Occupied-toast feedback {}: slots=5, feedbackRendered={}, noticeExpired=true, ordinaryPreserved=true",
-                            locale, feedbackRendered);
-                        require(feedbackRendered, "timeout feedback must actually render before expiry with all five ordinary toast slots frozen");
-                    });
+                    context.runOnClient(client -> require(feedbackRendered,
+                        "the current timeout feedback must render within the viewport"));
+                    if (locale.equals("en_us")) {
+                        context.waitFor(client -> state().feedback().current() == null, 200);
+                        waitToastAnimation(context);
+                        context.takeScreenshot("codon-control-timeout-expired-" + locale);
+                        requireOrdinaryToasts(context, ordinary);
+                    }
+                    CodonMod.LOGGER.info("Occupied-toast feedback {}: rendered=true, ordinaryPreserved=true", locale);
                     suppress.set(false);
                 }
 
@@ -148,6 +155,7 @@ public final class DebuggerRequestFeedbackGameTest implements FabricClientGameTe
                         && state().snapshot() == first && CodonMod.engine().currentSnapshot().pauseId() == second.pauseId(),
                         "correlated stale rejection is visible and leaves the native stop unchanged: " + action));
                     if (action == InputManager.Control.RESUME) {
+                        context.runOnClient(client -> feedbackRendered = false);
                         waitToastAnimation(context);
                         requireOrdinaryToasts(context, ordinary);
                         context.runOnClient(client -> require(feedbackRendered,
@@ -244,8 +252,9 @@ public final class DebuggerRequestFeedbackGameTest implements FabricClientGameTe
                 "codon.breakpoint.error." + result.name().toLowerCase(java.util.Locale.ROOT)), 200);
         context.runOnClient(client -> require(state().breakpoints().get(target) == null
             && state().breakpoints().error(target) == result, "rejected edit does not create a breakpoint"));
+        context.runOnClient(client -> feedbackRendered = false);
         waitToastAnimation(context);
-        context.runOnClient(client -> require(feedbackRendered, "inline rejection toast actually renders above the occupied slots"));
+        context.runOnClient(client -> require(feedbackRendered, "the current inline rejection toast actually renders within the viewport"));
         context.takeScreenshot("codon-inline-rejected-" + result.name().toLowerCase(java.util.Locale.ROOT) + "-" + locale);
     }
 

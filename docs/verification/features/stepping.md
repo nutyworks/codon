@@ -50,7 +50,8 @@ or fabricate an execution acknowledgement. Late/duplicate rejections cannot clea
 a newer pending request. Feedback uses separate toast slots and renders above ordinary
 notifications, so a full, frozen vanilla toast queue cannot block it. Ordinary toast
 identities and paused lifetimes remain unchanged. Feedback expires after six seconds.
-A new control, pause or authoritative advancement clears control feedback; those
+A new control, pause or authoritative advancement clears existing control feedback. A matching
+rejection arriving after an intervening sync is still shown until its request deadline; those
 execution events do not acknowledge independent breakpoint edits, whose notices
 retain their original deadline. Disconnect clears every notice. These notices are separate from
 Watch-read status before a control is sent. Command-tree owner checks remain intact;
@@ -100,7 +101,7 @@ captures a selected row alongside a keyboard-focused, truncated action label.
 | Concern | Existing tests |
 | --- | --- |
 | Depth, chain boundaries and completion | `coreTest`: `StepControllerTest`, `CommandBlockSteppingTest`, `DebuggerEngineTest` |
-| Delayed controls and pause ID validation | `coreTest`: `DebuggerControlTest`; command transport: `DebuggerRequestTransportGameTest` |
+| Delayed controls and pause ID validation | `coreTest`: `DebuggerControlTest`; `test`: `DebuggerRequestPayloadTest`; command transport: `DebuggerRequestTransportGameTest` and `DebuggerControlOrderingGameTest` |
 | Mailbox limits, concurrent admission, request/step order, recovery and shutdown completion | `test`: `DebuggerMailboxTest`, `DebuggerTaskQueueTest` |
 | Pending state, Watch read deadline/cancellation, current/history separation | `clientTest`: `ClientQuerySchedulerTest`, `ClientDebuggerStateTest`, `ClientHistoricalCallStackTest`, `DebuggerStatusTest` |
 | Visible rejection/timeout with all ordinary toast slots occupied, late replies and recovery | `DebuggerRequestFeedbackGameTest` |
@@ -119,11 +120,17 @@ Record the before/after command and call depth, not merely that the screen opene
 execution-complete stop, then continues. Its native command runs once; the client
 receives the completed record with a selected Flow stage and inactive controls.
 
+`DebuggerControlOrderingGameTest` delays real Step and Pause delivery in order,
+then sends a control from the older view. It verifies the matching server rejection
+survives both syncs and that the matching toast is fully inside the viewport and
+scissor while the HUD is visible. Inspect its screenshot for overlap. The server
+control is issued by the local console; this is not a two-client TCP test.
+
 `DebuggerRequestFeedbackGameTest` triggers a real two-block chain and uses a cached
 earlier pause to provoke actual server rejections for all four UI controls. Its
 connection-local observer deliberately withholds rejection replies to reproduce
 post-send timeout, then delivers the same late reply. EN/KO screenshots show the
-wrapped toast and its automatic disappearance without hover.
+wrapped toast; the EN scenario also records its automatic disappearance without hover.
 The fixture first fills all five vanilla slots with real timed SystemToasts. It
 observes actual toast draw submissions while the world is paused: timeout and
 rejection feedback must render, expire normally, and leave the five ordinary
