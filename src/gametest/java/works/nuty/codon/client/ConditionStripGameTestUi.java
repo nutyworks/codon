@@ -43,8 +43,10 @@ final class ConditionStripGameTestUi {
         var widget = widget(host, label);
         var event = new MouseButtonEvent(widget.getX() + widget.getWidth() / 2.0, widget.getY() + widget.getHeight() / 2.0,
             new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
-        strip(host).mouseClicked(event, false);
-        strip(host).mouseReleased(event);
+        // Discard, Save or Remove may close the strip; the release still goes to the strip that was clicked.
+        var strip = strip(host);
+        strip.mouseClicked(event, false);
+        strip.mouseReleased(event);
     }
 
     /** Types into the Count number field, as replacing its text would. */
