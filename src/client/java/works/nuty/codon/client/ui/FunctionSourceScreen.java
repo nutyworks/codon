@@ -253,7 +253,10 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         if (edit != null && debugger != null) {
             var current = conditionContext(debugger, sources.document(), line, edit.target());
             if (BreakpointConditionStrip.open(this, BreakpointConditionStrip.Placement.SOURCE, debugger, edit, marker, current,
-                () -> focusedBreakpoint = marker) != null) focusedBreakpoint = marker;
+                () -> focusedBreakpoint = marker) != null) {
+                focusedBreakpoint = marker;
+                revealStrip(line);
+            }
         }
     }
 
@@ -276,7 +279,13 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         int left = stopped ? Math.max(lineMarkerX() - 8, sourceLeft() + 3 + font.width(">")) : lineMarkerX() - 8;
         return x >= left && x < lineMarkerX() + 10;
     }
-    private int maximumLineOffset() { return sources.document() == null ? 0 : Math.max(0, codeLines.size() - sourceRows()); }
+    private int maximumLineOffset() {
+        if (sources.document() == null) return 0;
+        // An open strip takes about two rows, so even the last line can scroll up far enough to show it.
+        int stripRows = BreakpointConditionStrip.get(this, BreakpointConditionStrip.Placement.SOURCE) == null ? 0
+            : (BreakpointConditionStrip.HEIGHT + 1 + ROW_HEIGHT - 1) / ROW_HEIGHT;
+        return Math.max(0, codeLines.size() + stripRows - sourceRows());
+    }
 
     private boolean splitterContains(double x, double y) {
         return !drawerMode && x >= left + treeWidth - 3 && x < left + treeWidth + 4
@@ -1005,10 +1014,15 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         if (direct) focusedBreakpoint = target;
         setFocused(null);
         // Keep the line and the strip under it in view.
+        if (BreakpointUi.openExact(this, BreakpointConditionStrip.Placement.SOURCE, debugger, target, current,
+            () -> focusedBreakpoint = target) != null) revealStrip(line);
+    }
+
+    /** Scrolls so the edited line and the strip under it are both in view. */
+    private void revealStrip(int line) {
         lineOffset = Math.clamp(lineOffset, Math.max(0, line - Math.max(1, sourceRows() - 2)), Math.max(0, line - 1));
+        lineOffset = Math.clamp(lineOffset, 0, maximumLineOffset());
         rememberView();
-        BreakpointUi.openExact(this, BreakpointConditionStrip.Placement.SOURCE, debugger, target, current,
-            () -> focusedBreakpoint = target);
     }
 
     /** The docked Breakpoints panel's edit action: edits the exact saved definition under its line. */
