@@ -221,6 +221,13 @@ public final class WatchPanel {
                 - WatchPanelLayout.Rows.baseHeight(!row.showScope(), stackedValues);
             expansion = WatchExpansionLayout.create(0, 0, detailWidth, detailLines.size(), actionWidths(actions), expansionLimit);
             expansions.set(expandedIndex, expansion.height());
+            if (expansion.height() == 0) {
+                // Nothing fits under the row: register no action targets, so Down skips to the next Watch.
+                actions = List.of();
+                expansion = null;
+                expansionMaxScroll = 0;
+                expansionTextBounds = EMPTY;
+            }
         }
         var rowLayout = new WatchPanelLayout.Rows(rows.stream().map(row -> !row.showScope()).toList(), topMargins,
             rows.stream().map(row -> stackedValues && row.entry() != null).toList(), expansions);
