@@ -36,6 +36,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Stream;
 
 import static works.nuty.codon.client.ui.DebuggerTheme.*;
 import static works.nuty.codon.client.state.DebuggerPreferences.*;
@@ -219,6 +220,9 @@ public final class DebuggerOverlay {
         // An open expression row lives in the Watches panel, so compact layouts must show it.
         // It is derived per frame, so closing the row restores the panel the user had chosen.
         AuxiliaryPanel shownPanel = auxiliarySize != 0 && watchPanel.composerOpen() ? AuxiliaryPanel.WATCHES : auxiliaryPanel;
+        // Breakpoints is cursor-only: the passive HUD ignores the choice, so it keeps Flow and labels,
+        // and the next interactive frame shows the panel again.
+        if (!interactive && shownPanel == AuxiliaryPanel.BREAKPOINTS) shownPanel = AuxiliaryPanel.NONE;
         compactAuxiliary = auxiliarySize != 0;
         narrowAuxiliary = auxiliarySize == 2;
         showInspector = compactAuxiliary ? shownPanel == AuxiliaryPanel.INSPECTOR
@@ -498,7 +502,7 @@ public final class DebuggerOverlay {
                 || Math.abs(projected.x) > 1 || Math.abs(projected.y) > 1) continue;
             double x = (projected.x + 1) * 0.5 * graphics.guiWidth();
             double y = (1 - projected.y) * 0.5 * graphics.guiHeight();
-            if (!labelArea.contains(x, y) || watchSummaryBounds.contains(x, y)) continue;
+            if (!labelArea.contains(x, y) || watchSummaryBounds.contains(x, y) || breakpointPanel.bounds().contains(x, y)) continue;
             // A transition's output prefix is exactly the current stage's inputs; appended drops
             // are historical markers, not live inspector/Watch/NBT indices.
             if (index < inspectorSourceCount) visibleSources.add(index);
@@ -509,7 +513,8 @@ public final class DebuggerOverlay {
         }
         List<GizmoLabelLayout.Label> labels = GizmoLabelLayout.layout(anchors, labelArea,
             selectedIndex, state.gizmoMode() != ClientDebuggerState.GizmoMode.LABELS,
-            watchSummaryBounds.width() > 0 ? List.of(watchSummaryBounds) : List.of(), MAX_WORLD_LABELS);
+            Stream.of(watchSummaryBounds, breakpointPanel.bounds()).filter(bounds -> bounds.width() > 0).toList(),
+            MAX_WORLD_LABELS);
         for (GizmoLabelLayout.Label label : labels) {
             List<Integer> indices = label.sourceIndices();
             boolean selected = indices.contains(selectedIndex);

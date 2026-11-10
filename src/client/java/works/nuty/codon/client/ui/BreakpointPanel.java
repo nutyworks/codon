@@ -69,7 +69,8 @@ final class BreakpointPanel {
     List<DebuggerButton> render(GuiGraphicsExtractor graphics, Bounds area, DebuggerNavigation navigation,
                                 ScrollbarInput scrollbars) {
         clearBounds();
-        if (area.width() < 72 || area.height() < HEADER + PADDING) return List.of();
+        // A row that cannot fit would overlap Flow and steal its clicks, so a shorter column shows nothing.
+        if (area.width() < 72 || area.height() < MINIMUM_HEIGHT) return List.of();
         var font = Minecraft.getInstance().font;
         displayed = state.breakpoints().definitions().stream()
             .sorted(Comparator.comparing(BreakpointDefinition::target, BreakpointListOrder.TARGETS)).toList();
