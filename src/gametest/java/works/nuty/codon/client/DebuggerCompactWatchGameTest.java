@@ -137,6 +137,17 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
         context.getInput().pressKey(InputConstants.KEY_DOWN);
         context.runOnClient(client -> require(screen(client).getFocused() == button(screen(client), text("codon.watch.details.copy_value")),
             "Down from an expanded row reaches its first action"));
+        context.getInput().pressKey(InputConstants.KEY_END);
+        context.runOnClient(client -> {
+            var panel = fixture.overlay().watchPanel();
+            require(panel.expansionScroll() == panel.expansionMaxScroll(), "End scrolls the expanded details from the keyboard");
+            require(screen(client).getFocused() == button(screen(client), text("codon.watch.details.copy_value")),
+                "Scrolling the details keeps keyboard focus on the action");
+            System.out.println("[codon-test] " + name + " expansion scroll " + panel.expansionScroll() + "/" + panel.expansionMaxScroll());
+        });
+        capture(context, name + "-details-end");
+        context.getInput().pressKey(InputConstants.KEY_HOME);
+        context.runOnClient(client -> require(fixture.overlay().watchPanel().expansionScroll() == 0, "Home returns to the value"));
         click(context, "codon.watch.edit");
         closeInlineRow(context, "Expanded row Edit hitbox opens the same inline editor");
         context.runOnClient(client -> require(fixture.overlay().watchPanel().expandedId() == fixture.state().watches().findId(NBT),

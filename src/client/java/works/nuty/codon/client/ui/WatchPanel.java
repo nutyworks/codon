@@ -6,6 +6,7 @@ import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
+import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
@@ -78,6 +79,7 @@ public final class WatchPanel {
     private long expandedId;
     private boolean revealExpanded;
     private int expansionScroll;
+    private int expansionVisibleLines;
     private int expansionMaxScroll;
     private Bounds expansionTextBounds = EMPTY;
     private record Action(String id, Component label, boolean active, Runnable run) { }
@@ -95,6 +97,25 @@ public final class WatchPanel {
     void refocusComposer() { composer.requestFocus(); }
     boolean takeComposerFocusRequest() { return composer.takeFocusRequest(); }
     boolean composerKey(KeyEvent event) { return composer.keyPressed(event, this); }
+
+    /** Page Up/Down and Home/End scroll the expanded row's details while its row or an action has focus. */
+    boolean expansionKey(KeyEvent event, net.minecraft.client.gui.components.events.@Nullable GuiEventListener focused) {
+        if (expandedId == 0 || expansionMaxScroll == 0 || focused == null) return false;
+        boolean owned = buttons.get("watch-row-" + expandedId) == focused || buttons.get("watch-value-" + expandedId) == focused
+            || buttons.entrySet().stream().anyMatch(e -> e.getKey().startsWith("watch-details-") && e.getValue() == focused);
+        if (!owned) return false;
+        int page = Math.max(1, expansionVisibleLines - 1);
+        int next;
+        switch (event.key()) {
+            case InputConstants.KEY_PAGEUP -> next = expansionScroll - page;
+            case InputConstants.KEY_PAGEDOWN -> next = expansionScroll + page;
+            case InputConstants.KEY_HOME -> next = 0;
+            case InputConstants.KEY_END -> next = expansionMaxScroll;
+            default -> { return false; }
+        }
+        expansionScroll = Math.clamp(next, 0, expansionMaxScroll);
+        return true;
+    }
     void closeComposer() { composer.close(); }
 
     /** Add (id &lt; 0) or edit a watch in the row under the header; cursor mode owns its text input. */
@@ -141,6 +162,9 @@ public final class WatchPanel {
     public long expandedId() { return expandedId; }
 
     /** Selecting a row shows its details under it; selecting it again collapses them. */
+    public int expansionScroll() { return expansionScroll; }
+    public int expansionMaxScroll() { return expansionMaxScroll; }
+
     public void toggleExpanded(long id) {
         expandedId = expandedId == id ? 0 : id;
         expansionScroll = 0;
@@ -671,6 +695,7 @@ public final class WatchPanel {
         graphics.fill(bounds.x() + 3, top, bounds.x() + bounds.width() - 6, bottom - 1, DebuggerTheme.color(ROW_HOVER));
         graphics.fill(bounds.x() + 3, rowTop, bounds.x() + 4, bottom - 1, DebuggerTheme.color(TEAL));
         expansionMaxScroll = Math.max(0, lines.size() - layout.visibleLines());
+        expansionVisibleLines = layout.visibleLines();
         expansionScroll = Math.clamp(expansionScroll, 0, expansionMaxScroll);
         int textTop = layout.textTop(top);
         int textHeight = layout.visibleLines() * WatchExpansionLayout.LINE_HEIGHT;
@@ -707,7 +732,8 @@ public final class WatchPanel {
             Minecraft.getInstance().keyboardHandler.setClipboard(spec.kind() == WatchSpec.Kind.SCORE ? spec.target() : spec.path());
             notice(Component.translatable("codon.ui.copied"));
         }));
-        if (!entry.automatic() && hasIssue(entry))
+        // The displayed result may be the previous executor's; Retry follows the current read.
+        if (!entry.automatic() && (hasIssue(entry) || state.watches().canRetry(id)))
             actions.add(new Action("watch-details-retry", text("details.retry"),
                 !state.watchReadsFailed() && state.watches().canRetry(id), () -> state.watches().retry(id)));
         if (!entry.automatic())

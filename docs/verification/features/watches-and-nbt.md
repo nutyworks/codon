@@ -25,11 +25,13 @@ collapses them. One row is expanded at a time and it scrolls with the list. The
 expansion lists Expression (localized kind prefix with the literal objective,
 storage or path), Binding, Current value (with `old → new` for the last change),
 the previous executor's value after a completed step, change notes and the read
-target. Below that are Copy value, Copy path, Retry (only for a read issue, and
-enabled only when the server reported `ERROR`/`UNAVAILABLE`) and Edit (opens the
+target. Below that are Copy value, Copy path, Retry (shown for a displayed read
+issue or when the current read is retryable, and enabled only when the server
+reported `ERROR`/`UNAVAILABLE` for the current read) and Edit (opens the
 inline expression row). Automatic rows have no Retry or Edit. Copy value is
 disabled until a reply arrives. Long values scroll inside the expansion with the
-wheel, so the expansion never grows past the list viewport. Down from the expanded
+wheel, or with Page Up/Down and Home/End while the row or one of its actions has
+focus, so the expansion never grows past the list viewport. Down from the expanded
 row reaches its first action. Copy feedback uses the panel header notice.
 [WatchExpansionLayout](../../../src/client/java/works/nuty/codon/client/ui/layout/WatchExpansionLayout.java)
 sizes the text window and wraps actions; `WatchExpansionLayoutTest` covers it.
@@ -169,7 +171,8 @@ data modify storage codon:verify counter set value 0
    and a removed Watch/world change invalidates the menu. Repeat with Source docked
    to check menu layering and that Source-covered pixels cannot retarget it.
    Expand a long value at 320x240: the actions wrap inside the panel below the
-   text, and the wheel scrolls the text inside the expansion. Check Copy value/path,
+   text, and the wheel (or Page Up/Down, Home/End from a focused action) scrolls
+   the text inside the expansion. Check Copy value/path,
    Retry and Edit hitboxes. A successful value has no Retry; a failed read shows an
    enabled Retry. Click the row again to collapse it.
 
