@@ -398,7 +398,9 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
                 "The compact NBT heading stays inside the screen");
         });
         context.takeScreenshot("codon-nbt-compact");
-        context.getInput().resizeWindow(1024, 576);
+        // 18 GUI pixels shorter than the old header layout's 1024x576, so the single toolbar still leaves
+        // the same short 64-pixel inspector viewport this regression needs.
+        context.getInput().resizeWindow(1024, 540);
         context.runOnClient(client -> {
             client.gui.hud.getChat().clearMessages(false);
             CodonClientMod.state().preferences().setCommandVisible(true);
