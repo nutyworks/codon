@@ -162,16 +162,20 @@ public final class BreakpointConditionVisibilityGameTest implements FabricClient
             context.getInput().setCursorPos(0, 0);
         }
         context.runOnClient(client -> {
-            // Keyboard: focus the Count segment and choose it; the draft now differs from the saved rule.
+            // Keyboard: choose a mode other than the saved one, so the draft now differs from it.
             var screen = client.gui.screen();
             var layer = ConditionStripGameTestUi.strip(screen);
-            layer.setFocused(ConditionStripGameTestUi.widget(screen, ConditionStripGameTestUi.text("codon.breakpoint.strip.mode.count")));
+            var count = (DebuggerButton) ConditionStripGameTestUi.widget(screen, ConditionStripGameTestUi.text("codon.breakpoint.strip.mode.count"));
+            var other = count.selected()
+                ? (DebuggerButton) ConditionStripGameTestUi.widget(screen, ConditionStripGameTestUi.text("codon.breakpoint.strip.mode.always")) : count;
+            layer.setFocused(other);
             ConditionStripGameTestUi.key(screen, InputConstants.KEY_RETURN);
-            require(ConditionStripGameTestUi.has(screen, ConditionStripGameTestUi.text("codon.breakpoint.strip.metric.output_count")),
-                "keyboard selects the Count mode and shows its controls");
+            require(((DebuggerButton) ConditionStripGameTestUi.widget(screen, other.getMessage().getString())).selected()
+                && ConditionStripGameTestUi.has(screen, ConditionStripGameTestUi.text("codon.breakpoint.strip.metric.output_count")) == (other == count),
+                "keyboard selects the other mode and shows only its controls");
         });
         context.waitTicks(2);
-        assertInk(context, point, name + "-count", true);
+        assertInk(context, point, name + "-mode", true);
         context.runOnClient(client -> {
             var screen = client.gui.screen();
             ConditionStripGameTestUi.key(screen, InputConstants.KEY_ESCAPE);
