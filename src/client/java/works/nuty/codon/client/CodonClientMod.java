@@ -58,6 +58,7 @@ public final class CodonClientMod implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         ScreenLayers.register();
+        works.nuty.codon.client.ui.BreakpointConditionStrip.register();
         DebuggerPreferences preferences = ClientSettingsStore.open(
             FabricLoader.getInstance().getConfigDir().resolve("codon.json"),
             exception -> CodonMod.LOGGER.error("Could not load or save Codon client settings", exception));

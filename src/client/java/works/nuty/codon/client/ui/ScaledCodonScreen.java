@@ -52,12 +52,4 @@ public abstract class ScaledCodonScreen extends Screen {
         Screen target = layer == null ? owner : layer;
         return target instanceof ScaledCodonScreen scaled ? scaled.uiScale().toLocal(coordinate) : coordinate;
     }
-
-    /** Convert anchors from their owner's units; the vanilla command editor keeps game GUI units. */
-    public final BreakpointConditionScreen.@Nullable Anchor localAnchor(Screen parent, BreakpointConditionScreen.@Nullable Anchor anchor) {
-        if (anchor == null || parent instanceof ScaledCodonScreen) return anchor;
-        UiScale scale = uiScale();
-        return new BreakpointConditionScreen.Anchor((int) scale.toLocal(anchor.x()), (int) scale.toLocal(anchor.y()),
-            (int) scale.toLocal(anchor.width()), (int) scale.toLocal(anchor.height()));
-    }
 }

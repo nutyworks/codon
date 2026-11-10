@@ -74,6 +74,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
     private int selectedLine = -1;
     private int selectedStageIndex = -1;
     private @org.jspecify.annotations.Nullable BreakpointTarget revealTarget;
+    private @org.jspecify.annotations.Nullable BreakpointDefinition pendingEdit;
     private @org.jspecify.annotations.Nullable BreakpointTarget focusedBreakpoint;
     private @org.jspecify.annotations.Nullable FunctionId pendingStop;
     private final List<StageHit> stageHits = new ArrayList<>();
@@ -214,19 +215,19 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         if (revealTarget == null || sources.document() == null) return;
         BreakpointTarget target = revealTarget;
         if (!(target.location() instanceof SourceLocation.Function location)
-            || !Objects.equals(sources.selected(), location.location().function())) { revealTarget = null; return; }
+            || !Objects.equals(sources.selected(), location.location().function())) { revealTarget = null; pendingEdit = null; return; }
         int line = location.location().line();
-        if (line < 1 || line > codeLines.size()) { revealTarget = null; return; }
+        if (line < 1 || line > codeLines.size()) { revealTarget = null; pendingEdit = null; return; }
         selectedLine = line;
         selectedStageIndex = -1;
         lineOffset = Math.clamp(line - 1, 0, maximumLineOffset());
         if (!target.wholeCommand()) {
             SourceCodeLine code = codeLines.get(line - 1);
             String command = code.source().trim();
-            if (!target.commandFingerprint().equals(BreakpointTarget.fingerprint(command))) { revealTarget = null; return; }
+            if (!target.commandFingerprint().equals(BreakpointTarget.fingerprint(command))) { revealTarget = null; pendingEdit = null; return; }
             List<InlineStage> stages = stagesForLine(line, true);
             var debugger = CodonClientMod.state();
-            if (debugger == null) { revealTarget = null; return; }
+            if (debugger == null) { revealTarget = null; pendingEdit = null; return; }
             var preview = debugger.stagePreviews().get(target.location());
             if (preview == null || preview.status() == ClientStagePreviewState.Status.LOADING) return;
             for (InlineStage stage : stages) if (stage.target().equals(target)) {
@@ -245,6 +246,15 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             : target.wholeCommand() || selectedStageIndex == target.stageIndex() ? target : null;
         revealTarget = null;
         rememberView();
+        BreakpointDefinition edit = pendingEdit;
+        pendingEdit = null;
+        // A saved sole stage is shown, and edited, on its line marker.
+        BreakpointTarget marker = focusedBreakpoint != null ? focusedBreakpoint : target;
+        if (edit != null && debugger != null) {
+            var current = conditionContext(debugger, sources.document(), line, edit.target());
+            if (BreakpointConditionStrip.open(this, BreakpointConditionStrip.Placement.SOURCE, debugger, edit, marker, current,
+                () -> focusedBreakpoint = marker) != null) focusedBreakpoint = marker;
+        }
     }
 
     private void clearSourceHits() {
@@ -467,6 +477,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         expandedWidth = widestLine;
         graphics.fill(sourceLeft + 3, lineTop, codeRight(), lineBottom, EDITOR);
         graphics.enableScissor(sourceLeft + 3, lineTop, codeRight(), lineBottom);
+        BreakpointConditionStrip strip = BreakpointConditionStrip.get(this, BreakpointConditionStrip.Placement.SOURCE);
         for (int index = lineOffset, y = lineTop; index < document.lines().size() && y < lineBottom; index++, y += ROW_HEIGHT) {
             int line = index + 1;
             String number = Integer.toString(line);
@@ -534,6 +545,14 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                 graphics.setTooltipForNextFrame(font, hint, mouseX, mouseY);
             }
             lineHits.add(new LineHit(y, ROW_HEIGHT, line));
+            if (strip != null && strip.markerTarget().location().equals(location)) {
+                // The condition strip opens under its line and pushes the following lines down.
+                int stripY = y + ROW_HEIGHT;
+                strip.render(graphics, new Bounds(codeLeft - gutter + 3, stripY, codeRight() - (codeLeft - gutter + 3),
+                    Math.min(BreakpointConditionStrip.HEIGHT, Math.max(0, lineBottom - stripY))),
+                    ScreenLayers.get(this) == null ? mouseX : -1, ScreenLayers.get(this) == null ? mouseY : -1, 0);
+                y += BreakpointConditionStrip.HEIGHT + 1;
+            }
         }
         hoveredLine = nextHoveredLine; hoveredStage = nextHoveredStage;
         graphics.disableScissor();
@@ -972,30 +991,41 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         if (parent instanceof CodonScreen codon) codon.cancelPanelResize();
     }
 
-    private void openCondition(BreakpointTarget target, Bounds anchor, boolean direct) {
+    private void openCondition(BreakpointTarget target, boolean direct) {
         ClientDebuggerState debugger = CodonClientMod.state();
         FunctionSourceDocument document = sources.document();
         if (debugger == null || document == null || !(target.location() instanceof SourceLocation.Function location)) return;
         int line = location.location().line();
         if (!wholeEligible(document, line)) return;
         stagesForLine(line, true);
-        heldEnterKeys.clear(); // The modal receives that key's release.
-        var level = minecraft.level;
+        heldEnterKeys.clear(); // Keyboard input moves to the strip.
         releasePointerCaptures();
-        java.util.function.BooleanSupplier current = () -> minecraft.level == level && sources.document() == document
-                && sources.sourceStatus() != ClientFunctionSourceState.Status.LOADING
-                && Objects.equals(sources.selected(), location.location().function())
-                && (target.wholeCommand() || matchingStageContext(debugger, document, line, target));
-        String command = document.lines().get(line - 1).trim();
-        int count = BreakpointTargetPolicy.stageCount(command, debugger.stagePreviews().get(target.location()), null);
-        if (direct) {
-            if (!current.getAsBoolean()) return;
-            focusedBreakpoint = target;
-            setFocused(null);
-            BreakpointContextMenu.openEditor(this, debugger, target, command, count,
-                anchor, current, () -> focusedBreakpoint = target);
-        } else BreakpointContextMenu.open(this, debugger, target, command, count,
-            anchor, current, () -> { });
+        var current = conditionContext(debugger, document, line, target);
+        if (!current.getAsBoolean() || debugger.breakpoints().pending(target)) return;
+        if (direct) focusedBreakpoint = target;
+        setFocused(null);
+        // Keep the line and the strip under it in view.
+        lineOffset = Math.clamp(lineOffset, Math.max(0, line - Math.max(1, sourceRows() - 2)), Math.max(0, line - 1));
+        rememberView();
+        BreakpointUi.openExact(this, BreakpointConditionStrip.Placement.SOURCE, debugger, target, current,
+            () -> focusedBreakpoint = target);
+    }
+
+    /** The docked Breakpoints panel's edit action: edits the exact saved definition under its line. */
+    FunctionSourceScreen editBreakpoint(BreakpointDefinition definition) {
+        pendingEdit = definition;
+        return this;
+    }
+
+    /** The strip stays open only while its document, function and exact stage are current. */
+    private java.util.function.BooleanSupplier conditionContext(ClientDebuggerState debugger, FunctionSourceDocument document,
+                                                                 int line, BreakpointTarget target) {
+        var level = minecraft.level;
+        SourceLocation.Function location = (SourceLocation.Function) target.location();
+        return () -> minecraft.level == level && sources.document() == document
+            && sources.sourceStatus() != ClientFunctionSourceState.Status.LOADING
+            && Objects.equals(sources.selected(), location.location().function())
+            && (target.wholeCommand() || matchingStageContext(debugger, document, line, target));
     }
 
     private boolean matchingStageContext(ClientDebuggerState debugger, FunctionSourceDocument document,
@@ -1085,7 +1115,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
         for (StageHit hit : stageHits) {
             if (!hit.contains(event.x(), event.y()) || debugger == null) continue;
             if (event.button() == InputConstants.MOUSE_BUTTON_RIGHT) {
-                openCondition(hit.target(), new Bounds(hit.x(), hit.y(), hit.width(), hit.height()), hit.control());
+                openCondition(hit.target(), hit.control());
                 return true;
             }
             BreakpointDefinition definition = debugger.breakpoints().get(hit.target());
@@ -1112,7 +1142,6 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
                     SourceLocation.Function location = new SourceLocation.Function(new FunctionLocation(sources.selected(), line));
                     if (event.button() == InputConstants.MOUSE_BUTTON_RIGHT) {
                         if (wholeEligible(document, line)) openCondition(BreakpointTarget.whole(location),
-                            new Bounds((int) event.x(), (int) event.y(), 1, 1),
                             lineMarkerContains(event.x(), isActualStop(sources.selected(), line)));
                         return true;
                     }
@@ -1207,11 +1236,7 @@ public final class FunctionSourceScreen extends ScaledCodonScreen {
             if (target != null) {
                 var input = CodonClientMod.input();
                 if (input != null) while (input.breakpointKey.consumeClick()) { }
-                StageHit stage = null;
-                for (StageHit hit : stageHits) if (hit.target().equals(target)) { stage = hit; break; }
-                int y = sourceLineTop() + Math.clamp(selectedLine - lineOffset - 1, 0, sourceRows() - 1) * ROW_HEIGHT;
-                openCondition(target, stage == null ? new Bounds((sourceLeft() + gutterWidth()), y, Math.max(1, codeRight() - (sourceLeft() + gutterWidth())), ROW_HEIGHT)
-                    : new Bounds(stage.x(), stage.y(), stage.width(), stage.height()), focusedBreakpoint != null);
+                openCondition(target, focusedBreakpoint != null);
                 return true;
             }
         }

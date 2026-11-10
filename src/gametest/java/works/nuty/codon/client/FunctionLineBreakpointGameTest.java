@@ -6,8 +6,6 @@ import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.input.MouseButtonInfo;
 import net.minecraft.client.input.KeyEvent;
 import works.nuty.codon.client.ui.ScaledCodonScreen;
-import works.nuty.codon.client.ui.ScreenLayers;
-import works.nuty.codon.client.ui.BreakpointConditionScreen;
 import works.nuty.codon.client.ui.DebuggerTheme;
 import works.nuty.codon.client.state.DebuggerPreferences;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
@@ -99,7 +97,7 @@ public final class FunctionLineBreakpointGameTest implements FabricClientGameTes
             state.breakpoints().reset();
             click(screen, x, y, false);
             click(screen, x, y, true);
-            require(!state.breakpoints().pending(whole) && ScreenLayers.get(screen) == null,
+            require(!state.breakpoints().pending(whole) && !ConditionStripGameTestUi.open(screen),
                 "A marker cannot edit before the authoritative breakpoint snapshot arrives");
             for (String phase : List.of("missing", "loading", "stale READY", "matching READY")) {
                 state.breakpoints().reset();
@@ -114,24 +112,17 @@ public final class FunctionLineBreakpointGameTest implements FabricClientGameTes
                     }
                 }
                 click(screen, x, y, true);
-                if (phase.equals("matching READY")) {
-                    require(ScreenLayers.get(screen).getClass().getSimpleName().equals("DebuggerContextMenu"),
-                        "A saved sole-stage definition has explicit management options");
-                    ScreenLayers.get(screen).keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
-                }
-                require(ScreenLayers.get(screen) instanceof BreakpointConditionScreen, "Gutter opens its editor directly: " + phase);
-                var editor = (BreakpointConditionScreen) ScreenLayers.get(screen);
-                require(((BreakpointDefinition) field(editor, "original")).target().equals(whole),
+                require(ConditionStripGameTestUi.open(screen), "Gutter opens its condition strip directly: " + phase);
+                var editor = ConditionStripGameTestUi.strip(screen);
+                require(editor.target().equals(whole),
                     "Source gutter always addresses the whole line, never a legacy stage-zero save: " + phase);
-                editor.onClose();
+                editor.cancel();
                 require(state.breakpoints().definitions().equals(List.of(legacy)) && !state.breakpoints().pending(whole),
                     "Open/cancel leaves the legacy definition and unset line unchanged");
                 screen.keyPressed(new KeyEvent(InputConstants.KEY_F10, 0, InputConstants.MOD_SHIFT));
-                if (phase.equals("matching READY")) ScreenLayers.get(screen).keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
-                require(ScreenLayers.get(screen) instanceof BreakpointConditionScreen
-                    && ((BreakpointConditionScreen) ScreenLayers.get(screen)).editsMarker(whole, COMMAND),
+                require(ConditionStripGameTestUi.open(screen) && ConditionStripGameTestUi.strip(screen).editsMarker(whole, COMMAND),
                     "Shift+F10 returns to the same gutter target after cancel");
-                ScreenLayers.get(screen).onClose();
+                ConditionStripGameTestUi.strip(screen).cancel();
                 click(screen, x, y, false);
                 require(state.breakpoints().pending(whole) && !state.breakpoints().pending(legacy.target()),
                     "Source gutter toggle uses only the exact line target: " + phase);
@@ -255,10 +246,9 @@ public final class FunctionLineBreakpointGameTest implements FabricClientGameTes
         context.runOnClient(client -> {
             var screen = client.gui.screen();
             click(screen, geometry[0], geometry[1] + 9, true);
-            require(ScreenLayers.get(screen) instanceof BreakpointConditionScreen, "right gutter click edits the line after horizontal scroll");
-            var layer = ScreenLayers.get(screen);
-            layer.keyPressed(new KeyEvent(InputConstants.KEY_ESCAPE, 0, 0));
-            require(ScreenLayers.get(screen) == null && client.gui.screen() == screen, "Escape preserves the source and code viewport");
+            require(ConditionStripGameTestUi.open(screen), "right gutter click edits the line after horizontal scroll");
+            ConditionStripGameTestUi.key(screen, InputConstants.KEY_ESCAPE);
+            require(!ConditionStripGameTestUi.open(screen) && client.gui.screen() == screen, "Escape preserves the source and code viewport");
             screen.setFocused(null);
             screen.keyPressed(new KeyEvent(InputConstants.KEY_TAB, 0, 0));
             require(screen.getFocused() != null, "single-stage suppression retains keyboard traversal");

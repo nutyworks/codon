@@ -77,13 +77,13 @@ public final class FlowLegacyConditionGameTest implements FabricClientGameTest {
                 var panel = FunctionLineBreakpointGameTest.field(overlay, "commandPanel");
                 var buttons = (Map<String, DebuggerButton>) FunctionLineBreakpointGameTest.field(panel, "cache");
                 var marker = buttons.get("flow-breakpoint-1-" + whole);
-                if (ScreenLayers.get(client.gui.screen()) == null || marker == null
+                if (!ConditionStripGameTestUi.open(client.gui.screen()) || marker == null
                     || (boolean) FunctionLineBreakpointGameTest.field(marker, "revealOnHover"))
                     failures.add("Flow does not retain the exact disabled whole-line marker while editing");
-                if (!(ScreenLayers.get(client.gui.screen()) instanceof BreakpointConditionScreen editor)
-                    || !editor.editsMarker(whole, "say legacy_flow") || editor.editsMarker(legacy.target(), "say legacy_flow"))
+                var editor = works.nuty.codon.client.ui.BreakpointConditionStrip.get(client.gui.screen());
+                if (editor == null || !editor.editsMarker(whole, "say legacy_flow") || editor.editsMarker(legacy.target(), "say legacy_flow"))
                     failures.add("Flow marker editor does not retain the exact whole-line target");
-                ScreenLayers.get(client.gui.screen()).onClose();
+                if (editor != null) editor.cancel();
                 if (state.breakpoints().get(legacy.target()).enabled() || state.breakpoints().get(whole).enabled())
                     failures.add("Flow Cancel changes a saved definition");
                 state.breakpoints().begin(ClientBreakpointState.Action.SAVE, line);
@@ -96,7 +96,7 @@ public final class FlowLegacyConditionGameTest implements FabricClientGameTest {
                 if (marker(overlay, whole).active)
                     failures.add("Exact Flow marker remains enabled during its pending edit");
                 openMarker(client.gui.screen(), marker(overlay, whole));
-                if (ScreenLayers.get(client.gui.screen()) != null)
+                if (ConditionStripGameTestUi.open(client.gui.screen()))
                     failures.add("Pending whole-line edit allows opening a second condition editor");
                 // End the presentation-only pending request before simulating rejected acknowledgements.
                 state.breakpoints().reset();
@@ -198,8 +198,5 @@ public final class FlowLegacyConditionGameTest implements FabricClientGameTest {
             new net.minecraft.client.input.MouseButtonInfo(com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_RIGHT, 0));
         screen.mouseClicked(event, false);
         screen.mouseReleased(event);
-        var layer = ScreenLayers.get(screen);
-        if (layer != null && layer.getClass().getSimpleName().equals("DebuggerContextMenu"))
-            layer.keyPressed(new net.minecraft.client.input.KeyEvent(com.mojang.blaze3d.platform.InputConstants.KEY_RETURN, 0, 0));
     }
 }

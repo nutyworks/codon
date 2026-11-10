@@ -20,6 +20,7 @@ import works.nuty.codon.client.input.InputManager;
 import works.nuty.codon.client.render.DebugHudElement;
 import works.nuty.codon.client.state.*;
 import works.nuty.codon.client.ui.*;
+import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds;
 import works.nuty.codon.core.model.*;
 
 /** Native pointer/keyboard and renderer regression with a synthetic pause, not server stepping. */
@@ -328,21 +329,28 @@ public final class DebuggerUiScaleGameTest implements FabricClientGameTest {
             Screen screen = new Screen(Component.literal("Vanilla-size parent")) { };
             client.setScreenAndShow(screen);
             var target = BreakpointTarget.whole(fixture.state().snapshot().location());
-            ScreenLayers.open(screen, new BreakpointConditionScreen(screen, fixture.state(), BreakpointDefinition.plain(target),
-                new BreakpointConditionScreen.Anchor(150, 120, 20, 20)));
+            // Like any editor, the strip waits for the first acknowledged breakpoint snapshot.
+            if (!fixture.state().breakpoints().ready()) fixture.state().breakpoints().acceptPage(1, 0, true, List.of());
+            var strip = BreakpointConditionStrip.open(screen, BreakpointConditionStrip.Placement.EDITOR, fixture.state(),
+                BreakpointDefinition.plain(target), target, () -> true, () -> { });
+            require(strip != null, "Strip opens over a vanilla screen");
+            strip.overlay(() -> new Bounds(40, 120, 300, BreakpointConditionStrip.HEIGHT));
             return screen;
         });
         context.waitTicks(3);
-        var layer = context.computeOnClient(client -> (ScaledCodonScreen) ScreenLayers.get(parent));
-        context.runOnClient(client -> require(parent.width == client.getWindow().getGuiScaledWidth() && layer.width == fixture.screen().width,
-            "Vanilla parent keeps game dimensions while modal uses Codon dimensions"));
-        click(context, layer, Component.translatable("codon.breakpoint.condition_select", BreakpointUi.kindLabel(BreakpointCondition.Kind.ALWAYS)).getString());
-        context.takeScreenshot("codon-scale-condition-layer-menu-2_25");
+        context.runOnClient(client -> require(parent.width == client.getWindow().getGuiScaledWidth()
+            && BreakpointConditionStrip.get(parent).bounds().width() == 300,
+            "A vanilla owner draws the strip in its own game units, unaffected by Codon's scale"));
+        ConditionStripGameTestUi.nativeClick(context, parent, ConditionStripGameTestUi.text("codon.breakpoint.strip.mode.count"));
+        context.runOnClient(client -> require(ConditionStripGameTestUi.has(parent,
+            ConditionStripGameTestUi.text("codon.breakpoint.strip.metric.output_count")), "Native click selects Count"));
+        context.takeScreenshot("codon-scale-condition-strip-vanilla-2_25");
         context.getInput().pressKey(InputConstants.KEY_ESCAPE);
         context.waitTicks(2);
-        click(context, layer, "Cancel");
+        ConditionStripGameTestUi.nativeClick(context, parent, ConditionStripGameTestUi.text("codon.breakpoint.discard"));
         context.runOnClient(client -> {
-            require(ScreenLayers.get(parent) == null && client.gui.screen() == parent, "Native modal click closes only the layer");
+            require(!ConditionStripGameTestUi.open(parent) && client.gui.screen() == parent,
+                "Esc asks to discard, and Discard closes only the strip");
             client.setScreenAndShow(fixture.screen());
         });
     }
