@@ -563,6 +563,24 @@ class DebuggerRecipientAuthorizationTest {
         assertFalse(engine.isPaused());
     }
 
+    @Test void breakpointWithoutAuthorizedCodonOwnerDoesNotParkTheServer() {
+        var controller = mock(ExecutionController.class);
+        var engine = new DebuggerEngine(new BreakpointRegistry(), new StepController(), new CallStack(), controller, sink);
+        engine.toggleBlockBreakpoint(BLOCK);
+        assertTrue(sink.hasPauseRecipient());
+        unsupported.get(owner).add(PauseSyncPayload.TYPE.id());
+        assertFalse(sink.hasPauseRecipient(), "An owner without the pause channel cannot see or release a stop");
+        when(playerList.getPlayers()).thenReturn(List.of(visitor));
+        assertFalse(sink.hasPauseRecipient(), "A connected non-owner is not a recipient");
+        clearSent();
+
+        engine.onCommandStage(new CommandStageEvent(82, 0, LOCATION, SNAPSHOT.command(), SNAPSHOT::pauseSources));
+
+        verify(controller, never()).parkUntil(any());
+        assertFalse(engine.isPaused());
+        assertTrue(sent.get(visitor).isEmpty());
+    }
+
     @Test void oversizedJoinStackUsesOwnerOnlyWarningAndCleanup() {
         var frame = new CallFrame(0, LOCATION, SNAPSHOT.command());
         when(joinEngine.currentSnapshot()).thenReturn(new PauseSnapshot(LOCATION, SNAPSHOT.command(), 0,

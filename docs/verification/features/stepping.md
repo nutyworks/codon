@@ -110,6 +110,7 @@ captures a selected row alongside a keyboard-focused, truncated action label.
 | Native conditional function chronology | `DebuggerConditionalFunctionFlowGameTest` |
 | Client camera across server-sent step/pause packets | `DebuggerFreecamStepGameTest` |
 | Pause above the 1,024-frame/4,096-context receive limits: summary stays paused, Continue works | `test`: `DebuggerRecipientAuthorizationTest`, `NetworkCodecsTest`; `clientTest`: `ClientDebuggerStateTest`; native: `DebuggerWithheldPauseGameTest` |
+| No owner-authorized Codon client online: stop skipped instead of parking; last recipient leaving releases the pause | `coreTest`: `DebuggerEngineTest`; `test`: `DebuggerRecipientAuthorizationTest`; dedicated-server run not automated |
 | Keyboard focus/navigation | `DebuggerKeyboardNavigationGameTest` |
 
 Example: `./gradlew coreTest --tests '*CommandBlockSteppingTest'`.
