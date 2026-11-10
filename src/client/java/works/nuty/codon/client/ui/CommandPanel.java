@@ -154,22 +154,31 @@ public final class CommandPanel {
 
         // The action row stays at the panel's bottom, independently of expansion.
         int actionY = Math.max(area.y() + 1, area.y() + area.height() - 20);
+        BreakpointConditionStrip strip = BreakpointConditionStrip.get(client.gui.screen(), BreakpointConditionStrip.Placement.FLOW);
+        if (strip != null && actionY - 4 - BreakpointConditionStrip.HEIGHT < area.y() + 1) {
+            // Too short for the strip above the actions: it takes the whole panel until it closes,
+            // so it never covers, or takes clicks from, the action buttons.
+            int height = Math.min(BreakpointConditionStrip.HEIGHT, area.height() - 2);
+            strip.render(graphics, new Bounds(area.x() + 3, area.y() + area.height() - 1 - height, area.width() - 6, height),
+                overlay.pointerX(), overlay.pointerY(), 0);
+            return finish();
+        }
         int actionLeft = renderActions(new Bounds(area.x() + 4, actionY, area.width() - 8, 17));
         if (area.height() >= 40) {
             // Recent chat can leave a short panel: retain path, selected clause and actions.
             boolean shortPanel = area.height() < 66;
             boolean sharedPathRow = area.height() < 58;
             int y = area.y() + (shortPanel ? 1 : 3);
-            if (!sharedPathRow) {
+            // The strip always sits directly above the actions; a short panel gives up its path row for it.
+            int stripY = actionY - 4 - BreakpointConditionStrip.HEIGHT;
+            if (!sharedPathRow && (strip == null || stripY >= y + (shortPanel ? 18 : 19))) {
                 renderPath(graphics, new Bounds(area.x() + 4, y, area.width() - 8, 17), snapshot);
                 y += shortPanel ? 18 : 19;
             }
             // Fixed full-width detail band: selected state never changes clause widths or action positions.
             int detailHeight = shortPanel ? 0 : Math.min(DETAIL_HEIGHT,
                 Math.max(0, actionY - y - MARKER_SIZE - 6));
-            BreakpointConditionStrip strip = BreakpointConditionStrip.get(client.gui.screen(), BreakpointConditionStrip.Placement.FLOW);
             // With room for the detail band the strip occupies exactly its place; a short panel gives up clause rows.
-            int stripY = Math.max(y, actionY - 4 - BreakpointConditionStrip.HEIGHT);
             int detailY = strip != null ? stripY : actionY - (shortPanel ? 1 : 4) - detailHeight;
             Bounds body = new Bounds(area.x() + 5, y, area.width() - 12,
                 Math.max(0, detailY - (shortPanel ? 0 : 2) - y));

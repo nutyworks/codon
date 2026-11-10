@@ -146,7 +146,8 @@ public final class BreakpointConditionStrip extends AbstractContainerEventHandle
         if (!contextCurrent.getAsBoolean() || !state.breakpoints().ready()
             || state.breakpoints().pending(definition.target())) return null;
         BreakpointConditionStrip previous = OPEN.get(host);
-        if (previous != null) previous.close(false);
+        // A replaced strip hands its pending request to a toast, as a context change would.
+        if (previous != null) previous.close(previous.pending());
         var strip = new BreakpointConditionStrip(host, placement, state, definition, markerTarget, contextCurrent, restoreFocus);
         // Every screen is attached on init (see register), including one opened right after this call.
         OPEN.put(host, strip);
