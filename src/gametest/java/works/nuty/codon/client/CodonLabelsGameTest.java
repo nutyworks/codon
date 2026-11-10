@@ -15,7 +15,6 @@ import works.nuty.codon.client.ui.CodonScreen;
 import works.nuty.codon.client.ui.DebuggerButton;
 import works.nuty.codon.client.ui.DebuggerOverlay;
 import works.nuty.codon.client.ui.ScaledCodonScreen;
-import works.nuty.codon.client.ui.WatchDetailsScreen;
 import works.nuty.codon.core.model.*;
 
 /** Label/count and native rendering regression under acknowledged presentation fixtures. */
@@ -106,8 +105,10 @@ public final class CodonLabelsGameTest implements FabricClientGameTest {
             : new WatchSpec(WatchSpec.Kind.STORAGE_NBT, "demo:state", "counter");
         context.runOnClient(client -> {
             fixture.state().watches().add(spec);
-            client.setScreenAndShow(new WatchDetailsScreen(fixture.input(), fixture.state(), fixture.overlay(), fixture.state().watches().findId(spec)));
-            String expression = ((Component) invoke(client.gui.screen(), "expression", new Class<?>[] {WatchSpec.class}, spec)).getString();
+            client.setScreenAndShow(fixture.screen());
+            invoke(fixture.overlay(), "revealWatches", new Class<?>[0]);
+            fixture.overlay().watchPanel().toggleExpanded(fixture.state().watches().findId(spec));
+            String expression = ((Component) invoke(fixture.overlay().watchPanel(), "detailExpression", new Class<?>[] {WatchSpec.class}, spec)).getString();
             String kind = switch (spec.kind()) {
                 case SCORE -> korean ? "점수" : "Score";
                 case ENTITY_NBT -> korean ? "엔티티 NBT" : "Entity NBT";
@@ -120,8 +121,18 @@ public final class CodonLabelsGameTest implements FabricClientGameTest {
             };
             require(expression.equals(kind + ": " + value), "Watch prefix translates while syntax stays literal");
         });
+        if (width == 640) {
+            // The narrow drawer shows one panel; choose Watches so the expanded row is captured.
+            context.waitTicks(3);
+            click(context, fixture.screen(), "codon.ui.view");
+            click(context, fixture.screen(), "codon.watch.title");
+        }
         capture(context, name + "-" + spec.kind().name().toLowerCase(java.util.Locale.ROOT));
-        context.runOnClient(client -> client.setScreenAndShow(fixture.screen()));
+        context.runOnClient(client -> {
+            require(fixture.overlay().watchPanel().expandedId() != 0, "Watch details expand in place");
+            fixture.overlay().watchPanel().toggleExpanded(fixture.overlay().watchPanel().expandedId());
+            client.setScreenAndShow(fixture.screen());
+        });
         context.waitTicks(3);
         if (width == 640) {
             click(context, fixture.screen(), "codon.ui.view");

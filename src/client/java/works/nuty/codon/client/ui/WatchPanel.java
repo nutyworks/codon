@@ -8,12 +8,14 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.network.chat.Component;
+import net.minecraft.util.FormattedCharSequence;
 import org.jspecify.annotations.Nullable;
 import works.nuty.codon.client.input.InputManager;
 import works.nuty.codon.client.state.ClientDebuggerState;
 import works.nuty.codon.client.state.ClientWatchState;
 import works.nuty.codon.client.state.WatchGrouping;
 import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds;
+import works.nuty.codon.client.ui.layout.WatchExpansionLayout;
 import works.nuty.codon.client.ui.layout.WatchPanelLayout;
 import works.nuty.codon.core.model.EntityRef;
 import works.nuty.codon.core.model.WatchResult;
@@ -72,6 +74,13 @@ public final class WatchPanel {
     private Bounds groupingTriggerBounds = EMPTY;
     private Bounds groupingMenuBounds = EMPTY;
     private final List<DebuggerButton> groupingChoices = new ArrayList<>();
+    /** At most one row shows its details in place; the list scrolls them with that row. */
+    private long expandedId;
+    private boolean revealExpanded;
+    private int expansionScroll;
+    private int expansionMaxScroll;
+    private Bounds expansionTextBounds = EMPTY;
+    private record Action(String id, Component label, boolean active, Runnable run) { }
 
     private final WatchComposer composer;
 
@@ -100,7 +109,7 @@ public final class WatchPanel {
     public Bounds scrollBounds() { return scrollBounds; }
     public int offset() { return offset; }
     public void clearBounds() {
-        bounds = scrollBounds = groupingTriggerBounds = groupingMenuBounds = EMPTY;
+        bounds = scrollBounds = groupingTriggerBounds = groupingMenuBounds = expansionTextBounds = EMPTY;
         groupingChoices.clear();
         rowBounds.clear();
     }
@@ -129,6 +138,14 @@ public final class WatchPanel {
         }
     }
     public void select(long id) { selectedId = requestedId = id; }
+    public long expandedId() { return expandedId; }
+
+    /** Selecting a row shows its details under it; selecting it again collapses them. */
+    public void toggleExpanded(long id) {
+        expandedId = expandedId == id ? 0 : id;
+        expansionScroll = 0;
+        revealExpanded = expandedId != 0;
+    }
     public void notice(Component text) { notice = text; noticeUntil = System.nanoTime() + 4_000_000_000L; }
 
     public List<DebuggerButton> render(GuiGraphicsExtractor graphics, Bounds available, int mouseX, int mouseY,
@@ -161,9 +178,28 @@ public final class WatchPanel {
                 : row.key() == firstUngroupedId ? DIVIDER_TOP_MARGIN + DIVIDER_MARGIN : 0);
         }
         boolean stackedValues = WatchPanelLayout.stackedValues(available.width());
-        var rowLayout = new WatchPanelLayout.Rows(rows.stream().map(row -> !row.showScope()).toList(), topMargins,
-            rows.stream().map(row -> stackedValues && row.entry() != null).toList());
         int viewportHeight = Math.max(0, available.height() - bodyStart - BOTTOM_PADDING);
+        if (entries.stream().noneMatch(entry -> entry.id() == expandedId)) expandedId = 0;
+        int expandedIndex = -1;
+        for (int index = 0; index < rows.size(); index++)
+            if (rows.get(index).entry() != null && rows.get(index).key() == expandedId) expandedIndex = index;
+        int detailWidth = Math.max(1, available.width() - 24);
+        List<FormattedCharSequence> detailLines = List.of();
+        List<Action> actions = List.of();
+        int expansionLimit = 0;
+        WatchExpansionLayout expansion = null;
+        List<Integer> expansions = new ArrayList<>(java.util.Collections.nCopies(rows.size(), 0));
+        if (expandedIndex >= 0) {
+            Row row = rows.get(expandedIndex);
+            detailLines = details(row.entry()).stream().flatMap(line -> font.split(line, detailWidth).stream()).toList();
+            actions = actions(row.entry(), input, overlay);
+            expansionLimit = viewportHeight - topMargins.get(expandedIndex)
+                - WatchPanelLayout.Rows.baseHeight(!row.showScope(), stackedValues);
+            expansion = WatchExpansionLayout.create(0, 0, detailWidth, detailLines.size(), actionWidths(actions), expansionLimit);
+            expansions.set(expandedIndex, expansion.height());
+        }
+        var rowLayout = new WatchPanelLayout.Rows(rows.stream().map(row -> !row.showScope()).toList(), topMargins,
+            rows.stream().map(row -> stackedValues && row.entry() != null).toList(), expansions);
         maximum = rowLayout.maximumOffset(viewportHeight);
         List<Long> keys = rows.stream().map(Row::key).toList();
         // Preserve a scrolled viewport, but keep the top visible when a quiet first row moves down.
@@ -173,6 +209,8 @@ public final class WatchPanel {
         }
         previousKeys = keys;
         offset = Math.clamp(offset, 0, maximum);
+        if (revealExpanded && expandedIndex >= 0) offset = Math.min(maximum, rowLayout.reveal(expandedIndex, offset, viewportHeight));
+        revealExpanded = false;
         boolean focusRequested = false;
         if (requestedId != 0) {
             int row = keys.indexOf(requestedId);
@@ -264,20 +302,23 @@ public final class WatchPanel {
             final int logicalRow = index;
             Runnable reveal = () -> offset = Math.min(maximum, rowLayout.reveal(logicalRow, offset, viewportHeight));
             if (row.entry() == null) {
-                navigation.add("watch-header-" + row.key(), DebuggerNavigation.Group.WATCH, index, 0, reveal);
+                navigation.add("watch-header-" + row.key(), DebuggerNavigation.Group.WATCH, 2 * index, 0, reveal);
                 continue;
             }
             var entry = row.entry();
-            navigation.add("watch-row-" + entry.id(), DebuggerNavigation.Group.WATCH, index, 0, reveal);
+            navigation.add("watch-row-" + entry.id(), DebuggerNavigation.Group.WATCH, 2 * index, 0, reveal);
             if (stackedValues)
-                navigation.add("watch-value-" + entry.id(), DebuggerNavigation.Group.WATCH, index, 0, reveal);
+                navigation.add("watch-value-" + entry.id(), DebuggerNavigation.Group.WATCH, 2 * index, 0, reveal);
+            if (index == expandedIndex) for (int column = 0; column < actions.size(); column++)
+                navigation.add(actions.get(column).id(), DebuggerNavigation.Group.WATCH, 2 * index + 1, column, reveal);
         }
         if (rows.isEmpty()) WatchUi.line(graphics, font, text("empty").getString(), bounds.x() + 7, bounds.y() + bodyStart + 7, bounds.width() - 14, MUTED);
         for (int index = 0; index < displayed; index++) {
             Row row = rows.get(offset + index);
             int topMargin = topMargins.get(offset + index);
             int y = bounds.y() + bodyStart + rowLayout.height(offset, offset + index) + topMargin;
-            int rowHeight = rowLayout.height(offset + index, offset + index + 1) - topMargin;
+            int extra = offset + index == expandedIndex ? expansions.get(expandedIndex) : 0;
+            int rowHeight = rowLayout.height(offset + index, offset + index + 1) - topMargin - extra;
             if (row.entry() == null) {
                 String id = "watch-header-" + row.key();
                 boolean collapsed = collapsedHeadings.contains(row.key());
@@ -308,7 +349,7 @@ public final class WatchPanel {
                 var toggle = button(id, header, label, true, false, () -> {
                     if (!collapsedHeadings.add(row.key())) collapsedHeadings.remove(row.key());
                     navigation.requestFocus(id);
-                }, navigation, offset + index, 0).asHitSurface();
+                }, navigation, 2 * (offset + index), 0).asHitSurface();
                 if (font.width(row.heading().getString()) > headingWidth) toggle.setTooltip(Tooltip.create(label));
                 else if (collapsed && activity) toggle.setTooltip(Tooltip.create(summary));
                 continue;
@@ -317,6 +358,7 @@ public final class WatchPanel {
             int rowWidth = Math.max(1, bounds.width() - 14);
             Bounds rowArea = new Bounds(bounds.x() + 4, y, bounds.width() - 10, rowHeight - 1);
             rowBounds.put(entry.id(), rowArea);
+            boolean expanded = extra > 0;
             boolean highlighted = entry.id() == contextMenuId
                 || entry.id() == selectedId && System.nanoTime() < highlightedUntil;
             boolean focused = keyboardFocused("watch-row-" + entry.id(), interactive)
@@ -361,17 +403,20 @@ public final class WatchPanel {
             Component narration = Component.literal(scope(entry) + "\n").append(text("menu.hint"));
             for (int line = 0; line < inspectionBounds.size(); line++) {
                 button((line == 0 ? "watch-row-" : "watch-value-") + entry.id(), inspectionBounds.get(line),
-                    inspectionLabel, true, entry.id() == selectedId,
+                    inspectionLabel, true, entry.id() == selectedId || entry.id() == expandedId,
                     () -> {
                         selectedId = entry.id();
+                        toggleExpanded(entry.id());
                         navigation.requestFocus("watch-row-" + entry.id());
-                        client.gui.setScreen(new WatchDetailsScreen(input, state, overlay, entry.id()));
                     },
-                    navigation, offset + index, 0).asHitSurface()
+                    navigation, 2 * (offset + index), 0).asHitSurface()
                     .withSecondaryAction(() -> openContextMenu(entry.id(), rowArea, input, overlay))
                     .withNarrationHint(narration)
                     .setTooltip(inspectionTooltip);
             }
+            if (expanded && expansion != null)
+                paintExpansion(graphics, font, y, y + rowHeight, detailWidth, detailLines, actions, expansionLimit,
+                    navigation, 2 * (offset + index) + 1);
         }
         if (focusRequested) navigation.requestFocus("watch-row-" + selectedId);
         if (maximum > 0 && scrollBounds.height() > 0 && displayed > 0) {
@@ -602,9 +647,14 @@ public final class WatchPanel {
 
     private DebuggerButton button(String id, Bounds b, Component label, boolean active, boolean selected, Runnable action,
                                   DebuggerNavigation navigation, int row, int column) {
+        return control(id, b, label, active, selected, action, navigation, row, column, false);
+    }
+
+    private DebuggerButton control(String id, Bounds b, Component label, boolean active, boolean selected, Runnable action,
+                                   DebuggerNavigation navigation, int row, int column, boolean chrome) {
         DebuggerButton button = buttons.computeIfAbsent(id, ignored -> new DebuggerButton());
         button.configure(b.x(), b.y(), b.width(), b.height(), label, active, selected, false, false, action);
-        button.withoutChrome();
+        if (!chrome) button.withoutChrome();
         if (selected) button.withStatusColor(TEAL, TEAL_SURFACE);
         used.add(id); controls.add(button);
         // Logical rows were registered for hidden entries; bind only the controls in the viewport.
@@ -613,8 +663,104 @@ public final class WatchPanel {
         return button;
     }
 
+    private void paintExpansion(GuiGraphicsExtractor graphics, net.minecraft.client.gui.Font font, int rowTop, int top,
+                                int width, List<FormattedCharSequence> lines, List<Action> actions, int limit,
+                                DebuggerNavigation navigation, int navigationRow) {
+        var layout = WatchExpansionLayout.create(bounds.x() + 11, top, width, lines.size(), actionWidths(actions), limit);
+        int bottom = top + layout.height();
+        graphics.fill(bounds.x() + 3, top, bounds.x() + bounds.width() - 6, bottom - 1, DebuggerTheme.color(ROW_HOVER));
+        graphics.fill(bounds.x() + 3, rowTop, bounds.x() + 4, bottom - 1, DebuggerTheme.color(TEAL));
+        expansionMaxScroll = Math.max(0, lines.size() - layout.visibleLines());
+        expansionScroll = Math.clamp(expansionScroll, 0, expansionMaxScroll);
+        int textTop = layout.textTop(top);
+        int textHeight = layout.visibleLines() * WatchExpansionLayout.LINE_HEIGHT;
+        expansionTextBounds = new Bounds(bounds.x() + 3, top, bounds.width() - 9, textHeight + WatchExpansionLayout.PADDING);
+        for (int line = 0; line < layout.visibleLines(); line++)
+            graphics.text(font, lines.get(expansionScroll + line), bounds.x() + 11,
+                textTop + line * WatchExpansionLayout.LINE_HEIGHT + 1, DebuggerTheme.foreground(TEXT), false);
+        if (expansionMaxScroll > 0) {
+            int thumb = Math.max(4, textHeight * layout.visibleLines() / lines.size());
+            int y = textTop + (textHeight - thumb) * expansionScroll / expansionMaxScroll;
+            int x = bounds.x() + bounds.width() - 9;
+            graphics.fill(x, y, x + 2, y + thumb, DebuggerTheme.color(SCROLLBAR));
+        }
+        for (int column = 0; column < actions.size(); column++) {
+            Action action = actions.get(column);
+            control(action.id(), layout.actions().get(column), action.label(), action.active(), false, action.run(),
+                navigation, navigationRow, column, true);
+        }
+    }
+
+    private static List<Integer> actionWidths(List<Action> actions) {
+        var font = Minecraft.getInstance().font;
+        return actions.stream().map(action -> font.width(action.label()) + 12).toList();
+    }
+
+    /** Copy works on the acknowledged value only; Retry follows the server-reported read state. */
+    private List<Action> actions(ClientWatchState.Entry entry, InputManager input, DebuggerOverlay overlay) {
+        long id = entry.id();
+        List<Action> actions = new ArrayList<>();
+        actions.add(new Action("watch-details-copy-value", text("details.copy_value"), entry.displayedResult() != null,
+            () -> copyValue(entry)));
+        actions.add(new Action("watch-details-copy-path", text("details.copy_path"), true, () -> {
+            WatchSpec spec = entry.spec();
+            Minecraft.getInstance().keyboardHandler.setClipboard(spec.kind() == WatchSpec.Kind.SCORE ? spec.target() : spec.path());
+            notice(Component.translatable("codon.ui.copied"));
+        }));
+        if (!entry.automatic() && hasIssue(entry))
+            actions.add(new Action("watch-details-retry", text("details.retry"),
+                !state.watchReadsFailed() && state.watches().canRetry(id), () -> state.watches().retry(id)));
+        if (!entry.automatic())
+            actions.add(new Action("watch-details-edit", text("edit"), true, () -> beginComposer(id, input, overlay)));
+        return actions;
+    }
+
+    /** Value (with its last change) first, since narrow panels show only its first lines; then binding and expression. */
+    private List<Component> details(ClientWatchState.Entry entry) {
+        List<Component> lines = new ArrayList<>();
+        lines.add(labeled("details.current_value", WatchFormatting.currentValue(entry, state.isPaused())));
+        if (entry.completedStep() != null)
+            lines.add(Component.empty().append(muted(text("details.previous_executor", WatchFormatting.executorLabel(entry))
+                .getString() + ": ")).append(WatchFormatting.fullValue(entry, state.isPaused())));
+        Component binding;
+        if (entry.spec().kind() == WatchSpec.Kind.STORAGE_NBT) binding = text("details.storage");
+        else if (entry.spec().scoreHolder() != null) binding = text("details.fixed", entry.spec().scoreHolder());
+        else if (entry.spec().executor() == null) binding = text("details.current_context");
+        else binding = text("details.fixed", (entry.executorName().isBlank() ? "" : entry.executorName() + " ")
+            + entry.spec().executor());
+        lines.add(labeled("details.binding", binding));
+        lines.add(labeled("details.expression", detailExpression(entry.spec())));
+        if (entry.automatic()) lines.add(muted(text("tooltip.automatic").getString()));
+        if (entry.change() == ClientWatchState.Change.TARGET_CHANGED) lines.add(muted(text("tooltip.executor_changed").getString()));
+        if (entry.change() == ClientWatchState.Change.AVAILABILITY_CHANGED)
+            lines.add(muted(text("tooltip.availability_changed").getString()));
+        WatchResult result = entry.displayedResult();
+        if (result != null && !result.targetKey().isEmpty())
+            lines.add(muted(text("tooltip.target", result.targetKey()).getString()));
+        return lines;
+    }
+
+    static Component detailExpression(WatchSpec spec) {
+        String value = switch (spec.kind()) {
+            case SCORE -> spec.target();
+            case ENTITY_NBT -> spec.path();
+            case STORAGE_NBT -> spec.target() + " / " + spec.path();
+        };
+        return text("kind." + spec.kind().name().toLowerCase(java.util.Locale.ROOT)).copy().append(": ").append(Component.literal(value));
+    }
+
+    private static Component labeled(String key, Component value) {
+        return Component.empty().append(muted(text(key).getString() + ": ")).append(value);
+    }
+
+    private static Component muted(String value) { return Component.literal(value).withColor(MUTED & 0xFFFFFF); }
+
     public boolean scroll(double x, double y, double amount) {
         if (!scrollBounds.contains(x, y) || amount == 0) return false;
+        if (expansionTextBounds.contains(x, y) && expansionMaxScroll > 0) {
+            expansionScroll = Math.clamp(expansionScroll + (amount > 0 ? -1 : 1), 0, expansionMaxScroll);
+            return true;
+        }
         offset = Math.clamp(offset + (amount > 0 ? -1 : 1), 0, maximum);
         return true;
     }

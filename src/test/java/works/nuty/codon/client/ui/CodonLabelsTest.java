@@ -70,7 +70,7 @@ class CodonLabelsTest {
     @Test
     void watchKindPrefixesTranslateWithoutChangingIdentifiers() throws Exception {
         var previous = Language.getInstance();
-        var method = WatchDetailsScreen.class.getDeclaredMethod("expression", WatchSpec.class);
+        var method = WatchPanel.class.getDeclaredMethod("detailExpression", WatchSpec.class);
         method.setAccessible(true);
         var specs = List.of(new WatchSpec(WatchSpec.Kind.SCORE, "points", ""),
             new WatchSpec(WatchSpec.Kind.ENTITY_NBT, "", "Health"),

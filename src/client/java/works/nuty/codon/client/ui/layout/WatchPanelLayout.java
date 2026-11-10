@@ -8,7 +8,7 @@ import static works.nuty.codon.client.state.DebuggerPreferences.*;
 public final class WatchPanelLayout {
     private WatchPanelLayout() { }
 
-    /** Keep keys left and values right even in the narrow drawer; Details exposes clipped text. */
+    /** Keep keys left and values right even in the narrow drawer; an expanded row exposes clipped text. */
     public static boolean stackedValues(int panelWidth) { return false; }
     public static int valueWidth(int panelWidth) { return Math.max(0, panelWidth - 18); }
 
@@ -35,10 +35,19 @@ public final class WatchPanelLayout {
 
         /** Compact entries use a separate value line; passive group headings stay short. */
         public Rows(List<Boolean> singleLine, List<Integer> topMargins, List<Boolean> stackedValues) {
+            this(singleLine, topMargins, stackedValues, java.util.Collections.nCopies(singleLine.size(), 0));
+        }
+
+        /** An expanded row adds its details below the row; the pair scrolls and reveals as one row. */
+        public Rows(List<Boolean> singleLine, List<Integer> topMargins, List<Boolean> stackedValues, List<Integer> expansions) {
             boundaries = new int[singleLine.size() + 1];
             for (int row = 0; row < singleLine.size(); row++)
-                boundaries[row + 1] = boundaries[row] + topMargins.get(row)
-                    + (stackedValues.get(row) ? 32 : singleLine.get(row) ? 18 : 28);
+                boundaries[row + 1] = boundaries[row] + topMargins.get(row) + baseHeight(singleLine.get(row), stackedValues.get(row))
+                    + expansions.get(row);
+        }
+
+        public static int baseHeight(boolean singleLine, boolean stackedValue) {
+            return stackedValue ? 32 : singleLine ? 18 : 28;
         }
 
         public int height(int from, int to) { return boundaries[to] - boundaries[from]; }

@@ -308,10 +308,7 @@ public final class DebuggerUiScaleGameTest implements FabricClientGameTest {
     }
 
     private static void checkScreens(ClientGameTestContext context, Fixture f) {
-        long id = f.state().watches().addOrFind(new WatchSpec(WatchSpec.Kind.STORAGE_NBT, "demo:scale", "long.path"));
         List<ScaledCodonScreen> screens = context.computeOnClient(client -> List.of(
-            new WatchDetailsScreen(f.input(), f.state(), f.overlay(), id),
-            new WatchGroupingScreen(f.screen(), WatchGrouping.Mode.NONE, ignored -> { }),
             new FunctionSourceScreen(f.screen(), new ClientFunctionSourceState())));
         for (ScaledCodonScreen screen : screens) {
             context.runOnClient(client -> client.setScreenAndShow(screen));
