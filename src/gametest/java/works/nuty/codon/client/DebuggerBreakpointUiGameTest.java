@@ -472,8 +472,17 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
         context.runOnClient(client -> {
             client.options.guiScale().set(2);
             client.resizeGui();
-            openFirstCondition(client.gui.screen());
         });
+        // The resized editor refreshes its marker layout and stage preview before a marker can open the strip.
+        context.waitFor(client -> {
+            var state = CodonClientMod.state();
+            var preview = state.stagePreviews().get(target.location());
+            return preview != null && preview.status() == works.nuty.codon.client.state.ClientStagePreviewState.Status.READY
+                && !works.nuty.codon.client.ui.BreakpointUi.pending(state, target, COMMAND, 3);
+        }, 100);
+        context.waitTicks(2);
+        context.runOnClient(client -> openFirstCondition(client.gui.screen()));
+        context.waitFor(client -> ConditionStripGameTestUi.open(client.gui.screen()), 100);
         context.waitTicks(1);
         // A controlled pending state tests feedback layout; saving above uses a real server acknowledgement.
         var edit = context.computeOnClient(client -> CodonClientMod.state().breakpoints()
