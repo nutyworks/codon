@@ -247,7 +247,7 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
                 ConditionStripGameTestUi.strip(screen).mouseClicked(new MouseButtonEvent(comparison.getX() + 2, comparison.getY() + 2,
                     new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0)), false);
                 // The stepper and its keyboard keys keep a whole number.
-                ConditionStripGameTestUi.click(screen, "+");
+                ConditionStripGameTestUi.click(screen, text("codon.breakpoint.strip.increase"));
                 ConditionStripGameTestUi.strip(screen).setFocused(ConditionStripGameTestUi.widget(screen, text("codon.breakpoint.strip.count")));
                 ConditionStripGameTestUi.key(screen, InputConstants.KEY_DOWN);
                 require(((EditBox) ConditionStripGameTestUi.widget(screen, text("codon.breakpoint.strip.count"))).getValue().equals("2"),

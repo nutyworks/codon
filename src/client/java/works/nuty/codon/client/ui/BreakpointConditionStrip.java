@@ -91,8 +91,8 @@ public final class BreakpointConditionStrip extends AbstractContainerEventHandle
     private final List<DebuggerButton> events = new ArrayList<>();
     private final List<DebuggerButton> metrics = new ArrayList<>();
     private final DebuggerButton comparison = new DebuggerButton();
-    private final DebuggerButton decrease = new DebuggerButton();
-    private final DebuggerButton increase = new DebuggerButton();
+    private final DebuggerButton decrease = new StepButton("−");
+    private final DebuggerButton increase = new StepButton("+");
     private final DebuggerEditBox threshold;
     private final DebuggerButton remove = new DebuggerButton();
     private final DebuggerButton cancel = new DebuggerButton();
@@ -499,9 +499,9 @@ public final class BreakpointConditionStrip extends AbstractContainerEventHandle
                 .setTooltip(Tooltip.create(Component.translatable("codon.breakpoint.strip.comparison",
                     tr("codon.breakpoint.strip.comparison." + draft.comparison().name().toLowerCase(Locale.ROOT)))));
             x += 14 + GAP;
-            configure(decrease, x, y, 10, Component.literal("−"), editable, false, () -> setDraft(draft.step(-1)));
-            decrease.withOpenEdges(false, true).withTextPadding(0)
-                .setTooltip(Tooltip.create(Component.translatable("codon.breakpoint.strip.decrease")));
+            configure(decrease, x, y, 10, Component.translatable("codon.breakpoint.strip.decrease"), editable, false,
+                () -> setDraft(draft.step(-1)));
+            decrease.withOpenEdges(false, true).withTextPadding(0);
             x += 10;
             threshold.setX(x + 3);
             threshold.setY(y + 2);
@@ -517,9 +517,9 @@ public final class BreakpointConditionStrip extends AbstractContainerEventHandle
             }
             visible.add(threshold);
             x += 30;
-            configure(increase, x, y, 10, Component.literal("+"), editable, false, () -> setDraft(draft.step(1)));
-            increase.withOpenEdges(true, false).withTextPadding(0)
-                .setTooltip(Tooltip.create(Component.translatable("codon.breakpoint.strip.increase")));
+            configure(increase, x, y, 10, Component.translatable("codon.breakpoint.strip.increase"), editable, false,
+                () -> setDraft(draft.step(1)));
+            increase.withOpenEdges(true, false).withTextPadding(0);
         }
     }
 
@@ -594,6 +594,23 @@ public final class BreakpointConditionStrip extends AbstractContainerEventHandle
         int width = 0;
         for (int i = 0; i < count; i++) width += scaled(segment(font, labels[i]), total, room);
         return width;
+    }
+
+    /**
+     * Shows a −/+ glyph but keeps its full name as the message, for narration and its hover tooltip,
+     * so it is never confused with the − and + count metrics.
+     */
+    private static final class StepButton extends DebuggerButton {
+        private final Component glyph;
+
+        StepButton(String glyph) { this.glyph = Component.literal(glyph); }
+
+        @Override protected void extractContents(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+            Component name = getMessage();
+            setMessage(glyph);
+            super.extractContents(graphics, mouseX, mouseY, partialTick);
+            setMessage(name);
+        }
     }
 
     // ---------------------------------------------------------------- text
