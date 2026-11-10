@@ -27,7 +27,7 @@ public interface DebuggerEventSink {
 
     /**
      * A stop at {@code location} was not kept because no recipient could present it: skipped before
-     * parking, or {@code released} after the last recipient left or lost permission while paused.
+     * parking, or {@code released} after every recipient of the paused stop disconnected.
      */
     default void pauseWithoutRecipient(SourceLocation location, boolean released) {
     }

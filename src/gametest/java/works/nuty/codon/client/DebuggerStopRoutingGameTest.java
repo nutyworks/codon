@@ -34,6 +34,10 @@ public final class DebuggerStopRoutingGameTest implements FabricClientGameTest {
     public void runTest(ClientGameTestContext context) {
         try (var world = context.worldBuilder().create()) {
             MinecraftServer server = world.getServer().computeOnServer(value -> value);
+            // A stop needs an owner-authorized Codon client to park.
+            world.getServer().runOnServer(value -> value.getPlayerList().op(
+                value.getPlayerList().getPlayers().getFirst().nameAndId(),
+                java.util.Optional.of(net.minecraft.server.permissions.LevelBasedPermissionSet.OWNER), java.util.Optional.empty()));
             Fixture fixture = world.getServer().computeOnServer(Fixture::new);
             try {
                 for (boolean step : new boolean[]{true, false}) runScenario(context, server, fixture, step);

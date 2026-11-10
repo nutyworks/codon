@@ -303,7 +303,7 @@ public final class DebuggerEngine {
             if (result == ExecutionController.ParkResult.CANCELLED) {
                 resetSession();
             } else if (paused && !eventSink.hasPauseRecipient()) {
-                // The last recipient left or lost permission: release, as an explicit Resume would.
+                // Everyone shown the stop has disconnected: release, as an explicit Resume would.
                 clearAdvancement();
                 unpause();
                 eventSink.pauseWithoutRecipient(event.location(), true);
