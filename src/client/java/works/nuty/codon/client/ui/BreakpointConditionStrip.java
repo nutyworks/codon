@@ -55,6 +55,8 @@ public final class BreakpointConditionStrip extends AbstractContainerEventHandle
     private static final int GAP = 3;
     /** Decrease, a 30-pixel number field and Increase. */
     private static final int STEPPER = 50;
+    /** The number's text width; created at this width so its initial value is not scrolled out of view. */
+    private static final int NUMBER_WIDTH = 27;
     private static final BreakpointCondition.Kind[] EVENTS = {
         BreakpointCondition.Kind.CREATED, BreakpointCondition.Kind.REMOVED, BreakpointCondition.Kind.CHANGED };
     private static final BreakpointCondition.Kind[] METRICS = {
@@ -115,7 +117,7 @@ public final class BreakpointConditionStrip extends AbstractContainerEventHandle
         for (int i = 0; i < 3; i++) modes.add(new DebuggerButton());
         for (int i = 0; i < EVENTS.length; i++) events.add(new DebuggerButton());
         for (int i = 0; i < METRICS.length; i++) metrics.add(new DebuggerButton());
-        threshold = new DebuggerEditBox(Minecraft.getInstance().font, 0, 0, 1, CONTROL, Component.translatable("codon.breakpoint.strip.count"));
+        threshold = new DebuggerEditBox(Minecraft.getInstance().font, 0, 0, NUMBER_WIDTH, CONTROL - 2, Component.translatable("codon.breakpoint.strip.count"));
         threshold.setMaxLength(BreakpointConditionDraft.MAX_THRESHOLD_LENGTH);
         threshold.setBordered(false);
         threshold.setValue(draft.threshold());
@@ -505,7 +507,7 @@ public final class BreakpointConditionStrip extends AbstractContainerEventHandle
             x += 10;
             threshold.setX(x + 3);
             threshold.setY(y + 2);
-            threshold.setWidth(27);
+            threshold.setWidth(NUMBER_WIDTH);
             threshold.setHeight(CONTROL - 2);
             threshold.active = editable;
             threshold.setEditable(editable);
