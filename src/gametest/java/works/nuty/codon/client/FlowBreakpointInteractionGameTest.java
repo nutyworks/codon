@@ -153,8 +153,8 @@ public final class FlowBreakpointInteractionGameTest implements FabricClientGame
                     int selected = state.selectedFlowStageIndex();
                     if (keyboard) press(screen, InputConstants.KEY_F10, true);
                     else click(screen, marker, InputConstants.MOUSE_BUTTON_RIGHT);
-                    require(ScreenLayers.get(screen) instanceof BreakpointConditionScreen, "BP opens the editor directly without a dropdown");
-                    var editor = (BreakpointConditionScreen) ScreenLayers.get(screen);
+                    require(ConditionStripGameTestUi.open(screen), "BP opens the editor directly without a dropdown");
+                    var editor = ConditionStripGameTestUi.strip(screen);
                     require(editor.editsMarker(target, COMMAND), "Dialog owns the exact line/stage/fingerprint target: " + target);
                     require(((BreakpointDefinition) FunctionLineBreakpointGameTest.field(editor, "original")).target().equals(target),
                         "Editor cannot redirect the marker to another saved target");
@@ -165,7 +165,7 @@ public final class FlowBreakpointInteractionGameTest implements FabricClientGame
                     preview(state, COMMAND, SPANS);
                 });
                 context.waitTicks(2);
-                context.runOnClient(client -> ScreenLayers.get(screen).onClose());
+                context.runOnClient(client -> ConditionStripGameTestUi.strip(screen).cancel());
                 context.waitTicks(2);
                 context.runOnClient(client -> {
                     require(screen.getFocused() == markers(screen).get(markerIndex), "Cancel restores the same logical BP");
@@ -308,9 +308,9 @@ public final class FlowBreakpointInteractionGameTest implements FabricClientGame
                 require(state.preferences().commandVisible() && !state.breakpoints().get(target).enabled()
                     && !state.breakpoints().pending(target), "Navigation reveals Flow without changing the disabled definition");
                 press(screen, InputConstants.KEY_F10, true);
-                require(ScreenLayers.get(screen) instanceof BreakpointConditionScreen editor && editor.editsMarker(target, command),
+                require(ConditionStripGameTestUi.open(screen) && ConditionStripGameTestUi.strip(screen).editsMarker(target, command),
                     "The destination's keyboard focus opens its exact condition editor");
-                ScreenLayers.get(screen).onClose();
+                ConditionStripGameTestUi.strip(screen).cancel();
             });
             context.waitTicks(2);
             context.takeScreenshot("codon-flow-cross-navigation-" + (hidden ? "hidden" : "visible"));
@@ -387,16 +387,16 @@ public final class FlowBreakpointInteractionGameTest implements FabricClientGame
                 var event = new MouseButtonEvent(x, y, new MouseButtonInfo(InputConstants.MOUSE_BUTTON_RIGHT, 0));
                 require(source.mouseClicked(event, false), "Source stage marker accepts right-click");
                 source.mouseReleased(event);
-                require(ScreenLayers.get(source) instanceof BreakpointConditionScreen, "Source marker bypasses the body context menu");
-                var editor = (BreakpointConditionScreen) ScreenLayers.get(source);
+                require(ConditionStripGameTestUi.open(source), "Source marker bypasses the body context menu");
+                var editor = ConditionStripGameTestUi.strip(source);
                 require(editor.editsMarker(target, COMMAND) && !editor.editsMarker(BreakpointTarget.whole(location), COMMAND),
                     "Source as/at/run/function marker keeps its exact stage target");
-                editor.onClose();
+                editor.cancel();
                 press(source, InputConstants.KEY_F10, true);
-                require(ScreenLayers.get(source) instanceof BreakpointConditionScreen
-                    && ((BreakpointConditionScreen) ScreenLayers.get(source)).editsMarker(target, COMMAND),
+                require(ConditionStripGameTestUi.open(source)
+                    && ConditionStripGameTestUi.strip(source).editsMarker(target, COMMAND),
                     "Source Shift+F10 retains the marker target after cancel");
-                ScreenLayers.get(source).onClose();
+                ConditionStripGameTestUi.strip(source).cancel();
                 require(CodonClientMod.state().breakpoints().definitions().isEmpty()
                     && !CodonClientMod.state().breakpoints().pending(target), "Source open/cancel never creates a BP");
             });
@@ -428,10 +428,10 @@ public final class FlowBreakpointInteractionGameTest implements FabricClientGame
             context.runOnClient(client -> {
                 require(markers(screen).size() == 1, "Single-stage command has only one whole-line marker");
                 click(screen, markers(screen).getFirst(), InputConstants.MOUSE_BUTTON_RIGHT);
-                var editor = (BreakpointConditionScreen) ScreenLayers.get(screen);
+                var editor = ConditionStripGameTestUi.strip(screen);
                 require(editor.editsMarker(BreakpointTarget.whole(LOCATION), command), "Single-stage marker always owns the line");
                 require(!editor.editsMarker(BreakpointTarget.stage(LOCATION, 0, command), command), "Single-stage marker cannot silently become stage zero");
-                editor.onClose();
+                editor.cancel();
             });
         }
     }

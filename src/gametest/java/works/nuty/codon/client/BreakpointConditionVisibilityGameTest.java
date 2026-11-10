@@ -124,34 +124,30 @@ public final class BreakpointConditionVisibilityGameTest implements FabricClient
             var event = new MouseButtonEvent(point[0] + 3, point[1] + 3, new MouseButtonInfo(InputConstants.MOUSE_BUTTON_RIGHT, 0));
             require(screen.mouseClicked(event, false), "right click is consumed by Source");
             screen.mouseReleased(event);
-            if (line == 7) require(ScreenLayers.get(screen).getClass().getSimpleName().equals("DebuggerContextMenu"),
-                "saved sole stage exposes explicit choices while retaining line Condition");
+            require(ConditionStripGameTestUi.open(screen), "right click opens the condition strip for " + name);
         });
-        if (line == 7) context.takeScreenshot("codon-condition-" + name + "-saved-stage-options");
+        context.waitTicks(2);
         context.runOnClient(client -> {
             var screen = client.gui.screen();
-            chooseLineCondition(screen);
-            var layer = (BreakpointConditionScreen) ScreenLayers.get(screen);
-            require(layer != null, "right click opens the condition editor for " + name);
+            var layer = ConditionStripGameTestUi.strip(screen);
             require(((BreakpointDefinition) FunctionLineBreakpointGameTest.field(layer, "original")).target().equals(target),
                 "editor retains exact original identity for " + name);
             require(!CodonClientMod.state().breakpoints().pending(target), "Open does not edit or enable " + name);
-            var delete = (AbstractWidget) FunctionLineBreakpointGameTest.field(layer, "deleteButton");
+            var delete = ConditionStripGameTestUi.widget(screen, ConditionStripGameTestUi.text("codon.breakpoint.strip.remove"));
             require(delete.active == (CodonClientMod.state().breakpoints().get(target) != null),
-                "Delete is available only for the exact acknowledged target: " + name);
-            var saveAction = (AbstractWidget) FunctionLineBreakpointGameTest.field(layer, "saveButton");
-            String expected = client.getLanguageManager().getSelected().equals("ko_kr")
-                ? "저장하고 활성화" : "Save and enable";
-            require(saveAction.getMessage().getString().equals(expected), "Save states that it enables the breakpoint: " + name);
-            require(client.font.width(saveAction.getMessage()) + 12 <= saveAction.getWidth(),
-                "The complete Save-and-enable action fits without clipping: " + name);
+                "Remove is available only for the exact acknowledged target: " + name);
+            var saveAction = ConditionStripGameTestUi.widget(screen, ConditionStripGameTestUi.text("codon.breakpoint.save"));
+            String expected = client.getLanguageManager().getSelected().equals("ko_kr") ? "저장" : "Save";
+            require(saveAction.getMessage().getString().equals(expected), "Save is labelled Save: " + name);
+            require(client.font.width(saveAction.getMessage()) + 4 <= saveAction.getWidth(),
+                "The Save label fits without clipping: " + name);
+            var current = CodonClientMod.state().breakpoints().get(target);
+            require(saveAction.active == (current == null || !current.enabled()),
+                "Save is enabled only when it would create or enable the breakpoint: " + name);
             if (!delete.active) {
-                var click = new MouseButtonEvent(delete.getX() + delete.getWidth() / 2.0,
-                    delete.getY() + delete.getHeight() / 2.0, new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
-                layer.mouseClicked(click, false);
-                layer.mouseReleased(click);
-                require(ScreenLayers.get(screen) == layer && !CodonClientMod.state().breakpoints().pending(target),
-                    "An unavailable Delete neither submits a request nor dismisses the new draft: " + name);
+                ConditionStripGameTestUi.click(screen, ConditionStripGameTestUi.text("codon.breakpoint.strip.remove"));
+                require(ConditionStripGameTestUi.strip(screen) == layer && !CodonClientMod.state().breakpoints().pending(target),
+                    "An unavailable Remove neither submits a request nor dismisses the new draft: " + name);
             }
         });
         context.getInput().setCursorPos(0, 0);
@@ -165,28 +161,28 @@ public final class BreakpointConditionVisibilityGameTest implements FabricClient
             assertInk(context, other, name + "-unrelated-hidden", false);
             context.getInput().setCursorPos(0, 0);
         }
-        // SDL delivers the last cursor warp on a later frame. Settle it before
-        // opening a keyboard menu; a subsequent pointer move correctly dismisses it.
-        context.waitFor(client -> {
-            var layer = ScreenLayers.get(client.gui.screen());
-            return layer != null && (int) FunctionLineBreakpointGameTest.field(layer, "lastMouseX") == 0
-                && (int) FunctionLineBreakpointGameTest.field(layer, "lastMouseY") == 0;
-        }, 200);
         context.runOnClient(client -> {
-            var layer = ScreenLayers.get(client.gui.screen());
-            layer.setFocused((AbstractWidget) FunctionLineBreakpointGameTest.field(layer, "kindButton"));
-            layer.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
-            require(!FunctionLineBreakpointGameTest.field(layer, "menu").toString().equals("NONE"), "keyboard opens the selector menu");
+            // Keyboard: focus the Count segment and choose it; the draft now differs from the saved rule.
+            var screen = client.gui.screen();
+            var layer = ConditionStripGameTestUi.strip(screen);
+            layer.setFocused(ConditionStripGameTestUi.widget(screen, ConditionStripGameTestUi.text("codon.breakpoint.strip.mode.count")));
+            ConditionStripGameTestUi.key(screen, InputConstants.KEY_RETURN);
+            require(ConditionStripGameTestUi.has(screen, ConditionStripGameTestUi.text("codon.breakpoint.strip.metric.output_count")),
+                "keyboard selects the Count mode and shows its controls");
         });
         context.waitTicks(2);
-        assertInk(context, point, name + "-menu", true);
+        assertInk(context, point, name + "-count", true);
         context.runOnClient(client -> {
             var screen = client.gui.screen();
-            var layer = ScreenLayers.get(screen);
-            layer.keyPressed(new KeyEvent(InputConstants.KEY_ESCAPE, 0, 0));
-            require(ScreenLayers.get(screen) == layer, "Escape first closes the menu");
-            layer.keyPressed(new KeyEvent(InputConstants.KEY_ESCAPE, 0, 0));
-            require(ScreenLayers.get(screen) == null, "Cancel closes only the editor");
+            ConditionStripGameTestUi.key(screen, InputConstants.KEY_ESCAPE);
+            require(ConditionStripGameTestUi.has(screen, ConditionStripGameTestUi.text("codon.breakpoint.discard")),
+                "Escape on a changed draft asks before discarding it");
+            ConditionStripGameTestUi.key(screen, InputConstants.KEY_ESCAPE);
+            require(ConditionStripGameTestUi.has(screen, ConditionStripGameTestUi.text("codon.breakpoint.strip.mode.count")),
+                "Escape in the prompt keeps editing");
+            ConditionStripGameTestUi.key(screen, InputConstants.KEY_ESCAPE);
+            ConditionStripGameTestUi.click(screen, ConditionStripGameTestUi.text("codon.breakpoint.discard"));
+            require(!ConditionStripGameTestUi.open(screen), "Discard closes only the strip");
             var current = CodonClientMod.state().breakpoints().get(savedTarget);
             require(absent ? current == null : savedDefinition.equals(current), "Cancel preserves disabled/absent state for " + name);
             require(!CodonClientMod.state().breakpoints().pending(target), "Cancel sends no edit for " + name);
@@ -205,16 +201,16 @@ public final class BreakpointConditionVisibilityGameTest implements FabricClient
                 require(screen.children().stream().filter(AbstractWidget.class::isInstance).map(AbstractWidget.class::cast)
                     .noneMatch(widget -> widget.visible && widget.getMessage().equals(net.minecraft.network.chat.Component.translatable("codon.source.stage_condition"))),
                     "Pending state does not recreate the removed Stage condition header action");
-                BreakpointUi.openCondition(screen, CodonClientMod.state(), target, LINES.get(line - 1), 2, null);
-                require(ScreenLayers.get(screen) == null, "pending stage cannot open a second condition editor");
+                BreakpointUi.openCondition(screen, CodonClientMod.state(), target, LINES.get(line - 1), 2, () -> true);
+                require(!ConditionStripGameTestUi.open(screen), "pending stage cannot open a second condition editor");
                 CodonClientMod.state().breakpoints().finish(pending, ClientBreakpointState.Result.APPLIED);
             });
             context.waitTicks(2);
             context.runOnClient(client -> {
                 var screen = client.gui.screen();
-                BreakpointUi.openCondition(screen, CodonClientMod.state(), target, LINES.get(line - 1), 2, null);
-                require(ScreenLayers.get(screen) instanceof BreakpointConditionScreen, "Acknowledgement restores condition-editor access");
-                ScreenLayers.get(screen).onClose();
+                BreakpointUi.openCondition(screen, CodonClientMod.state(), target, LINES.get(line - 1), 2, () -> true);
+                require(ConditionStripGameTestUi.open(screen), "Acknowledgement restores condition-editor access");
+                ConditionStripGameTestUi.strip(screen).cancel();
             });
         }
         if (!save) return;
@@ -226,18 +222,18 @@ public final class BreakpointConditionVisibilityGameTest implements FabricClient
                 new MouseButtonInfo(InputConstants.MOUSE_BUTTON_RIGHT, 0));
             require(screen.mouseClicked(event, false), "The exact Source marker reopens its editor for Save");
             screen.mouseReleased(event);
-            chooseLineCondition(screen);
         });
         context.waitTicks(2);
         context.runOnClient(client -> {
-            var layer = ScreenLayers.get(client.gui.screen());
-            layer.setFocused((AbstractWidget) FunctionLineBreakpointGameTest.field(layer, "saveButton"));
-            layer.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
+            var screen = client.gui.screen();
+            ConditionStripGameTestUi.strip(screen).setFocused(
+                ConditionStripGameTestUi.widget(screen, ConditionStripGameTestUi.text("codon.breakpoint.save")));
+            ConditionStripGameTestUi.key(screen, InputConstants.KEY_RETURN);
         });
         context.waitFor(client -> {
             var state = CodonClientMod.state().breakpoints();
             return !state.pending(target) && state.get(target) != null && state.get(target).enabled()
-                && ScreenLayers.get(client.gui.screen()) == null;
+                && !ConditionStripGameTestUi.open(client.gui.screen());
         }, 200);
         context.runOnClient(client -> {
             require(CodonClientMod.state().breakpoints().get(target).condition().equals(savedDefinition.condition()),
@@ -251,14 +247,14 @@ public final class BreakpointConditionVisibilityGameTest implements FabricClient
             context.runOnClient(client -> {
                 var screen = client.gui.screen();
                 screen.keyPressed(new KeyEvent(InputConstants.KEY_F10, 0, InputConstants.MOD_SHIFT));
-                var layer = ScreenLayers.get(screen);
-                require(layer instanceof BreakpointConditionScreen editor && editor.editsMarker(target, LINES.get(line - 1)),
-                    "Delete opens the retained exact marker");
-                layer.setFocused((AbstractWidget) FunctionLineBreakpointGameTest.field(layer, "deleteButton"));
-                layer.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
+                require(ConditionStripGameTestUi.open(screen) && ConditionStripGameTestUi.strip(screen).editsMarker(target, LINES.get(line - 1)),
+                    "Shift+F10 opens the retained exact marker");
             });
+            context.waitTicks(2);
+            context.runOnClient(client -> ConditionStripGameTestUi.click(client.gui.screen(),
+                ConditionStripGameTestUi.text("codon.breakpoint.strip.remove")));
             context.waitFor(client -> !CodonClientMod.state().breakpoints().pending(target)
-                && CodonClientMod.state().breakpoints().get(target) == null && ScreenLayers.get(client.gui.screen()) == null, 200);
+                && CodonClientMod.state().breakpoints().get(target) == null && !ConditionStripGameTestUi.open(client.gui.screen()), 200);
             assertRetainedFocus(context, point, target, line, name + "-deleted");
             clearMarkerFocus(context, point, name + "-deleted-navigated");
         }
@@ -272,21 +268,13 @@ public final class BreakpointConditionVisibilityGameTest implements FabricClient
         context.runOnClient(client -> {
             var screen = client.gui.screen();
             screen.keyPressed(new KeyEvent(InputConstants.KEY_F10, 0, InputConstants.MOD_SHIFT));
-            chooseLineCondition(screen);
-            var layer = ScreenLayers.get(screen);
-            require(layer instanceof BreakpointConditionScreen editor && editor.editsMarker(target, LINES.get(line - 1)),
+            require(ConditionStripGameTestUi.open(screen) && ConditionStripGameTestUi.strip(screen).editsMarker(target, LINES.get(line - 1)),
                 "Shift+F10 reopens the visible retained marker for " + name);
-            layer.keyPressed(new KeyEvent(InputConstants.KEY_ESCAPE, 0, 0));
-            require(ScreenLayers.get(screen) == null, "Escape closes the reopened exact editor");
+            ConditionStripGameTestUi.key(screen, InputConstants.KEY_ESCAPE);
+            require(!ConditionStripGameTestUi.open(screen), "Escape closes the reopened clean strip");
         });
         context.waitTicks(2);
         assertInk(context, point, name + "-escape", true);
-    }
-
-    private static void chooseLineCondition(Screen screen) {
-        var layer = ScreenLayers.get(screen);
-        if (layer != null && layer.getClass().getSimpleName().equals("DebuggerContextMenu"))
-            layer.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
     }
 
     private static void clearMarkerFocus(ClientGameTestContext context, int[] point, String name) {

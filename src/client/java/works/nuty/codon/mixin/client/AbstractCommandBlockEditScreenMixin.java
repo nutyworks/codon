@@ -28,8 +28,7 @@ import works.nuty.codon.client.network.ClientNetworking;
 import works.nuty.codon.client.state.ClientBreakpointState;
 import works.nuty.codon.client.state.ClientStagePreviewState;
 import works.nuty.codon.client.state.BreakpointTargetPolicy;
-import works.nuty.codon.client.ui.BreakpointConditionScreen;
-import works.nuty.codon.client.ui.ScreenLayers;
+import works.nuty.codon.client.ui.BreakpointConditionStrip;
 import works.nuty.codon.client.ui.WrappedCommandEditBox;
 import works.nuty.codon.client.ui.InlineBreakpointButton;
 import works.nuty.codon.client.ui.BreakpointUi;
@@ -158,11 +157,14 @@ public abstract class AbstractCommandBlockEditScreenMixin extends Screen {
             BreakpointUi.toggle(state, target, command,
                 BreakpointTargetPolicy.stageCount(command, state.stagePreviews().get(target.location()), null));
         } else {
-            var control = codon$markerControls.stream().filter(value -> value.target().equals(target)).findFirst().orElseThrow();
-            var anchor = new BreakpointConditionScreen.Anchor(control.getX(), control.getY(), 9, 9);
             String command = commandEdit.getValue();
-            BreakpointUi.openCondition(this, state, target, command,
-                BreakpointTargetPolicy.stageCount(command, state.stagePreviews().get(target.location()), null), anchor);
+            var strip = BreakpointUi.openCondition(this, state, target, command,
+                BreakpointTargetPolicy.stageCount(command, state.stagePreviews().get(target.location()), null),
+                () -> commandEdit instanceof WrappedCommandEditBox && command.equals(commandEdit.getValue()));
+            // The editor has no free slot; the strip covers the area under the input until it closes.
+            if (strip != null) strip.overlay(() -> new works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds(
+                commandEdit.getX(), commandEdit.getY() + commandEdit.getHeight() + 2, commandEdit.getWidth(),
+                BreakpointConditionStrip.HEIGHT));
         }
     }
 

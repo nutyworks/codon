@@ -1,6 +1,7 @@
 package works.nuty.codon.client.ui;
 
 import java.util.List;
+import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.Nullable;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -71,12 +72,13 @@ public final class BreakpointUi {
     }
 
     public static boolean editingMarker(Screen parent, BreakpointTarget target, String command) {
-        return ScreenLayers.get(parent) instanceof BreakpointConditionScreen editor && editor.editsMarker(target, command);
+        var strip = BreakpointConditionStrip.get(parent);
+        return strip != null && strip.editsMarker(target, command);
     }
 
     public static @Nullable BreakpointDefinition editingDefinition(Screen parent, BreakpointTarget target, String command) {
-        return ScreenLayers.get(parent) instanceof BreakpointConditionScreen editor && editor.editsMarker(target, command)
-            ? editor.markerDefinition() : null;
+        var strip = BreakpointConditionStrip.get(parent);
+        return strip != null && strip.editsMarker(target, command) ? strip.markerDefinition() : null;
     }
 
     public static boolean pending(ClientDebuggerState state, BreakpointTarget target, String command, int stageCount) {
@@ -119,28 +121,28 @@ public final class BreakpointUi {
             ClientNetworking.sendBreakpointEdit(state, ClientBreakpointState.Action.TOGGLE, definition);
     }
 
-    public static void openCondition(Screen parent, ClientDebuggerState state, BreakpointTarget target,
-                                     String command, int stageCount, BreakpointConditionScreen.Anchor anchor) {
-        openCondition(parent, state, target, command, stageCount, anchor, () -> true);
-    }
-
-    static void openCondition(Screen parent, ClientDebuggerState state, BreakpointTarget target,
-                              String command, int stageCount, BreakpointConditionScreen.Anchor anchor,
-                              java.util.function.BooleanSupplier current) {
-        if (!current.getAsBoolean()) return;
-        if (pending(state, target, command, stageCount)) return;
+    /**
+     * Command-block editor marker: a sole saved definition for a single-stage command is edited
+     * as before (including a saved stage 1); otherwise the exact marker target.
+     */
+    public static @Nullable BreakpointConditionStrip openCondition(Screen parent, ClientDebuggerState state,
+                                                                   BreakpointTarget target, String command, int stageCount,
+                                                                   BooleanSupplier current) {
+        if (!current.getAsBoolean() || pending(state, target, command, stageCount)) return null;
         var definitions = target.wholeCommand() && stageCount == 1
             ? lineDefinitions(state, target.location(), command, stageCount) : List.<BreakpointDefinition>of();
-        if (definitions.size() > 1) {
-            BreakpointContextMenu.openEditor(parent, state, target,
-                anchor == null ? new works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds(parent.width / 2, parent.height / 2, 1, 1)
-                    : new works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds(anchor.x(), anchor.y(), anchor.width(), anchor.height()),
-                current, () -> { });
-            return;
-        }
-        var existing = definitions.isEmpty() ? state.breakpoints().get(target) : definitions.getFirst();
-        ScreenLayers.open(parent, new BreakpointConditionScreen(parent, state,
-            existing == null ? BreakpointDefinition.plain(target) : existing, target, anchor).withContextGuard(current));
+        var existing = definitions.size() == 1 ? definitions.getFirst() : state.breakpoints().get(target);
+        return BreakpointConditionStrip.open(parent, BreakpointConditionStrip.Placement.EDITOR, state,
+            existing == null ? BreakpointDefinition.plain(target) : existing, target, current, () -> { });
+    }
+
+    /** Source and Flow markers edit their exact target and never redirect a line to a saved stage 1. */
+    static @Nullable BreakpointConditionStrip openExact(Screen parent, BreakpointConditionStrip.Placement placement,
+                                                        ClientDebuggerState state, BreakpointTarget target,
+                                                        BooleanSupplier current, Runnable restoreFocus) {
+        var latest = state.breakpoints().get(target);
+        return BreakpointConditionStrip.open(parent, placement, state,
+            latest == null ? BreakpointDefinition.plain(target) : latest, target, current, restoreFocus);
     }
 
     private static String tr(String key, Object... args) {

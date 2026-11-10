@@ -4,23 +4,19 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Supplier;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.screens.Screen;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import works.nuty.codon.client.CodonClientMod;
 import works.nuty.codon.client.network.ClientNetworking;
 import works.nuty.codon.client.state.*;
-import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds;
 import works.nuty.codon.core.model.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-/** Actual menu and destination classes with a headless Minecraft and mocked transport. */
+/** Actual condition strip and destination classes with a headless Minecraft and mocked transport. */
 class SingleStageLegacyManagementTest {
     private static final String COMMAND = "say one";
     private static final FunctionId FUNCTION = new FunctionId("test", "one");
@@ -32,74 +28,64 @@ class SingleStageLegacyManagementTest {
         net.minecraft.server.Bootstrap.bootStrap();
     }
 
-    @Test void savedActionsUseTheirExactDefinitionAndCannotRecreateARemovedEntry() throws Exception {
+    @Test void markersEditTheirExactTargetAndTheListEditsTheSavedSoleStage() throws Exception {
         for (SourceLocation location : List.of(FUNCTION_LOCATION, BLOCK_LOCATION)) {
             var state = state(location);
             var whole = BreakpointTarget.whole(location);
             var legacy = state.breakpoints().get(BreakpointTarget.stage(location, 0, COMMAND));
             var parent = mock(CodonScreen.class);
-            var opened = new AtomicReference<Screen>();
-            try (var minecraft = mockStatic(Minecraft.class); var layers = mockStatic(ScreenLayers.class);
-                 var network = mockStatic(ClientNetworking.class)) {
-                minecraft.when(Minecraft::getInstance).thenReturn(mock(Minecraft.class));
-                layers.when(() -> ScreenLayers.open(any(), any())).thenAnswer(invocation -> {
-                    opened.set(invocation.getArgument(1)); return null;
-                });
-                BreakpointContextMenu.openEditor(parent, state, whole, COMMAND, 1, new Bounds(0, 0, 1, 1), () -> true, () -> { });
-                var menu = assertInstanceOf(DebuggerContextMenu.class, opened.get());
-                var choices = items(menu);
-                assertEquals(3, choices.size(), "line options plus saved-stage toggle and options");
-                choices.get(0).action().run();
-                assertEquals(whole, ((BreakpointDefinition) field(opened.get(), "original")).target(), "line action keeps its target");
-                choices.get(2).action().run();
-                var editor = assertInstanceOf(BreakpointConditionScreen.class, opened.get());
-                assertEquals(legacy, field(editor, "original"));
-                assertTrue(editor.editsMarker(whole, COMMAND));
-                choices.get(1).action().run();
-                network.verify(() -> ClientNetworking.sendBreakpointEdit(state, ClientBreakpointState.Action.TOGGLE, legacy));
-                network.verifyNoMoreInteractions();
+            try (var minecraft = mockStatic(Minecraft.class); var network = mockStatic(ClientNetworking.class)) {
+                minecraft.when(Minecraft::getInstance).thenReturn(client());
+                // A line marker never redirects to the saved stage 1.
+                var line = BreakpointUi.openExact(parent, BreakpointConditionStrip.Placement.FLOW, state, whole, () -> true, () -> { });
+                assertEquals(whole, line.target());
+                assertSame(line, BreakpointConditionStrip.get(parent));
+                // The docked list's edit action opens that exact definition on its line marker.
+                var saved = BreakpointConditionStrip.open(parent, BreakpointConditionStrip.Placement.FLOW, state, legacy, whole,
+                    () -> true, () -> { });
+                assertNotSame(line, BreakpointConditionStrip.get(parent), "one strip per screen");
+                assertEquals(legacy.target(), saved.target());
+                assertTrue(saved.editsMarker(whole, COMMAND));
+                call(saved, "delete", new Class<?>[0]);
+                network.verify(() -> ClientNetworking.sendBreakpointEdit(state, ClientBreakpointState.Action.DELETE, legacy));
+                // A pending request blocks every action and a second editor for that target.
                 state.breakpoints().begin(ClientBreakpointState.Action.TOGGLE, legacy);
-                assertTrue(items(menu).get(0).enabled());
-                assertFalse(items(menu).get(1).enabled());
-                assertFalse(items(menu).get(2).enabled());
-                choices.get(1).action().run();
-                network.verifyNoMoreInteractions();
+                call(saved, "delete", new Class<?>[0]);
+                call(saved, "save", new Class<?>[0]);
+                assertNull(BreakpointConditionStrip.open(parent, BreakpointConditionStrip.Placement.FLOW, state, legacy, whole,
+                    () -> true, () -> { }));
+                // A removed entry cannot be deleted again or recreated by Remove.
                 state.breakpoints().reset();
                 state.breakpoints().acceptPage(2, 0, true, List.of(BreakpointDefinition.plain(whole)));
-                call(editor, "save", new Class<?>[0]);
-                layers.verify(() -> ScreenLayers.close(editor));
-                choices.get(1).action().run();
-                choices.get(2).action().run();
-                assertEquals(1, items(menu).size());
-                network.verifyNoMoreInteractions();
+                call(saved, "delete", new Class<?>[0]);
+                network.verify(() -> ClientNetworking.sendBreakpointEdit(any(), any(), any()), times(1));
                 assertEquals(List.of(BreakpointDefinition.plain(whole)), state.breakpoints().definitions());
             }
         }
     }
 
-    @Test void unknownMultipleStaleAndDifferentCommandsNeverOfferALegacyAlias() throws Exception {
+    @Test void staleAndDifferentCommandsNeverOfferALegacyAlias() throws Exception {
         var state = state(FUNCTION_LOCATION);
-        var opened = new AtomicReference<Screen>();
-        try (var minecraft = mockStatic(Minecraft.class); var layers = mockStatic(ScreenLayers.class)) {
-            minecraft.when(Minecraft::getInstance).thenReturn(mock(Minecraft.class));
-            layers.when(() -> ScreenLayers.open(any(), any())).thenAnswer(invocation -> {
-                opened.set(invocation.getArgument(1)); return null;
-            });
-            for (int count : List.of(0, 2)) {
-                BreakpointContextMenu.openEditor(mock(CodonScreen.class), state, BreakpointTarget.whole(FUNCTION_LOCATION), COMMAND,
-                    count, new Bounds(0, 0, 1, 1), () -> true, () -> { });
-                assertInstanceOf(BreakpointConditionScreen.class, opened.get());
-            }
+        var whole = BreakpointTarget.whole(FUNCTION_LOCATION);
+        try (var minecraft = mockStatic(Minecraft.class); var network = mockStatic(ClientNetworking.class)) {
+            minecraft.when(Minecraft::getInstance).thenReturn(client());
             var target = BreakpointTarget.stage(FUNCTION_LOCATION, 0, COMMAND);
             int revision = 1;
             for (var saved : List.of(BreakpointDefinition.plain(target).withStaleSource(true),
                 BreakpointDefinition.plain(BreakpointTarget.stage(FUNCTION_LOCATION, 0, "say old")))) {
                 state.breakpoints().acceptPage(++revision, 0, true, List.of(saved));
-                BreakpointContextMenu.openEditor(mock(CodonScreen.class), state, BreakpointTarget.whole(FUNCTION_LOCATION), COMMAND,
-                    1, new Bounds(0, 0, 1, 1), () -> true, () -> { });
-                assertInstanceOf(BreakpointConditionScreen.class, opened.get());
+                var strip = BreakpointUi.openExact(mock(CodonScreen.class), BreakpointConditionStrip.Placement.SOURCE, state,
+                    whole, () -> true, () -> { });
+                assertEquals(whole, strip.target());
+                assertEquals(BreakpointDefinition.plain(whole).withEnabled(false), strip.markerDefinition());
             }
         }
+    }
+
+    private static Minecraft client() throws Exception {
+        var client = mock(Minecraft.class);
+        set(client, "font", mock(Font.class, RETURNS_MOCKS));
+        return client;
     }
 
     @Test void sourceListDestinationRevealsTheLineWithoutCreatingAStageControl() throws Exception {
@@ -154,9 +140,6 @@ class SingleStageLegacyManagementTest {
         state.applyPause(new PauseSnapshot(location, CommandSnippet.plain(COMMAND), 0, List.of(), List.of(),
             List.of(new ExecutionFlowTrace(100, location, List.of(stage), false)), PauseReason.BREAKPOINT, 1));
         return state;
-    }
-    private static List<DebuggerContextMenu.Item> items(Object menu) throws Exception {
-        return ((Supplier<List<DebuggerContextMenu.Item>>) field(menu, "source")).get();
     }
     private static Object call(Object target, String name, Class<?>[] types, Object... arguments) throws Exception {
         Method method = target.getClass().getDeclaredMethod(name, types); method.setAccessible(true); return method.invoke(target, arguments);

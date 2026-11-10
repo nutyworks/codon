@@ -98,10 +98,10 @@ class CommandPanelTest {
         toggle.setAccessible(true);
         assertDoesNotThrow(() -> toggle.invoke(panel, new Object[] {null}));
         var action = CommandPanel.class.getDeclaredMethod("conditionAction", DebuggerButton.class,
-            String.class, ExecutionFlowTrace.class, BreakpointTarget.class, String.class, boolean.class, boolean.class);
+            String.class, ExecutionFlowTrace.class, BreakpointTarget.class, String.class, boolean.class);
         action.setAccessible(true);
         var button = new DebuggerButton();
-        assertDoesNotThrow(() -> action.invoke(panel, button, "unavailable", null, null, "say test", false, true));
+        assertDoesNotThrow(() -> action.invoke(panel, button, "unavailable", null, null, "say test", false));
         assertFalse(panel.openContextMenu(button));
         assertTrue(state.breakpoints().definitions().isEmpty());
     }

@@ -159,15 +159,10 @@ public final class DebuggerTooltipGameTest implements FabricClientGameTest {
             var state = CodonClientMod.state();
             var definition = state.breakpoints().definitions().getFirst().withEnabled(false);
             state.breakpoints().acceptPage(2, 0, true, List.of(definition));
-            BreakpointUi.openCondition(screen, state, BreakpointTarget.whole(definition.target().location()), COMMAND, 1,
-                new BreakpointConditionScreen.Anchor(x, y, 9, 9));
             capture = null;
         });
-        context.waitTicks(3);
-        require(capture == null, "condition layer suppresses saved-line tooltip below it");
-        context.runOnClient(client -> { ScreenLayers.close(ScreenLayers.get(screen)); capture = null; });
         context.waitTicks(12);
-        assertCapture("disabled saved line recovers after modal closes " + name);
+        assertCapture("disabled saved line " + name);
         context.runOnClient(client -> {
             var location = new SourceLocation.Function(new FunctionLocation(FUNCTION, 1));
             CodonClientMod.state().breakpoints().acceptPage(3, 0, true,

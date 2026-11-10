@@ -28,11 +28,9 @@ import works.nuty.codon.client.network.ClientNetworking;
 import works.nuty.codon.client.state.ClientBreakpointState;
 import works.nuty.codon.core.model.SourceLocation;
 import works.nuty.codon.client.state.ClientStagePreviewState;
-import works.nuty.codon.client.ui.BreakpointConditionScreen;
 import works.nuty.codon.client.ui.BreakpointUi;
 import works.nuty.codon.client.ui.CodonScreen;
 import works.nuty.codon.client.ui.DebuggerOverlay;
-import works.nuty.codon.client.ui.ScreenLayers;
 import works.nuty.codon.client.ui.DebuggerButton;
 import works.nuty.codon.client.ui.WrappedCommandEditBox;
 import works.nuty.codon.client.ui.InlineBreakpointButton;
@@ -149,39 +147,43 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
                 originalEditor.getScreenX("execute ".length()) - 8, originalEditor.getY() + 8
             });
             nativeClick(context, parent, marker[0], marker[1], InputConstants.MOUSE_BUTTON_RIGHT);
-            context.waitFor(client -> ScreenLayers.get(client.gui.screen()) instanceof BreakpointConditionScreen, 100);
+            context.waitFor(client -> ConditionStripGameTestUi.open(client.gui.screen()), 100);
             context.runOnClient(client -> require(client.gui.screen() == parent && commandBox(parent) == originalEditor,
-                "opening condition details retains the active screen and its input widget"));
-            context.takeScreenshot("codon-breakpoint-condition-layer");
-            // Interact inside the compact layer through Minecraft's real input dispatch.
-            // Neither the click nor typed text may reach the editor underneath.
-            AbstractButton initialKind = context.computeOnClient(client -> button(conditionLayer(parent), "Always ▾"));
-            nativeClick(context, parent, initialKind.getX() + 3, initialKind.getY() + 3, InputConstants.MOUSE_BUTTON_LEFT);
+                "opening the condition strip retains the active screen and its input widget"));
+            context.waitTicks(1);
+            context.takeScreenshot("codon-breakpoint-condition-strip");
+            // Interact with the strip through Minecraft's real input dispatch. While a strip
+            // control has focus, neither the click nor typed text reaches the editor.
+            nativeButton(context, parent, text("codon.breakpoint.strip.mode.event"));
             context.getInput().typeChars("9");
             context.runOnClient(client -> {
-                require(CodonClientMod.state().breakpoints().get(first).enabled(), "layer blocks underlying marker clicks");
-                require(COMMAND.equals(originalEditor.getValue()), "layer blocks typing into the underlying command");
+                require(CodonClientMod.state().breakpoints().get(first).enabled(), "the strip owns clicks inside its bounds");
+                require(COMMAND.equals(originalEditor.getValue()), "a focused strip owns typed text");
+                require(selected(parent, text("codon.breakpoint.strip.event.created")), "Event defaults to created");
             });
-            AbstractButton save = context.computeOnClient(client -> button(conditionLayer(parent), "Save and enable"));
-            nativeClick(context, parent, save.getX() + 3, save.getY() + 2, InputConstants.MOUSE_BUTTON_LEFT);
-            context.waitFor(client -> client.gui.screen() instanceof CommandBlockEditScreen && ScreenLayers.get(client.gui.screen()) == null, 200);
+            nativeButton(context, parent, text("codon.breakpoint.save"));
+            context.waitFor(client -> client.gui.screen() instanceof CommandBlockEditScreen && !ConditionStripGameTestUi.open(client.gui.screen())
+                && CodonClientMod.state().breakpoints().get(first).condition().equals(BreakpointCondition.event(BreakpointCondition.Kind.CREATED)), 200);
             context.waitTicks(1);
             context.runOnClient(client -> {
                 Screen screen = require(client.gui.screen(), "command block editor restored");
                 EditBox command = screen.children().stream().filter(EditBox.class::isInstance)
                     .map(EditBox.class::cast).filter(box -> box.getY() == 50).findFirst().orElseThrow();
-                require(COMMAND.equals(command.getValue()), "return retains the loaded command text");
+                require(COMMAND.equals(command.getValue()), "saving retains the loaded command text");
                 require(client.gui.screen() == parent && command == originalEditor
-                    && command.getCursorPosition() == originalCursor, "saving closes only the layer and retains the cursor");
+                    && command.getCursorPosition() == originalCursor, "saving closes only the strip and retains the cursor");
                 require(button(screen, "Done").active,
-                    "return restores vanilla controls without another block packet");
+                    "closing restores vanilla controls without another block packet");
                 openFirstCondition(screen);
             });
-            context.waitFor(client -> ScreenLayers.get(client.gui.screen()) instanceof BreakpointConditionScreen, 100);
+            context.waitFor(client -> ConditionStripGameTestUi.open(client.gui.screen()), 100);
             nativeClick(context, parent, 0, 0, InputConstants.MOUSE_BUTTON_LEFT);
-            context.runOnClient(client -> require(client.gui.screen() == parent && ScreenLayers.get(parent) == null,
-                "outside click dismisses only the layer"));
-            // The parent refreshes its marker layout during render after the layer closes.
+            context.runOnClient(client -> require(client.gui.screen() == parent && ConditionStripGameTestUi.open(parent)
+                && ConditionStripGameTestUi.strip(parent).getFocused() == null,
+                "an outside click leaves the inline strip open and only moves focus"));
+            nativeButton(context, parent, text("codon.breakpoint.cancel"));
+            context.runOnClient(client -> require(!ConditionStripGameTestUi.open(parent), "Cancel closes a clean strip"));
+            // The parent refreshes its marker layout during render after the strip closes.
             context.waitFor(client -> {
                 var editor = commandBox(parent);
                 var point = editor.markerPosition(new WrappedCommandEditBox.Marker(first, 8, COMMAND.length(),
@@ -195,121 +197,70 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
                     CodonClientMod.state().breakpoints().get(first)));
                 var hit = editor.markerAt(point.x(), point.y());
                 require(point.visible() && hit != null && hit.target().equals(first),
-                    "stage marker is ready to reopen the condition layer");
+                    "stage marker is ready to reopen the condition strip");
                 return new int[] { point.x(), point.y() };
             });
             nativeClick(context, parent, reopenedMarker[0], reopenedMarker[1], InputConstants.MOUSE_BUTTON_RIGHT);
-            context.waitFor(client -> ScreenLayers.get(client.gui.screen()) instanceof BreakpointConditionScreen, 100);
+            context.waitFor(client -> ConditionStripGameTestUi.open(client.gui.screen()), 100);
             context.getInput().resizeWindow(960, 720);
             context.runOnClient(client -> {
                 client.options.guiScale().set(3);
                 client.resizeGui();
             });
-            // Resize can leave the native cursor over the newly positioned trigger.
-            // Establish a non-hover baseline and wait beyond the 180 ms hover-open delay.
             nativeHover(context, parent, 0, 0);
-            context.waitTicks(6);
+            context.waitTicks(3);
             context.takeScreenshot("codon-breakpoint-condition-320x240");
             context.runOnClient(client -> {
-                Screen screen = conditionLayer(client.gui.screen());
-                require(screen.width == 320 && screen.height == 240,
-                    "condition editor uses a 320x240 GUI viewport");
-                for (DebuggerButton control : controls(screen)) {
-                    if (!control.visible) continue;
-                    require(control.getX() >= 0 && control.getY() >= 0 && control.getRight() <= screen.width
-                        && control.getBottom() <= screen.height, "compact condition control stays in bounds");
-                }
-                require(controls(screen).stream().filter(value -> value.icon() != null
-                    && java.util.Arrays.stream(BreakpointCondition.Kind.values()).anyMatch(kind ->
-                        value.getMessage().getString().equals(works.nuty.codon.client.ui.BreakpointUi.kindLabel(kind)))).count() == 9,
-                    "the dropdown retains all nine condition kinds");
-                require(!button(screen, "Context created").visible, "choices stay hidden until the dropdown opens");
-                require(button(screen, "Save and enable").getBottom() - button(screen, "Cancel").getY() <= 137,
-                    "compact condition panel fits within 150 GUI pixels vertically");
+                Screen screen = client.gui.screen();
+                require(screen.width == 320 && screen.height == 240, "the editor uses a 320x240 GUI viewport");
+                var strip = ConditionStripGameTestUi.strip(screen);
+                require(strip.bounds().height() == works.nuty.codon.client.ui.BreakpointConditionStrip.HEIGHT,
+                    "the strip keeps its two rows");
+                requireInViewport(screen, "compact condition strip");
             });
             verifyDraftDismissal(context, world, parent, position, first);
-            AbstractButton kindTrigger = context.computeOnClient(client -> button(conditionLayer(parent), "Always ▾"));
-            nativeHover(context, parent, kindTrigger.getX() + 3, kindTrigger.getY() + 3);
-            context.waitFor(client -> button(conditionLayer(parent), "Context created").visible, 100);
-            context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_LEFT);
-            context.runOnClient(client -> require(button(conditionLayer(parent), "Context created").visible,
-                "clicking the trigger just after hover-open keeps the menu open"));
-            context.runOnClient(client -> require(CodonClientMod.state().breakpoints().get(first).condition().equals(BreakpointCondition.ALWAYS),
-                "hovering opens the menu without changing the saved condition"));
-            context.takeScreenshot("codon-breakpoint-condition-hover-menu-320x240");
-            verifyDropdownToggle(context, parent, "Always ▾", "Context created", "kind");
-            context.runOnClient(client -> click(conditionLayer(parent), kindTrigger));
-            nativeHover(context, parent, 0, 0);
-            context.waitFor(client -> !button(conditionLayer(parent), "Context created").visible, 100);
-            nativeHover(context, parent, kindTrigger.getX() + 3, kindTrigger.getY() + 3);
-            context.waitFor(client -> button(conditionLayer(parent), "Context created").visible, 100);
-            AbstractButton visibleOption = context.computeOnClient(client -> button(conditionLayer(parent), "Context created"));
-            int bridgeY = visibleOption.getY() < kindTrigger.getY() ? kindTrigger.getY() - 1 : kindTrigger.getBottom() + 1;
-            nativeHover(context, parent, kindTrigger.getX() + 3, bridgeY);
-            context.waitTicks(6);
-            context.runOnClient(client -> require(button(conditionLayer(parent), "Context created").visible,
-                "crossing the trigger/menu gap keeps the menu open"));
-            nativeHover(context, parent, visibleOption.getX() + 3, visibleOption.getY() + 3);
-            context.getInput().scroll(-1);
-            context.waitFor(client -> button(conditionLayer(parent), "Output context count").visible, 100);
-            AbstractButton outputOption = context.computeOnClient(client -> button(conditionLayer(parent), "Output context count"));
-            nativeClick(context, parent, outputOption.getX() + 3, outputOption.getY() + 3, InputConstants.MOUSE_BUTTON_LEFT);
+            // Count: metric, comparison and number sit on the rule row.
+            nativeButton(context, parent, text("codon.breakpoint.strip.mode.count"));
+            nativeButton(context, parent, text("codon.breakpoint.strip.metric.output_count"));
             context.runOnClient(client -> {
-                Screen screen = conditionLayer(parent);
-                require(!button(screen, "Output context count").visible, "selecting a kind closes the popup");
-                EditBox count = screen.children().stream().filter(EditBox.class::isInstance)
-                    .map(EditBox.class::cast).filter(value -> value.visible).findFirst().orElseThrow();
-                require(count.getY() == button(screen, "Output count ▾").getY()
-                    && count.getY() == button(screen, "= ▾").getY(), "kind, comparison and count share one row");
-                count.setValue("-1");
-                require(!button(screen, "Save and enable").active, "negative count disables save immediately");
-                count.setValue("2");
-                screen.setFocused(button(screen, "= ▾"));
+                Screen screen = client.gui.screen();
+                var number = ConditionStripGameTestUi.widget(screen, text("codon.breakpoint.strip.count"));
+                require(number.getY() - 2 == ConditionStripGameTestUi.widget(screen, text("codon.breakpoint.strip.metric.output_count")).getY()
+                    && number.getY() - 2 == ConditionStripGameTestUi.widget(screen, "=").getY()
+                    && number.getY() - 2 == ConditionStripGameTestUi.widget(screen, text("codon.breakpoint.strip.mode.count")).getY(),
+                    "mode, metric, comparison and number share one row");
+                ConditionStripGameTestUi.number(screen, "-1");
+                require(!ConditionStripGameTestUi.widget(screen, text("codon.breakpoint.save")).active,
+                    "a negative number disables Save immediately");
+                ConditionStripGameTestUi.number(screen, "2");
+                requireInViewport(screen, "count controls");
             });
-            AbstractButton comparisonTrigger = context.computeOnClient(client -> button(conditionLayer(parent), "= ▾"));
-            nativeHover(context, parent, comparisonTrigger.getX() + 3, comparisonTrigger.getY() + 3);
-            context.waitFor(client -> button(conditionLayer(parent), "≠").visible, 100);
-            verifyDropdownToggle(context, parent, "= ▾", "≠", "comparison");
-            nativeHover(context, parent, comparisonTrigger.getX() + 3, comparisonTrigger.getY() + 3);
+            // Click advances the comparison and right-click goes back.
+            for (int step = 0; step < 5; step++) nativeButton(context, parent, context.computeOnClient(client -> current(parent)));
             context.runOnClient(client -> {
-                Screen screen = conditionLayer(parent);
-                click(screen, button(screen, "Output count ▾"));
-                click(screen, comparisonTrigger);
-                click(screen, comparisonTrigger);
-                require(button(screen, "≠").visible && !button(screen, "Output context count").visible,
-                    "switching selectors starts a fresh opening guard on the new menu");
-            });
-            waitForToggleDelay(context);
-            nativeClick(context, parent, comparisonTrigger.getX() + 3, comparisonTrigger.getY() + 3,
-                InputConstants.MOUSE_BUTTON_LEFT);
-            context.runOnClient(client -> {
-                Screen screen = conditionLayer(parent);
-                require(!button(screen, "≠").visible && button(screen, "= ▾").visible,
-                    "closing the switched comparison preserves its selected value");
-                require(screen.children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast)
-                    .anyMatch(value -> value.visible && value.getValue().equals("2")),
-                    "dropdown toggles preserve the draft threshold");
-            });
-            nativeHover(context, parent, 0, 0);
-            context.getInput().pressKey(InputConstants.KEY_RETURN);
-            context.runOnClient(client -> require(button(conditionLayer(parent), "≠").visible,
-                "Enter opens the focused comparison dropdown"));
-            context.getInput().pressKey(InputConstants.KEY_ESCAPE);
-            context.runOnClient(client -> require(ScreenLayers.get(parent) != null && !button(conditionLayer(parent), "≠").visible,
-                "Escape dismisses the dropdown without closing the condition layer"));
-            context.getInput().pressKey(InputConstants.KEY_DOWN);
-            context.getInput().pressKey(InputConstants.KEY_UP);
-            context.getInput().pressKey(InputConstants.KEY_RETURN);
-            context.runOnClient(client -> {
-                Screen screen = conditionLayer(parent);
-                require(button(screen, "≥ ▾").visible, "arrow navigation reaches and selects a scrolled comparison");
-                require(button(screen, "Save and enable").active, "valid count and comparison can be saved");
+                Screen screen = client.gui.screen();
+                var comparison = ConditionStripGameTestUi.widget(screen, "≥");
+                var back = new MouseButtonEvent(comparison.getX() + 2, comparison.getY() + 2,
+                    new MouseButtonInfo(InputConstants.MOUSE_BUTTON_RIGHT, 0));
+                ConditionStripGameTestUi.strip(screen).mouseClicked(back, false);
+                require(ConditionStripGameTestUi.has(screen, ">"), "right-click steps the comparison back");
+                ConditionStripGameTestUi.strip(screen).mouseClicked(new MouseButtonEvent(comparison.getX() + 2, comparison.getY() + 2,
+                    new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0)), false);
+                // The stepper and its keyboard keys keep a whole number.
+                ConditionStripGameTestUi.click(screen, "+");
+                ConditionStripGameTestUi.strip(screen).setFocused(ConditionStripGameTestUi.widget(screen, text("codon.breakpoint.strip.count")));
+                ConditionStripGameTestUi.key(screen, InputConstants.KEY_DOWN);
+                require(((EditBox) ConditionStripGameTestUi.widget(screen, text("codon.breakpoint.strip.count"))).getValue().equals("2"),
+                    "the stepper and Up/Down change the number by one");
+                require(ConditionStripGameTestUi.widget(screen, text("codon.breakpoint.save")).active,
+                    "a valid changed count can be saved");
+                require(CodonClientMod.state().breakpoints().get(first).condition().equals(BreakpointCondition.event(BreakpointCondition.Kind.CREATED)),
+                    "editing the draft does not change the saved condition");
             });
             context.waitTicks(1);
-            context.takeScreenshot("codon-breakpoint-condition-count-dropdown-320x240");
-            AbstractButton resizedSave = context.computeOnClient(client -> button(conditionLayer(client.gui.screen()), "Save and enable"));
-            nativeClick(context, parent, resizedSave.getX() + 3, resizedSave.getY() + 2, InputConstants.MOUSE_BUTTON_LEFT);
-            context.waitFor(client -> ScreenLayers.get(client.gui.screen()) == null
+            context.takeScreenshot("codon-breakpoint-condition-count-320x240");
+            nativeButton(context, parent, text("codon.breakpoint.save"));
+            context.waitFor(client -> !ConditionStripGameTestUi.open(client.gui.screen())
                 && CodonClientMod.state().breakpoints().get(first).condition().equals(
                     BreakpointCondition.count(BreakpointCondition.Kind.OUTPUT_COUNT, BreakpointCondition.Comparison.GE, 2)), 200);
             verifyFeedbackBounds(context, first);
@@ -318,31 +269,28 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             var wholeBeforeDelete = context.computeOnClient(client -> CodonClientMod.state().breakpoints()
                 .get(BreakpointTarget.whole(location)));
             context.runOnClient(client -> openFirstCondition(client.gui.screen()));
-            context.waitFor(client -> ScreenLayers.get(client.gui.screen()) instanceof BreakpointConditionScreen, 100);
+            context.waitFor(client -> ConditionStripGameTestUi.open(client.gui.screen()), 100);
+            context.waitTicks(1);
             context.runOnClient(client -> {
-                Screen screen = conditionLayer(client.gui.screen());
-                click(screen, button(screen, "Output count ▾"));
-                click(screen, button(screen, "Context changed"));
-                require(screen.children().stream().filter(EditBox.class::isInstance)
-                    .map(EditBox.class::cast).noneMatch(value -> value.visible),
-                    "event conditions hide the count field");
-                require(controls(screen).stream().noneMatch(value -> value.visible && value.getMessage().getString().equals("≥ ▾")),
-                    "event conditions hide the comparison controls");
+                Screen screen = client.gui.screen();
+                ConditionStripGameTestUi.click(screen, text("codon.breakpoint.strip.mode.event"));
+                ConditionStripGameTestUi.click(screen, text("codon.breakpoint.strip.event.changed"));
+                require(!ConditionStripGameTestUi.has(screen, text("codon.breakpoint.strip.count"))
+                    && !ConditionStripGameTestUi.has(screen, "≥"), "Event hides the comparison and number");
             });
             context.waitTicks(1);
-            context.takeScreenshot("codon-breakpoint-condition-event-dropdown-320x240");
-            context.runOnClient(client -> click(conditionLayer(client.gui.screen()),
-                button(conditionLayer(client.gui.screen()), "Delete")));
+            context.takeScreenshot("codon-breakpoint-condition-event-320x240");
+            context.runOnClient(client -> ConditionStripGameTestUi.click(client.gui.screen(), text("codon.breakpoint.strip.remove")));
             context.waitFor(client -> {
                 var state = CodonClientMod.state();
-                return client.gui.screen() == parent && ScreenLayers.get(parent) == null
+                return client.gui.screen() == parent && !ConditionStripGameTestUi.open(parent)
                     && state != null && state.breakpoints().get(first) == null
                     && !state.breakpoints().pending(first);
             }, 200);
             context.runOnClient(client -> {
                 require(commandBox(parent) == deleteEditor && COMMAND.equals(deleteEditor.getValue())
                     && deleteEditor.getCursorPosition() == deleteCursor,
-                    "deleting closes only the condition layer and preserves the editor and cursor");
+                    "Remove closes only the strip and preserves the editor and cursor");
                 require(wholeBeforeDelete.equals(CodonClientMod.state().breakpoints().get(BreakpointTarget.whole(location))),
                     "deleting the exact stage preserves the separate whole-command breakpoint");
             });
@@ -367,29 +315,29 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
         WrappedCommandEditBox editor = context.computeOnClient(client -> commandBox(parent));
         int cursor = context.computeOnClient(client -> editor.getCursorPosition());
         context.getInput().pressKey(InputConstants.KEY_ESCAPE);
-        context.runOnClient(client -> require(ScreenLayers.get(parent) == null,
-            "Escape closes a clean condition draft without confirmation"));
-        reopenCondition(context, parent, target);
-        nativeButton(context, parent, "Cancel");
-        context.runOnClient(client -> require(ScreenLayers.get(parent) == null,
-            "Cancel closes a clean condition draft without confirmation"));
-        reopenCondition(context, parent, target);
-        context.runOnClient(client -> selectKind(conditionLayer(parent), BreakpointCondition.Kind.CREATED));
-        nativeClick(context, parent, 0, 0, InputConstants.MOUSE_BUTTON_LEFT);
+        context.runOnClient(client -> require(!ConditionStripGameTestUi.open(parent) && client.gui.screen() == parent,
+            "Escape closes a clean strip without confirmation"));
+        reopenCondition(context, parent);
+        nativeButton(context, parent, text("codon.breakpoint.cancel"));
+        context.runOnClient(client -> require(!ConditionStripGameTestUi.open(parent),
+            "Cancel closes a clean strip without confirmation"));
+        reopenCondition(context, parent);
+        nativeButton(context, parent, text("codon.breakpoint.strip.mode.always"));
+        context.getInput().pressKey(InputConstants.KEY_ESCAPE);
         context.runOnClient(client -> {
-            Screen layer = conditionLayer(parent);
-            require(button(layer, "Keep editing").visible && button(layer, "Discard").visible,
-                "outside click requests explicit discard of a changed kind");
-            require(layer.getFocused() == button(layer, "Keep editing"), "confirmation defaults to retaining the draft");
+            require(ConditionStripGameTestUi.has(parent, text("codon.breakpoint.keep_editing"))
+                && ConditionStripGameTestUi.has(parent, text("codon.breakpoint.discard")),
+                "Escape asks before discarding a changed mode, in place of the buttons");
+            require(ConditionStripGameTestUi.strip(parent).getFocused() == ConditionStripGameTestUi.widget(parent, text("codon.breakpoint.keep_editing")),
+                "the prompt defaults to keeping the draft");
             require(client.gui.screen() == parent && commandBox(parent) == editor
                 && editor.getCursorPosition() == cursor && COMMAND.equals(editor.getValue()),
-                "discard confirmation retains the original screen, command input and cursor");
+                "the prompt retains the original screen, command input and cursor");
             require(saved.equals(CodonClientMod.state().breakpoints().get(target))
-                && !CodonClientMod.state().breakpoints().pending(target), "dismissal does not send a server edit");
-            for (var control : controls(layer)) require(control.getX() >= 0 && control.getY() >= 0
-                && control.getRight() <= layer.width && control.getBottom() <= layer.height,
-                "discard confirmation controls fit the 320x240 viewport");
+                && !CodonClientMod.state().breakpoints().pending(target), "the prompt does not send a server edit");
+            requireInViewport(parent, "discard prompt");
         });
+        context.waitTicks(1);
         context.takeScreenshot("codon-breakpoint-draft-discard-en-320x240");
         String language = context.computeOnClient(client -> client.getLanguageManager().getSelected());
         var korean = context.computeOnClient(client -> {
@@ -397,179 +345,126 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             return client.reloadResourcePacks();
         });
         context.waitFor(client -> korean.isDone() && client.gui.overlay() == null, 200);
-        context.runOnClient(client -> require(button(conditionLayer(parent), "계속 편집").visible
-            && button(conditionLayer(parent), "버리기").visible, "Korean confirmation offers the same discard choices"));
+        context.runOnClient(client -> require(ConditionStripGameTestUi.has(parent, "계속 편집")
+            && ConditionStripGameTestUi.has(parent, "버리기"), "Korean prompt offers the same choices"));
+        context.waitTicks(1);
         context.takeScreenshot("codon-breakpoint-draft-discard-ko-320x240");
+        context.runOnClient(client -> ConditionStripGameTestUi.key(parent, InputConstants.KEY_ESCAPE));
+        context.waitTicks(1);
+        context.takeScreenshot("codon-breakpoint-condition-ko-320x240");
+        context.runOnClient(client -> ConditionStripGameTestUi.key(parent, InputConstants.KEY_ESCAPE));
         var restored = context.computeOnClient(client -> {
             client.getLanguageManager().setSelected(language);
             return client.reloadResourcePacks();
         });
         context.waitFor(client -> restored.isDone() && client.gui.overlay() == null, 200);
-        nativeClick(context, parent, 0, 0, InputConstants.MOUSE_BUTTON_LEFT);
-        context.getInput().typeChars("99");
-        context.runOnClient(client -> require(button(conditionLayer(parent), "Keep editing").visible
-            && COMMAND.equals(editor.getValue()), "repeated outside click and typing cannot discard or reach the parent"));
         // Enter activates the safe, initially focused choice.
+        context.runOnClient(client -> ConditionStripGameTestUi.strip(parent).setFocused(
+            ConditionStripGameTestUi.widget(parent, text("codon.breakpoint.keep_editing"))));
         context.getInput().pressKey(InputConstants.KEY_RETURN);
-        context.runOnClient(client -> require(button(conditionLayer(parent), "Context created ▾").visible,
-            "cancelling discard preserves the changed kind"));
-        nativeHover(context, parent, 0, 0);
+        context.runOnClient(client -> require(selected(parent, text("codon.breakpoint.strip.mode.always")),
+            "Keep editing preserves the changed mode"));
         context.getInput().pressKey(InputConstants.KEY_ESCAPE);
-        context.runOnClient(client -> require(button(conditionLayer(parent), "Keep editing").visible,
-            "Escape requests discard of a dirty draft"));
+        context.runOnClient(client -> require(ConditionStripGameTestUi.has(parent, text("codon.breakpoint.keep_editing")),
+            "Escape asks again for a dirty draft"));
         context.getInput().pressKey(InputConstants.KEY_ESCAPE);
+        context.runOnClient(client -> require(selected(parent, text("codon.breakpoint.strip.mode.always")),
+            "Escape in the prompt keeps editing"));
+        nativeButton(context, parent, text("codon.breakpoint.strip.mode.event"));
+        context.getInput().pressKey(InputConstants.KEY_ESCAPE);
+        context.runOnClient(client -> require(!ConditionStripGameTestUi.open(parent),
+            "returning to the saved rule restores clean dismissal"));
+        reopenCondition(context, parent);
         context.runOnClient(client -> {
-            require(button(conditionLayer(parent), "Context created ▾").visible,
-                "Escape cancels discard and preserves the draft");
-            selectKind(conditionLayer(parent), BreakpointCondition.Kind.ALWAYS);
+            ConditionStripGameTestUi.count(parent, BreakpointCondition.count(BreakpointCondition.Kind.INPUT_COUNT,
+                BreakpointCondition.Comparison.GT, 0));
+            ConditionStripGameTestUi.number(parent, "");
+            require(!ConditionStripGameTestUi.widget(parent, text("codon.breakpoint.save")).active, "an empty number cannot be saved");
         });
-        nativeClick(context, parent, 0, 0, InputConstants.MOUSE_BUTTON_LEFT);
-        context.runOnClient(client -> require(ScreenLayers.get(parent) == null,
-            "reverting to the original condition restores clean dismissal"));
-        reopenCondition(context, parent, target);
+        nativeButton(context, parent, text("codon.breakpoint.cancel"));
+        nativeButton(context, parent, text("codon.breakpoint.keep_editing"));
         context.runOnClient(client -> {
-            Screen layer = conditionLayer(parent);
-            selectKind(layer, BreakpointCondition.Kind.INPUT_COUNT);
-            layer.setFocused(button(layer, "= ▾"));
-            layer.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
-            for (int i = 0; i < BreakpointCondition.Comparison.GT.ordinal(); i++)
-                layer.keyPressed(new KeyEvent(InputConstants.KEY_DOWN, 0, 0));
-            layer.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
-            countBox(layer).setValue("");
-            require(!button(layer, "Save and enable").active, "invalid draft count cannot be saved");
-        });
-        nativeClick(context, parent, 0, 0, InputConstants.MOUSE_BUTTON_LEFT);
-        nativeButton(context, parent, "Keep editing");
-        context.runOnClient(client -> {
-            Screen layer = conditionLayer(parent);
-            require(countBox(layer).getValue().isEmpty() && button(layer, "> ▾").visible,
-                "cancelling discard preserves even an invalid count and comparison");
-            countBox(layer).setValue("3");
+            require(number(parent).isEmpty() && ConditionStripGameTestUi.has(parent, ">"),
+                "Keep editing preserves even an invalid number and its comparison");
+            ConditionStripGameTestUi.number(parent, "3");
         });
         // A real server rejection exercises the Save/ACK path, while the client
         // still holds the old stage preview. Restore the disposable block afterward.
         world.getServer().runOnServer(server -> ((CommandBlockEntity) server.getPlayerList().getPlayers()
             .getFirst().level().getBlockEntity(position)).getCommandBlock().setCommand(COMMAND + " changed"));
         context.runOnClient(client -> {
-            Screen layer = conditionLayer(parent);
-            click(layer, button(layer, "Save and enable"));
+            var strip = ConditionStripGameTestUi.strip(parent);
+            ConditionStripGameTestUi.click(parent, text("codon.breakpoint.save"));
             require(CodonClientMod.state().breakpoints().pending(target), "Save waits for server acknowledgement");
-            layer.keyPressed(new KeyEvent(InputConstants.KEY_ESCAPE, 0, 0));
-            layer.mouseClicked(new MouseButtonEvent(0, 0,
-                new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0)), false);
-            layer.setFocused(countBox(layer));
-            layer.charTyped(new net.minecraft.client.input.CharacterEvent('9'));
-            require(ScreenLayers.get(parent) == layer && !button(layer, "Cancel").active
-                && !button(layer, "Save and enable").active && !button(layer, "Delete").active
-                && countBox(layer).getValue().equals("3"), "pending ACK blocks dismissal and changes to the submitted draft");
+            ConditionStripGameTestUi.key(parent, InputConstants.KEY_ESCAPE);
+            ConditionStripGameTestUi.click(parent, text("codon.breakpoint.cancel"));
+            strip.setFocused(ConditionStripGameTestUi.widget(parent, text("codon.breakpoint.strip.count")));
+            ConditionStripGameTestUi.type(parent, "9");
+            require(ConditionStripGameTestUi.strip(parent) == strip
+                && !ConditionStripGameTestUi.widget(parent, text("codon.breakpoint.cancel")).active
+                && !ConditionStripGameTestUi.widget(parent, text("codon.breakpoint.save")).active
+                && !ConditionStripGameTestUi.widget(parent, text("codon.breakpoint.strip.remove")).active
+                && !ConditionStripGameTestUi.widget(parent, text("codon.breakpoint.strip.mode.always")).active
+                && number(parent).equals("3"), "a pending request blocks dismissal and every change to the submitted draft");
         });
         context.waitFor(client -> !CodonClientMod.state().breakpoints().pending(target)
             && CodonClientMod.state().breakpoints().error(target) == ClientBreakpointState.Result.STALE_SOURCE, 200);
-        context.runOnClient(client -> require(countBox(conditionLayer(parent)).getValue().equals("3")
-            && saved.equals(CodonClientMod.state().breakpoints().get(target)), "failed Save retains the draft and acknowledged definition"));
+        context.runOnClient(client -> require(number(parent).equals("3")
+            && saved.equals(CodonClientMod.state().breakpoints().get(target)), "a failed Save retains the draft and acknowledged definition"));
+        context.waitTicks(1);
         context.takeScreenshot("codon-breakpoint-draft-save-rejected-320x240");
-        nativeHover(context, parent, 0, 0);
         context.getInput().pressKey(InputConstants.KEY_ESCAPE);
-        nativeButton(context, parent, "Keep editing");
-        context.runOnClient(client -> require(countBox(conditionLayer(parent)).getValue().equals("3")
-            && button(conditionLayer(parent), "> ▾").visible, "cancelling discard after Save rejection retains the draft"));
-        nativeButton(context, parent, "Cancel");
-        nativeButton(context, parent, "Discard");
-        context.runOnClient(client -> require(ScreenLayers.get(parent) == null && client.gui.screen() == parent
+        nativeButton(context, parent, text("codon.breakpoint.keep_editing"));
+        context.runOnClient(client -> require(number(parent).equals("3") && ConditionStripGameTestUi.has(parent, ">"),
+            "Keep editing after a rejected Save retains the draft"));
+        nativeButton(context, parent, text("codon.breakpoint.cancel"));
+        nativeButton(context, parent, text("codon.breakpoint.discard"));
+        context.runOnClient(client -> require(!ConditionStripGameTestUi.open(parent) && client.gui.screen() == parent
             && saved.equals(CodonClientMod.state().breakpoints().get(target))
-            && !CodonClientMod.state().breakpoints().pending(target), "confirmed discard closes without mutating the server definition"));
+            && !CodonClientMod.state().breakpoints().pending(target), "Discard closes without changing the server definition"));
         world.getServer().runOnServer(server -> ((CommandBlockEntity) server.getPlayerList().getPlayers()
             .getFirst().level().getBlockEntity(position)).getCommandBlock().setCommand(COMMAND));
-        reopenCondition(context, parent, target);
-        context.runOnClient(client -> require(button(conditionLayer(parent), "Always ▾").visible
+        reopenCondition(context, parent);
+        context.runOnClient(client -> require(selected(parent, text("codon.breakpoint.strip.mode.event"))
+            && selected(parent, text("codon.breakpoint.strip.event.created"))
             && COMMAND.equals(editor.getValue()) && editor.getCursorPosition() == cursor,
-            "reopening after discard restores the acknowledged condition and original parent input"));
+            "reopening after Discard shows the acknowledged rule and the original input"));
         context.getInput().pressKey(InputConstants.KEY_ESCAPE);
-        context.runOnClient(client -> require(ScreenLayers.get(parent) == null,
-            "the reopened acknowledged condition is clean despite the previous failed Save"));
-        reopenCondition(context, parent, target);
+        context.runOnClient(client -> require(!ConditionStripGameTestUi.open(parent),
+            "the reopened acknowledged rule is clean despite the previous failed Save"));
+        reopenCondition(context, parent);
     }
 
-    private static void reopenCondition(ClientGameTestContext context, Screen parent, BreakpointTarget target) {
-        context.runOnClient(client -> BreakpointUi.openCondition(parent, CodonClientMod.state(), target, COMMAND, 3, null));
-        context.waitFor(client -> ScreenLayers.get(parent) instanceof BreakpointConditionScreen, 100);
+    private static void reopenCondition(ClientGameTestContext context, Screen parent) {
+        context.runOnClient(client -> openFirstCondition(parent));
+        context.waitFor(client -> ConditionStripGameTestUi.open(parent), 100);
         nativeHover(context, parent, 0, 0);
+        context.waitTicks(1);
     }
 
-    private static void selectKind(Screen layer, BreakpointCondition.Kind kind) {
-        AbstractButton trigger = controls(layer).stream().filter(control -> control.visible
-            && control.getMessage().getString().endsWith(" ▾") && control.getWidth() > 40).findFirst().orElseThrow();
-        layer.setFocused(trigger);
-        layer.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
-        for (int i = 0; i < BreakpointCondition.Kind.values().length
-            && !((AbstractButton) layer.getFocused()).getMessage().getString().equals(BreakpointUi.kindLabel(kind)); i++)
-            layer.keyPressed(new KeyEvent(InputConstants.KEY_DOWN, 0, 0));
-        require(((AbstractButton) layer.getFocused()).getMessage().getString().equals(BreakpointUi.kindLabel(kind)),
-            "keyboard can reach the requested condition kind");
-        layer.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
+    private static String text(String key) { return ConditionStripGameTestUi.text(key); }
+
+    private static boolean selected(Screen parent, String label) {
+        return ((DebuggerButton) ConditionStripGameTestUi.widget(parent, label)).selected();
     }
 
-    private static EditBox countBox(Screen layer) {
-        return layer.children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast)
-            .filter(box -> box.visible).findFirst().orElseThrow();
+    private static String number(Screen parent) {
+        return ((EditBox) ConditionStripGameTestUi.widget(parent, text("codon.breakpoint.strip.count"))).getValue();
+    }
+
+    private static String current(Screen parent) {
+        return ConditionStripGameTestUi.strip(parent).widgets().stream().map(widget -> widget.getMessage().getString())
+            .filter(label -> label.length() == 1 && "=≠<≤>≥".contains(label)).findFirst().orElseThrow();
+    }
+
+    private static void requireInViewport(Screen parent, String name) {
+        for (var control : ConditionStripGameTestUi.strip(parent).widgets())
+            require(control.getX() >= 0 && control.getY() >= 0 && control.getRight() <= parent.width
+                && control.getBottom() <= parent.height, name + " stays inside the viewport: " + control.getMessage().getString());
     }
 
     private static void nativeButton(ClientGameTestContext context, Screen parent, String label) {
-        AbstractButton control = context.computeOnClient(client -> button(conditionLayer(parent), label));
-        nativeClick(context, parent, control.getX() + 3, control.getY() + 2, InputConstants.MOUSE_BUTTON_LEFT);
-    }
-
-    /** Uses native dispatch for delayed toggles and same-turn dispatch for the immediate guard. */
-    private static void verifyDropdownToggle(ClientGameTestContext context, Screen parent, String triggerLabel,
-                                             String optionLabel, String capture) {
-        AbstractButton trigger = context.computeOnClient(client -> button(conditionLayer(parent), triggerLabel));
-        waitForToggleDelay(context);
-        context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_RIGHT);
-        context.runOnClient(client -> require(button(conditionLayer(parent), optionLabel).visible,
-            "secondary click does not toggle the open " + capture + " menu"));
-        context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_LEFT);
-        context.runOnClient(client -> {
-            Screen screen = conditionLayer(parent);
-            require(!button(screen, optionLabel).visible && button(screen, triggerLabel).visible,
-                "delayed trigger click closes the " + capture + " menu without selecting an option");
-        });
-        waitForToggleDelay(context);
-        context.runOnClient(client -> require(!button(conditionLayer(parent), optionLabel).visible,
-            "remaining over the closed " + capture + " trigger does not reopen it"));
-        context.takeScreenshot("codon-breakpoint-condition-" + capture + "-toggle-closed-320x240");
-        context.runOnClient(client -> {
-            Screen screen = conditionLayer(parent);
-            click(screen, trigger);
-            MouseButtonEvent repeated = new MouseButtonEvent(trigger.getX() + 3, trigger.getY() + 3,
-                new MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0));
-            require(screen.mouseClicked(repeated, true), "immediate repeated toggle is consumed");
-            screen.mouseReleased(repeated);
-            require(button(screen, optionLabel).visible && button(screen, triggerLabel).visible,
-                "click reopen and immediate repeated click keep the " + capture + " menu and selection");
-        });
-        waitForToggleDelay(context);
-        context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_LEFT);
-        context.runOnClient(client -> require(!button(conditionLayer(parent), optionLabel).visible,
-            "a repeated delayed click closes the reopened " + capture + " menu"));
-        nativeHover(context, parent, 0, 0);
-        context.runOnClient(client -> {
-            Screen screen = conditionLayer(parent);
-            screen.setFocused(trigger);
-            require(screen.keyPressed(new KeyEvent(InputConstants.KEY_SPACE, InputConstants.KEYCODE_SPACE, 0)),
-                "Space reopens the focused " + capture + " menu");
-            click(screen, trigger);
-            require(button(screen, optionLabel).visible, "keyboard opening also guards an immediate trigger click");
-            screen.keyPressed(new KeyEvent(InputConstants.KEY_TAB, InputConstants.KEYCODE_TAB, 0));
-            require(!button(screen, optionLabel).visible && ScreenLayers.get(parent) == screen
-                && screen.getFocused() != trigger,
-                "Tab closes only the " + capture + " menu and continues focus traversal");
-            screen.setFocused(trigger);
-        });
-    }
-
-    private static void waitForToggleDelay(ClientGameTestContext context) {
-        long started = System.nanoTime();
-        context.waitFor(client -> System.nanoTime() - started >= 300_000_000L, 100);
+        ConditionStripGameTestUi.nativeClick(context, parent, label);
     }
 
     private static void verifyFeedbackBounds(ClientGameTestContext context, BreakpointTarget target) {
@@ -577,10 +472,7 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
         context.runOnClient(client -> {
             client.options.guiScale().set(2);
             client.resizeGui();
-            var state = CodonClientMod.state();
-            Screen parent = client.gui.screen();
-            ScreenLayers.open(parent, new BreakpointConditionScreen(parent, state, state.breakpoints().get(target),
-                new BreakpointConditionScreen.Anchor(300, 200, 20, 20)));
+            openFirstCondition(client.gui.screen());
         });
         context.waitTicks(1);
         // A controlled pending state tests feedback layout; saving above uses a real server acknowledgement.
@@ -588,17 +480,14 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             .begin(ClientBreakpointState.Action.SAVE, CodonClientMod.state().breakpoints().get(target)));
         context.waitTicks(1);
         context.runOnClient(client -> {
-            Screen layer = conditionLayer(client.gui.screen());
-            require(!button(layer, "Save and enable").active, "pending feedback disables save");
-            for (var button : controls(layer)) if (button.visible)
-                require(button.getY() >= 0 && button.getBottom() <= layer.height - 6,
-                    "feedback expansion keeps the bottom-anchored controls inside the viewport");
+            Screen parent = client.gui.screen();
+            require(!ConditionStripGameTestUi.widget(parent, text("codon.breakpoint.save")).active, "pending feedback disables Save");
+            requireInViewport(parent, "pending strip");
         });
-        context.takeScreenshot("codon-breakpoint-condition-pending-anchored");
-        context.runOnClient(client -> {
-            CodonClientMod.state().breakpoints().finish(edit.requestId(), ClientBreakpointState.Result.APPLIED);
-            ScreenLayers.close(ScreenLayers.get(client.gui.screen()));
-        });
+        context.takeScreenshot("codon-breakpoint-condition-pending");
+        context.runOnClient(client -> CodonClientMod.state().breakpoints().finish(edit.requestId(), ClientBreakpointState.Result.APPLIED));
+        context.waitTicks(1);
+        context.runOnClient(client -> ConditionStripGameTestUi.strip(client.gui.screen()).cancel());
         context.getInput().resizeWindow(960, 720);
         context.runOnClient(client -> { client.options.guiScale().set(3); client.resizeGui(); });
         context.waitTicks(1);
@@ -726,11 +615,11 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
         });
         context.takeScreenshot("codon-breakpoint-disabled-reopened");
         context.runOnClient(client -> BreakpointUi.openCondition(client.gui.screen(), CodonClientMod.state(),
-            stage, COMMAND, 3, null));
+            stage, COMMAND, 3, () -> true));
         context.waitTicks(3);
         context.runOnClient(client -> {
             var screen = client.gui.screen();
-            require(ScreenLayers.get(screen) instanceof BreakpointConditionScreen, "disabled stage opens its condition editor");
+            require(ConditionStripGameTestUi.open(screen), "disabled stage opens its condition strip");
             var editor = commandBox(screen);
             editor.updateMarkerHover(-100, -100);
             var marker = new WrappedCommandEditBox.Marker(stage, 8, COMMAND.length(), CodonClientMod.state().breakpoints().get(stage));
@@ -740,7 +629,7 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             require(!CodonClientMod.state().breakpoints().get(stage).enabled(), "opening the editor does not enable the stage");
         });
         context.takeScreenshot("codon-breakpoint-disabled-editing");
-        context.runOnClient(client -> ScreenLayers.get(client.gui.screen()).onClose());
+        context.runOnClient(client -> ConditionStripGameTestUi.strip(client.gui.screen()).cancel());
         context.waitTicks(2);
         context.runOnClient(client -> {
             var editor = commandBox(client.gui.screen());
@@ -819,10 +708,11 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
         context.runOnClient(client -> require(client.gui.screen().keyPressed(
             new KeyEvent(InputConstants.KEY_RETURN, InputConstants.KEYCODE_RETURN, InputConstants.MOD_SHIFT)),
             "focused stage handles Shift+Enter"));
-        context.waitFor(client -> ScreenLayers.get(client.gui.screen()) instanceof BreakpointConditionScreen, 100);
+        context.waitFor(client -> ConditionStripGameTestUi.open(client.gui.screen()), 100);
+        context.waitTicks(1);
         context.takeScreenshot("codon-breakpoint-keyboard-condition");
         context.getInput().pressKey(InputConstants.KEY_ESCAPE);
-        context.waitFor(client -> client.gui.screen() instanceof CommandBlockEditScreen && ScreenLayers.get(client.gui.screen()) == null, 100);
+        context.waitFor(client -> client.gui.screen() instanceof CommandBlockEditScreen && !ConditionStripGameTestUi.open(client.gui.screen()), 100);
         focusMarker(context, first);
         context.runOnClient(client -> commandBox(client.gui.screen()).setValue(COMMAND + " changed"));
         context.getInput().pressKey(InputConstants.KEY_SPACE);
@@ -864,15 +754,6 @@ public final class DebuggerBreakpointUiGameTest implements FabricClientGameTest 
             }
             return text.toString();
         } catch (ReflectiveOperationException error) { throw new AssertionError(error); }
-    }
-
-    private static List<DebuggerButton> controls(Screen screen) {
-        return screen.children().stream().filter(DebuggerButton.class::isInstance)
-            .map(DebuggerButton.class::cast).toList();
-    }
-
-    private static Screen conditionLayer(Screen parent) {
-        return require(ScreenLayers.get(parent), "condition layer open");
     }
 
     private static void nativeClick(ClientGameTestContext context, Screen parent, int x, int y, int button) {
