@@ -329,6 +329,8 @@ public final class DebuggerUiScaleGameTest implements FabricClientGameTest {
             Screen screen = new Screen(Component.literal("Vanilla-size parent")) { };
             client.setScreenAndShow(screen);
             var target = BreakpointTarget.whole(fixture.state().snapshot().location());
+            // Like any editor, the strip waits for the first acknowledged breakpoint snapshot.
+            if (!fixture.state().breakpoints().ready()) fixture.state().breakpoints().acceptPage(1, 0, true, List.of());
             var strip = BreakpointConditionStrip.open(screen, BreakpointConditionStrip.Placement.EDITOR, fixture.state(),
                 BreakpointDefinition.plain(target), target, () -> true, () -> { });
             require(strip != null, "Strip opens over a vanilla screen");
