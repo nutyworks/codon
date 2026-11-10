@@ -109,6 +109,7 @@ large tooltips and legibility at the smallest scale. An independent scale option
 does not automatically resolve small-screen Watch/status clipping.
 
 For compact Watch/status and Details footer changes, use
-`DebuggerCompactWatchGameTest` and the [Watch guide](watches-and-nbt.md). The header
-reserves its key hint, opacity slider and always-visible opacity percentage, then
-gives live state priority over the CODON prefix when the translated state needs more room.
+`DebuggerCompactWatchGameTest` and the [Watch guide](watches-and-nbt.md). The toolbar
+keeps its execution controls and right-side Keep freecam, Source, View and Help at full
+size; at narrow widths the Breakpoints toggle drops its label to the count first, then
+the pause-reason pill is ellipsized, with its full text on hover (`DebuggerToolbarLayoutTest`).

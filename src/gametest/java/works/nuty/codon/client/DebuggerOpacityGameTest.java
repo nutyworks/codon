@@ -46,6 +46,8 @@ public final class DebuggerOpacityGameTest implements FabricClientGameTest {
                 return result;
             });
             context.waitTicks(3);
+            context.takeScreenshot("codon-opacity-toolbar-closed");
+            openView(context, screen);
             capturePercent(context, screen, "codon-opacity-inline-100");
             var saves = new java.util.concurrent.atomic.AtomicInteger();
             state.preferences().setChangeListener(saves::incrementAndGet);
@@ -67,8 +69,10 @@ public final class DebuggerOpacityGameTest implements FabricClientGameTest {
                 screen.keyPressed(new KeyEvent(InputConstants.KEY_RIGHT, InputConstants.KEYCODE_RIGHT, 0));
                 require(state.preferences().backgroundOpacity() == 51, "Right arrow adjusts by one percent");
                 screen.keyPressed(new KeyEvent(InputConstants.KEY_LEFT, InputConstants.KEYCODE_LEFT, 0));
-                require(DebuggerLayout.create(screen.width, screen.height, true).header().height() == 18,
-                    "Opacity does not add a header row");
+                require(DebuggerLayout.create(screen.width, screen.height, true).toolbar().height()
+                        == DebuggerLayout.TOOLBAR_HEIGHT, "Opacity lives in View and adds no toolbar row");
+                require(slider.getY() >= DebuggerLayout.create(screen.width, screen.height, true).toolbar().height(),
+                    "The opacity slider sits in the View menu below the toolbar");
                 require(state.preferences().backgroundOpacity() == 50, "Left arrow returns by one percent");
                 require(saves.get() == 3, "Release and each effective arrow press write once");
                 // Shift moves by ten, clamps at both ends and an arrow that changes nothing writes nothing.
@@ -156,22 +160,16 @@ public final class DebuggerOpacityGameTest implements FabricClientGameTest {
             context.getInput().resizeWindow(640, 480);
             context.waitTicks(3);
             moveCursor(context, screen, false);
+            openView(context, screen);
             context.runOnClient(client -> {
                 require(screen.width == 320 && screen.height == 240, "Compact fixture reaches 320x240 GUI pixels");
                 var slider = slider(screen);
+                var toolbar = DebuggerLayout.create(screen.width, screen.height, true).toolbar();
                 require(slider.getX() >= 0 && slider.getRight() <= screen.width
-                    && slider.getY() >= 0 && slider.getBottom() <= 24,
-                    "Compact slider stays inside the title row");
+                    && slider.getY() >= toolbar.y() + toolbar.height() && slider.getBottom() <= screen.height,
+                    "Compact slider stays inside the viewport under the toolbar");
                 require(slider.getRight() + client.font.width("100%") <= screen.width,
                     "Compact percentage stays inside the viewport");
-                // The header panel spans the wider of the title row and the toolbar below it.
-                var layout = DebuggerLayout.create(screen.width, screen.height, true);
-                var title = layout.header();
-                int panelRight = title.x() + Math.max(title.width(), layout.controls().width());
-                require(slider.getX() >= title.x() && slider.getY() >= title.y()
-                    && slider.getBottom() <= title.y() + title.height()
-                    && slider.getRight() + client.font.width("100%") <= panelRight,
-                    "Compact slider and percentage stay inside the header panel title row");
             });
             context.waitTicks(3);
             capturePercent(context, screen, "codon-opacity-inline-compact-50");
@@ -204,7 +202,7 @@ public final class DebuggerOpacityGameTest implements FabricClientGameTest {
             context.waitTicks(3);
             context.takeScreenshot("codon-opacity-editor-zero");
             context.runOnClient(client -> client.setScreenAndShow(null));
-            // The final-inspection status in each language shares the title row with the percentage at both endpoints.
+            // The final-inspection pill in each language, and the View menu's percentage at both endpoints.
             for (String language : new String[]{"en_us", "ko_kr"}) {
                 language(context, language);
                 for (int[] size : new int[][]{{1280, 800}, {640, 480}}) {
@@ -217,11 +215,13 @@ public final class DebuggerOpacityGameTest implements FabricClientGameTest {
                         return result;
                     });
                     context.waitTicks(3);
+                    context.takeScreenshot("codon-toolbar-" + language + "-" + size[0]);
+                    openView(context, header);
                     for (int opacity : new int[]{100, 0}) {
                         context.runOnClient(client -> state.preferences().setBackgroundOpacity(opacity));
                         moveCursor(context, header, false);
                         context.waitTicks(3);
-                        capturePercent(context, header, "codon-opacity-header-" + language + "-" + size[0] + "-" + opacity);
+                        capturePercent(context, header, "codon-opacity-view-" + language + "-" + size[0] + "-" + opacity);
                     }
                 }
             }
@@ -240,7 +240,28 @@ public final class DebuggerOpacityGameTest implements FabricClientGameTest {
         }
     }
 
-    /** The percentage is plain header text right of the slider; require its ink in a frame without hover. */
+    /** Opens View with a click on its toolbar button, as a player does, unless it is already open. */
+    private static void openView(ClientGameTestContext context, CodonScreen screen) {
+        boolean open = context.computeOnClient(client -> screen.children().stream()
+            .anyMatch(BackgroundOpacitySlider.class::isInstance));
+        if (open) return;
+        context.runOnClient(client -> {
+            String label = net.minecraft.network.chat.Component.translatable("codon.ui.view").getString();
+            var view = screen.children().stream().filter(works.nuty.codon.client.ui.DebuggerButton.class::isInstance)
+                .map(works.nuty.codon.client.ui.DebuggerButton.class::cast)
+                .filter(button -> button.visible && button.getMessage().getString().equals(label))
+                .findFirst().orElseThrow(() -> new AssertionError("The toolbar shows View"));
+            var event = mouse(view.getX() + view.getWidth() / 2.0, view.getY() + view.getHeight() / 2.0);
+            require(screen.mouseClicked(event, false), "View accepts the click");
+            screen.mouseReleased(event);
+            screen.setFocused(null);
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> require(screen.children().stream().anyMatch(BackgroundOpacitySlider.class::isInstance),
+            "View shows the opacity slider"));
+    }
+
+    /** The percentage is plain menu text right of the slider; require its ink in a frame without hover. */
     private static void capturePercent(ClientGameTestContext context, CodonScreen screen, String name) {
         int[] box = context.computeOnClient(client -> {
             var slider = slider(screen);

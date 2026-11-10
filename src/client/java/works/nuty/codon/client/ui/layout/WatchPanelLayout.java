@@ -4,7 +4,7 @@ import java.util.List;
 import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds;
 import static works.nuty.codon.client.state.DebuggerPreferences.*;
 
-/** Watches occupy the free upper-right area, down to the command panel, without covering controls. */
+/** Watches occupy the right column under the toolbar, down to the command panel. */
 public final class WatchPanelLayout {
     private WatchPanelLayout() { }
 
@@ -75,12 +75,12 @@ public final class WatchPanelLayout {
     }
 
     public static Bounds available(DebuggerLayout layout, int guiWidth, int requestedWidth) {
-        int margin = layout.header().x();
+        int margin = layout.toolbar().x();
         int right = Math.max(margin, guiWidth - margin);
         int width = Math.min(Math.max(MIN_WATCH_WIDTH, requestedWidth), maximumWidth(layout));
         int x = Math.max(layout.world().x(), right - width);
-        int headerRight = layout.header().x() + Math.max(layout.header().width(), layout.controls().width());
-        int y = x >= headerRight + 4 ? layout.header().y() : layout.world().y();
+        // The toolbar spans the window, so the docked column starts under it.
+        int y = layout.world().y();
         int bottom = layout.command().y() - 4;
         return new Bounds(x, y, Math.max(0, right - x), Math.max(0, bottom - y));
     }

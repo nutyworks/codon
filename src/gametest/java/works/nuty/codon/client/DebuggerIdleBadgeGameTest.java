@@ -235,7 +235,7 @@ public final class DebuggerIdleBadgeGameTest implements FabricClientGameTest {
     private static void badge(ClientGameTestContext context, String name, boolean drawn, String message) {
         int[] box = context.computeOnClient(client -> {
             var window = client.getWindow();
-            var header = DebuggerLayout.create(window.getGuiScaledWidth(), window.getGuiScaledHeight(), false).header();
+            var header = DebuggerLayout.create(window.getGuiScaledWidth(), window.getGuiScaledHeight(), false).idleBadgeRow();
             return new int[]{header.x() + 1, header.y() + 1, header.x() + 6, header.y() + header.height() - 1,
                 window.getGuiScaledWidth()};
         });

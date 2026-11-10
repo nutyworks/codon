@@ -2,10 +2,18 @@
 
 ## User path and expected result
 
-The UI scaffold keeps Continue framed with an amber icon; Step and auxiliary toolbar
-actions use flat neutral chrome. This establishes the execution-action hierarchy
-without moving targets or changing pending/disabled behavior. Selected toggles keep
-their accent fill/underline; keyboard focus keeps its light outline.
+One toolbar spans the top of the debugger. From the left: Continue (`F9`), Step over
+(`F8`), Step into (`F7`) and Step out (`Ctrl+F7`); the pause-reason pill; and the
+Breakpoints toggle. The right side holds Keep freecam, Source, **View** and Help.
+Continue keeps its amber frame; the other toolbar actions use flat neutral chrome.
+Selected toggles keep their accent fill/underline; keyboard focus keeps its light outline.
+
+The pill presents acknowledged server state only: `Paused · breakpoint`, `Paused · step`
+or `Finished · inspect final values` from the current pause snapshot, `Waiting for
+server…` while a control request is pending, `Watch incomplete; Resume.` after failed
+Watch reads, and `Running` otherwise. Step buttons stay disabled while a request is
+pending or Watch reads failed. While a request is pending, Continue stays enabled only while the
+request is waiting for Watch reads. A pill too narrow for its text is ellipsized and shows the full text on hover.
 
 Use the [shared setup](../README.md#prepare-and-launch) and place an impulse command
 block pointing into an unconditional, always-active chain command block. Give them
@@ -110,6 +118,7 @@ captures a selected row alongside a keyboard-focused, truncated action label.
 | Native conditional function chronology | `DebuggerConditionalFunctionFlowGameTest` |
 | Client camera across server-sent step/pause packets | `DebuggerFreecamStepGameTest` |
 | Keyboard focus/navigation | `DebuggerKeyboardNavigationGameTest` |
+| Toolbar order, sizes and narrow-width priority (pill, Breakpoints label) | `clientTest`: `DebuggerToolbarLayoutTest`; native: `DebuggerPresentationGameTest`, `DebuggerOpacityGameTest` (`codon-toolbar-*` captures) |
 
 Example: `./gradlew coreTest --tests '*CommandBlockSteppingTest'`.
 For runtime execution changes, select the relevant native GameTest as well. A

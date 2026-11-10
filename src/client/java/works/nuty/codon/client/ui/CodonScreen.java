@@ -78,7 +78,11 @@ public final class CodonScreen extends ScaledCodonScreen {
         if (overlay.viewMenuOpen()) {
             DebuggerButton choice = overlay.viewMenuButtonAt(event.x(), event.y());
             if (choice != null) {
-                if (choice.mouseClicked(event, doubleClick)) setFocused(choice);
+                if (choice.mouseClicked(event, doubleClick)) {
+                    setFocused(choice);
+                    // The menu's opacity slider keeps receiving the drag until release.
+                    if (event.button() == InputConstants.MOUSE_BUTTON_LEFT) setDragging(true);
+                }
                 return true;
             }
             if (!overlay.viewTriggerContains(event.x(), event.y())) {

@@ -230,23 +230,30 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
     private static void checkIconToolbar(ClientGameTestContext context, CodonScreen screen, ClientDebuggerState state) {
         context.runOnClient(client -> {
             int toolbarY = works.nuty.codon.client.ui.layout.DebuggerLayout
-                .create(screen.width, screen.height, true).controls().y() + 2;
+                .create(screen.width, screen.height, true).toolbar().y() + 2;
             List<DebuggerButton> icons = screen.children().stream().filter(DebuggerButton.class::isInstance)
                 .map(DebuggerButton.class::cast)
                 .filter(button -> button.icon() != null && button.getY() == toolbarY).toList();
             require(icons.size() == 8,
-                "Main toolbar includes execution, freecam, Information, Source, and breakpoints icons");
+                "Main toolbar includes execution, breakpoints, freecam, Source and Help icons");
             require(icons.stream().filter(button -> button.getWidth() == 20 && button.getHeight() == 20).count() == 7,
                 "Execution and utility icons keep compact square hit targets");
             require(icons.stream().anyMatch(button -> button.getMessage().getString().startsWith("BP ")
-                && button.getWidth() >= 60), "Breakpoint count is visible in the toolbar");
+                && button.getWidth() >= client.font.width(button.getMessage()) + DebuggerButton.TEXT_ICON_INSET),
+                "Breakpoint count is visible in the toolbar");
             require(icons.stream().map(DebuggerButton::getY).distinct().count() == 1, "All icons share one row");
         });
         context.runOnClient(client -> {
-            DebuggerButton info = button(screen, value -> value.equals("Information"));
+            DebuggerButton help = button(screen, value -> value.equals("Help"));
+            DebuggerButton view = button(screen, value -> value.equals("View"));
+            DebuggerButton source = button(screen, value -> value.equals("Source"));
             DebuggerButton keep = button(screen, value -> value.startsWith("Keep freecam"));
-            require(info.getX() == keep.getX() + keep.getWidth() + 3,
-                "Information sits immediately beside Freecam");
+            require(source.getX() == keep.getX() + keep.getWidth() + 3
+                    && view.getX() == source.getX() + source.getWidth() + 3
+                    && help.getX() == view.getX() + view.getWidth() + 3
+                    && help.getX() + help.getWidth() + 3 == screen.width - works.nuty.codon.client.ui.layout.DebuggerLayout
+                        .create(screen.width, screen.height, true).toolbar().x(),
+                "Freecam, Source, View and Help end the toolbar's right side in that order");
             click(screen, keep);
             require(state.preferences().keepFreecam(), "Toolbar click enables retention");
         });
@@ -683,6 +690,9 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
             context.runOnClient(client -> {
                 state.preferences().setCustomUiScale(settings[2]);
                 state.preferences().setUiScaleMode(DebuggerPreferences.UiScaleMode.CUSTOM);
+                // The single toolbar leaves Flow its full height at 427x320, which covers these anchors
+                // near the screen centre; hiding Command there keeps the world labels in view.
+                state.preferences().setCommandVisible(settings[0] != 640);
                 state.selectSource(2);
                 client.setLastInputType(InputType.MOUSE);
                 screen.setFocused(null);
@@ -702,7 +712,10 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
             context.takeScreenshot(name);
         }
         context.getInput().resizeWindow(1280, 800);
-        context.runOnClient(client -> state.preferences().setUiScaleMode(DebuggerPreferences.UiScaleMode.FOLLOW_GAME));
+        context.runOnClient(client -> {
+            state.preferences().setCommandVisible(true);
+            state.preferences().setUiScaleMode(DebuggerPreferences.UiScaleMode.FOLLOW_GAME);
+        });
         context.waitTicks(3);
         context.runOnClient(client -> {
             DebuggerButton label = worldLabelButton(screen, "#3 Changed");

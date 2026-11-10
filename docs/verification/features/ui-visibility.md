@@ -52,16 +52,15 @@ reading surface and their dim scrim independently of that preference. Text alpha
 is not the cause of low-opacity world contrast. English/Korean Help describes this
 boundary.
 
-The header's opacity slider always shows its current percentage to the right of the
-track, without hover, in English and Korean at 0 and 100%. The title row spans the
-header panel and keeps its 18-pixel height; the menu key and toolbar stay clear, and
-the percentage is reserved before live status, which still takes priority over the
-CODON prefix. A focused slider uses Left/Right for 1 percent and Shift+Left/Right for
+**View → Opacity** is a slider row in the View menu at the toolbar's right end. It always
+shows its current percentage to the right of the track, without hover, in English and
+Korean at 0 and 100%. The toolbar and the View menu keep a solid surface, so opacity can
+always be restored. A focused slider uses Left/Right for 1 percent and Shift+Left/Right for
 10 percent, clamped to 0–100; an adjustment at an endpoint writes no settings. Mouse
 click and drag still preview live and write once when the gesture ends, including a
-return to the starting value after another setting saved an intermediate preview. English/Korean
-usage narration and Help describe both steps. In very narrow GUIs (roughly under 255
-pixels wide) a long status can be ellipsized earlier than before; hover shows its full text.
+return to the starting value after another setting saved an intermediate preview. Closing
+the menu or the debugger during a drag commits once. English/Korean usage narration and
+Help describe both steps. **View → Codon UI scale** opens the modal UI-scale screen.
 
 Gizmo collision cells retain at most 128 exact candidates before becoming a spatial
 aggregate, including cells whose rectangles have no common intersection. Coarse groups
@@ -74,7 +73,7 @@ world projection and rendering remain separate acceptance checks.
 writes a temporary settings file (never the live `config/codon.json`) and reloads it into
 a new settings/state instance. Inspect `codon-idle-badge-*`: default, hidden, hidden after
 reload, restored, F3 with a visible preference, the open View menu in both languages, and
-the `-synthetic-pause` HUD/cursor captures. Presence of the badge or paused header is
+the `-synthetic-pause` HUD/cursor captures. Presence of the badge or paused toolbar is
 asserted from dark panel pixels at their shared corner, with sky behind it; F3's own text
 and the screenshots themselves still need inspection. The production HUD element would draw
 its own badge, so the test wraps it once in place with `HudElementRegistry.replaceElement`: the
@@ -106,7 +105,7 @@ preference).
 | --- | --- |
 | HUD/chat inset, modal backing and EN/KO compact/default readability | `clientTest`: `DebuggerLayoutTest`; `test`: `DebuggerThemeTest`, `UiScaleScreenRenderTest`; native: `DebuggerReadabilityGameTest`, `DebuggerOpacityGameTest`, `DebuggerPresentationGameTest`, `DebuggerNbtTreeGameTest`, `DebuggerUiScaleGameTest` |
 | Short/long boundary, repeated events and cancellation | `clientTest`: `UiHideGestureTest` |
-| Opacity percentage in the header, Shift steps, endpoints and commit counts | `clientTest`: `DebuggerHeaderLayoutTest`; `test`: `BackgroundOpacitySliderTest` (real temporary settings file and an intervening setting save); native: `DebuggerOpacityGameTest` |
+| Opacity percentage in the View menu, Shift steps, endpoints and commit counts | `test`: `BackgroundOpacitySliderTest` (real temporary settings file and an intervening setting save); native: `DebuggerOpacityGameTest` |
 | Native keyboard/mouse dispatch, screen input, rebind, chat, missed mouse release, focus flag and rejoin | `DebuggerPeekUiGameTest` |
 | Real server breakpoint stays paused, then each command executes once after Resume | `DebuggerFreecamResumeGameTest` |
 | First hidden/restored frame and sustained holds in world/cursor mode at a real entity-context pause; running breakpoint outlines, unrelated gizmos, disconnect/rejoin | `DebuggerWorldMarkerVisibilityGameTest` |
@@ -115,7 +114,6 @@ preference).
 
 ```sh
 ./gradlew clientTest --tests '*UiHideGestureTest'
-./gradlew clientTest --tests '*DebuggerHeaderLayoutTest'
 ./gradlew test --tests '*BackgroundOpacitySliderTest'
 ./gradlew runClientGameTest -PclientGameTest=DebuggerPeekUiGameTest,DebuggerFreecamResumeGameTest,DebuggerWorldMarkerVisibilityGameTest
 ./gradlew runClientGameTest -PclientGameTest=DebuggerOpacityGameTest
@@ -134,17 +132,17 @@ Its evidence has three separate parts:
   because Fabric's synthetic key events carry no modifier bits. It checks 51→50 and
   60→50, one write per effective press, and that the same screen is open with the
   slider focused after each waited tick. It does not repeat the endpoint sweep.
-- **Header ink scan** covers only these frames: `codon-opacity-inline-100`, `-inline-50`,
-  `-all-zero`, `-all-one`, `-inline-compact-50` (asserted to be a 320×240 GUI whose
-  slider and percentage lie in the header panel's title row), and the eight
-  `codon-opacity-header-{en_us,ko_kr}-{1280,640}-{100,0}` frames (final-inspection
-  status at 0 and 100%, default and compact). `codon-opacity-hover-50` and the two
+- **Percentage ink scan** covers only these frames, each with View opened by a click on
+  its toolbar button: `codon-opacity-inline-100`, `-inline-50`, `-all-zero`, `-all-one`,
+  `-inline-compact-50` (asserted to be a 320×240 GUI whose slider and percentage lie in the
+  viewport below the toolbar), and the eight `codon-opacity-view-{en_us,ko_kr}-{1280,640}-{100,0}`
+  frames (final-inspection pause at 0 and 100%, default and compact). `codon-opacity-toolbar-closed`,
+  `codon-toolbar-{en_us,ko_kr}-{1280,640}`, `codon-opacity-hover-50` and the two
   `codon-opacity-editor-*` frames are not scanned; inspect them by eye.
 
 The scan counts text-coloured pixels beside the slider, so it shows that something is
 drawn there but does not recognize the digits. Inspect the screenshots to verify the
-exact values; the eight header captures in [run 37504892284](https://github.com/nutyworks/codon/actions/runs/37504892284)
-showed the correct 0%/100% text. The idle badge has no slider, so it shows no percentage.
+exact values. The idle badge has no slider, so it shows no percentage.
 
 Inspect the `codon-peek-*` screenshots: compare world and cursor-mode baselines,
 held/toggled hidden presentation, and restored UI. The peek fixture injects a client

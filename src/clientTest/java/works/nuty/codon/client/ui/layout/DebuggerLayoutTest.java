@@ -18,7 +18,7 @@ class DebuggerLayoutTest {
                 assertTrue(layout.command().height() >= (inset == 134 ? 40 : 58),
                     "Recent chat keeps a marker-sized command row, compressing the path when needed");
                 assertTrue(layout.command().y() + layout.command().height() <= 240 - inset);
-                assertFalse(overlaps(layout.command(), layout.controls()));
+                assertFalse(overlaps(layout.command(), layout.toolbar()));
                 assertFalse(overlaps(layout.command(), layout.world()));
                 assertFalse(overlaps(layout.command(), layout.inspector()));
             }
@@ -60,7 +60,7 @@ class DebuggerLayoutTest {
                 assertInScreen(layout.inspector(), size);
                 assertTrue(layout.command().y() + layout.command().height() <= size.height() - inset);
                 assertTrue(layout.inspector().y() + layout.inspector().height() <= size.height() - inset);
-                assertFalse(overlaps(layout.command(), layout.controls()));
+                assertFalse(overlaps(layout.command(), layout.toolbar()));
                 assertFalse(overlaps(layout.command(), layout.world()));
                 if (inset <= 80) {
                     assertTrue(layout.command().height() >= 58,
@@ -81,15 +81,13 @@ class DebuggerLayoutTest {
             for (boolean inspectorOpen : List.of(false, true)) {
                 DebuggerLayout layout = DebuggerLayout.create(size.width(), size.height(), inspectorOpen);
 
-                assertInScreen(layout.header(), size);
-                assertInScreen(layout.controls(), size);
+                assertInScreen(layout.toolbar(), size);
                 assertInScreen(layout.world(), size);
                 assertInScreen(layout.inspector(), size);
                 assertInScreen(layout.command(), size);
                 assertInScreen(layout.footer(), size);
 
-                assertFalse(overlaps(layout.world(), layout.header()));
-                assertFalse(overlaps(layout.world(), layout.controls()));
+                assertFalse(overlaps(layout.world(), layout.toolbar()));
                 assertFalse(overlaps(layout.world(), layout.command()));
                 if (inspectorOpen) {
                     assertTrue(layout.inspector().width() > 0);
@@ -108,7 +106,7 @@ class DebuggerLayoutTest {
                 DebuggerLayout layout = DebuggerLayout.create(size.width(), size.height(), true, requested);
                 assertInScreen(layout.command(), size);
                 assertInScreen(layout.world(), size);
-                assertFalse(overlaps(layout.command(), layout.controls()));
+                assertFalse(overlaps(layout.command(), layout.toolbar()));
                 assertFalse(overlaps(layout.command(), layout.inspector()));
                 assertFalse(overlaps(layout.command(), layout.world()));
                 assertTrue(layout.world().height() >= 16, "expansion must retain a world viewport");
@@ -122,12 +120,11 @@ class DebuggerLayoutTest {
         for (boolean inspectorOpen : List.of(false, true)) {
             DebuggerLayout layout = DebuggerLayout.create(size.width(), size.height(), inspectorOpen);
 
-            for (Bounds bounds : List.of(layout.header(), layout.controls(), layout.world(), layout.inspector(),
+            for (Bounds bounds : List.of(layout.toolbar(), layout.world(), layout.inspector(),
                     layout.command(), layout.footer())) {
                 assertInScreen(bounds, size);
             }
-            assertFalse(overlaps(layout.world(), layout.header()));
-            assertFalse(overlaps(layout.world(), layout.controls()));
+            assertFalse(overlaps(layout.world(), layout.toolbar()));
             assertFalse(overlaps(layout.world(), layout.command()));
             assertFalse(overlaps(layout.world(), layout.inspector()));
         }
