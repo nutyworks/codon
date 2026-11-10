@@ -137,6 +137,14 @@ empty stack/source/flow lists) instead of truncated client indices, so the clien
 paused and its correlated controls keep working. Peers without that channel receive the
 earlier resume-presentation fallback with chat guidance to use `/codon resume`.
 
+A stop needs at least one recipient: an online owner-authorized player whose client supports
+the pause channel. Without one the engine does not park; it skips the stop, clears any step in
+progress and logs one warning until a recipient returns. A player shown a pause remains a
+recipient for the rest of that debugging session while connected, even if their permission
+is removed; when all of them have disconnected, the pause loop releases the stop as an
+explicit Resume would, with a log line. This keeps a dedicated server from freezing at a breakpoint that
+nobody can see or release.
+
 At each stop, `PausedWorldState` publishes already-applied command changes before the server
 parks: dirty blocks/block-entity update packets, tracked entity poses/metadata/attributes,
 equipment (including cleared slots), passengers/leashes/motion, and player inventory, health,

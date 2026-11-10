@@ -274,6 +274,12 @@ public final class DebuggerEngine {
     }
 
     private void pause(CommandStageEvent event, PauseReason reason, List<CallFrame> recordedStack) {
+        if (!eventSink.hasPauseRecipient()) {
+            // Parking with nobody able to see or release the stop would freeze the host silently.
+            clearAdvancement();
+            eventSink.pauseWithoutRecipient(event.location(), false);
+            return;
+        }
         paused = true;
         continuing = false;
         pausedChainId = event.chainId();
@@ -293,8 +299,14 @@ public final class DebuggerEngine {
             currentSnapshot = snapshot;
             eventSink.paused(snapshot);
 
-            if (executionController.parkUntil(() -> !paused) == ExecutionController.ParkResult.CANCELLED) {
+            var result = executionController.parkUntil(() -> !paused || !eventSink.hasPauseRecipient());
+            if (result == ExecutionController.ParkResult.CANCELLED) {
                 resetSession();
+            } else if (paused && !eventSink.hasPauseRecipient()) {
+                // Everyone shown the stop has disconnected: release, as an explicit Resume would.
+                clearAdvancement();
+                unpause();
+                eventSink.pauseWithoutRecipient(event.location(), true);
             }
         } catch (RuntimeException | Error failure) {
             resetSession();

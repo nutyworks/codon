@@ -125,6 +125,8 @@ debugger requests and bounded connection maintenance. It publishes already-appli
 world changes, but new chunk generation and effects requiring later ticks wait.
 Resume promptly on shared servers. An authorized operator can also send
 `codon resume` from the server console if the debugger client is unavailable.
+Breakpoints only stop while an operator with Codon installed is online. Without one, or
+when the last one leaves during a pause, execution continues and the server log records it.
 
 Breakpoint definitions are shared world state stored in
 `data/codon-breakpoints.json`. Watch definitions are stored per owner/player in

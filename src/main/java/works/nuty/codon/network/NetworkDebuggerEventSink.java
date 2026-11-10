@@ -12,12 +12,15 @@ import works.nuty.codon.core.model.BlockLocation;
 import works.nuty.codon.core.model.BreakpointDefinition;
 import works.nuty.codon.core.model.ExecutionFlowTrace;
 import works.nuty.codon.core.model.PauseSnapshot;
+import works.nuty.codon.core.model.SourceLocation;
 import works.nuty.codon.core.model.WatchChange;
 import works.nuty.codon.core.model.TransferBudget;
 import works.nuty.codon.core.port.DebuggerEventSink;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.Comparator;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
@@ -34,19 +37,50 @@ public final class NetworkDebuggerEventSink implements DebuggerEventSink {
     private long changesPauseId;
     private List<WatchChange> changes = List.of();
     private WatchChangesUnavailablePayload.Reason changesFailure;
+    /** Log one skipped stop per period without a recipient; a repeating block would flood the log. */
+    private boolean skipReported;
+    /**
+     * Players shown a pause in this debugging session. Each stays a recipient while connected, even
+     * if deopped or briefly without the pause channel, until the session ends with a resume.
+     */
+    private final Set<UUID> pauseAudience = new HashSet<>();
 
     public NetworkDebuggerEventSink(Supplier<MinecraftServer> server) {
         this.server = server;
     }
 
     @Override
+    public boolean hasPauseRecipient() {
+        MinecraftServer s = server.get();
+        if (s == null) return true;
+        for (ServerPlayer player : s.getPlayerList().getPlayers()) {
+            if (authorized(player) && ServerPlayNetworking.canSend(player, PauseSyncPayload.TYPE.id())) return true;
+            if (pauseAudience.contains(player.getUUID()) && player.connection.isAcceptingMessages()) return true;
+        }
+        return false;
+    }
+
+    @Override
+    public void pauseWithoutRecipient(SourceLocation location, boolean released) {
+        if (released) {
+            CodonMod.LOGGER.warn("Codon released the pause at {}: every player shown this session has disconnected", location);
+        } else if (!skipReported) {
+            skipReported = true;
+            CodonMod.LOGGER.warn("Codon did not pause at {}: no owner-authorized player with Codon is online. "
+                + "Further stops are skipped without logging until one is.", location);
+        }
+    }
+
+    @Override
     public void paused(PauseSnapshot snapshot) {
+        skipReported = false;
         MinecraftServer s = server.get();
         changesPauseId = snapshot.pauseId();
         changes = List.of();
         changesFailure = null;
         if (!ClientboundLimits.supports(snapshot)) {
-            resetWatchChanges();
+            watchChanges.reset();
+            changesPauseId = 0;
         } else if (s != null) {
             try {
                 changes = watchChanges.capture(s, snapshot);
@@ -72,6 +106,7 @@ public final class NetworkDebuggerEventSink implements DebuggerEventSink {
      */
     public boolean sendPauseSnapshot(ServerPlayer player, PauseSnapshot snapshot) {
         if (!authorized(player) || !ServerPlayNetworking.canSend(player, PauseSyncPayload.TYPE.id())) return false;
+        pauseAudience.add(player.getUUID());
         if (!ClientboundLimits.supports(snapshot)) {
             if (ServerPlayNetworking.canSend(player, PauseSummarySyncPayload.TYPE.id())) {
                 // The client stays paused with correlated controls; details are withheld, not truncated.
@@ -129,6 +164,7 @@ public final class NetworkDebuggerEventSink implements DebuggerEventSink {
     }
 
     public void resetWatchChanges() {
+        pauseAudience.clear();
         watchChanges.reset();
         changes = List.of();
         changesFailure = null;

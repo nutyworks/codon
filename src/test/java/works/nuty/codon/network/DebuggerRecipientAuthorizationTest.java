@@ -563,6 +563,39 @@ class DebuggerRecipientAuthorizationTest {
         assertFalse(engine.isPaused());
     }
 
+    @Test void breakpointWithoutAuthorizedCodonOwnerDoesNotParkTheServer() {
+        var controller = mock(ExecutionController.class);
+        var engine = new DebuggerEngine(new BreakpointRegistry(), new StepController(), new CallStack(), controller, sink);
+        engine.toggleBlockBreakpoint(BLOCK);
+        assertTrue(sink.hasPauseRecipient());
+        unsupported.get(owner).add(PauseSyncPayload.TYPE.id());
+        assertFalse(sink.hasPauseRecipient(), "An owner without the pause channel cannot see or release a stop");
+        when(playerList.getPlayers()).thenReturn(List.of(visitor));
+        assertFalse(sink.hasPauseRecipient(), "A connected non-owner is not a recipient");
+        clearSent();
+
+        engine.onCommandStage(new CommandStageEvent(82, 0, LOCATION, SNAPSHOT.command(), SNAPSHOT::pauseSources));
+
+        verify(controller, never()).parkUntil(any());
+        assertFalse(engine.isPaused());
+        assertTrue(sent.get(visitor).isEmpty());
+    }
+
+    @Test void ownerShownThePauseHoldsItWhileConnectedEvenIfDeopped() {
+        sink.paused(SNAPSHOT);
+        when(permissions.get(owner).hasPermission(Permissions.COMMANDS_OWNER)).thenReturn(false);
+        assertTrue(sink.hasPauseRecipient(), "Removing permission during a pause leaves the stop to the owner and console");
+        unsupported.get(owner).add(PauseSyncPayload.TYPE.id());
+        sink.paused(SNAPSHOT);
+        assertTrue(sink.hasPauseRecipient(), "A later stop in the same session keeps its connected audience");
+        when(owner.connection.isAcceptingMessages()).thenReturn(false);
+        assertFalse(sink.hasPauseRecipient(), "Once everyone shown the stop has gone, it is released");
+        when(owner.connection.isAcceptingMessages()).thenReturn(true);
+        when(permissions.get(owner).hasPermission(Permissions.COMMANDS_OWNER)).thenReturn(true);
+        sink.resumed();
+        assertFalse(sink.hasPauseRecipient(), "A finished pause has no audience left");
+    }
+
     @Test void oversizedJoinStackUsesOwnerOnlyWarningAndCleanup() {
         var frame = new CallFrame(0, LOCATION, SNAPSHOT.command());
         when(joinEngine.currentSnapshot()).thenReturn(new PauseSnapshot(LOCATION, SNAPSHOT.command(), 0,

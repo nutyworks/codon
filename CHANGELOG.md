@@ -1,5 +1,15 @@
 # Release notes
 
+## Unreleased
+
+### Fixes
+
+- A breakpoint no longer parks the server when no operator with Codon is online to see
+  or release it. The stop is skipped, or released if the last such operator leaves during
+  a pause, and the server log records it (#136).
+- Navigating from the Breakpoints list to a stage with fewer contexts no longer crashes the
+  Contexts list when a context group was expanded (#135).
+
 ## 0.1.0-alpha.2 — alpha prerelease
 
 First published alpha prerelease. 0.1.0-alpha.1 was prepared but never published, so
