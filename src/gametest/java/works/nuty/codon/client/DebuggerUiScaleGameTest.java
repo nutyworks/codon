@@ -106,7 +106,7 @@ public final class DebuggerUiScaleGameTest implements FabricClientGameTest {
             context.waitTicks(3);
             context.runOnClient(client -> require(fixture.screen().width == customWidth, "Custom UI size survives game GUI-scale change"));
             context.takeScreenshot("codon-scale-cursor-custom-2_25-game-2");
-            hover(context, fixture.screen(), buttonPosition(context, fixture.screen(), "Information"));
+            hover(context, fixture.screen(), buttonPosition(context, fixture.screen(), "Help"));
             context.waitTicks(12);
             context.takeScreenshot("codon-scale-tooltip-custom-2_25");
             checkHelpScroll(context, fixture);

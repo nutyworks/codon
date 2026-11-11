@@ -56,14 +56,13 @@ class WatchPanelLayoutTest {
         assertEquals(0, new WatchPanelLayout.Rows(List.of()).maximumOffset(64));
     }
 
-    @Test void usesTopWhitespaceWithoutCoveringHeaderOrCommands() {
+    @Test void docksUnderTheToolbarWithoutCoveringCommands() {
         for (int width : new int[]{320, 640, 1024}) {
             var layout = DebuggerLayout.create(width, 400, true);
             var watch = WatchPanelLayout.available(layout, width);
             assertTrue(watch.x() + watch.width() <= width);
             assertTrue(watch.y() + watch.height() < layout.command().y());
-            if (width >= 640) assertEquals(layout.header().y(), watch.y());
-            else assertTrue(watch.y() >= layout.controls().y() + layout.controls().height());
+            assertTrue(watch.y() >= layout.toolbar().y() + layout.toolbar().height());
         }
     }
 }

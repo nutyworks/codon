@@ -18,7 +18,7 @@ import works.nuty.codon.client.state.DebuggerPreferences.InspectorTab;
 import works.nuty.codon.client.ui.layout.DebuggerLayout;
 import works.nuty.codon.client.ui.layout.GizmoLabelLayout;
 import works.nuty.codon.client.ui.layout.WatchPanelLayout;
-import works.nuty.codon.client.ui.layout.DebuggerHeaderLayout;
+import works.nuty.codon.client.ui.layout.DebuggerToolbarLayout;
 import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Anchor;
 import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds;
 import works.nuty.codon.core.model.ExecutionFlowContext;
@@ -155,7 +155,10 @@ public final class DebuggerOverlay {
     boolean viewMenuOpen() { return viewMenuOpen; }
     boolean viewTriggerContains(double x, double y) { return viewTriggerBounds.contains(x, y); }
     boolean viewMenuContains(double x, double y) { return viewMenuBounds.contains(x, y); }
-    void closeViewMenu() { viewMenuOpen = false; }
+    void closeViewMenu() {
+        viewMenuOpen = false;
+        opacitySlider.commitPreview();
+    }
     boolean closeAuxiliaryPanel() {
         if (!compactAuxiliary || auxiliaryPanel == AuxiliaryPanel.NONE) return false;
         auxiliaryPanel = AuxiliaryPanel.NONE;
@@ -204,7 +207,7 @@ public final class DebuggerOverlay {
             if (state.preferences().idleBadgeVisible() && !client.gui.hud.getDebugOverlay().showDebugScreen()) {
                 Component text = Component.literal("CODON · " + statusText() + " ")
                     .append(keybind(Component.literal("[").append(input.menuKey.getTranslatedKeyMessage()).append("]")));
-                Bounds header = DebuggerLayout.create(graphics.guiWidth(), graphics.guiHeight(), false).header();
+                Bounds header = DebuggerLayout.create(graphics.guiWidth(), graphics.guiHeight(), false).idleBadgeRow();
                 Bounds badge = new Bounds(header.x(), header.y(),
                     Math.min(graphics.guiWidth() - 2 * header.x(), font.width(text) + 14), header.height());
                 graphics.fill(badge.x(), badge.y(), badge.x() + badge.width(), badge.y() + badge.height(), PANEL);
@@ -261,7 +264,7 @@ public final class DebuggerOverlay {
                 Math.min(240, Math.max(0, layout.world().width() - 32)), layout.world().height())
             : layout.inspector();
         navigationGroup = DebuggerNavigation.Group.TOOLBAR;
-        renderHeader(graphics, layout, input, snapshot);
+        renderToolbar(graphics, layout, input, snapshot);
         if (viewMenuOpen) renderViewMenu(graphics);
         if (viewMenuBounds.contains(mouseX, mouseY)) hoverX = hoverY = -1;
         navigationGroup = DebuggerNavigation.Group.WATCH;
@@ -324,6 +327,7 @@ public final class DebuggerOverlay {
                 if (!interactive) button.setFocused(false);
                 button.extractRenderState(graphics, interactive ? mouseX : -1, interactive ? mouseY : -1, partialTick);
             }
+            paintOpacityRow(graphics);
         }
         if (interactive && !viewMenuOpen && !watchPanel.groupingMenuOpen())
             panelResizing.paint(graphics, mouseX, mouseY);
@@ -337,44 +341,27 @@ public final class DebuggerOverlay {
             ? status + " · " + tr("codon.ui.details_withheld") : status;
     }
 
-    private void renderHeader(GuiGraphicsExtractor graphics, DebuggerLayout layout, InputManager input,
-                              @Nullable PauseSnapshot snapshot) {
-        String status = statusText();
-        String prefix = "CODON · ";
-        Component menuKey = keybind(Component.literal("[").append(input.menuKey.getTranslatedKeyMessage()).append("]"));
-        int menuKeyWidth = client.font.width(menuKey);
-        int menuKeyGap = client.font.width(" ");
-        int percentWidth = client.font.width("100%");
-        int prefixWidth = client.font.width(prefix);
-        Bounds toolbar = layout.controls();
-        // The title row spans the whole header panel, which the toolbar below already widens.
-        Bounds header = new Bounds(layout.header().x(), layout.header().y(),
-            Math.max(layout.header().width(), toolbar.width()), layout.header().height());
-        Bounds headerPanel = new Bounds(header.x(), header.y(), header.width(),
-            toolbar.y() + toolbar.height() - header.y());
-        graphics.fill(headerPanel.x(), headerPanel.y(), headerPanel.x() + headerPanel.width(),
-            headerPanel.y() + headerPanel.height(), PANEL);
-        graphics.outline(headerPanel.x(), headerPanel.y(), headerPanel.width(), headerPanel.height(), BORDER);
-        var headerText = DebuggerHeaderLayout.create(header, prefixWidth, client.font.width(status), menuKeyWidth,
-            percentWidth, menuKeyGap);
-        opacitySlider.position(headerText.sliderX(), header.y() + 1, DebuggerHeaderLayout.SLIDER_WIDTH);
-        controls.add(opacitySlider);
-        navigation.bind("background-opacity", DebuggerNavigation.Group.TOOLBAR, opacitySlider);
-        text(graphics, prefix, header.x() + 7, header.y() + 5, headerText.prefixWidth(), TEXT, true);
-        text(graphics, status, headerText.statusX(), header.y() + 5, headerText.statusWidth(),
-            state.isPaused() ? AMBER : MUTED, true);
+    /** Pause-reason states the pill can show; the widest sets its slot so the toolbar never shifts. */
+    private static final List<String> STATUS_KEYS = List.of("codon.ui.breakpoint_hit", "codon.ui.step_complete",
+        "codon.ui.execution_complete", "codon.ui.running", "codon.ui.waiting", "codon.ui.watch_reads_failed");
 
-        graphics.text(client.font, menuKey, headerText.menuKeyX(),
-            header.y() + 5, MUTED, false);
-        // Always visible and right-aligned, so dragging never needs hover to reveal the value.
-        String percent = state.preferences().backgroundOpacity() + "%";
-        graphics.text(client.font, percent, headerText.percentX() + percentWidth - client.font.width(percent),
-            header.y() + 5, TEXT, false);
+    private void renderToolbar(GuiGraphicsExtractor graphics, DebuggerLayout layout, InputManager input,
+                               @Nullable PauseSnapshot snapshot) {
+        Bounds toolbar = layout.toolbar();
+        graphics.fill(toolbar.x(), toolbar.y(), toolbar.x() + toolbar.width(), toolbar.y() + toolbar.height(), PANEL);
+        graphics.outline(toolbar.x(), toolbar.y(), toolbar.width(), toolbar.height(), BORDER);
+        long breakpointCount = state.breakpoints().definitions().stream().filter(BreakpointDefinition::enabled).count();
+        Component breakpointLabel = Component.translatable("codon.breakpoint.short_count", breakpointCount);
+        Component breakpointCompactLabel = Component.literal(Long.toString(breakpointCount));
+        int pillPadding = 6;
+        int pillWidth = STATUS_KEYS.stream().mapToInt(key -> client.font.width(tr(key))).max().orElse(0) + 2 * pillPadding;
+        Component viewLabel = component("codon.ui.view");
+        var bar = DebuggerToolbarLayout.create(toolbar, InputManager.Control.values().length, pillWidth,
+            client.font.width(breakpointLabel) + DebuggerButton.TEXT_ICON_INSET + 12,
+            client.font.width(breakpointCompactLabel) + DebuggerButton.TEXT_ICON_INSET + 12,
+            client.font.width(viewLabel) + 10 + DebuggerButton.DISCLOSURE_WIDTH);
 
-        int gap = DebuggerLayout.ICON_BUTTON_GAP;
-        int width = Math.min(DebuggerLayout.ICON_BUTTON_SIZE,
-            Math.max(1, (toolbar.width() - 6 - 10 * gap - DebuggerLayout.ICON_GROUP_GAP) / 12));
-        int x = toolbar.x() + 3;
+        int index = 0;
         for (InputManager.Control action : InputManager.Control.values()) {
             DebuggerIcon icon = switch (action) {
                 case RESUME -> DebuggerIcon.CONTINUE;
@@ -382,8 +369,7 @@ public final class DebuggerOverlay {
                 case INTO -> DebuggerIcon.STEP_INTO;
                 case OUT -> DebuggerIcon.STEP_OUT;
             };
-            DebuggerButton control = iconButton("control-" + action,
-                new Bounds(x, toolbar.y() + 2, width, DebuggerLayout.ICON_BUTTON_SIZE),
+            DebuggerButton control = iconButton("control-" + action, bar.controls().get(index++),
                 component(action.translationKey()).copy().append(" ").append(keybind(input.keyLabel(action))),
                 icon, snapshot != null && state.isPaused()
                     && (action == InputManager.Control.RESUME || !state.watchReadsFailed())
@@ -391,30 +377,29 @@ public final class DebuggerOverlay {
                 () -> input.control(action));
             if (action == InputManager.Control.RESUME) control.withStatusColor(AMBER, AMBER_SURFACE);
             else control.withFlatChrome();
-
-            x += width + gap;
         }
-        x += DebuggerLayout.ICON_GROUP_GAP - gap;
-        graphics.fill(x - 4, toolbar.y() + 5, x - 3, toolbar.y() + toolbar.height() - 5, BORDER);
-        viewTriggerBounds = new Bounds(x, toolbar.y() + 2, 42, DebuggerLayout.ICON_BUTTON_SIZE);
-        button("view", viewTriggerBounds, component("codon.ui.view"), true, viewMenuOpen, false, false,
-            () -> viewMenuOpen = !viewMenuOpen);
-        int auxiliaryX = x + viewTriggerBounds.width() + gap;
+        Bounds last = bar.controls().getLast();
+        int divider = last.x() + last.width() + (DebuggerLayout.ICON_GROUP_GAP - 1) / 2 + 1;
+        graphics.fill(divider, toolbar.y() + 5, divider + 1, toolbar.y() + toolbar.height() - 5, BORDER);
+        renderPausePill(graphics, bar.pill(), pillPadding);
+
+        DebuggerButton breakpoints = button("breakpoints", bar.breakpoints(), breakpointLabel,
+            true, showBreakpoints, false, false, this::toggleBreakpoints)
+            .withTextIcon(DebuggerIcon.BREAKPOINT_LIST);
+        // Narrow toolbars paint only the count; the message keeps the full label for narration.
+        if (bar.breakpointsCompact()) breakpoints.withDisplayText(breakpointCompactLabel);
+        breakpoints.setTooltip(Tooltip.create(Component.translatable("codon.breakpoint.toolbar",
+                breakpointCount, state.breakpoints().definitions().size())));
+
         boolean keepFreecam = state.preferences().keepFreecam();
-        button("keep-freecam", new Bounds(auxiliaryX, toolbar.y() + 2,
-                width, DebuggerLayout.ICON_BUTTON_SIZE),
+        button("keep-freecam", bar.freecam(),
             component(keepFreecam ? "codon.ui.keep_freecam.on" : "codon.ui.keep_freecam.off")
                 .copy().append(" ").append(keybind(input.keepFreecamKey.getTranslatedKeyMessage())),
             true, keepFreecam, false, false,
             input::toggleKeepFreecam)
             .withIcon(DebuggerIcon.FREECAM);
-        iconButton("information", new Bounds(auxiliaryX + width + gap, toolbar.y() + 2, width, DebuggerLayout.ICON_BUTTON_SIZE),
-            component("codon.ui.information"), DebuggerIcon.INFORMATION, true,
-            () -> client.gui.setScreen(new DebuggerHelpScreen(new CodonScreen(input, this), input)));
-
-        iconButton("source", new Bounds(auxiliaryX + 2 * (width + gap), toolbar.y() + 2, width, DebuggerLayout.ICON_BUTTON_SIZE),
-            Component.translatable("codon.source.title"), DebuggerIcon.SOURCE_FILE, CodonClientMod.sources() != null,
-            () -> {
+        iconButton("source", bar.source(), Component.translatable("codon.source.title"), DebuggerIcon.SOURCE_FILE,
+            CodonClientMod.sources() != null, () -> {
                 if (client.gui.screen() instanceof FunctionSourceScreen open) {
                     open.onClose();
                     return;
@@ -426,18 +411,28 @@ public final class DebuggerOverlay {
                     client.gui.setScreen(new FunctionSourceScreen(client.gui.screen(), sources));
                 }
             });
-        int breakpointX = auxiliaryX + 3 * (width + gap);
-        int breakpointWidth = Math.max(width,
-            Math.min(70, toolbar.x() + toolbar.width() - breakpointX - 3));
-        long breakpointCount = state.breakpoints().definitions().stream().filter(BreakpointDefinition::enabled).count();
-        button("breakpoints", new Bounds(breakpointX, toolbar.y() + 2, breakpointWidth,
-                DebuggerLayout.ICON_BUTTON_SIZE),
-            Component.translatable("codon.breakpoint.short_count", breakpointCount),
-            true, showBreakpoints, false, false, this::toggleBreakpoints)
-            .withTextIcon(DebuggerIcon.BREAKPOINT_LIST)
-            .setTooltip(Tooltip.create(Component.translatable("codon.breakpoint.toolbar",
-                breakpointCount, state.breakpoints().definitions().size())));
+        viewTriggerBounds = bar.view();
+        button("view", viewTriggerBounds, viewLabel, true, viewMenuOpen, false, false, () -> {
+            if (viewMenuOpen) closeViewMenu();
+            else viewMenuOpen = true;
+        }).withDisclosure();
+        iconButton("help", bar.help(), component("codon.ui.help"), DebuggerIcon.INFORMATION, true,
+            () -> client.gui.setScreen(new DebuggerHelpScreen(new CodonScreen(input, this), input)));
+    }
 
+    /** Acknowledged server state only: the reason of the current snapshot, or the pending/running state. */
+    private void renderPausePill(GuiGraphicsExtractor graphics, Bounds pill, int padding) {
+        if (pill.width() < 2 * padding + client.font.width("…")) return;
+        String key = DebuggerStatus.translationKey(state);
+        int foreground = key.equals("codon.ui.watch_reads_failed") ? RED : state.isPaused() && state.snapshot() != null
+            && !key.equals("codon.ui.waiting") ? AMBER : MUTED;
+        int surface = foreground == RED ? RED_SURFACE : foreground == AMBER ? AMBER_SURFACE : RAISED;
+        int top = pill.y() + 3;
+        int height = pill.height() - 6;
+        graphics.fill(pill.x(), top, pill.x() + pill.width(), top + height, surface);
+        graphics.outline(pill.x(), top, pill.width(), height, foreground == MUTED ? BORDER : foreground);
+        text(graphics, tr(key), pill.x() + padding, top + (height - client.font.lineHeight) / 2 + 1,
+            pill.width() - 2 * padding, foreground, true);
     }
 
     private void toggleBreakpoints() {
@@ -445,10 +440,15 @@ public final class DebuggerOverlay {
         else breakpointsOpen = !showBreakpoints;
     }
 
+    private static final int VIEW_MENU_ROWS = 7;
+    private static final int VIEW_MENU_OPACITY_ROW = 5;
+
     private void renderViewMenu(GuiGraphicsExtractor graphics) {
         int menuWidth = Math.min(154, graphics.guiWidth() - 12);
-        int menuHeight = 6 * 19 + 4;
-        int x = Math.clamp(viewTriggerBounds.x(), 6, graphics.guiWidth() - menuWidth - 6);
+        int menuHeight = VIEW_MENU_ROWS * 19 + 4;
+        // Anchored under the trigger's right edge, since View sits at the toolbar's right end.
+        int x = Math.clamp(viewTriggerBounds.x() + viewTriggerBounds.width() - menuWidth, 6,
+            Math.max(6, graphics.guiWidth() - menuWidth - 6));
         int below = viewTriggerBounds.y() + viewTriggerBounds.height() + 2;
         int y = below + menuHeight <= graphics.guiHeight() - 6 ? below
             : Math.max(6, viewTriggerBounds.y() - menuHeight - 2);
@@ -475,17 +475,36 @@ public final class DebuggerOverlay {
         boolean idleBadge = state.preferences().idleBadgeVisible();
         viewMenuItem(4, component("codon.ui.idle_badge"), idleBadge,
             () -> state.preferences().setIdleBadgeVisible(!idleBadge));
-        viewMenuItem(5, component("codon.ui.scale.title"), false,
+        Bounds opacity = viewMenuRow(VIEW_MENU_OPACITY_ROW);
+        int labelWidth = client.font.width(component("codon.ui.opacity")) + 14;
+        int percentWidth = client.font.width("100%") + 6;
+        opacitySlider.position(opacity.x() + labelWidth, opacity.y() + 1,
+            Math.max(16, opacity.width() - labelWidth - percentWidth));
+        controls.add(opacitySlider);
+        viewMenuButtons.add(opacitySlider);
+        navigation.bind("background-opacity", DebuggerNavigation.Group.VIEW_MENU, opacitySlider);
+        viewMenuItem(6, component("codon.ui.scale.title"), false,
             () -> { if (client.gui.screen() != null) client.gui.setScreen(new UiScaleScreen(client.gui.screen(), state.preferences())); });
     }
 
+    /** The slider row's label and always-visible value, painted over the menu surface. */
+    private void paintOpacityRow(GuiGraphicsExtractor graphics) {
+        Bounds row = viewMenuRow(VIEW_MENU_OPACITY_ROW);
+        int textY = row.y() + (row.height() - client.font.lineHeight) / 2 + 1;
+        graphics.text(client.font, component("codon.ui.opacity"), row.x() + 14, textY, TEXT, false);
+        String percent = state.preferences().backgroundOpacity() + "%";
+        graphics.text(client.font, percent, row.x() + row.width() - 4 - client.font.width(percent), textY, TEXT, false);
+    }
+
+    private Bounds viewMenuRow(int row) {
+        return new Bounds(viewMenuBounds.x() + 2, viewMenuBounds.y() + 2 + row * 19, viewMenuBounds.width() - 4, 18);
+    }
+
     private void viewMenuItem(int row, Component label, boolean selected, Runnable action) {
-        Bounds bounds = new Bounds(viewMenuBounds.x() + 2, viewMenuBounds.y() + 2 + row * 19,
-            viewMenuBounds.width() - 4, 18);
-        DebuggerButton button = button("view-option-" + row, bounds,
+        DebuggerButton button = button("view-option-" + row, viewMenuRow(row),
             Component.literal(selected ? "● " : "  ").append(label), true, selected, true, false, () -> {
                 action.run();
-                viewMenuOpen = false;
+                closeViewMenu();
             });
         viewMenuButtons.add(button);
     }

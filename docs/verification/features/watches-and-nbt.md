@@ -221,7 +221,7 @@ the repaired values and establish a complete baseline.
 | Inline row against a real server: completion, validation, Tab/Enter/Ctrl+Enter/Esc, resize focus, edit in place | `DebuggerWatchComposerGameTest` |
 | Inline row on a paused fixture: optional executors, literal holders, pin/delete, compact window | `DebuggerWatchEditorGameTest` |
 | Editor reader contract on the server thread | `WatchEditorTransportGameTest` |
-| Compact Watch values, Details footer, native actions and focus | `clientTest`: `WatchPanelLayoutTest`, `WatchDetailsLayoutTest`, `DebuggerHeaderLayoutTest`; `DebuggerCompactWatchGameTest` |
+| Compact Watch values, Details footer, native actions and focus | `clientTest`: `WatchPanelLayoutTest`, `WatchDetailsLayoutTest`, `DebuggerToolbarLayoutTest`; `DebuggerCompactWatchGameTest` |
 | Empty Watches hint, visible `+` and editor route | `DebuggerNbtTreeGameTest` (`codon-nbt-tree-empty-watch-plus` capture) |
 | NBT reads, tree controls and stale buttons | `NbtTreeReaderGameTest`, `DebuggerNbtTreeGameTest`, `DebuggerNbtPendingButtonsGameTest` |
 | Pinning, grouping, persistence | `DebuggerWatchPinGameTest`, `DebuggerWatchGroupingGameTest`, `DebuggerWatchPersistenceGameTest` |

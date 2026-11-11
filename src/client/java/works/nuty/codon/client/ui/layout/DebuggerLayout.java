@@ -4,9 +4,12 @@ import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds;
 import static works.nuty.codon.client.state.DebuggerPreferences.*;
 
 /** Layout in Minecraft GUI pixels (already scaled by the user's GUI scale setting). */
-public record DebuggerLayout(Bounds header, Bounds controls, Bounds world, Bounds inspector,
+public record DebuggerLayout(Bounds toolbar, Bounds world, Bounds inspector,
                              Bounds command, Bounds footer, boolean compact) {
     public static final int ICON_BUTTON_SIZE = 20;
+    public static final int TOOLBAR_HEIGHT = ICON_BUTTON_SIZE + 4;
+    /** The running idle badge is a single text row at the toolbar's corner. */
+    public static final int IDLE_BADGE_HEIGHT = 18;
     public static final int ICON_BUTTON_GAP = 3;
     public static final int ICON_GROUP_GAP = 7;
 
@@ -33,13 +36,9 @@ public record DebuggerLayout(Bounds header, Bounds controls, Bounds world, Bound
                                         int requestedInspectorWidth, int bottomInset) {
         int margin = width < 360 ? 3 : 6;
         int usableWidth = Math.max(1, width - margin * 2);
-        int headerWidth = Math.min(240, usableWidth);
-        int toolbarWidth = Math.min(6 + 12 * ICON_BUTTON_SIZE + 10 * ICON_BUTTON_GAP + ICON_GROUP_GAP, usableWidth);
         boolean compact = width < 480 || height < 300;
-        int headerHeight = 18;
-        int controlHeight = ICON_BUTTON_SIZE + 4;
         int footerHeight = 0;
-        int worldY = margin + headerHeight + controlHeight + 3;
+        int worldY = margin + TOOLBAR_HEIGHT + 3;
         int workspaceBottom = Math.max(worldY, height - margin - Math.max(0, bottomInset));
         int minimumWorldHeight = height < 180 ? 16 : height < 300 ? 42 : 80;
         // Retain a context row, detail actions and NBT rows when the HUD takes space.
@@ -62,13 +61,16 @@ public record DebuggerLayout(Bounds header, Bounds controls, Bounds world, Bound
         int inspectorSpace = panelWidth == 0 ? 0 : Math.min(usableWidth, panelWidth + 4);
         int worldWidth = usableWidth - inspectorSpace;
         return new DebuggerLayout(
-            new Bounds(margin, margin, headerWidth, headerHeight),
-            new Bounds(margin, margin + headerHeight, toolbarWidth, controlHeight),
+            new Bounds(margin, margin, usableWidth, TOOLBAR_HEIGHT),
             new Bounds(margin + inspectorSpace, worldY, worldWidth, worldHeight),
             new Bounds(margin, worldY, panelWidth, worldHeight),
             new Bounds(margin, commandY, usableWidth, Math.max(0, Math.min(commandHeight, height - margin - commandY))),
             new Bounds(margin, height - margin - footerHeight, usableWidth, footerHeight),
             compact
         );
+    }
+
+    public Bounds idleBadgeRow() {
+        return new Bounds(toolbar.x(), toolbar.y(), toolbar.width(), IDLE_BADGE_HEIGHT);
     }
 }

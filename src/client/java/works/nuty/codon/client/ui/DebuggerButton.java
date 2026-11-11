@@ -19,6 +19,8 @@ public class DebuggerButton extends AbstractButton {
     public static final int TEXT_ICON_INSET = DebuggerIcon.SIZE + 2;
     public static final int CHANGED_DOT_DIAMETER = 4;
     public static final int CHANGED_DOT_GAP = 4;
+    /** Room a disclosure caret takes after the label: a 5-pixel triangle and its gap. */
+    public static final int DISCLOSURE_WIDTH = 8;
     private Runnable action = () -> { };
     private @Nullable Runnable secondaryAction;
     private boolean selected;
@@ -34,6 +36,8 @@ public class DebuggerButton extends AbstractButton {
     private boolean openLeft;
     private boolean openRight;
     private boolean revealOnHover;
+    private boolean disclosure;
+    private @Nullable Component displayText;
     private int revealX;
     private int revealY;
     private int revealWidth;
@@ -83,6 +87,8 @@ public class DebuggerButton extends AbstractButton {
         this.openLeft = false;
         this.openRight = false;
         this.revealOnHover = false;
+        this.disclosure = false;
+        this.displayText = null;
         this.contentOffset = 0;
         this.contentWidth = width;
         this.textPadding = 10;
@@ -194,6 +200,18 @@ public class DebuggerButton extends AbstractButton {
         return this;
     }
 
+    /** A ▾ caret after the label marks a button that opens a menu; the label itself stays unchanged. */
+    public DebuggerButton withDisclosure() {
+        this.disclosure = true;
+        return this;
+    }
+
+    /** Paints shorter text while the message stays the full label for narration and lookup. */
+    public DebuggerButton withDisplayText(Component text) {
+        this.displayText = text;
+        return this;
+    }
+
     public DebuggerButton withTextIcon(DebuggerIcon icon) {
         this.icon = icon;
         this.iconWithText = true;
@@ -291,15 +309,23 @@ public class DebuggerButton extends AbstractButton {
             }
         }
         var font = client.font;
-        String full = getMessage().getString();
+        String full = (displayText != null ? displayText : getMessage()).getString();
         int dotInset = hasChangedDot() ? CHANGED_DOT_DIAMETER + CHANGED_DOT_GAP : 0;
         int inset = (iconWithText ? TEXT_ICON_INSET : 0) + dotInset;
-        int available = Math.max(0, contentWidth - textPadding - inset);
+        int caret = disclosure ? DISCLOSURE_WIDTH : 0;
+        int available = Math.max(0, contentWidth - textPadding - inset - caret);
         String text = font.width(full) <= available ? full
             : font.plainSubstrByWidth(full, Math.max(0, available - font.width("…"))) + "…";
         graphics.enableScissor(getX() + 2, getY(), getRight() - 2, getBottom());
         int textX = leftAligned ? getX() - contentOffset + textPadding / 2 + inset
-            : getX() - contentOffset + inset + (contentWidth - inset - font.width(text)) / 2;
+            : getX() - contentOffset + inset + (contentWidth - inset - caret - font.width(text)) / 2;
+        if (disclosure) {
+            int caretX = textX + font.width(text) + DISCLOSURE_WIDTH - 5;
+            int caretY = getY() + height / 2 - 1;
+            int color = DebuggerTheme.foreground(foreground);
+            for (int row = 0; row < 3; row++)
+                graphics.fill(caretX + row, caretY + row, caretX + 5 - row, caretY + row + 1, color);
+        }
         if (hasChangedDot()) {
             int dotX = textX - dotInset;
             int dotY = getY() + (height - CHANGED_DOT_DIAMETER) / 2;
