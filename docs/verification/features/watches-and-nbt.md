@@ -49,11 +49,11 @@ These use presentation fixtures and do not establish server read execution.
 
 Regular Watches default to 280 logical pixels (previously 360), bounded by the same
 free area above Flow. In cursor mode at viewport widths of 600 logical pixels or
-more, drag the Watch panel's left edge or the Contexts inspector's right edge to
+more, drag the Watch panel's left edge or the Contexts/Call stack dock's right edge to
 resize it. Both use the shared `PanelResizeInput`, a neutral edge highlight and
-horizontal resize cursor. Watch requests range from 220–640 pixels; Contexts from
+horizontal resize cursor. Watch requests range from 220–640 pixels; the dock from
 160–640, with its existing 190-pixel default. Screen bounds constrain the displayed
-widths and Contexts leaves room for a visible Watch's readable minimum. Watch
+widths and the dock leaves room for a visible Watch's readable minimum. Watch
 names stay on the left and values stay right-aligned on the same line at every
 panel width, including below 260 pixels. Narrow rows clip each side to its available
 space; the expanded row shows the full content. No blank action column is reserved.
@@ -61,7 +61,7 @@ The narrow auxiliary drawer and Source's separate function-list
 splitter retain their existing behavior; Flow remains full-width below the panels.
 
 Release saves the selected width once in the existing `config/codon.json` settings
-(`watchWidth` / `inspectorWidth`); missing fields use defaults. Viewport clamps do
+(`watchWidth` / `inspectorWidth`, the latter now sizing the dock); missing fields use defaults. Viewport clamps do
 not overwrite a saved request, so enlarging the window restores it. Esc, UI hiding,
 modal opening, screen removal and viewport/scale resize cancel an active preview.
 The captured drag/release is consumed without invoking row actions. Source retains
@@ -100,7 +100,11 @@ fixes its target or returns to following the selected executor. The NBT heading
 explicitly identifies a current-pause read, or labels retained values while a new
 read is pending. Retained rows keep their existing input-blocking guard. Historical
 contexts with no current-pause occurrence cannot open a live NBT tree; when room
-permits, the empty NBT area explains that no historical NBT was captured. A recorded
+permits, the empty NBT area explains that no historical NBT was captured. The NBT
+tree is part of the selected Contexts row's in-place expansion: it follows that row
+and is narrower than the list so the two scrollbars never share hits. Its field pin
+is the row's Add to Watch action and produces the same entity-NBT `WatchSpec` as
+before. A recorded
 context which still maps to a live occurrence may show NBT, explicitly labeled as
 a current-pause read rather than a historical value. Query/occurrence matching is unchanged. Keyboard focus uses a filled corner
 caret, and the scrollbar is neutral. Foreground text/icons bypass panel opacity.
@@ -122,7 +126,7 @@ data modify storage codon:verify counter set value 0
 
 1. Put `execute as @a run scoreboard players add @s codon_verify 1` in an impulse
    command block, set a breakpoint, and trigger it. Step until the player executor
-   is selected, then press `V` to interact with Watches and the context inspector.
+   is selected, then press `V` to interact with Watch and the docked Contexts section.
 2. With no saved watches, check that the visible `+` add control matches the empty
    panel's `Use + to add` hint (English and Korean), then use it to open the editor.
    Add the executor's `codon_verify`
@@ -262,11 +266,12 @@ Choose the row for the changed behavior, not the whole table. Inspect the matchi
 `*codon-*.png` captures where emitted. UI fixtures alone do not prove paused-server
 query timing; use the pause/transport scenario for that boundary.
 
-At a 320x240 GUI viewport, Details initially folds into the View menu. Open
-`View → Details` before inspecting NBT. `DebuggerNbtTreeGameTest` exercises that
+At a 320x240 GUI viewport, Contexts initially folds into the View menu. Open
+`View → Contexts` before inspecting NBT. `DebuggerNbtTreeGameTest` exercises that
 route and then verifies that both the selected source and NBT data remain visible.
-In short inspector viewports, a compact Contexts caption and one selected-source
-row leave room for the NBT heading plus data, even with the Flow detail band open.
+In a 64-pixel dock, the selected row's expansion gives up its detail lines before the
+NBT heading, which stays inside the dock. Switching entities keeps the heading at the
+same place under the selected row.
 
 
 Client receive transfers have independent count, text, page and lifetime budgets. Watch

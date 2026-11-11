@@ -48,8 +48,8 @@ versioned custom network payloads.
    the viewer, resume execution, reload the datapack and refresh the viewer.
 
 Watches support scoreboard scores, entity NBT and storage NBT. Use the toolbar's
-Watches control to add a watch, or pin entity fields from the context inspector's
-NBT tree. These inspection reads do not execute the watched command again.
+Watches control to add a watch, or pin entity fields from the selected Contexts
+row's NBT tree. These inspection reads do not execute the watched command again.
 
 ## Default controls
 

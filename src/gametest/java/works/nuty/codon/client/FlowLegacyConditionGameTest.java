@@ -52,8 +52,16 @@ public final class FlowLegacyConditionGameTest implements FabricClientGameTest {
                         failures.add("Flow tooltip " + key + " repeats the context definition or count legend: " + tooltip);
                     if (key.startsWith("clause-") && tooltip.contains(entry.getValue().getMessage().getString()))
                         failures.add("Flow clause tooltip " + key + " echoes the clause text: " + tooltip);
-                    if (key.startsWith("path-") && tooltip.contains("#"))
-                        failures.add("Flow frame tooltip " + key + " shows the internal invocation id: " + tooltip);
+                }
+                // Frames moved from Flow's strip to the docked Call stack section.
+                var stack = FunctionLineBreakpointGameTest.field(overlay, "callStackPanel");
+                var frames = (Map<String, DebuggerButton>) FunctionLineBreakpointGameTest.field(
+                    FunctionLineBreakpointGameTest.field(stack, "rows"), "widgets");
+                if (frames.isEmpty()) failures.add("The docked Call stack lists the stopped frame");
+                for (var entry : frames.entrySet()) {
+                    String tooltip = tooltipText(entry.getValue(), client);
+                    if (tooltip.contains("#"))
+                        failures.add("Call stack frame tooltip " + entry.getKey() + " shows the internal invocation id: " + tooltip);
                 }
                 if (buttons.containsKey("selected-condition"))
                     failures.add("Flow recreates the removed selected-condition footer control");

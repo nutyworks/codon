@@ -203,6 +203,9 @@ public final class DebuggerConditionalFunctionFlowGameTest implements FabricClie
             .filter(flow -> flow.invocationId() == parentId).findFirst().orElseThrow();
         ClientDebuggerState state = new ClientDebuggerState();
         CodonScreen screen = context.computeOnClient(client -> {
+            // The scenario's own chat output would reserve most of the workspace above the HUD;
+            // clear it so the docked Call stack has its usual room (recent chat fades the same way).
+            client.gui.hud.getChat().clearMessages(false);
             state.applyPause(insideFunction);
             InputManager input = new InputManager(state, ignored -> { });
             input.keepFreecamKey = Arrays.stream(client.options.keyMappings).filter(key -> key.getName().equals("key.codon.keep_freecam")).findFirst().orElseThrow();

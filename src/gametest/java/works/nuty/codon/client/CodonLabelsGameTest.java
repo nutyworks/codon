@@ -136,11 +136,19 @@ public final class CodonLabelsGameTest implements FabricClientGameTest {
         context.waitTicks(3);
         if (width == 640) {
             click(context, fixture.screen(), "codon.ui.view");
-            click(context, fixture.screen(), "codon.ui.details");
-            context.runOnClient(client -> require((boolean) field(fixture.overlay(), "showInspector"),
-                "Native View → Details opens the narrow context inspector"));
+            click(context, fixture.screen(), "codon.ui.contexts");
+            context.runOnClient(client -> require((boolean) field(fixture.overlay(), "showContexts"),
+                "Native View → Contexts opens the narrow Contexts section"));
         }
         capture(context, name + "-rotation");
+        if (width == 640) {
+            click(context, fixture.screen(), "codon.ui.view");
+            click(context, fixture.screen(), "codon.ui.callstack.title");
+            context.runOnClient(client -> require((boolean) field(fixture.overlay(), "showCallStack")
+                    && !(boolean) field(fixture.overlay(), "showContexts"),
+                "Native View → Call stack swaps the narrow drawer to the Call stack section"));
+            capture(context, name + "-call-stack");
+        }
     }
 
     private static void click(ClientGameTestContext context, ScaledCodonScreen screen, String key) {

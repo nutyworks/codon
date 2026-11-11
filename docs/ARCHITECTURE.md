@@ -163,13 +163,13 @@ and changes that require subsequent simulation ticks still wait for normal execu
 - `state/ClientDebuggerState` — authoritative pause/breakpoint mirror, local context/frame selection,
   gizmo mode, and a pending-control latch cleared by server packets or a retry timeout.
 - `network/ClientNetworking` — receivers that update the mirror and clear it on disconnect.
-- `ui/DebuggerOverlay` — shared transparent HUD and cursor-mode presentation: control bar and context
-  inspector on the left (clear of the scoreboard). `CommandPanel` combines a single horizontally
-  scrollable call path (trackpad or mouse wheel, with clipped hit boxes and selected-frame visibility) and recorded command
+- `ui/DebuggerOverlay` — shared transparent HUD and cursor-mode presentation: the toolbar, a left
+  dock (clear of the scoreboard) stacking the Contexts and Call stack (`CallStackPanel`) sections, allocated
+  by `DockLayout`, and the right-hand Watch/Breakpoints column. The selected context row expands in place into its details and NBT
+  tree; the call stack is a vertical list, innermost frame first. `CommandPanel` shows the recorded command
   clauses with context counts below the world. Navigation, Current, Watch, and panel expansion occupy
   fixed slots in the bottom action row; Current remains visible but disabled at the live stop.
-  The panel expands upward while its actions remain at the same screen coordinates. The call path
-  stays above the clauses without a duplicate location/invocation caption. Frame and
+  The panel expands upward while its actions remain at the same screen coordinates. Frame and
   clause navigation share the explicit invocation/stage selection; the actual stop remains marked
   separately, and Current returns to it. Long commands wrap and scroll, with an expanded-height mode.
   Selecting an already visible clause preserves the scroll position; automatic scrolling only reveals
@@ -182,7 +182,7 @@ and changes that require subsequent simulation ticks still wait for normal execu
   `CodonScreen` registers its native widgets
   for mouse, keyboard, and narration. `ClientFormatting` renders core types as chat components.
   `DebuggerNavigation` keeps a logical focus order separate from rendering order: toolbar, context
-  list, context details, NBT, world controls, call path, command clauses, and bottom actions. Tab and
+  list and its row actions, NBT, Watch, call stack, breakpoints, world controls, command clauses, and bottom actions. Tab and
   Shift+Tab switch directly between containers and remember each container's last focused item.
   Arrows traverse items, including off-screen rows, but never leave their container. Revealing a hidden control restores focus by its stable
   ID after rendering. Mouse scrolling clears focus from hidden controls without arming a replacement;
@@ -209,7 +209,7 @@ and changes that require subsequent simulation ticks still wait for normal execu
   snapshots are still cleared during advancement so stale command state cannot be inspected.
   The original player's body remains visible at its paused position through vanilla entity
   rendering; player/vehicle render interpolation is fixed so the pose stays still.
-  The inspector's **Move camera to context** icon, to the right of Copy UUID, places the detached camera eye at the
+  The selected Contexts row's **Move camera to context** action, to the right of Copy UUID, places the detached camera eye at the
   selected context's recorded execution anchor and applies its recorded facing. It never reads
   the entity's current position or moves the player/vehicle. The action revalidates the current
   pause, pending control, selection, camera session, dimension and finite coordinates on click;
@@ -336,10 +336,10 @@ Simple quoted NBT paths share duplicate identity.
 Row inspection provides scrollable full values and copy actions; current values have priority over
 long previous values in compact rows. Save status follows an explicit server ACK (or timeout), with retry.
 
-The context inspector always shows NBT for its selected live entity context.
-Selecting a non-entity or historical context, or hiding the inspector, hides the tree; pinned values remain
+The selected Contexts row expands into the NBT tree of its live entity context.
+Selecting a non-entity or historical context, folding the row or hiding Contexts hides the tree; pinned values remain
 in Watches. There is one passive NBT heading, with no section toggle or repeated entity heading.
-Inspector regions are sized from the viewport so loading or expanding fields does not move the heading
+The row's expansion is sized from the viewport so loading or expanding fields does not move the heading
 or context details. Compact layouts prioritize the selected context row and NBT data over secondary details.
 Expanding or collapsing a field preserves that field's screen row, including at the tree's bottom;
 wheel scrolling releases this anchor. Compound fields and list/array elements expand lazily; each tree pages
