@@ -563,6 +563,39 @@ class DebuggerRecipientAuthorizationTest {
         assertFalse(engine.isPaused());
     }
 
+    @Test void breakpointWithoutAuthorizedCodonOwnerDoesNotParkTheServer() {
+        var controller = mock(ExecutionController.class);
+        var engine = new DebuggerEngine(new BreakpointRegistry(), new StepController(), new CallStack(), controller, sink);
+        engine.toggleBlockBreakpoint(BLOCK);
+        assertTrue(sink.hasPauseRecipient());
+        unsupported.get(owner).add(PauseSyncPayload.TYPE.id());
+        assertFalse(sink.hasPauseRecipient(), "An owner without the pause channel cannot see or release a stop");
+        when(playerList.getPlayers()).thenReturn(List.of(visitor));
+        assertFalse(sink.hasPauseRecipient(), "A connected non-owner is not a recipient");
+        clearSent();
+
+        engine.onCommandStage(new CommandStageEvent(82, 0, LOCATION, SNAPSHOT.command(), SNAPSHOT::pauseSources));
+
+        verify(controller, never()).parkUntil(any());
+        assertFalse(engine.isPaused());
+        assertTrue(sent.get(visitor).isEmpty());
+    }
+
+    @Test void ownerShownThePauseHoldsItWhileConnectedEvenIfDeopped() {
+        sink.paused(SNAPSHOT);
+        when(permissions.get(owner).hasPermission(Permissions.COMMANDS_OWNER)).thenReturn(false);
+        assertTrue(sink.hasPauseRecipient(), "Removing permission during a pause leaves the stop to the owner and console");
+        unsupported.get(owner).add(PauseSyncPayload.TYPE.id());
+        sink.paused(SNAPSHOT);
+        assertTrue(sink.hasPauseRecipient(), "A later stop in the same session keeps its connected audience");
+        when(owner.connection.isAcceptingMessages()).thenReturn(false);
+        assertFalse(sink.hasPauseRecipient(), "Once everyone shown the stop has gone, it is released");
+        when(owner.connection.isAcceptingMessages()).thenReturn(true);
+        when(permissions.get(owner).hasPermission(Permissions.COMMANDS_OWNER)).thenReturn(true);
+        sink.resumed();
+        assertFalse(sink.hasPauseRecipient(), "A finished pause has no audience left");
+    }
+
     @Test void oversizedJoinStackUsesOwnerOnlyWarningAndCleanup() {
         var frame = new CallFrame(0, LOCATION, SNAPSHOT.command());
         when(joinEngine.currentSnapshot()).thenReturn(new PauseSnapshot(LOCATION, SNAPSHOT.command(), 0,
@@ -591,13 +624,31 @@ class DebuggerRecipientAuthorizationTest {
     }
 
     private void assertUnavailablePause() {
-        only(owner, ResumeSyncPayload.class);
+        var summary = only(owner, PauseSummarySyncPayload.class);
+        assertTrue(summary.summary().pauseId() > 0, "Controls stay correlated with the live pause");
+        assertTrue(summary.summary().callStack().isEmpty() && summary.summary().pauseSources().isEmpty()
+            && summary.summary().executionFlows().isEmpty(), "Withhold details instead of truncating them");
+        assertTrue(summary.callStackSize() > ClientboundLimits.MAX_CALL_STACK
+            || summary.pauseSourceCount() > ClientboundLimits.MAX_PAUSE_SOURCES);
+        assertTrue(payloads(owner, ResumeSyncPayload.class).isEmpty(), "Never present a parked server as running");
         assertTrue(payloads(owner, PauseSyncPayload.class).isEmpty());
         assertTrue(payloads(owner, WatchChangesSyncPayload.class).isEmpty());
+        verify(owner, never()).sendSystemMessage(any());
+    }
+
+    @Test void oversizedPauseFallsBackToResumeAndWarningForPeersWithoutSummary() {
+        unsupported.get(owner).add(PauseSummarySyncPayload.TYPE.id());
+        var sources = Collections.nCopies(ClientboundLimits.MAX_PAUSE_SOURCES + 1, SNAPSHOT.pauseSources().getFirst());
+        var snapshot = new PauseSnapshot(LOCATION, SNAPSHOT.command(), 0, List.of(), sources, PauseReason.BREAKPOINT, 44);
+        assertFalse(sink.sendPauseSnapshot(owner, snapshot));
+        only(owner, ResumeSyncPayload.class);
+        assertTrue(payloads(owner, PauseSyncPayload.class).isEmpty());
         verify(owner).sendSystemMessage(argThat(message ->
             message.getContents() instanceof TranslatableContents text
                 && text.getKey().equals("codon.pause.snapshot_too_large")
                 && text.getFallback().contains("/codon resume")));
+        assertFalse(sink.sendPauseSnapshot(visitor, snapshot));
+        assertTrue(sent.get(visitor).isEmpty());
     }
 
     private ServerPlayer player(boolean authorized) {

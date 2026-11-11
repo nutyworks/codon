@@ -3,6 +3,7 @@ package works.nuty.codon.core.support;
 import works.nuty.codon.core.model.BlockLocation;
 import works.nuty.codon.core.model.ExecutionFlowTrace;
 import works.nuty.codon.core.model.PauseSnapshot;
+import works.nuty.codon.core.model.SourceLocation;
 import works.nuty.codon.core.port.DebuggerEventSink;
 
 import java.util.ArrayList;
@@ -17,6 +18,18 @@ public final class RecordingEventSink implements DebuggerEventSink {
     public int steps = 0;
     public int continues = 0;
     public int breakpointChanges = 0;
+    public boolean recipient = true;
+    public final List<String> withoutRecipient = new ArrayList<>();
+
+    @Override
+    public boolean hasPauseRecipient() {
+        return recipient;
+    }
+
+    @Override
+    public void pauseWithoutRecipient(SourceLocation location, boolean released) {
+        withoutRecipient.add((released ? "released " : "skipped ") + location);
+    }
 
     @Override
     public void paused(PauseSnapshot snapshot) {

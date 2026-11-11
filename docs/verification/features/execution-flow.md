@@ -192,6 +192,7 @@ continues execution. This does not truncate or remap source indices.
 | Native `if function` / `unless function` chronology | `DebuggerConditionalFunctionFlowGameTest` |
 | Flow options/markers for never-observed stages, rejection feedback, recovered previews, then first-occurrence terminal and conditional stops | `DebuggerUnobservedFlowBreakpointGameTest`; `clientTest`: `ClientUnobservedFlowSelectionTest`, `ClientFlowPreviewRequestsTest`, `CommandFlowLayoutTest` |
 | Continuations and incomplete-record warnings | `DebuggerContinuationRecordingGameTest` |
+| Expanded context group cleared when Breakpoints navigation selects a shorter stage (no stale indices) | `DebuggerPresentationGameTest` |
 | Rendered context indicators, stable selection/grouping, dot size at 1.00/1.50/2.25 scales, EN/KO hover/focus explanations | `DebuggerPresentationGameTest`; `clientTest`: `GizmoLabelLayoutTest`; `test`: `DebuggerButtonTest` (narration and reused-button cleanup) |
 
 Example: `./gradlew runClientGameTest -PclientGameTest=DebuggerExecutionFlowGameTest`.

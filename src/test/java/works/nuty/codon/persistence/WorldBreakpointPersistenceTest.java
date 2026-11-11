@@ -281,6 +281,18 @@ class WorldBreakpointPersistenceTest {
         assertEquals(1, harness.sink.resumes);
     }
 
+    @Test
+    void stopWithoutRecipientIsSkippedThroughThePersistenceAdapter() {
+        Harness harness = new Harness();
+        harness.sink.recipient = false;
+        var location = new SourceLocation.Function(FUNCTION);
+        harness.engine.toggleFunctionBreakpoint(FUNCTION);
+        harness.engine.onCommandStage(new works.nuty.codon.core.service.CommandStageEvent(1, 0, location,
+            works.nuty.codon.core.model.CommandSnippet.plain("say one"), List::of, 0));
+        assertFalse(harness.engine.isPaused(), "the production wrapper must forward the recipient check");
+        assertEquals(List.of(location), harness.sink.skipped);
+    }
+
     private Path file() { return directory.resolve("data").resolve(WorldBreakpointPersistence.FILE_NAME); }
 
     private void write(String json) throws Exception {
@@ -302,6 +314,10 @@ class WorldBreakpointPersistenceTest {
         int resumes;
         int steps;
         int continues;
+        boolean recipient = true;
+        final List<SourceLocation> skipped = new ArrayList<>();
+        @Override public boolean hasPauseRecipient() { return recipient; }
+        @Override public void pauseWithoutRecipient(SourceLocation location, boolean released) { skipped.add(location); }
         @Override public void paused(PauseSnapshot snapshot) { }
         @Override public void resumed() { resumes++; }
         @Override public void stepping() { steps++; }
