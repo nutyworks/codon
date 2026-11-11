@@ -59,6 +59,10 @@ public final class DebuggerContinuationRecordingGameTest implements FabricClient
         }
         try (TestSingleplayerContext world = context.worldBuilder().create()) {
             world.getConnection().waitForChunksRender();
+            // A stop needs an owner-authorized Codon client to park.
+            world.getServer().runOnServer(server -> server.getPlayerList().op(
+                server.getPlayerList().getPlayers().getFirst().nameAndId(),
+                java.util.Optional.of(net.minecraft.server.permissions.LevelBasedPermissionSet.OWNER), java.util.Optional.empty()));
             world.getServer().runCommand("scoreboard objectives add codon_runs dummy");
             Setup setup = world.getServer().computeOnServer(DebuggerContinuationRecordingGameTest::setup);
             try {

@@ -100,6 +100,14 @@ public final class WorldBreakpointPersistence implements DebuggerEventSink {
         downstream.executionFlowsCompleted(flows);
     }
 
+    @Override
+    public boolean hasPauseRecipient() { return downstream.hasPauseRecipient(); }
+
+    @Override
+    public void pauseWithoutRecipient(SourceLocation location, boolean released) {
+        downstream.pauseWithoutRecipient(location, released);
+    }
+
     private void restore(JsonObject document) {
         int version = integer(document, "version");
         if (version == 2 || version == 3) {

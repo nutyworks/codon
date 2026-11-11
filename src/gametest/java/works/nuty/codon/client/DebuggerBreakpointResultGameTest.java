@@ -40,7 +40,8 @@ public final class DebuggerBreakpointResultGameTest implements FabricClientGameT
     private static final AtomicReference<String> TRIGGER = new AtomicReference<>("not queued");
 
     @Override public void runTest(ClientGameTestContext context) {
-        try (TestSingleplayerContext world = context.worldBuilder().create()) {
+        // A stop needs an owner-authorized Codon client to park.
+        try (TestSingleplayerContext world = context.worldBuilder().adjustSettings(settings -> settings.setAllowCommands(true)).create()) {
             world.getConnection().waitForChunksRender();
             Setup setup = world.getServer().computeOnServer(DebuggerBreakpointResultGameTest::setup);
             try {
