@@ -191,8 +191,8 @@ public final class DebuggerUnobservedFlowBreakpointGameTest implements FabricCli
             && marker(client.gui.screen(), clause(client.gui.screen(), fragment)).active, 200);
         context.runOnClient(client -> {
             click(client.gui.screen(), marker(client.gui.screen(), clause(client.gui.screen(), fragment)), InputConstants.MOUSE_BUTTON_RIGHT);
-            require(ScreenLayers.get(client.gui.screen()) instanceof BreakpointConditionScreen,
-                "Flow right-click opens breakpoint options for an unobserved stage");
+            require(ConditionStripGameTestUi.open(client.gui.screen()),
+                "Flow right-click opens the condition strip for an unobserved stage");
         });
         context.getInput().setCursorPos(0, 0);
         context.waitTicks(3);
@@ -205,23 +205,13 @@ public final class DebuggerUnobservedFlowBreakpointGameTest implements FabricCli
                 "the exact inactive unobserved Flow marker remains visible after the pointer leaves");
         });
         if (condition.kind() != BreakpointCondition.Kind.ALWAYS) {
-            context.runOnClient(client -> {
-                Screen layer = ScreenLayers.get(client.gui.screen());
-                click(layer, button(layer, "Always ▾"), InputConstants.MOUSE_BUTTON_LEFT);
-                click(layer, button(layer, "Input context count"), InputConstants.MOUSE_BUTTON_LEFT);
-                click(layer, button(layer, "= ▾"), InputConstants.MOUSE_BUTTON_LEFT);
-                click(layer, button(layer, "="), InputConstants.MOUSE_BUTTON_LEFT);
-                layer.children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast)
-                    .filter(value -> value.visible).findFirst().orElseThrow().setValue("1");
-            });
+            context.runOnClient(client -> ConditionStripGameTestUi.count(client.gui.screen(), condition));
         }
-        context.takeScreenshot("codon-unobserved-flow-options-stage-" + target.stageIndex());
-        context.runOnClient(client -> {
-            Screen layer = ScreenLayers.get(client.gui.screen());
-            click(layer, button(layer, "Save and enable"), InputConstants.MOUSE_BUTTON_LEFT);
-        });
+        context.takeScreenshot("codon-unobserved-flow-strip-stage-" + target.stageIndex());
+        context.runOnClient(client -> ConditionStripGameTestUi.click(client.gui.screen(),
+            ConditionStripGameTestUi.text("codon.breakpoint.save")));
         context.waitFor(client -> state().breakpoints().get(target) != null && !state().breakpoints().pending(target)
-            && ScreenLayers.get(client.gui.screen()) == null, 200);
+            && !ConditionStripGameTestUi.open(client.gui.screen()), 200);
         context.runOnClient(client -> require(state().breakpoints().get(target).enabled()
                 && state().breakpoints().get(target).condition().equals(condition),
             "server acknowledges the exact static stage index, fingerprint, and condition"));

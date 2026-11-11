@@ -2,15 +2,11 @@ package works.nuty.codon.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
-import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.input.KeyEvent;
-import net.minecraft.client.input.MouseButtonEvent;
-import net.minecraft.client.input.MouseButtonInfo;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
@@ -24,7 +20,7 @@ import works.nuty.codon.client.testmixin.CommandBlockInvoker;
 import works.nuty.codon.client.ui.*;
 import works.nuty.codon.core.model.*;
 
-/** Real loaded function/block stops and acknowledged exact legacy toggle/delete through Source/Flow. */
+/** Real loaded function/block stops; the Breakpoints row edit action removes the exact saved stage in Source/Flow. */
 @SuppressWarnings({"UnstableApiUsage", "unchecked"})
 public final class SingleStageLegacyManagementGameTest implements FabricClientGameTest {
     private static final FunctionId FUNCTION = new FunctionId("codon_test", "condition_visibility");
@@ -117,78 +113,33 @@ public final class SingleStageLegacyManagementGameTest implements FabricClientGa
                 .filter(candidate -> candidate.getMessage().getString().contains(stage)).findFirst()
                 .orElseThrow(() -> new AssertionError("no stage row among " + BreakpointPanelGameTestUi.rows(client.gui.screen()).stream().map(r -> r.getMessage().getString()).toList()));
             check(row.active, "saved single-stage row has a real destination");
-            client.gui.screen().setFocused(row);
+            // The row's edit action navigates like the row and opens the strip for this exact definition.
+            var edit = BreakpointPanelGameTestUi.edit(client.gui.screen(), row);
+            check(edit.active, "saved single-stage row offers its edit action");
+            client.gui.screen().setFocused(edit);
             client.gui.screen().keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
         });
-        context.waitTicks(3);
-        openMarker(context, whole);
-        context.takeScreenshot(position == null ? "codon-legacy-function-options" : "codon-legacy-block-options");
-        choose(context, 1);
-        context.waitFor(client -> !CodonClientMod.state().breakpoints().pending(legacy.target())
-            && !CodonClientMod.state().breakpoints().get(legacy.target()).enabled(), 200);
-        context.runOnClient(client -> check(!CodonClientMod.state().breakpoints().get(whole).enabled()
-            && unrelated.equals(CodonClientMod.state().breakpoints().get(unrelated.target())), "toggle changes only the saved stage"));
-        if (position == null) {
-            context.runOnClient(client -> client.player.connection.sendCommand("codon resume"));
-            context.waitFor(client -> completed.get() && !CodonClientMod.state().isPaused(), 200);
-            fire(server, null, completed);
-            context.waitFor(client -> completed.get() && !CodonClientMod.state().isPaused(), 200);
-        }
-        openMarker(context, whole);
-        choose(context, 2);
+        context.waitFor(client -> ConditionStripGameTestUi.open(client.gui.screen())
+            && ConditionStripGameTestUi.strip(client.gui.screen()).bounds().width() > 0, 200);
         context.runOnClient(client -> {
-            var editor = (BreakpointConditionScreen) ScreenLayers.get(client.gui.screen());
-            check(((BreakpointDefinition) FunctionLineBreakpointGameTest.field(editor, "original")).target().equals(legacy.target()),
-                "saved options keep the exact legacy target");
-            var delete = (AbstractWidget) FunctionLineBreakpointGameTest.field(editor, "deleteButton");
-            editor.setFocused(delete);
-            editor.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
+            var strip = ConditionStripGameTestUi.strip(client.gui.screen());
+            check(strip.target().equals(legacy.target()), "the edit action keeps the exact saved stage target");
+            check(strip.editsMarker(whole, command), "the strip opens under the line marker that shows the saved stage");
+            check(client.gui.screen() instanceof FunctionSourceScreen == (position == null),
+                "a function opens in Source and a command block in Flow");
         });
+        context.takeScreenshot(position == null ? "codon-legacy-function-strip" : "codon-legacy-block-strip");
+        context.runOnClient(client -> ConditionStripGameTestUi.click(client.gui.screen(),
+            ConditionStripGameTestUi.text("codon.breakpoint.strip.remove")));
         context.waitFor(client -> !CodonClientMod.state().breakpoints().pending(legacy.target())
-            && CodonClientMod.state().breakpoints().get(legacy.target()) == null && ScreenLayers.get(client.gui.screen()) == null, 200);
+            && CodonClientMod.state().breakpoints().get(legacy.target()) == null && !ConditionStripGameTestUi.open(client.gui.screen()), 200);
         context.takeScreenshot(position == null ? "codon-legacy-function-removed" : "codon-legacy-block-removed");
         context.runOnClient(client -> check(!CodonClientMod.state().breakpoints().get(whole).enabled()
-            && unrelated.equals(CodonClientMod.state().breakpoints().get(unrelated.target())), "delete preserves the line and unrelated breakpoint"));
-        if (position != null) {
-            context.runOnClient(client -> client.player.connection.sendCommand("codon resume"));
-            context.waitFor(client -> completed.get() && !CodonClientMod.state().isPaused(), 200);
-        }
+            && unrelated.equals(CodonClientMod.state().breakpoints().get(unrelated.target())), "Remove preserves the line and unrelated breakpoint"));
+        context.runOnClient(client -> client.player.connection.sendCommand("codon resume"));
+        context.waitFor(client -> completed.get() && !CodonClientMod.state().isPaused(), 200);
         fire(server, position, completed);
         context.waitFor(client -> completed.get() && !CodonClientMod.state().isPaused(), 200);
-    }
-
-    private static void openMarker(ClientGameTestContext context, BreakpointTarget whole) {
-        context.runOnClient(client -> {
-            var screen = client.gui.screen();
-            if (screen instanceof FunctionSourceScreen) {
-                int line = ((SourceLocation.Function) whole.location()).location().line();
-                int x = FunctionLineBreakpointGameTest.value(screen, "lineMarkerX");
-                int y = FunctionLineBreakpointGameTest.value(screen, "sourceLineTop")
-                    + (line - (int) FunctionLineBreakpointGameTest.field(screen, "lineOffset") - 1) * 18 + 9;
-                var event = new MouseButtonEvent(x, y, new MouseButtonInfo(InputConstants.MOUSE_BUTTON_RIGHT, 0));
-                screen.mouseClicked(event, false); screen.mouseReleased(event);
-            } else {
-                var overlay = FunctionLineBreakpointGameTest.field(screen, "overlay");
-                var panel = FunctionLineBreakpointGameTest.field(overlay, "commandPanel");
-                var cache = (Map<String, DebuggerButton>) FunctionLineBreakpointGameTest.field(panel, "cache");
-                var marker = cache.get("flow-breakpoint-" + CodonClientMod.state().selectedExecutionFlow().invocationId() + "-" + whole);
-                check(marker != null, "Flow exposes its sole whole-command marker");
-                var event = new MouseButtonEvent(marker.getX() + 3, marker.getY() + 3,
-                    new MouseButtonInfo(InputConstants.MOUSE_BUTTON_RIGHT, 0));
-                screen.mouseClicked(event, false); screen.mouseReleased(event);
-            }
-            check(ScreenLayers.get(screen).getClass().getSimpleName().equals("DebuggerContextMenu"), "marker exposes saved-stage options");
-        });
-        context.waitTicks(2);
-    }
-
-    private static void choose(ClientGameTestContext context, int index) {
-        context.runOnClient(client -> {
-            var menu = ScreenLayers.get(client.gui.screen());
-            for (int i = 0; i < index; i++) menu.keyPressed(new KeyEvent(InputConstants.KEY_DOWN, 0, 0));
-            menu.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
-        });
-        context.waitTicks(2);
     }
 
     private static void fire(MinecraftServer server, BlockPos position, AtomicBoolean completed) {

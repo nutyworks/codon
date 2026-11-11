@@ -35,7 +35,9 @@ final class BreakpointPanel {
     static final int MINIMUM_HEIGHT = HEADER + ROW_HEIGHT + PADDING;
 
     private final ClientDebuggerState state;
+    private static final int EDIT_SIZE = 14;
     private final VisibleWidgetCache<String, RowButton> buttons = new VisibleWidgetCache<>();
+    private final VisibleWidgetCache<String, DebuggerButton> edits = new VisibleWidgetCache<>();
     private List<BreakpointDefinition> displayed = List.of();
     private Bounds bounds = EMPTY;
     private Bounds scrollBounds = EMPTY;
@@ -79,8 +81,9 @@ final class BreakpointPanel {
         // Every row is a keyboard target; revealing one scrolls it into the viewport.
         for (int row = 0; row < displayed.size(); row++) {
             int logical = row;
-            navigation.add(rowId(displayed.get(row)), DebuggerNavigation.Group.BREAKPOINT, row, 0,
-                () -> offset = Math.clamp(revealRow(logical, offset, capacity), 0, maximum));
+            Runnable reveal = () -> offset = Math.clamp(revealRow(logical, offset, capacity), 0, maximum);
+            navigation.add(rowId(displayed.get(row)), DebuggerNavigation.Group.BREAKPOINT, row, 0, reveal);
+            navigation.add(editId(displayed.get(row)), DebuggerNavigation.Group.BREAKPOINT, row, 1, reveal);
         }
         navigation.revealFocus(DebuggerNavigation.Group.BREAKPOINT);
         offset = Math.clamp(offset, 0, maximum);
@@ -97,13 +100,15 @@ final class BreakpointPanel {
                 bounds.width() - 14, MUTED);
 
         buttons.begin();
+        edits.begin();
         var controls = new java.util.ArrayList<DebuggerButton>();
         for (int row = offset; row < offset + shown; row++) {
             BreakpointDefinition definition = displayed.get(row);
             BreakpointTarget target = definition.target();
             String id = rowId(definition);
             RowButton button = buttons.get(id, RowButton::new);
-            button.configure(bounds.x() + 4, bounds.y() + HEADER + (row - offset) * ROW_HEIGHT, bounds.width() - 8,
+            // The row leaves room on its right for the edit action, so each owns its own clicks.
+            button.configure(bounds.x() + 4, bounds.y() + HEADER + (row - offset) * ROW_HEIGHT, bounds.width() - 10 - EDIT_SIZE,
                 ROW_HEIGHT - 2, Component.literal(label(definition)), canNavigate(target), false, true, false,
                 () -> navigate(target));
             button.asHitSurface().withTextIcon(BreakpointUi.icon(definition));
@@ -115,8 +120,19 @@ final class BreakpointPanel {
             button.setTooltip(tip.isEmpty() ? null : Tooltip.create(Component.literal(tip.toString())));
             navigation.bind(id, DebuggerNavigation.Group.BREAKPOINT, button);
             controls.add(button);
+            // Hover action: edit the condition inline at the row's Source line or Flow stage.
+            DebuggerButton edit = edits.get(editId(definition), DebuggerButton::new);
+            int rowY = button.getY();
+            edit.configure(button.getRight() + 1, rowY + (button.getHeight() - EDIT_SIZE) / 2, EDIT_SIZE, EDIT_SIZE,
+                Component.translatable("codon.breakpoint.edit_condition"), canNavigate(target)
+                    && state.breakpoints().ready() && !state.breakpoints().pending(target), false, false, false,
+                () -> edit(target));
+            edit.withIcon(DebuggerIcon.EDIT).withoutChrome().revealOnHover(button.getX(), rowY, button.getWidth() + EDIT_SIZE + 2, button.getHeight());
+            navigation.bind(editId(definition), DebuggerNavigation.Group.BREAKPOINT, edit);
+            controls.add(edit);
         }
         buttons.end();
+        edits.end();
         if (maximum > 0 && scrollBounds.height() > 0) {
             int h = scrollBounds.height();
             int thumb = Math.min(h, Math.max(8, h * capacity / displayed.size()));
@@ -130,6 +146,7 @@ final class BreakpointPanel {
     }
 
     private static String rowId(BreakpointDefinition definition) { return "breakpoint-row:" + definition.target(); }
+    private static String editId(BreakpointDefinition definition) { return "breakpoint-edit:" + definition.target(); }
 
     boolean scroll(double x, double y, double amount) {
         if (!scrollBounds.contains(x, y) || amount == 0) return false;
@@ -231,14 +248,26 @@ final class BreakpointPanel {
     }
 
     private void navigate(BreakpointTarget target) {
-        if (state.breakpoints().get(target) == null) return;
+        navigate(target, false);
+    }
+
+    /** Navigates like the row, then opens the inline condition strip for this exact definition there. */
+    private void edit(BreakpointTarget target) {
+        if (!state.breakpoints().ready() || state.breakpoints().pending(target)) return;
+        navigate(target, true);
+    }
+
+    private void navigate(BreakpointTarget target, boolean edit) {
+        BreakpointDefinition definition = state.breakpoints().get(target);
+        if (definition == null) return;
         CodonScreen screen = debuggerScreen();
         if (screen == null) return;
         if (target.location() instanceof SourceLocation.Function function) {
             var sources = CodonClientMod.sources();
             if (sources == null) return;
             sources.selectAt(function.location());
-            Minecraft.getInstance().gui.setScreen(new FunctionSourceScreen(screen, sources).revealBreakpoint(target));
+            var source = new FunctionSourceScreen(screen, sources).revealBreakpoint(target);
+            Minecraft.getInstance().gui.setScreen(edit ? source.editBreakpoint(definition) : source);
             return;
         }
         FlowTarget destination = flowTarget(target);
@@ -251,6 +280,7 @@ final class BreakpointPanel {
             && BreakpointTargetPolicy.stageCount(flow.stages().getFirst().command().text(), state.stagePreviews().get(flow.location()), flow) == 1
             ? BreakpointTarget.whole(target.location()) : target;
         screen.revealSelectedFlow(CommandPanel.breakpointFocusId(flow, marker));
+        if (edit) screen.editSelectedFlowBreakpoint(definition, marker);
     }
 
     private static String tr(String key, Object... args) { return Component.translatable(key, args).getString(); }

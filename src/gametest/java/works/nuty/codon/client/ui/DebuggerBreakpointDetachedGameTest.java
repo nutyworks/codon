@@ -42,25 +42,25 @@ public class DebuggerBreakpointDetachedGameTest implements FabricClientGameTest 
                 var parent = new CodonScreen(CodonClientMod.input(), new DebuggerOverlay(state));
                 c.setScreenAndShow(parent);
                 var flow = state.selectedExecutionFlow();
-                var modal = new BreakpointConditionScreen(parent, state, BreakpointDefinition.plain(target))
-                    .withContextGuard(() -> state.snapshot() == expected && state.selectedExecutionFlow() == flow);
-                ScreenLayers.open(parent, modal);
+                var modal = BreakpointConditionStrip.open(parent, BreakpointConditionStrip.Placement.FLOW, state,
+                    BreakpointDefinition.plain(target), target,
+                    () -> state.snapshot() == expected && state.selectedExecutionFlow() == flow, () -> { });
                 var pending = state.breakpoints().begin(ClientBreakpointState.Action.SAVE, BreakpointDefinition.plain(target));
-                require(pending != null && ScreenLayers.get(parent) == modal, "SAVE pending and modal open");
+                require(pending != null && modal != null && BreakpointConditionStrip.get(parent) == modal, "SAVE pending and strip open");
                 modal.trackPending(pending.requestId());
                 return pending;
             });
             require(DebuggerTaskQueue.execute(server, () -> server.getCommands().performPrefixedCommand(
                 server.createCommandSourceStack(), "codon stepinto " + expected.pauseId())), "console step admitted");
-            context.waitFor(c -> state.snapshot() != expected && ScreenLayers.get(c.gui.screen()) == null, 200);
+            context.waitFor(c -> state.snapshot() != expected && BreakpointConditionStrip.get(c.gui.screen()) == null, 200);
             context.runOnClient(c -> {
-                require(state.breakpoints().pending(target), "modal closed while SAVE remains pending");
+                require(state.breakpoints().pending(target), "strip closed while SAVE remains pending");
                 state.breakpoints().finish(edit.requestId(), ClientBreakpointState.Result.INVALID_TARGET);
                 require(state.breakpoints().error(target) == ClientBreakpointState.Result.INVALID_TARGET, "failure retained on target");
                 var notice = state.feedback().current(ClientRequestFeedback.Kind.BREAKPOINT);
                 require(notice != null && notice.messageKey().equals("codon.breakpoint.error.invalid_target"),
-                    "the failure remains visible after the modal closes");
-                CodonMod.LOGGER.info("DETACHED MODAL PASS: native console step closed guarded modal before simulated SAVE rejection; error and toast retained");
+                    "the failure remains visible after the strip closes");
+                CodonMod.LOGGER.info("DETACHED MODAL PASS: native console step closed guarded strip before simulated SAVE rejection; error and toast retained");
             });
             context.waitTicks(20);
             context.takeScreenshot("codon-detached-modal-save-failure");
@@ -70,9 +70,10 @@ public class DebuggerBreakpointDetachedGameTest implements FabricClientGameTest 
                     state.applyPause(live);
                     var parent = c.gui.screen();
                     var flow = state.selectedExecutionFlow();
-                    var modal = new BreakpointConditionScreen(parent, state, BreakpointDefinition.plain(target))
-                        .withContextGuard(() -> state.snapshot() == live && state.selectedExecutionFlow() == flow);
-                    ScreenLayers.open(parent, modal);
+                    var modal = BreakpointConditionStrip.open(parent, BreakpointConditionStrip.Placement.FLOW, state,
+                        BreakpointDefinition.plain(target), target,
+                        () -> state.snapshot() == live && state.selectedExecutionFlow() == flow, () -> { });
+                    require(modal != null, "strip opens on the live pause");
                     var pending = state.breakpoints().begin(ClientBreakpointState.Action.SAVE, BreakpointDefinition.plain(target));
                     require(pending != null, "start same-frame SAVE");
                     modal.trackPending(pending.requestId());

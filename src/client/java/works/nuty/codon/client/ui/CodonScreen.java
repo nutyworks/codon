@@ -149,6 +149,10 @@ public final class CodonScreen extends ScaledCodonScreen {
 
     void cancelPanelResize() { overlay.panelResizing().cancel(); }
     void revealSelectedFlow(String focusId) { overlay.revealSelectedFlow(this, focusId); }
+    void editSelectedFlowBreakpoint(works.nuty.codon.core.model.BreakpointDefinition definition,
+                                    works.nuty.codon.core.model.BreakpointTarget marker) {
+        overlay.openFlowCondition(definition, marker);
+    }
 
     @Override
     public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {

@@ -20,6 +20,15 @@ final class BreakpointPanelGameTestUi {
             .filter(button -> button.getClass().getSimpleName().equals("RowButton")).toList();
     }
 
+    /** The edit action beside {@code row}. */
+    static DebuggerButton edit(Screen screen, DebuggerButton row) {
+        String label = Component.translatable("codon.breakpoint.edit_condition").getString();
+        return screen.children().stream().filter(DebuggerButton.class::isInstance).map(DebuggerButton.class::cast)
+            .filter(button -> button.getMessage().getString().equals(label) && button.getX() > row.getX()
+                && button.getY() >= row.getY() && button.getY() < row.getBottom())
+            .findFirst().orElseThrow(() -> new AssertionError("Edit action beside " + row.getMessage().getString()));
+    }
+
     /** Opens the panel with its toolbar breakpoint-count button; a panel that is already open stays open. */
     static void open(ClientGameTestContext context) { press(context, false); }
 

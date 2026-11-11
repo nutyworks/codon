@@ -97,6 +97,8 @@ public final class DebuggerOverlay {
     private int lastAuxiliarySize = -1;
     private AuxiliaryPanel auxiliaryPanel = AuxiliaryPanel.NONE;
     private int hoverX = -1;
+    int pointerX() { return hoverX; }
+    int pointerY() { return hoverY; }
     private int hoverY = -1;
 
     public DebuggerOverlay(ClientDebuggerState state) {
@@ -139,6 +141,10 @@ public final class DebuggerOverlay {
             && state.selectedExecutionFlow() == flow && state.selectedFlowStageIndex() == stage
             && state.selectedUnobservedStageIndex() == unobserved && state.selectedFrameIndex() == frame
             && state.selectedCallFrameIndex() == callFrame);
+    }
+    void openFlowCondition(works.nuty.codon.core.model.BreakpointDefinition definition,
+                           works.nuty.codon.core.model.BreakpointTarget marker) {
+        commandPanel.openCondition(definition, marker);
     }
     boolean openFlowContextMenu(net.minecraft.client.gui.components.events.GuiEventListener focused) {
         boolean opened = commandPanel.openContextMenu(focused);
