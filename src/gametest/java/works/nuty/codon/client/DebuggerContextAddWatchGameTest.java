@@ -110,7 +110,8 @@ public final class DebuggerContextAddWatchGameTest implements FabricClientGameTe
                     require(box.getCursorPosition() == "entity ".length(), "the cursor waits in the path slot");
                     require(client.gui.screen().getFocused() == box, "the Watch row has keyboard focus");
                 });
-                context.waitFor(client -> hasButton(client, "Health"), 200);
+                // The server answers with this context's NBT keys; the row lists the first few.
+                context.waitFor(client -> completionReady(), 200);
                 context.waitTicks(3);
                 context.takeScreenshot("codon-context-add-watch-completion");
                 context.runOnClient(client -> box(client).setValue("entity Heal"));
@@ -176,7 +177,7 @@ public final class DebuggerContextAddWatchGameTest implements FabricClientGameTe
                 DebuggerButton korean = context.computeOnClient(client -> addWatch(client.gui.screen()));
                 require(korean != null && korean.active, "the compact Korean Contexts row shows Add to Watch");
                 WatchGameTestUi.click(context, korean, InputConstants.MOUSE_BUTTON_LEFT);
-                context.waitFor(client -> hasButton(client, "Health"), 200);
+                context.waitFor(client -> completionReady(), 200);
                 context.waitTicks(3);
                 context.runOnClient(client -> require(box(client).getValue().equals("entity "),
                     "the compact Korean action opens the entity row"));
@@ -257,6 +258,11 @@ public final class DebuggerContextAddWatchGameTest implements FabricClientGameTe
     private static works.nuty.codon.client.state.ClientWatchState.Entry health() {
         return CodonClientMod.state().watches().entries().stream().filter(entry -> entry.spec().equals(HEALTH))
             .findFirst().orElse(null);
+    }
+
+    private static boolean completionReady() {
+        var page = CodonClientMod.state().watchEditor().page();
+        return page != null && page.status() == WatchResult.Status.VALUE && !page.options().isEmpty();
     }
 
     private static EditBox box(Minecraft client) {
