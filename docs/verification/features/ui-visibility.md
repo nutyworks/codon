@@ -39,7 +39,7 @@ Flow has no call-path row (the call stack is a dock section), so a 40-pixel pane
 keeps an 18-pixel command/marker row above its actions. Opening
 chat continues to suppress the passive debugger HUD.
 
-At compact widths the dock shows one section at a time (View → Contexts, Watch or
+At compact widths one slot shows one section at a time (View → Contexts, Watch or
 Call stack, or the toolbar's Breakpoints count). Explicitly opened Watch and
 Breakpoints use the available workspace above the HUD; narrow drawers do the same,
 and closing them restores Command. Taller layouts retain context detail actions and

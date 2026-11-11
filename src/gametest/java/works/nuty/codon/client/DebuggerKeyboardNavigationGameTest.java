@@ -219,9 +219,6 @@ public final class DebuggerKeyboardNavigationGameTest implements FabricClientGam
         });
         context.waitTicks(2);
         // The docked Call stack lists the innermost frame first; Down walks toward the root caller.
-        // This 300-pixel-high dock fits two sections; hide Watch so Call stack is one of them.
-        context.runOnClient(client -> state.preferences().setWatchesVisible(false));
-        context.waitTicks(2);
         context.runOnClient(client -> screen.setFocused(button(screen, label -> label.equals("demo:spawn_wave:12"))));
         for (int index = 0; index < 9; index++) {
             context.runOnClient(client -> press(client, screen, InputConstants.KEY_DOWN, InputConstants.KEYCODE_DOWN,
@@ -238,15 +235,12 @@ public final class DebuggerKeyboardNavigationGameTest implements FabricClientGam
         }
         context.runOnClient(client -> require(focusedLabel(screen).equals("demo:spawn_wave:12"),
             "Up returns through the hidden call frames while keeping keyboard focus"));
-        context.runOnClient(client -> state.preferences().setWatchesVisible(true));
-        context.waitTicks(2);
     }
 
     private static void checkNbtNavigation(ClientGameTestContext context, CodonScreen screen,
                                            ClientDebuggerState state) {
-        // The tree is the selected Contexts row's expansion; give the dock room for its rows beside Call stack.
+        // The dock keeps a Call stack row under Contexts; this height leaves the expanded NBT tree several rows.
         context.getInput().resizeWindow(1280, 720);
-        context.runOnClient(client -> state.preferences().setWatchesVisible(false));
         context.runOnClient(client -> {
             PauseSnapshot base = DebuggerPresentationGameTest.fixture(client);
             state.applyPause(new PauseSnapshot(base.location(), base.command(), base.depth(), base.callStack(),
@@ -275,7 +269,6 @@ public final class DebuggerKeyboardNavigationGameTest implements FabricClientGam
         context.waitTicks(2);
         context.runOnClient(client -> require(isNbtPin(focused(screen)), "NBT Up preserves the Watch action column"));
         context.takeScreenshot("codon-keyboard-nbt-hidden-row");
-        context.runOnClient(client -> state.preferences().setWatchesVisible(true));
         context.getInput().resizeWindow(1280, 600);
         context.waitTicks(2);
     }

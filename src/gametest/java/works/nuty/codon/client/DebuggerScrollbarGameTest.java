@@ -27,7 +27,7 @@ public final class DebuggerScrollbarGameTest implements FabricClientGameTest {
     @Override
     public void runTest(ClientGameTestContext context) {
         try (TestSingleplayerContext ignored = context.worldBuilder().create()) {
-            // The dock stacks Contexts above Call stack; this height leaves the expanded NBT tree several rows.
+            // The dock keeps a Call stack row under Contexts; this height leaves the expanded NBT tree several rows.
             context.getInput().resizeWindow(1280, 720);
             context.runOnClient(client -> {
                 client.options.guiScale().set(2);
@@ -36,8 +36,6 @@ public final class DebuggerScrollbarGameTest implements FabricClientGameTest {
 
             ClientDebuggerState state = new ClientDebuggerState();
             CodonScreen screen = context.computeOnClient(client -> {
-                // Watch is not under test; hiding it gives the Contexts tree the dock's spare height.
-                state.preferences().setWatchesVisible(false);
                 PauseSnapshot base = DebuggerPresentationGameTest.fixture(client);
                 state.applyPause(new PauseSnapshot(base.location(), base.command(), base.depth(), base.callStack(),
                     base.pauseSources(), base.executionFlows(), base.reason(), 91));

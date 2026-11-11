@@ -11,14 +11,17 @@ separate acceptance checks.
 
 ### Docked Contexts and Call stack
 
-Contexts and the call stack are sections of the left dock, which stacks **Contexts**,
-**Watch**, **Call stack** and **Breakpoints** in that order (View toggles the first
-three; the toolbar count toggles Breakpoints). The dock is reserved beside the world,
-never over it; drag its right edge to resize it (220–640 pixels, saved as `watchWidth`).
-Every visible section keeps its header and one row; spare height grows sections toward
-their content, and a dock too short for a section's minimum drops the trailing
-sections instead of overlapping them. Below 600 GUI pixels the dock shows one section
-at a time; below 420 it becomes a drawer over the world until closed.
+Contexts and the call stack are the two sections of the left dock, which replaces the
+context inspector and is reserved beside the world (drag its right edge to resize it;
+160–640 pixels, saved as `inspectorWidth`). Watch and Breakpoints keep their right-hand
+column; moving them into the same dock (the full Contexts, Watch, Call stack,
+Breakpoints order in #142) is left for a later stage. View toggles Contexts and Call
+stack. Each visible section keeps its header and one row; an expanded NBT tree then
+reserves its heading and two rows, and spare height grows both sections toward their
+content, with any rest going to Contexts. A dock too short for the Call stack's
+minimum drops it instead of overlapping. Below 600 GUI pixels the dock and the Watch
+column share one slot that shows one section at a time; below 420 it becomes a drawer
+over the world until closed.
 
 - **Contexts** — the header shows the count and which stage supplied the contexts
   (`Contexts (3) · Before stage 2`), plus **All** while a world-label group is

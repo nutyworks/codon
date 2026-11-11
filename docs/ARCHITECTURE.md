@@ -163,9 +163,9 @@ and changes that require subsequent simulation ticks still wait for normal execu
 - `state/ClientDebuggerState` — authoritative pause/breakpoint mirror, local context/frame selection,
   gizmo mode, and a pending-control latch cleared by server packets or a retry timeout.
 - `network/ClientNetworking` — receivers that update the mirror and clear it on disconnect.
-- `ui/DebuggerOverlay` — shared transparent HUD and cursor-mode presentation: the toolbar and a left
-  dock (clear of the scoreboard) stacking the Contexts, Watch, Call stack (`CallStackPanel`) and Breakpoints
-  sections, allocated by `DockLayout`. The selected context row expands in place into its details and NBT
+- `ui/DebuggerOverlay` — shared transparent HUD and cursor-mode presentation: the toolbar, a left
+  dock (clear of the scoreboard) stacking the Contexts and Call stack (`CallStackPanel`) sections, allocated
+  by `DockLayout`, and the right-hand Watch/Breakpoints column. The selected context row expands in place into its details and NBT
   tree; the call stack is a vertical list, innermost frame first. `CommandPanel` shows the recorded command
   clauses with context counts below the world. Navigation, Current, Watch, and panel expansion occupy
   fixed slots in the bottom action row; Current remains visible but disabled at the live stop.

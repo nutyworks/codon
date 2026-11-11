@@ -126,15 +126,6 @@ public final class WatchPanel {
         overlay.revealWatches();
         composer.begin(id);
     }
-    /** Header plus the empty-state row, so a docked section is never reduced to a title bar. */
-    static final int MINIMUM_HEIGHT = HEADER + 27 + BOTTOM_PADDING;
-
-    /** Approximate height showing every Watch row, for the dock to clamp to its space. */
-    int preferredHeight() {
-        int rows = Math.max(1, state.watches().displayedEntries().size());
-        return HEADER + (composer.open() ? 45 : 0) + rows * 28 + (expandedId != 0 ? 80 : 0) + BOTTOM_PADDING;
-    }
-
     public Bounds bounds() { return bounds; }
     public Bounds scrollBounds() { return scrollBounds; }
     public int offset() { return offset; }

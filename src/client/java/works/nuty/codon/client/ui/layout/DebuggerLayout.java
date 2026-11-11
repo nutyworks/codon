@@ -4,7 +4,7 @@ import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds;
 import static works.nuty.codon.client.state.DebuggerPreferences.*;
 
 /** Layout in Minecraft GUI pixels (already scaled by the user's GUI scale setting). */
-/** The dock is the left column of stacked sections; it is reserved beside the world, never over it. */
+/** The dock is the left column of Contexts and Call stack, reserved beside the world. */
 public record DebuggerLayout(Bounds toolbar, Bounds world, Bounds dock,
                              Bounds command, Bounds footer, boolean compact) {
     public static final int ICON_BUTTON_SIZE = 20;
@@ -19,12 +19,12 @@ public record DebuggerLayout(Bounds toolbar, Bounds world, Bounds dock,
     }
 
     public static DebuggerLayout create(int width, int height, boolean showDock, int requestedCommandHeight) {
-        return create(width, height, showDock, requestedCommandHeight, DEFAULT_WATCH_WIDTH);
+        return create(width, height, showDock, requestedCommandHeight, DEFAULT_INSPECTOR_WIDTH);
     }
 
-    /** The world keeps at least 164 pixels beside a resized dock. */
-    public static int maximumDockWidth(int width) {
-        return Math.max(MIN_WATCH_WIDTH, Math.min(MAX_PANEL_WIDTH, width - 12 - 164));
+    public static int maximumDockWidth(int width, boolean showWatches) {
+        return Math.max(MIN_INSPECTOR_WIDTH, Math.min(MAX_PANEL_WIDTH,
+            width - 12 - (showWatches ? MIN_WATCH_WIDTH + 8 : 164)));
     }
 
     public static DebuggerLayout create(int width, int height, boolean showDock, int requestedCommandHeight,
@@ -56,7 +56,7 @@ public record DebuggerLayout(Bounds toolbar, Bounds world, Bounds dock,
         int commandY = Math.max(worldY, workspaceBottom - footerHeight - commandHeight);
         int worldHeight = Math.max(0, commandY - worldY - 3);
         int panelWidth = showDock ? width < 600 ? Math.min(DEFAULT_INSPECTOR_WIDTH, Math.max(144, usableWidth / 3))
-            : Math.clamp(requestedDockWidth, MIN_WATCH_WIDTH, maximumDockWidth(width)) : 0;
+            : Math.clamp(requestedDockWidth, MIN_INSPECTOR_WIDTH, maximumDockWidth(width, false)) : 0;
         // Extremely small windows use a full-width information drawer, never negative world space.
         panelWidth = Math.min(panelWidth, usableWidth);
         int dockSpace = panelWidth == 0 ? 0 : Math.min(usableWidth, panelWidth + 4);

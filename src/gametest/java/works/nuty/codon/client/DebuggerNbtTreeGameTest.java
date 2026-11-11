@@ -423,7 +423,7 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
             CodonScreen screen = codonScreen(client.gui.screen());
             var preferences = CodonClientMod.state().preferences();
             var dock = DebuggerLayout.create(screen.width, screen.height, true, 104,
-                preferences.watchWidth(), works.nuty.codon.client.ui.DebuggerHudInsets.bottom(preferences)).dock();
+                preferences.inspectorWidth(), works.nuty.codon.client.ui.DebuggerHudInsets.bottom(preferences)).dock();
             require(dock.height() == 64, "The regression uses the short dock viewport");
             DebuggerButton heading = button(screen, DebuggerNbtTreeGameTest::isNbtHeading);
             require(heading.getY() >= dock.y() && heading.getBottom() <= dock.y() + dock.height(),

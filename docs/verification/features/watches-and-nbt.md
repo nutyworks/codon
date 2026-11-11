@@ -47,13 +47,13 @@ These use presentation fixtures and do not establish server read execution.
 
 ## User path and expected result
 
-Watch is the second section of the left dock (Contexts, Watch, Call stack,
-Breakpoints; see [Execution flow](execution-flow.md#docked-contexts-and-call-stack)).
-The dock defaults to 280 logical pixels, bounded by the free area above Flow. In
-cursor mode at viewport widths of 600 logical pixels or more, drag the dock's right
-edge to resize it, using the shared `PanelResizeInput`, a neutral edge highlight and
-horizontal resize cursor. Requests range from 220–640 pixels; the world keeps at
-least 164 pixels beside the dock. Watch
+Regular Watches default to 280 logical pixels (previously 360), bounded by the same
+free area above Flow. In cursor mode at viewport widths of 600 logical pixels or
+more, drag the Watch panel's left edge or the Contexts/Call stack dock's right edge to
+resize it. Both use the shared `PanelResizeInput`, a neutral edge highlight and
+horizontal resize cursor. Watch requests range from 220–640 pixels; the dock from
+160–640, with its existing 190-pixel default. Screen bounds constrain the displayed
+widths and the dock leaves room for a visible Watch's readable minimum. Watch
 names stay on the left and values stay right-aligned on the same line at every
 panel width, including below 260 pixels. Narrow rows clip each side to its available
 space; the expanded row shows the full content. No blank action column is reserved.
@@ -61,14 +61,13 @@ The narrow auxiliary drawer and Source's separate function-list
 splitter retain their existing behavior; Flow remains full-width below the panels.
 
 Release saves the selected width once in the existing `config/codon.json` settings
-(`watchWidth`; the older `inspectorWidth` is still read but no longer sizes a panel);
-missing fields use defaults. Viewport clamps do
+(`watchWidth` / `inspectorWidth`, the latter now sizing the dock); missing fields use defaults. Viewport clamps do
 not overwrite a saved request, so enlarging the window restores it. Esc, UI hiding,
 modal opening, screen removal and viewport/scale resize cancel an active preview.
 The captured drag/release is consumed without invoking row actions. Source retains
 its existing forwarding of drags that start on an exposed parent panel. Its init
 and removal only cancel a pending parent-panel preview, leaving its own splitter
-untouched. Width adjustment is scoped to the dock in the regular layout.
+untouched. Width adjustment is scoped to these two HUD panels in the regular layout.
 
 The following alignment-only change disables the narrow stacked-row policy; it
 reuses the existing left-key/right-value renderer, 18/28-pixel row geometry and

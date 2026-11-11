@@ -88,7 +88,7 @@ public final class DebuggerOverlay {
     private final BreakpointPanel breakpointPanel;
     private Bounds sourceScrollBounds = EMPTY;
     private Bounds contextsBounds = EMPTY;
-    private Bounds dockArea = EMPTY;
+    private Bounds watchSummaryBounds = EMPTY;
     /** The selected context row shows its details and NBT tree under it until clicked again. */
     private boolean contextExpanded = true;
     private final Map<DebuggerButton, Runnable> contextMenus = new HashMap<>();
@@ -201,7 +201,7 @@ public final class DebuggerOverlay {
         callStackPanel.clearBounds();
         breakpointPanel.clearBounds();
         contextMenus.clear();
-        contextsBounds = dockArea = EMPTY;
+        contextsBounds = watchSummaryBounds = EMPTY;
         nbtPanel.clearBounds();
         if (client.level == null || client.player == null) {
             buttonCache.clear();
@@ -263,11 +263,12 @@ public final class DebuggerOverlay {
         showCallStack = compactAuxiliary ? shownPanel == AuxiliaryPanel.CALL_STACK : callStackOpen;
         // The saved-breakpoint list is a cursor-mode section; the passive HUD never shows it.
         showBreakpoints = interactive && (compactAuxiliary ? shownPanel == AuxiliaryPanel.BREAKPOINTS : breakpointsOpen);
-        boolean dockVisible = showContexts || showWatches || showCallStack || showBreakpoints;
-        // The narrow drawer covers the world until closed; wider layouts reserve the dock beside it.
-        boolean reserveDock = !narrowAuxiliary && dockVisible;
-        int maximumDockWidth = DebuggerLayout.maximumDockWidth(graphics.guiWidth());
-        int dockWidth = Math.min(maximumDockWidth, panelResizing.requestedWidth("dock", preferences().watchWidth()));
+        // Contexts and Call stack form the left dock; Watch and Breakpoints keep their right-hand column.
+        boolean dockVisible = showContexts || showCallStack;
+        boolean sideColumn = showWatches || showBreakpoints;
+        boolean reserveDock = !narrowAuxiliary && (dockVisible || compactAuxiliary && sideColumn);
+        int maximumDockWidth = DebuggerLayout.maximumDockWidth(graphics.guiWidth(), sideColumn);
+        int dockWidth = Math.min(maximumDockWidth, panelResizing.requestedWidth("dock", preferences().inspectorWidth()));
         // Explicit compact Watch and Breakpoints, and any narrow drawer, use the workspace until closed.
         boolean showCommand = state.preferences().commandVisible()
             && !(narrowAuxiliary && shownPanel != AuxiliaryPanel.NONE
@@ -276,7 +277,7 @@ public final class DebuggerOverlay {
             showCommand
                 ? commandPanel.preferredHeight(graphics.guiWidth(), graphics.guiHeight(), snapshot) : 0,
             dockWidth, DebuggerHudInsets.bottom(preferences()));
-        Bounds dockBounds = narrowAuxiliary
+        Bounds auxiliaryBounds = narrowAuxiliary
             ? new Bounds(layout.world().x(), layout.world().y(),
                 Math.min(240, Math.max(0, layout.world().width() - 32)), layout.world().height())
             : layout.dock();
@@ -284,15 +285,41 @@ public final class DebuggerOverlay {
         renderToolbar(graphics, layout, input, snapshot);
         if (viewMenuOpen) renderViewMenu(graphics);
         if (viewMenuBounds.contains(mouseX, mouseY)) hoverX = hoverY = -1;
-        // World labels avoid the dock, and the selected context's details report whether it has a label.
-        if (dockVisible) dockArea = dockBounds;
+        navigationGroup = DebuggerNavigation.Group.WATCH;
+        if (sideColumn) {
+            Bounds column = compactAuxiliary ? auxiliaryBounds
+                : WatchPanelLayout.available(layout, graphics.guiWidth(),
+                    panelResizing.requestedWidth("watch", preferences().watchWidth()));
+            // Wide layouts stack Breakpoints under Watches, leaving the list at least one row.
+            int stacked = showWatches && showBreakpoints ? Math.min(breakpointPanel.preferredHeight(),
+                Math.max(BreakpointPanel.MINIMUM_HEIGHT, column.height() / 2)) : 0;
+            if (showWatches) {
+                renderWatchSummary(graphics, stacked == 0 ? column : new Bounds(column.x(), column.y(), column.width(),
+                    Math.max(0, column.height() - stacked - 4)), hoverX, hoverY, interactive, input);
+            }
+            if (showBreakpoints) {
+                navigationGroup = DebuggerNavigation.Group.BREAKPOINT;
+                int top = stacked == 0 || watchPanel.bounds().height() == 0 ? column.y()
+                    : watchPanel.bounds().y() + watchPanel.bounds().height() + 4;
+                controls.addAll(breakpointPanel.render(graphics,
+                    new Bounds(column.x(), top, column.width(), Math.max(0, column.y() + column.height() - top)),
+                    navigation, scrollbars));
+            }
+        }
+        if (watchPanel.groupingMenuContains(mouseX, mouseY)) hoverX = hoverY = -1;
         navigationGroup = DebuggerNavigation.Group.WORLD;
         if (!narrowAuxiliary || shownPanel == AuxiliaryPanel.NONE)
             renderWorldLabels(graphics, layout.world(), snapshot);
-        if (dockVisible) renderDock(graphics, dockBounds, snapshot, interactive, input);
-        if (watchPanel.groupingMenuContains(mouseX, mouseY)) hoverX = hoverY = -1;
-        if (interactive && reserveDock && !compactAuxiliary)
-            panelResizing.add("dock", layout.dock(), false, MIN_WATCH_WIDTH, maximumDockWidth, preferences()::setWatchWidth);
+        // After the world labels, so the selected context's details know whether it has a label.
+        if (dockVisible) renderDock(graphics, auxiliaryBounds, snapshot, input);
+        if (interactive && !compactAuxiliary) {
+            if (dockVisible) panelResizing.add("dock", auxiliaryBounds, false,
+                MIN_INSPECTOR_WIDTH, maximumDockWidth, preferences()::setInspectorWidth);
+            if (showWatches) panelResizing.add("watch", watchPanel.bounds(), true,
+                MIN_WATCH_WIDTH, WatchPanelLayout.maximumWidth(layout), preferences()::setWatchWidth);
+            else if (showBreakpoints) panelResizing.add("watch", breakpointPanel.bounds(), true,
+                MIN_WATCH_WIDTH, WatchPanelLayout.maximumWidth(layout), preferences()::setWatchWidth);
+        }
         if (showCommand) {
             controls.addAll(commandPanel.render(graphics, layout.command(), snapshot, input, this, navigation));
         }
@@ -530,7 +557,7 @@ public final class DebuggerOverlay {
                 || Math.abs(projected.x) > 1 || Math.abs(projected.y) > 1) continue;
             double x = (projected.x + 1) * 0.5 * graphics.guiWidth();
             double y = (1 - projected.y) * 0.5 * graphics.guiHeight();
-            if (!labelArea.contains(x, y) || dockArea.contains(x, y)) continue;
+            if (!labelArea.contains(x, y) || watchSummaryBounds.contains(x, y) || breakpointPanel.bounds().contains(x, y)) continue;
             // A transition's output prefix is exactly the current stage's inputs; appended drops
             // are historical markers, not live inspector/Watch/NBT indices.
             if (index < inspectorSourceCount) visibleSources.add(index);
@@ -541,7 +568,7 @@ public final class DebuggerOverlay {
         }
         List<GizmoLabelLayout.Label> labels = GizmoLabelLayout.layout(anchors, labelArea,
             selectedIndex, state.gizmoMode() != ClientDebuggerState.GizmoMode.LABELS,
-            Stream.of(dockArea).filter(bounds -> bounds.width() > 0).toList(),
+            Stream.of(watchSummaryBounds, breakpointPanel.bounds()).filter(bounds -> bounds.width() > 0).toList(),
             MAX_WORLD_LABELS);
         for (GizmoLabelLayout.Label label : labels) {
             List<Integer> indices = label.sourceIndices();
@@ -585,67 +612,49 @@ public final class DebuggerOverlay {
 
     }
 
+    /** Saved pins first, followed by every change captured at this stop. */
+    private void renderWatchSummary(GuiGraphicsExtractor graphics, Bounds available,
+                                    int mouseX, int mouseY, boolean interactive, InputManager input) {
+        controls.addAll(watchPanel.render(graphics, available, mouseX, mouseY, interactive, input, this, navigation, scrollbars));
+        watchSummaryBounds = watchPanel.bounds();
+    }
+
     /**
-     * The left dock: Contexts, Watch, Call stack and Breakpoints, stacked in that order. Each visible
-     * section keeps at least a header and one row; spare height grows the lists toward their content.
+     * The left dock: Contexts above Call stack. Each visible section keeps its header and one row; an
+     * expanded NBT tree then reserves its first rows, and spare height grows both toward their content.
      */
-    private void renderDock(GuiGraphicsExtractor graphics, Bounds dock, @Nullable PauseSnapshot snapshot,
-                            boolean interactive, InputManager input) {
+    private void renderDock(GuiGraphicsExtractor graphics, Bounds dock, @Nullable PauseSnapshot snapshot, InputManager input) {
         List<AuxiliaryPanel> kinds = new ArrayList<>();
         List<DockLayout.Section> sections = new ArrayList<>();
         if (showContexts) {
-            kinds.add(AuxiliaryPanel.CONTEXTS);
-            // After every section's minimum, an expanded tree reserves its heading and two rows.
             boolean tree = snapshot != null && contextExpanded && nbtPanel.hasSelectedSource()
                 && contextIndices().contains(state.selectedSourceIndex());
+            kinds.add(AuxiliaryPanel.CONTEXTS);
             sections.add(new DockLayout.Section(CONTEXTS_MINIMUM, tree ? NBT_MINIMUM : 0,
                 Math.max(CONTEXTS_MINIMUM, contextsPreferredHeight(dock.width(), snapshot, input))));
-        }
-        if (showWatches) {
-            kinds.add(AuxiliaryPanel.WATCHES);
-            sections.add(section(WatchPanel.MINIMUM_HEIGHT, watchPanel.preferredHeight()));
         }
         if (showCallStack) {
             kinds.add(AuxiliaryPanel.CALL_STACK);
             sections.add(section(CallStackPanel.MINIMUM_HEIGHT, callStackPanel.preferredHeight()));
         }
-        if (showBreakpoints) {
-            kinds.add(AuxiliaryPanel.BREAKPOINTS);
-            sections.add(section(BreakpointPanel.MINIMUM_HEIGHT, breakpointPanel.preferredHeight()));
-        }
         int[] heights = DockLayout.heights(dock.height(), DOCK_GAP, sections);
-        // Height left below every section goes to Watch, else Contexts, so the longest lists can grow.
+        // Height left below both sections goes to Contexts, whose list and tree can always use it.
         int used = 0, placed = 0;
         for (int height : heights) if (height > 0) { used += height; placed++; }
         int spare = dock.height() - used - Math.max(0, placed - 1) * DOCK_GAP;
-        int receiver = kinds.indexOf(AuxiliaryPanel.WATCHES);
-        if (receiver < 0 || heights[receiver] == 0) receiver = kinds.indexOf(AuxiliaryPanel.CONTEXTS);
-        if (receiver >= 0 && heights[receiver] > 0 && spare > 0) heights[receiver] += spare;
+        if (spare > 0 && heights.length > 0 && heights[0] > 0) heights[0] += spare;
         int y = dock.y();
         int carry = 0;
         for (int i = 0; i < kinds.size(); i++) {
             if (heights[i] == 0) continue;
             Bounds area = new Bounds(dock.x(), y, dock.width(),
                 Math.max(0, Math.min(heights[i] + carry, dock.y() + dock.height() - y)));
-            int rendered = switch (kinds.get(i)) {
-                case CONTEXTS -> renderContexts(graphics, area, snapshot, input);
-                case WATCHES -> {
-                    navigationGroup = DebuggerNavigation.Group.WATCH;
-                    controls.addAll(watchPanel.render(graphics, area, hoverX, hoverY, interactive, input, this,
-                        navigation, scrollbars));
-                    yield watchPanel.bounds().height();
-                }
-                case CALL_STACK -> {
-                    controls.addAll(callStackPanel.render(graphics, area, navigation, scrollbars));
-                    yield callStackPanel.bounds().height();
-                }
-                case BREAKPOINTS -> {
-                    navigationGroup = DebuggerNavigation.Group.BREAKPOINT;
-                    controls.addAll(breakpointPanel.render(graphics, area, navigation, scrollbars));
-                    yield breakpointPanel.bounds().height();
-                }
-                case NONE -> 0;
-            };
+            int rendered;
+            if (kinds.get(i) == AuxiliaryPanel.CONTEXTS) rendered = renderContexts(graphics, area, snapshot, input);
+            else {
+                controls.addAll(callStackPanel.render(graphics, area, navigation, scrollbars));
+                rendered = callStackPanel.bounds().height();
+            }
             carry = area.height() - rendered;
             y += rendered + (rendered > 0 ? DOCK_GAP : 0);
         }
