@@ -58,6 +58,8 @@ public final class DebuggerOverlay {
     private static final int NBT_MINIMUM = 18 + 2 * 17 + 2;
     private static final int NBT_PREFERRED = 18 + 8 * 17 + 2;
     private static final int NBT_MESSAGE = 26;
+    /** NbtTreePanel's heading height; a smaller allocation cannot hold the tree. */
+    private static final int NBT_HEADING = 18;
     /** Blank advance (see font/inline_icon.json) reserving room for a toolbar icon inside wrapped text. */
     private static final int ICON_SLOT = 0xE000;
     private static final FontDescription ICON_SLOT_FONT =
@@ -83,6 +85,7 @@ public final class DebuggerOverlay {
     private int maxSourceOffset;
     private int lastSourceRows = -1;
     private int lastSelectedSource = -1;
+    private boolean lastContextExpanded = true;
     private final WatchPanel watchPanel;
     private final CallStackPanel callStackPanel;
     private final BreakpointPanel breakpointPanel;
@@ -119,7 +122,11 @@ public final class DebuggerOverlay {
         this.watchPanel = new WatchPanel(state);
         this.breakpointPanel = new BreakpointPanel(state);
         this.commandPanel = new CommandPanel(state, () -> { sourceOffset = 0; expandedGroup = List.of(); });
-        this.callStackPanel = new CallStackPanel(state, () -> { sourceOffset = 0; expandedGroup = List.of(); });
+        this.callStackPanel = new CallStackPanel(state, () -> { sourceOffset = 0; expandedGroup = List.of(); }, () -> {
+            // Show in Flow reveals Flow: it may be hidden through View or by the compact drawer.
+            preferences().setCommandVisible(true);
+            closeAuxiliaryPanel();
+        });
     }
 
     public works.nuty.codon.client.state.DebuggerPreferences preferences() { return state.preferences(); }
@@ -744,6 +751,11 @@ public final class DebuggerOverlay {
                 nbtHeight += detailHeight;
                 detailHeight = 0;
             }
+            // The tree's heading is a fixed control; too little room shows details only, never a clipped heading.
+            if (nbtHeight < NBT_HEADING) {
+                detailHeight += nbtHeight;
+                nbtHeight = 0;
+            }
         }
         int count = indices.size();
         List<Integer> expansions = new ArrayList<>(java.util.Collections.nCopies(count, 0));
@@ -751,14 +763,15 @@ public final class DebuggerOverlay {
         var rows = new WatchPanelLayout.Rows(java.util.Collections.nCopies(count, true),
             java.util.Collections.nCopies(count, 0), java.util.Collections.nCopies(count, false), expansions);
         maxSourceOffset = rows.maximumOffset(viewport);
-        if (viewport != lastSourceRows || selected != lastSelectedSource) {
-            // Keep the inspected context identifiable after a resize or an external selection.
+        if (viewport != lastSourceRows || selected != lastSelectedSource || contextExpanded != lastContextExpanded) {
+            // Keep the inspected context identifiable after a resize, an external selection or re-expansion.
             // Clicking an already visible row and ordinary wheel scrolling keep their positions.
             int row = indices.indexOf(selected);
             if (row >= 0) sourceOffset = rows.reveal(row, sourceOffset, viewport);
         }
         lastSourceRows = viewport;
         lastSelectedSource = selected;
+        lastContextExpanded = contextExpanded;
         for (int row = 0; row < count; row++) {
             int index = indices.get(row);
             int logicalRow = row;

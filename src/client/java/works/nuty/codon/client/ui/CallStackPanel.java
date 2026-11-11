@@ -37,6 +37,7 @@ final class CallStackPanel {
 
     private final ClientDebuggerState state;
     private final Runnable selectionChanged;
+    private final Runnable showFlow;
     private final Supplier<@Nullable Screen> host;
     private final VisibleWidgetCache<String, DebuggerButton> rows = new VisibleWidgetCache<>();
     private final VisibleWidgetCache<String, DebuggerButton> sources = new VisibleWidgetCache<>();
@@ -49,13 +50,15 @@ final class CallStackPanel {
 
     private record Selection(List<CallFrame> frames, int selected, int capacity) { }
 
-    CallStackPanel(ClientDebuggerState state, Runnable selectionChanged) {
-        this(state, selectionChanged, () -> Minecraft.getInstance().gui.screen());
+    CallStackPanel(ClientDebuggerState state, Runnable selectionChanged, Runnable showFlow) {
+        this(state, selectionChanged, showFlow, () -> Minecraft.getInstance().gui.screen());
     }
 
-    CallStackPanel(ClientDebuggerState state, Runnable selectionChanged, Supplier<@Nullable Screen> host) {
+    /** {@code showFlow} reveals Flow for Show in Flow, which must land on a visible destination. */
+    CallStackPanel(ClientDebuggerState state, Runnable selectionChanged, Runnable showFlow, Supplier<@Nullable Screen> host) {
         this.state = state;
         this.selectionChanged = selectionChanged;
+        this.showFlow = showFlow;
         this.host = host;
     }
 
@@ -212,6 +215,7 @@ final class CallStackPanel {
                     DebuggerIcon.COMMAND, true, null, guarded(snapshot, frame, index, () -> {
                         state.selectCallFrame(index);
                         selectionChanged.run();
+                        showFlow.run();
                     })));
                 if (frame.location() instanceof SourceLocation.Function)
                     items.add(new DebuggerContextMenu.Item(Component.translatable("codon.ui.call_stack.open_source"),
