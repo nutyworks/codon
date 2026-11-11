@@ -161,9 +161,11 @@ public final class DebuggerContextAddWatchGameTest implements FabricClientGameTe
                     require(pending != null && !pending.active, "a pending control disables Add to Watch");
                 });
                 rightClickRow(context, 1);
+                context.takeScreenshot("codon-context-add-watch-pending-menu");
                 context.runOnClient(client -> {
-                    var item = WatchGameTestUi.action(client.gui.screen(), "codon.ui.contexts.add_watch");
-                    require(item != null && !item.active, "a pending control disables the menu entry");
+                    var item = menuEntry(client.gui.screen(), "codon.ui.contexts.add_watch");
+                    require(item != null, "the entity context's menu keeps Add to Watch while a control is pending");
+                    require(!item.active, "a pending control disables the menu entry");
                     ScreenLayers.get(client.gui.screen()).onClose();
                     CodonClientMod.state().failWatchReads();
                 });
@@ -246,6 +248,14 @@ public final class DebuggerContextAddWatchGameTest implements FabricClientGameTe
         var buttons = (Map<String, DebuggerButton>) FunctionLineBreakpointGameTest.field(overlay, "buttonCache");
         DebuggerButton button = buttons.get(id);
         return button != null && button.visible && screen.children().contains(button) ? button : null;
+    }
+
+    /** A menu entry by its label text, enabled or not. */
+    private static DebuggerButton menuEntry(Screen parent, String key) {
+        String label = Component.translatable(key).getString();
+        return ScreenLayers.get(parent).children().stream().filter(DebuggerButton.class::isInstance)
+            .map(DebuggerButton.class::cast).filter(button -> button.visible && button.getMessage().getString().equals(label))
+            .findFirst().orElse(null);
     }
 
     private static DebuggerButton control(Screen screen, String key) {
