@@ -27,11 +27,12 @@ over the world until closed.
   (`Contexts (3) · Before stage 2`), plus **All** while a world-label group is
   expanded. Clicking a row selects that context; the selected row expands in place
   into its details (parent, dimension, position and rotation with before/after
-  values) and its NBT tree, whose field pins are the Add to Watch action (the same
-  `WatchSpec` as before). Clicking the selected row again folds it. Row actions on
-  the right copy an entity's UUID (revealed on hover or focus) and, on the selected
-  row, move the camera to the context. Right-click or Shift+F10 opens Copy UUID,
-  Move camera and Show/Hide details. While running, the empty section explains how
+  values) and its NBT tree, whose field pins add a Watch bound to that entity's UUID
+  (the same `WatchSpec` as before). Clicking the selected row again folds it. Row
+  actions on the right copy an entity's UUID (revealed on hover or focus) and, on the
+  selected row, add an `entity <path>` Watch (entity contexts only) and move the camera
+  to the context. Right-click or Shift+F10 opens Copy UUID, Add to Watches (entity
+  contexts), Move camera and Show/Hide details. See [Watches and NBT](watches-and-nbt.md#add-to-watch-from-contexts). While running, the empty section explains how
   to set a breakpoint.
 - **Call stack** — a vertical list, innermost frame first, so depth never overflows
   sideways; the wheel and Up/Down scroll it. Selecting a row selects that frame for

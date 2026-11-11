@@ -348,6 +348,10 @@ context's UUID; an active pin removes only that binding. Right-clicking fills th
 current entity context, skipping existing bindings and duplicate UUIDs. If all current entities already
 have that path pinned, right-clicking removes the entire group in one edit. Other paths, floating watches,
 and entities outside the current contexts are preserved.
+The selected entity context row's **Add to Watches** action (also in its right-click/Shift+F10 menu) opens the
+Watch expression row with `entity ` instead; path completion reads the selected context's NBT, and the result is an
+unbound `entity <path>` watch that follows the selected live context. It is disabled while a control request is
+pending, outside a pause, or for a recorded context with no live occurrence.
 Both mouse actions are explained on hover. Non-entity contexts have no NBT section.
 
 `ClientNbtState` caches pages by executor UUID within one pause and correlates every reply with its

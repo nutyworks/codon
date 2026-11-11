@@ -52,6 +52,8 @@ public final class DebuggerOverlay {
     private static final int CONTEXT_ROW = 18;
     private static final int CONTEXT_PADDING = 3;
     private static final int CONTEXT_ACTION = 14;
+    /** Contexts' Add to Watch starts an unbound entity watch; the path is typed with completion. */
+    private static final String ENTITY_WATCH_PREFIX = "entity ";
     /** Header plus one row, so a docked section is never reduced to a title bar. */
     private static final int CONTEXTS_MINIMUM = CONTEXT_HEADER + CONTEXT_ROW + CONTEXT_PADDING;
     /** The NBT tree keeps its heading and two rows before the expansion gives up its detail lines. */
@@ -777,9 +779,10 @@ public final class DebuggerOverlay {
             int logicalRow = row;
             Runnable reveal = () -> sourceOffset = Math.clamp(rows.reveal(logicalRow, sourceOffset, viewport), 0, maxSourceOffset);
             navigation.add("source-" + index, DebuggerNavigation.Group.SOURCES, row, 0, reveal);
-            if (state.displayedSources().get(index).entity() != null)
-                navigation.add("copy-uuid-" + index, DebuggerNavigation.Group.SOURCES, row, 1, reveal);
-            if (index == selected) navigation.add("move-to-source", DebuggerNavigation.Group.SOURCES, row, 2, reveal);
+            boolean entity = state.displayedSources().get(index).entity() != null;
+            if (entity) navigation.add("copy-uuid-" + index, DebuggerNavigation.Group.SOURCES, row, 1, reveal);
+            if (entity && index == selected) navigation.add("add-watch", DebuggerNavigation.Group.SOURCES, row, 2, reveal);
+            if (index == selected) navigation.add("move-to-source", DebuggerNavigation.Group.SOURCES, row, 3, reveal);
         }
         navigation.revealFocus(DebuggerNavigation.Group.SOURCES);
         sourceOffset = Math.clamp(sourceOffset, 0, maxSourceOffset);
@@ -816,7 +819,8 @@ public final class DebuggerOverlay {
             int y = area.y() + CONTEXT_HEADER + rows.height(sourceOffset, row);
             PauseSource source = state.displayedSources().get(index);
             boolean isSelected = index == selected;
-            int actions = (source.entity() != null ? CONTEXT_ACTION + 2 : 0) + (isSelected ? CONTEXT_ACTION + 2 : 0);
+            int actions = (source.entity() != null ? CONTEXT_ACTION + 2 : 0) + (isSelected ? CONTEXT_ACTION + 2 : 0)
+                + (isSelected && source.entity() != null ? CONTEXT_ACTION + 2 : 0);
             Bounds rowArea = new Bounds(area.x() + 4, y, area.width() - 10, CONTEXT_ROW - 1);
             // The row draws its title (a clipped one is echoed by the button); the tooltip adds only status and dimension.
             List<Component> notes = new ArrayList<>();
@@ -835,10 +839,10 @@ public final class DebuggerOverlay {
                     }
                 }).withFlatChrome(), index);
             rowButton.setTooltip(notes.isEmpty() ? null : Tooltip.create(joinLines(notes)));
-            Runnable menu = () -> openContextMenu(snapshot, index, rowArea);
+            Runnable menu = () -> openContextMenu(snapshot, index, rowArea, input);
             rowButton.withSecondaryAction(menu).withNarrationHint(component("codon.ui.contexts.menu_hint"));
             contextMenus.put(rowButton, menu);
-            renderContextActions(rowArea, source, index, isSelected);
+            renderContextActions(rowArea, source, index, isSelected, snapshot, input);
             if (row == selectedRow && expansion > 0) {
                 int expansionY = y + CONTEXT_ROW;
                 if (detailHeight > 0)
@@ -866,8 +870,12 @@ public final class DebuggerOverlay {
         return height;
     }
 
-    /** Row actions on the right: copy an entity's UUID, and move the camera to the selected context. */
-    private void renderContextActions(Bounds row, PauseSource source, int index, boolean selected) {
+    /**
+     * Row actions on the right: copy an entity's UUID, start an {@code entity <path>} Watch from the selected
+     * entity context, and move the camera to the selected context.
+     */
+    private void renderContextActions(Bounds row, PauseSource source, int index, boolean selected,
+                                      @Nullable PauseSnapshot snapshot, InputManager input) {
         int x = row.x() + row.width();
         int y = row.y() + (row.height() - CONTEXT_ACTION) / 2;
         if (selected) {
@@ -883,6 +891,17 @@ public final class DebuggerOverlay {
             x -= 2;
         }
         if (source.entity() == null) return;
+        if (selected) {
+            x -= CONTEXT_ACTION;
+            String status = addWatchStatus();
+            iconButton("add-watch", new Bounds(x, y, CONTEXT_ACTION, CONTEXT_ACTION),
+                component("codon.ui.contexts.add_watch"), DebuggerIcon.WATCH_NBT, status.equals("ready"),
+                () -> addContextWatch(snapshot, index, input))
+                .withoutChrome()
+                // Like Move camera: the label names the action; only an unavailable state has a reason to show.
+                .setTooltip(status.equals("ready") ? null : Tooltip.create(component("codon.ui.contexts.add_watch." + status)));
+            x -= 2;
+        }
         x -= CONTEXT_ACTION;
         String uuid = source.entity().uuid().toString();
         boolean copied = uuid.equals(copiedUuid) && System.nanoTime() < copiedUuidUntil;
@@ -893,6 +912,25 @@ public final class DebuggerOverlay {
         if (!selected && !copied) copy.revealOnHover(row.x(), row.y(), row.width(), row.height());
     }
 
+    /**
+     * Whether the selected entity context can start an unbound {@code entity <path>} Watch: completion reads
+     * that context's NBT from the current pause, so a pending control or a recorded-only context cannot.
+     */
+    private String addWatchStatus() {
+        if (state.controlPending()) return "pending";
+        if (!state.isPaused() || state.snapshot() == null) return "not_paused";
+        if (state.selectedPauseSourceIndex() < 0) return "history";
+        return "ready";
+    }
+
+    /** Opens the Watch row with {@code entity }; its path completion lists the selected context's NBT keys. */
+    private void addContextWatch(@Nullable PauseSnapshot snapshot, int index, InputManager input) {
+        if (state.snapshot() != snapshot || state.selectedSourceIndex() != index
+            || index >= state.displayedSources().size() || state.displayedSources().get(index).entity() == null
+            || !addWatchStatus().equals("ready")) return;
+        watchPanel.beginComposer(-1, ENTITY_WATCH_PREFIX, input, this);
+    }
+
     private void copyUuid(String uuid) {
         client.keyboardHandler.setClipboard(uuid);
         copiedUuid = uuid;
@@ -900,7 +938,7 @@ public final class DebuggerOverlay {
     }
 
     /** Right-click or Shift+F10: the menu acts on its row, so it first selects that row as a click would. */
-    private void openContextMenu(@Nullable PauseSnapshot snapshot, int index, Bounds anchor) {
+    private void openContextMenu(@Nullable PauseSnapshot snapshot, int index, Bounds anchor, InputManager input) {
         var parent = client.gui.screen();
         if (parent == null || state.snapshot() != snapshot || index >= state.displayedSources().size()) return;
         if (state.selectedSourceIndex() != index) {
@@ -919,6 +957,10 @@ public final class DebuggerOverlay {
                     String uuid = source.entity().uuid().toString();
                     items.add(new DebuggerContextMenu.Item(component("codon.ui.copy_uuid"), DebuggerIcon.COPY_UUID, true,
                         Component.literal(uuid), () -> copyUuid(uuid)));
+                    String status = addWatchStatus();
+                    items.add(new DebuggerContextMenu.Item(component("codon.ui.contexts.add_watch"), DebuggerIcon.WATCH_NBT,
+                        status.equals("ready"), status.equals("ready") ? null : component("codon.ui.contexts.add_watch." + status),
+                        () -> addContextWatch(snapshot, index, input)));
                 }
                 var freecam = CodonClientMod.freecam();
                 String status = freecam == null ? "unavailable" : freecam.selectedAnchorStatus(client);

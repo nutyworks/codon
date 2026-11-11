@@ -110,6 +110,7 @@ public final class DebuggerHelpScreen extends ScaledCodonScreen {
                 entry("excluded", DebuggerIcon.SOURCE_EXCLUDED, RED);
                 entry("offscreen", DebuggerIcon.OUTSIDE_VIEWPORT, AMBER);
                 entry("uuid", DebuggerIcon.COPY_UUID, TEAL);
+                entry("add_watch", DebuggerIcon.WATCH_NBT, TEAL);
             }
             case 3 -> {
                 entry("flow", null, TEAL);

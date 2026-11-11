@@ -35,6 +35,7 @@
       "works.nuty.codon.client.DebuggerWithheldPauseGameTest",
       "works.nuty.codon.client.NbtTreeReaderGameTest",
       "works.nuty.codon.client.DebuggerNbtTreeGameTest",
+      "works.nuty.codon.client.DebuggerContextAddWatchGameTest",
       "works.nuty.codon.client.DebuggerWatchChainGameTest",
       "works.nuty.codon.client.DebuggerWatchGameTest",
       "works.nuty.codon.client.DebuggerRequestTransportGameTest",
