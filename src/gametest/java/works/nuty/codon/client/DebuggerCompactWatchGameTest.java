@@ -15,7 +15,6 @@ import works.nuty.codon.client.input.InputManager;
 import works.nuty.codon.client.state.ClientDebuggerState;
 import works.nuty.codon.client.state.WatchGrouping;
 import works.nuty.codon.client.ui.*;
-import works.nuty.codon.client.ui.layout.WatchDetailsLayout;
 import works.nuty.codon.client.ui.layout.WatchPanelLayout;
 import works.nuty.codon.core.model.*;
 
@@ -33,7 +32,7 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
         try (TestSingleplayerContext ignored = context.worldBuilder().create()) {
             for (var scenario : List.of(
                 new Scenario("en_us", 854, 480, 2, 0), // Reported 427x240 side panel
-                new Scenario("en_us", 640, 480, 2, 0), // Minimum 320x240 Details footer
+                new Scenario("en_us", 640, 480, 2, 0), // Minimum 320x240 expanded row
                 new Scenario("ko_kr", 854, 480, 2, 0),
                 new Scenario("ko_kr", 1280, 800, 2, 0), // Regular layout
                 new Scenario("ko_kr", 854, 480, 1, 8), // Custom 2x over game 1x
@@ -122,45 +121,37 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
         context.waitTicks(3);
         watchAction(context, SCORE, "codon.watch.edit");
         closeInlineRow(context, "Edit hitbox opens the inline editor");
-        if (!openDetailsFromValueRightEdge(context, fixture, name))
-            clickLabel(context, context.computeOnClient(client -> Component.translatable("codon.watch.inspect", WatchFormatting.specification(NBT).getString()).getString()));
+        openDetailsFromValueRightEdge(context, fixture, name);
         capture(context, name + "-details");
-        context.runOnClient(DebuggerCompactWatchGameTest::checkDetailsGeometry);
+        context.runOnClient(client -> checkDetailsGeometry(client, fixture));
         click(context, "codon.watch.details.copy_value");
-        context.runOnClient(client -> require(client.keyboardHandler.getClipboard().equals(LONG_VALUE), "Full inspection copies the entire shortened value"));
+        context.runOnClient(client -> require(client.keyboardHandler.getClipboard().equals(LONG_VALUE), "Expanded row copies the entire shortened value"));
         click(context, "codon.watch.details.copy_path");
         context.runOnClient(client -> require(client.keyboardHandler.getClipboard().equals(NBT.path()), "Copy path retains the full shortened name"));
         capture(context, name + "-details-copied");
-        click(context, "codon.watch.details.more");
         context.runOnClient(client -> {
-            require(screen(client).getFocused() == button(screen(client), text("codon.watch.details.less")), "More retains focus on Less after rebuilding");
-            checkDetailsGeometry(client);
+            require(buttons(screen(client)).stream().noneMatch(widget -> widget.getMessage().getString().equals(text("codon.watch.details.retry"))),
+                "A successful value offers no Retry");
+            screen(client).setFocused(rowButtons(client, NBT.path()).getFirst());
         });
-        context.getInput().pressKey(InputConstants.KEY_TAB);
-        context.runOnClient(client -> require(screen(client).getFocused() == button(screen(client), text("codon.watch.edit")), "Tab after More reaches visible Edit"));
-        click(context, "codon.watch.edit");
-        closeInlineRow(context, "Expanded Details Edit hitbox opens the same inline editor");
-        // Edit hands over to the inline row in the cursor screen; reopen Details expanded for the rest.
-        context.runOnClient(client -> require(!(screen(client) instanceof WatchDetailsScreen),
-            "Edit leaves Details for the inline row"));
-        if (!openDetailsFromValueRightEdge(context, fixture, name))
-            clickLabel(context, context.computeOnClient(client -> Component.translatable("codon.watch.inspect", WatchFormatting.specification(NBT).getString()).getString()));
-        click(context, "codon.watch.details.more");
-        click(context, "codon.watch.details.less");
-        click(context, "codon.watch.details.more");
+        context.getInput().pressKey(InputConstants.KEY_DOWN);
+        context.runOnClient(client -> require(screen(client).getFocused() == button(screen(client), text("codon.watch.details.copy_value")),
+            "Down from an expanded row reaches its first action"));
         context.getInput().pressKey(InputConstants.KEY_END);
-        capture(context, name + "-details-expanded-end");
-        click(context, "codon.watch.details.less");
         context.runOnClient(client -> {
-            require(screen(client).getFocused() == button(screen(client), text("codon.watch.details.more")), "Less retains focus on More");
-            checkDetailsGeometry(client);
+            var panel = fixture.overlay().watchPanel();
+            require(panel.expansionScroll() == panel.expansionMaxScroll(), "End scrolls the expanded details from the keyboard");
+            require(screen(client).getFocused() == button(screen(client), text("codon.watch.details.copy_value")),
+                "Scrolling the details keeps keyboard focus on the action");
+            System.out.println("[codon-test] " + name + " expansion scroll " + panel.expansionScroll() + "/" + panel.expansionMaxScroll());
         });
-        context.getInput().pressKey(InputConstants.KEY_TAB);
-        context.runOnClient(client -> {
-            require(!button(screen(client), text("codon.watch.details.retry")).active, "Successful value disables Retry");
-            require(screen(client).getFocused() == button(screen(client), text("codon.watch.close")),
-                "Collapsed Tab skips hidden Edit and disabled Retry");
-        });
+        capture(context, name + "-details-end");
+        context.getInput().pressKey(InputConstants.KEY_HOME);
+        context.runOnClient(client -> require(fixture.overlay().watchPanel().expansionScroll() == 0, "Home returns to the value"));
+        click(context, "codon.watch.edit");
+        closeInlineRow(context, "Expanded row Edit hitbox opens the same inline editor");
+        context.runOnClient(client -> require(fixture.overlay().watchPanel().expandedId() == fixture.state().watches().findId(NBT),
+            "Closing the inline editor keeps the row expanded"));
         context.runOnClient(client -> {
             fixture.state().applyPause(pause(fixture.state().snapshot(), 103, PauseReason.STEP));
             accept(fixture.state(), "-2147483648", true);
@@ -168,11 +159,22 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
                 && entry.result().status() == WatchResult.Status.ERROR), "Retry is exercised on a failed read");
         });
         context.waitTicks(3);
-        context.runOnClient(client -> require(button(screen(client), text("codon.watch.details.retry")).active,
-            "Failed read enables Retry"));
+        context.runOnClient(client -> {
+            require(button(screen(client), text("codon.watch.details.retry")).active, "Failed read enables Retry");
+            checkDetailsGeometry(client, fixture);
+        });
+        capture(context, name + "-details-failed");
         click(context, "codon.watch.details.retry");
         context.runOnClient(client -> require(fixture.state().watches().drainQueries().stream().anyMatch(query -> query.spec().equals(NBT)), "Retry hitbox starts the same read-only query"));
-        click(context, "codon.watch.close");
+        clickLabel(context, context.computeOnClient(client -> Component.translatable("codon.watch.inspect", WatchFormatting.specification(NBT).getString()).getString()));
+        context.runOnClient(client -> {
+            require(fixture.overlay().watchPanel().expandedId() == 0, "Selecting an expanded row collapses it");
+            require(buttons(screen(client)).stream().noneMatch(widget -> widget.getMessage().getString().equals(text("codon.watch.details.copy_path"))),
+                "Collapsed rows remove their actions");
+        });
+        // Expanding scrolled the compact list to the NBT row; reveal the first row again for its menu.
+        context.runOnClient(client -> fixture.overlay().watchPanel().select(fixture.state().watches().findId(SCORE)));
+        context.waitTicks(3);
         watchAction(context, SCORE, "codon.watch.menu.delete");
         context.runOnClient(client -> require(fixture.state().watches().findId(SCORE) < 0, "Delete hitbox removes its own row"));
         capture(context, name + "-removed");
@@ -231,28 +233,31 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
             }
         }
         require(!WatchPanelLayout.stackedValues(panel.width()), "Compact Watches keep keys left and values right");
-        require(buttons(screen).stream().noneMatch(widget -> List.of(text("codon.watch.edit"), text("codon.watch.pin"),
+        require(fixture.overlay().watchPanel().expandedId() != 0 || buttons(screen).stream().noneMatch(widget -> List.of(text("codon.watch.edit"), text("codon.watch.pin"),
             text("codon.watch.unpin"), text("codon.watch.menu.delete")).contains(widget.getMessage().getString())),
             "Row management does not recreate inline action buttons");
         require(button(screen, text("codon.ui.control.resume") + " " + fixture.input().keyLabel(InputManager.Control.RESUME).getString()).active,
             "Execution control remains accessible under an acknowledged pause");
     }
 
-    private static void checkDetailsGeometry(Minecraft client) {
-        Screen screen = screen(client);
-        require(screen instanceof WatchDetailsScreen, "Full inspection is open");
-        boolean expanded = buttons(screen).stream().anyMatch(widget -> widget.getMessage().getString().equals(text("codon.watch.details.less")));
-        var layout = WatchDetailsLayout.create(screen.width, screen.height, expanded);
-        for (var widget : buttons(screen)) {
-            require(widget.getX() >= layout.panel().x() + 8 && widget.getRight() <= layout.panel().x() + layout.panel().width() - 8, "Footer stays inside the panel");
-            require(widget.getY() >= layout.textBottom() + 6 && widget.getBottom() <= screen.height, "Text and footer have a gap");
-            require(client.font.width(widget.getMessage()) <= widget.getWidth() - 10, "Localized footer text fits its native hitbox: "
-                + widget.getMessage().getString() + " text=" + client.font.width(widget.getMessage()) + " available=" + (widget.getWidth() - 10));
-            for (var other : buttons(screen)) if (widget != other) require(!overlaps(widget, other), "Visible Details footer targets are disjoint");
+    /** The expansion stays inside the Watch panel; its localized actions fit and do not overlap. */
+    private static void checkDetailsGeometry(Minecraft client, Fixture fixture) {
+        require(screen(client) instanceof CodonScreen && fixture.overlay().watchPanel().expandedId() != 0, "Details open in place");
+        var panel = fixture.overlay().watchPanel().bounds();
+        var actions = buttons(screen(client)).stream().filter(widget -> List.of(text("codon.watch.details.copy_value"),
+            text("codon.watch.details.copy_path"), text("codon.watch.details.retry"), text("codon.watch.edit"))
+            .contains(widget.getMessage().getString())).toList();
+        require(actions.size() >= 2, "Expanded row shows its actions");
+        for (var widget : actions) {
+            require(widget.getX() >= panel.x() && widget.getRight() <= panel.x() + panel.width()
+                && widget.getY() >= panel.y() && widget.getBottom() <= panel.y() + panel.height(), "Actions stay inside the panel");
+            require(client.font.width(widget.getMessage()) <= widget.getWidth() - 10, "Localized action text fits its native hitbox: "
+                + widget.getMessage().getString());
+            for (var other : buttons(screen(client))) if (widget != other) require(!overlaps(widget, other), "Expanded actions are disjoint");
         }
     }
 
-    private static boolean openDetailsFromValueRightEdge(ClientGameTestContext context, Fixture fixture, String name) {
+    private static void openDetailsFromValueRightEdge(ClientGameTestContext context, Fixture fixture, String name) {
         var value = context.computeOnClient(client -> {
             String label = Component.translatable("codon.watch.inspect", WatchFormatting.specification(NBT).getString()).getString();
             return buttons(screen(client)).stream().filter(widget -> widget.getMessage().getString().equals(label))
@@ -278,8 +283,9 @@ public final class DebuggerCompactWatchGameTest implements FabricClientGameTest 
         context.takeScreenshot(name + "-value-right-tooltip");
         context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_LEFT);
         context.waitTicks(3);
-        context.runOnClient(client -> require(screen(client) instanceof WatchDetailsScreen, "Native right-edge value click opens Details"));
-        return true;
+        context.runOnClient(client -> require(screen(client) instanceof CodonScreen
+            && fixture.overlay().watchPanel().expandedId() == fixture.state().watches().findId(NBT),
+            "Native right-edge value click expands the row in place"));
     }
 
     /** A healthy, fully drawn row is silent; a failed read or a clipped value still explains itself. */

@@ -230,11 +230,17 @@ public final class DebuggerWatchChainGameTest implements FabricClientGameTest {
                 .map(works.nuty.codon.client.ui.DebuggerButton.class::cast)
                 .filter(button -> button.getMessage().getString().startsWith("Inspect watch:")).findFirst().orElseThrow();
             row.onPress(new net.minecraft.client.input.KeyEvent(InputConstants.KEY_RETURN, InputConstants.KEYCODE_RETURN, 0));
-            require(client.gui.screen() instanceof works.nuty.codon.client.ui.WatchDetailsScreen, "row opens full value details");
+            require(client.gui.screen() instanceof works.nuty.codon.client.ui.CodonScreen, "row details stay in the cursor screen");
         });
+        // Move off the row so its hover tooltip does not cover the expanded details.
+        context.getInput().setCursorPos(1100, 700);
         context.waitTicks(3);
         context.takeScreenshot("codon-watch-previous-executor-details");
-        context.runOnClient(client -> client.gui.screen().onClose());
+        context.runOnClient(client -> client.gui.screen().children().stream()
+            .filter(works.nuty.codon.client.ui.DebuggerButton.class::isInstance)
+            .map(works.nuty.codon.client.ui.DebuggerButton.class::cast)
+            .filter(button -> button.getMessage().getString().startsWith("Inspect watch:")).findFirst().orElseThrow()
+            .onPress(new net.minecraft.client.input.KeyEvent(InputConstants.KEY_RETURN, InputConstants.KEYCODE_RETURN, 0)));
         context.waitTicks(3);
         context.takeScreenshot("codon-watch-summary-hover");
         context.getInput().setCursorPos(1100, 400);

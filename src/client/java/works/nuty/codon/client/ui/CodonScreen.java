@@ -209,6 +209,7 @@ public final class CodonScreen extends ScaledCodonScreen {
         }
         if (event.key() == InputConstants.KEY_ESCAPE && overlay.closeAuxiliaryPanel()) return true;
         if (getFocused() instanceof BackgroundOpacitySlider slider && slider.keyPressed(event)) return true;
+        if (overlay.watchPanel().expansionKey(event, getFocused())) return true;
         return input.handleScreenKey(event)
             || overlay.navigation().keyPressed(event, getFocused(), this::setFocused)
             || super.keyPressed(event);

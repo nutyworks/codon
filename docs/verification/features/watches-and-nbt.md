@@ -4,8 +4,8 @@ Automatic pause changes use the same 4,096-row and 2,097,152-character aggregate
 budget on send and receive. Oversized changes and failed captures send explicit
 unavailable outcomes instead of partial rows or an empty success; older peers receive
 a system notice.
-The Watch panel displays an unavailable warning for rejected transfers. Details
-enables Retry for server-reported `ERROR` or `UNAVAILABLE`, never for a local
+The Watch panel displays an unavailable warning for rejected transfers. An expanded
+row enables Retry for server-reported `ERROR` or `UNAVAILABLE`, never for a local
 timeout. A late reply after an attempted Retry cannot bypass the failed pause.
 Entity option ellipses preserve UTF-16 surrogate pairs. Focused checks are
 `DebuggerRecipientAuthorizationTest`, `ClientWatchStateTest`,
@@ -15,12 +15,34 @@ The compact Watch regression uses row context menus for Copy, Pin, Edit and
 Delete. It checks a single full-row inspection target, including the value's right
 edge, with no inline management controls. `WatchPanelLayoutTest` covers the same
 name/value layout at narrow and wide widths; `DebuggerCompactWatchGameTest`
-exercises the actual screen events and Details actions.
+exercises the actual screen events and the expanded row's actions.
 
-Watch Details uses localized kind prefixes and literal objective/storage/path identifiers.
-`CodonLabelsTest` checks EN/KO key and placeholder parity and all three Watch kinds,
-including `Health` and `Pos[0]`. `CodonLabelsGameTest` captures representative English/Korean
-Details rendering at the 320×240 logical viewport (640×480 window, GUI scale 2).
+## Row details and grouping
+
+Watch Details is a row expansion, not a screen. Clicking a row's name or value (or
+Enter/Space on the focused row) shows its details under it; clicking it again
+collapses them. One row is expanded at a time and it scrolls with the list. The
+expansion lists Expression (localized kind prefix with the literal objective,
+storage or path), Binding, Current value (with `old → new` for the last change),
+the previous executor's value after a completed step, change notes and the read
+target. Below that are Copy value, Copy path, Retry (shown for a displayed read
+issue or when the current read is retryable, and enabled only when the server
+reported `ERROR`/`UNAVAILABLE` for the current read) and Edit (opens the
+inline expression row). Automatic rows have no Retry or Edit. Copy value is
+disabled until a reply arrives. Long values scroll inside the expansion with the
+wheel, or with Page Up/Down and Home/End while the row or one of its actions has
+focus, so the expansion never grows past the list viewport. Down from the expanded
+row reaches its first action. Copy feedback uses the panel header notice.
+[WatchExpansionLayout](../../../src/client/java/works/nuty/codon/client/ui/layout/WatchExpansionLayout.java)
+sizes the text window and wraps actions; `WatchExpansionLayoutTest` covers it.
+
+Grouping is the header's Group by action, a small dropdown next to `+`
+(Context, Path, No group). There is no separate grouping screen.
+
+`CodonLabelsTest` checks EN/KO key and placeholder parity and the localized kind
+prefix for all three Watch kinds, including `Health` and `Pos[0]`.
+`CodonLabelsGameTest` captures an expanded English/Korean row at the 320×240
+logical viewport (640×480 window, GUI scale 2).
 These use presentation fixtures and do not establish server read execution.
 
 ## User path and expected result
@@ -34,7 +56,7 @@ horizontal resize cursor. Watch requests range from 220–640 pixels; Contexts f
 widths and Contexts leaves room for a visible Watch's readable minimum. Watch
 names stay on the left and values stay right-aligned on the same line at every
 panel width, including below 260 pixels. Narrow rows clip each side to its available
-space; Details retains the full content. No blank action column is reserved.
+space; the expanded row shows the full content. No blank action column is reserved.
 The narrow auxiliary drawer and Source's separate function-list
 splitter retain their existing behavior; Flow remains full-width below the panels.
 
@@ -59,7 +81,7 @@ neutral header background, with spacing between groups. Click anywhere on the
 header or focus it and press Enter/Space to collapse or expand it. Collapsed children
 are excluded from rendering, hitboxes and keyboard navigation; explicit watch reveals
 expand their group. This is local display state only. Add, grouping and Undo stay in the panel header.
-Row management uses a right-click menu; left-clicking the name or value still opens Details.
+Row management uses a right-click menu; left-clicking the name or value expands the row's details.
 Watch row hover uses a subtle neutral fill; keyboard focus uses a stronger neutral
 fill plus a small filled corner caret; an explicitly revealed watch retains its
 temporary teal fill. Group headers show Δ changed values and ! read issues
@@ -85,12 +107,9 @@ caret, and the scrollbar is neutral. Foreground text/icons bypass panel opacity.
 NBT expansion, Watch-add/right-click actions, disabled states and hit bounds are unchanged.
 Watch add/update/duplicate/remove/copy notices replace the panel's title text for
 four seconds without changing the row viewport or its scroll offset; hovering the
-header retains the full notice when the visible text is clipped. Watch Details
-shows a translated Copied confirmation beside its title for four seconds after
-copying a value or path, preserving text scrolling and footer positions.
-Watch forms and details return to the existing originating screen, retaining its
-selection/search/scroll and restoring semantic widget or HUD-row focus. Returning
-from Edit in details restores the same expanded view and text offset.
+header retains the full notice when the visible text is clipped. Copy value and
+Copy path in an expanded row show the same translated Copied notice. Closing the
+inline editor opened from an expanded row keeps that row expanded.
 
 Use the [shared setup](../README.md#prepare-and-launch). Before pausing, prepare a
 score and a storage value in the scratch world:
@@ -120,7 +139,7 @@ data modify storage codon:verify counter set value 0
    watch editor at the viewport/GUI scale relevant to the reported issue.
 6. For persistence changes, save, leave and reopen the same world. Verify saved
    watch definitions and any affected client view preferences separately.
-7. In the inline Watch row (`+`, or Edit on a row/Details), type each of `score`,
+7. In the inline Watch row (`+`, or Edit in a row's menu or expansion), type each of `score`,
    `entity` and `storage` in English and Korean at normal and 320x240 viewports.
    The first word offers the three kinds; completion rows list server objectives,
    score holders (including fake players), storage IDs and NBT child names, with
@@ -141,7 +160,7 @@ data modify storage codon:verify counter set value 0
    and use Add, pin/unpin, Copy, Edit, Delete and Undo. Compare a regular viewport
    in English/Korean, following game scale and using a custom Codon scale.
    Hover the far right of a clipped compact value line: its full-text tooltip must
-   appear, while a healthy, fully drawn row stays silent. Click the same point to open Details. Right-click either line to manage that Watch.
+   appear, while a healthy, fully drawn row stays silent. Click the same point to expand the row. Right-click either line to manage that Watch.
    Focus the row and press Shift+F10, then use Up/Down, Tab and Enter/Space.
    Check Copy/Edit/Delete, target fixing/following, disabled fixing without an
    executor, and automatic-change Add to Watches. Storage rows have no executor
@@ -151,10 +170,11 @@ data modify storage codon:verify counter set value 0
    row focus without clicking the row below. Menu actions dismiss before executing,
    and a removed Watch/world change invalidates the menu. Repeat with Source docked
    to check menu layering and that Source-covered pixels cannot retarget it.
-   In Details at 320x240, the footer wraps to two rows clear of the scrollable text.
-   Check Copy value/path, Retry, Edit and Close hitboxes. More/Less retains focus on
-   the same toggle; Tab then reaches Edit when expanded, or skips hidden Edit and
-   disabled Retry to reach Close for a successful value. A failed read enables Retry.
+   Expand a long value at 320x240: the actions wrap inside the panel below the
+   text, and the wheel (or Page Up/Down, Home/End from a focused action) scrolls
+   the text inside the expansion. Check Copy value/path,
+   Retry and Edit hitboxes. A successful value has no Retry; a failed read shows an
+   enabled Retry. Click the row again to collapse it.
 
 Queries while paused must remain read-only and must not cause an extra execution
 step. Keep previous/current comparison tied to observed pauses. A brief retained
@@ -202,7 +222,7 @@ the repaired values and establish a complete baseline.
 - [WatchPanel](../../../src/client/java/works/nuty/codon/client/ui/WatchPanel.java), [WatchComposer](../../../src/client/java/works/nuty/codon/client/ui/WatchComposer.java), [NbtTreePanel](../../../src/client/java/works/nuty/codon/client/ui/NbtTreePanel.java): user interaction.
 - [WatchExpression](../../../src/core/java/works/nuty/codon/core/model/WatchExpression.java): the typed `score`/`entity`/`storage` grammar shared by parsing, completion slots and formatting.
 - [DebuggerContextMenu](../../../src/client/java/works/nuty/codon/client/ui/DebuggerContextMenu.java): shared modal dropdown hosted by ScreenLayers; Watch retains its existing guarded actions, row switching and keyboard/pointer handling.
-- [WatchDetailsScreen](../../../src/client/java/works/nuty/codon/client/ui/WatchDetailsScreen.java), [WatchDetailsLayout](../../../src/client/java/works/nuty/codon/client/ui/layout/WatchDetailsLayout.java): full-value viewport and responsive footer.
+- [WatchExpansionLayout](../../../src/client/java/works/nuty/codon/client/ui/layout/WatchExpansionLayout.java): expanded row text window and wrapping actions (rendered by WatchPanel).
 
 ## Choose verification
 
@@ -221,7 +241,7 @@ the repaired values and establish a complete baseline.
 | Inline row against a real server: completion, validation, Tab/Enter/Ctrl+Enter/Esc, resize focus, edit in place | `DebuggerWatchComposerGameTest` |
 | Inline row on a paused fixture: optional executors, literal holders, pin/delete, compact window | `DebuggerWatchEditorGameTest` |
 | Editor reader contract on the server thread | `WatchEditorTransportGameTest` |
-| Compact Watch values, Details footer, native actions and focus | `clientTest`: `WatchPanelLayoutTest`, `WatchDetailsLayoutTest`, `DebuggerToolbarLayoutTest`; `DebuggerCompactWatchGameTest` |
+| Compact Watch values, expanded row details, native actions and focus | `clientTest`: `WatchPanelLayoutTest`, `WatchExpansionLayoutTest`, `DebuggerToolbarLayoutTest`; `DebuggerCompactWatchGameTest` |
 | Empty Watches hint, visible `+` and editor route | `DebuggerNbtTreeGameTest` (`codon-nbt-tree-empty-watch-plus` capture) |
 | NBT reads, tree controls and stale buttons | `NbtTreeReaderGameTest`, `DebuggerNbtTreeGameTest`, `DebuggerNbtPendingButtonsGameTest` |
 | Pinning, grouping, persistence | `DebuggerWatchPinGameTest`, `DebuggerWatchGroupingGameTest`, `DebuggerWatchPersistenceGameTest` |
@@ -229,8 +249,8 @@ the repaired values and establish a complete baseline.
 
 `DebuggerCompactWatchGameTest` uses six representative English/Korean cases at
 427x240, 320x240 and regular viewports, with following/custom scales. It checks
-native management and footer clicks, compact value right-edge click/tooltip hover,
-More/Less focus, row overflow, copy-feedback viewport stability and pending
+native management and expanded-row action clicks, compact value right-edge
+click/tooltip hover and expansion, Down into the expansion, Retry on a failed read, row overflow, copy-feedback viewport stability and pending
 execution-control disabling, and captures `*codon-compact-watch-*.png` for visual
 inspection. This scenario and `WatchPanelLayoutTest` passed in the
 [UI validation run](../ui-polish-validation.md). Its injected observations establish

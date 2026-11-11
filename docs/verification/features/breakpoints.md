@@ -103,7 +103,7 @@ stage summaries still count enabled breakpoints; the toolbar tooltip explicitly 
 enabled and total counts. `CodonLabelsTest` checks enabled-only, disabled-only and mixed
 captions in English/Korean, alongside all Watch-kind prefix permutations.
 `CodonLabelsGameTest` retains one mixed snapshot per language at the 320×240 logical
-viewport, including the maximum-count header width, representative Watch Details
+viewport, including the maximum-count header width, a representative expanded Watch row
 and rotation. This produces eight screenshots rather than repeating every permutation.
 Capacity failures from whole block/function toggles and stage/condition commands retain
 client translation keys with a readable English fallback for console/RCON sources
