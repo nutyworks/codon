@@ -18,7 +18,7 @@ import java.util.function.BooleanSupplier;
 
 /** Logical focus order, including controls outside a scrolling panel's viewport. */
 public final class DebuggerNavigation {
-    public enum Group { TOOLBAR, VIEW_MENU, SOURCES, SOURCE_DETAILS, NBT, WATCH, WORLD, CALL_PATH, COMMAND, ACTIONS,
+    public enum Group { TOOLBAR, VIEW_MENU, SOURCES, SOURCE_DETAILS, NBT, WATCH, BREAKPOINT, WORLD, CALL_PATH, COMMAND, ACTIONS,
         WINDOW_HEADER, EDITOR, WATCH_LIST }
 
     private record Target(String id, Group group, int row, int column, Runnable reveal,
@@ -196,7 +196,7 @@ public final class DebuggerNavigation {
             int direction = key == InputConstants.KEY_UP || key == InputConstants.KEY_LEFT ? -1 : 1;
             boolean linear = current.group() == Group.CALL_PATH && !vertical
                 || current.group() == Group.COMMAND && !vertical;
-            boolean rows = vertical && (current.group() == Group.SOURCES || current.group() == Group.NBT || current.group() == Group.WATCH
+            boolean rows = vertical && (current.group() == Group.SOURCES || current.group() == Group.NBT || current.group() == Group.WATCH || current.group() == Group.BREAKPOINT
                 || current.group() == Group.COMMAND || current.group() == Group.WATCH_LIST
                 || current.group() == Group.VIEW_MENU);
             if (linear || rows) {

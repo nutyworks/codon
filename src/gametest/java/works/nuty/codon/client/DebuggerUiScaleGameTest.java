@@ -311,7 +311,6 @@ public final class DebuggerUiScaleGameTest implements FabricClientGameTest {
         List<ScaledCodonScreen> screens = context.computeOnClient(client -> List.of(
             new WatchDetailsScreen(f.input(), f.state(), f.overlay(), id),
             new WatchGroupingScreen(f.screen(), WatchGrouping.Mode.NONE, ignored -> { }),
-            new BreakpointListScreen(f.screen(), f.state()),
             new FunctionSourceScreen(f.screen(), new ClientFunctionSourceState())));
         for (ScaledCodonScreen screen : screens) {
             context.runOnClient(client -> client.setScreenAndShow(screen));

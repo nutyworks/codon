@@ -16,8 +16,11 @@ without a duplicate toast. If a context change closes the modal while an edit is
 pending, its rejection or timeout also appears in a toast even if the result
 and the context change arrive before the next screen tick.
 
-The breakpoint list now only navigates: its row overflow, toggle, condition,
-delete and Undo actions are removed.
+The breakpoint list is a docked **Breakpoints** panel, opened and closed by the
+toolbar breakpoint-count button. In wide layouts it stacks under Watches in the side
+column; in compact layouts it takes the shared auxiliary slot and closes the other
+panel. Its visibility lasts for the session and is not saved in settings. It only
+navigates: row overflow, toggle, condition, delete and Undo actions are removed.
 Function entries open their original source line and matching stage; block entries
 open an exact matching recorded/static stage in the current pause's Flow. Matching
 uses location, stage identity and command fingerprint, never a guessed row index.
@@ -31,8 +34,8 @@ Right-click or Shift+F10 exposes separate **Saved stage 1 · Disable/Enable** an
 its exact stage target and allows individual deletion after server acknowledgement.
 The normal Condition action still edits the line, and left-click still toggles only
 the line. These saved-stage actions require the matching command fingerprint and
-never create a missing stage definition. List focus
-and scroll are retained on return; native behavior still needs manual verification.
+never create a missing stage definition. Panel focus
+and scroll are retained while it stays open; native behavior still needs manual verification.
 Rows sort by source identity with numeric function lines, coordinates and stage indices.
 Each row shows state, whole-command/stage identity and location on its first line,
 then the condition on a separate line; full location/condition and navigation availability
@@ -77,8 +80,8 @@ Rendering an unset affordance does not create a saved breakpoint. The
 list retains enabled and disabled definitions with an explicit state label. Its header
 shows the total definitions and enabled count. The toolbar's short count and source
 stage summaries still count enabled breakpoints; the toolbar tooltip explicitly shows
-enabled and total counts. `CodonLabelsTest` checks enabled-only, disabled-only, mixed
-and filtered captions in English/Korean, alongside all Watch-kind prefix permutations.
+enabled and total counts. `CodonLabelsTest` checks enabled-only, disabled-only and mixed
+captions in English/Korean, alongside all Watch-kind prefix permutations.
 `CodonLabelsGameTest` retains one mixed snapshot per language at the 320×240 logical
 viewport, including the maximum-count header width, representative Watch Details
 and rotation. This produces eight screenshots rather than repeating every permutation.
@@ -96,7 +99,7 @@ Navigation-list rows align their labels to the left with neutral hover and keybo
 focus, without a persistent condition-edit selection color. Scrolling applies only over the list rows, not over the title,
 actions, or surrounding world. The condition editor repeats its command fragment
 in a tooltip only when the visible fragment is clipped. The navigation-only list
-does not expose condition, delete or Undo controls. `DebuggerBreakpointUiGameTest`
+does not expose condition, delete or Undo controls (the panel replaces the former list screen). `DebuggerBreakpointUiGameTest`
 checks that unavailable destinations cannot mutate definitions. Deleting from a
 condition editor returns to the same parent input and cursor; the exact marker can
 then recreate the breakpoint with its default Always condition.
@@ -138,7 +141,7 @@ Replacement authoritative snapshots, scrolling and empty/disconnected lists rele
 obsolete labels, tooltips and actions; unchanged visible targets retain widget identity
 and focus restoration. `BreakpointListCacheTest` exercises 100 acknowledged replacement
 snapshots, stable widget focus and empty-list eviction. It does not render the native
-Screen; actual list navigation and focus remain a UI acceptance check.
+panel; actual navigation and focus remain a UI acceptance check.
 
 ## Code entry points
 
