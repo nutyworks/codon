@@ -107,6 +107,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
                 click(screen, group);
             });
             context.waitTicks(2);
+            checkStaleGroupAfterExternalSelection(context, screen, state);
             context.runOnClient(client -> {
                 boolean secondVisible = screen.children().stream().filter(DebuggerButton.class::isInstance)
                     .map(DebuggerButton.class::cast).anyMatch(value -> value.getMessage().getString().equals("#2 Zombie 2"));
@@ -943,6 +944,38 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
         return new PauseSnapshot(pausedBlock, command, 1, stack, finalSources,
             List.of(parentFlowFixture(stack.get(1).location(), sources), flowFixture(pausedBlock, command, sources, stack)),
             PauseReason.BREAKPOINT);
+    }
+
+    /**
+     * Breakpoints-list navigation selects a flow stage without the command panel's reset. An expanded
+     * group must not index past the destination's shorter context list (#135).
+     */
+    private static void checkStaleGroupAfterExternalSelection(ClientGameTestContext context, CodonScreen screen,
+                                                              ClientDebuggerState state) {
+        PauseSnapshot paused = context.computeOnClient(client -> state.snapshot());
+        context.runOnClient(client -> state.selectExecutionFlow(0));
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            // A compact viewport shows one row; scrolling reaches the stale group's later indices.
+            var rows = screen.children().stream().filter(DebuggerButton.class::isInstance).map(DebuggerButton.class::cast)
+                .filter(value -> value.getMessage().getString().equals("#1 Zombie 1")).toList();
+            var row = rows.getLast();
+            screen.mouseScrolled(row.getX() + 2, row.getY() + 2, 0, -1);
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> {
+            var labels = screen.children().stream().filter(DebuggerButton.class::isInstance)
+                .map(value -> ((DebuggerButton) value).getMessage().getString()).toList();
+            require(state.displayedSources().size() == 1, "The parent flow stage has one context");
+            require(!labels.contains(Component.translatable("codon.ui.all").getString())
+                && labels.stream().anyMatch(label -> label.contains("Zombie 1"))
+                && labels.stream().noneMatch(label -> label.contains("Zombie 2")),
+                "The shorter destination renders its own context, not the stale group: " + labels);
+            state.applyPause(paused);
+        });
+        context.waitTicks(2);
+        context.runOnClient(client -> click(screen, button(screen, value -> value.equals("#1 Zombie 1  +8"))));
+        context.waitTicks(2);
     }
 
     private static ExecutionFlowTrace parentFlowFixture(SourceLocation location, List<PauseSource> sources) {

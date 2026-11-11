@@ -92,6 +92,8 @@
   "codon.ui.contexts": "Contexts",
   "codon.ui.all": "All",
   "codon.ui.no_sources": "No execution contexts",
+  "codon.ui.details_withheld": "Details too large",
+  "codon.ui.details_withheld_counts": "Too many to display: %s contexts, %s call frames",
   "codon.ui.rotation.yaw": "yaw",
   "codon.ui.rotation.pitch": "pitch",
   "codon.ui.copy": "Copy",

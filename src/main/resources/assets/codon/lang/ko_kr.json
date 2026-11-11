@@ -92,6 +92,8 @@
   "codon.ui.contexts": "컨텍스트",
   "codon.ui.all": "전체",
   "codon.ui.no_sources": "실행 컨텍스트 없음",
+  "codon.ui.details_withheld": "상세 정보가 너무 큼",
+  "codon.ui.details_withheld_counts": "표시하기에 너무 많음: 컨텍스트 %s개, 호출 프레임 %s개",
   "codon.ui.rotation.yaw": "수평각",
   "codon.ui.rotation.pitch": "수직각",
   "codon.ui.copy": "복사",
