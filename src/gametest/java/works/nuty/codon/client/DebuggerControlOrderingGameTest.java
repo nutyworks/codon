@@ -83,7 +83,12 @@ public final class DebuggerControlOrderingGameTest implements FabricClientGameTe
                     server.createCommandSourceStack(),"codon stepinto "+first.pauseId())),"admit independent authorized server control");
                 context.waitFor(c->next.get()!=null&&next.get().pauseId()!=first.pauseId(),200);
                 context.runOnClient(c->{
-                    require(state().snapshot()==first,"client still sees unmodified earlier server snapshot while delivery delayed");
+                    // Compare the pause by ID and decoded content, not object identity: a legitimate
+                    // re-sync of the same pause handled before the receiver swap replaces the object.
+                    var current=state().snapshot();
+                    require(current!=null&&current.pauseId()==first.pauseId()&&current.equals(first),
+                        "client still sees unmodified earlier server snapshot while delivery delayed: first="+first.pauseId()
+                        +", current="+(current==null?"none":current.pauseId())+", events="+events);
                     CodonClientMod.input().control(InputManager.Control.RESUME);
                     require(state().controlPending(),"real UI request is pending");
                     events.add("client send Resume("+first.pauseId()+","+state().controlRequestId()+")");
