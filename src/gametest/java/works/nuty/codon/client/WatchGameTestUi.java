@@ -71,7 +71,7 @@ final class WatchGameTestUi {
         choose(context, key);
     }
 
-    private static void click(ClientGameTestContext context, DebuggerButton button, int mouseButton) {
+    static void click(ClientGameTestContext context, DebuggerButton button, int mouseButton) {
         double[] point = context.computeOnClient(client -> {
             Screen parent = client.gui.screen();
             Screen layer = ScreenLayers.get(parent);

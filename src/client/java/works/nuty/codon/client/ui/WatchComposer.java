@@ -64,7 +64,10 @@ final class WatchComposer {
     boolean takeFocusRequest() { boolean value = wantsFocus; wantsFocus = false; return value; }
     boolean focused() { return box != null && box.isFocused(); }
 
-    void begin(long id) {
+    void begin(long id) { begin(id, ""); }
+
+    /** A new watch (id &lt; 0) may start from a prefix, such as {@code "entity "}, with the cursor after it. */
+    void begin(long id, String initial) {
         editId = id;
         attempted = false;
         previewMode = false;
@@ -77,7 +80,7 @@ final class WatchComposer {
         if (id > 0) {
             var entry = state.watches().entries().stream().filter(row -> row.id() == id).findFirst().orElse(null);
             if (entry != null) box.setValue(WatchExpression.format(entry.spec()));
-        }
+        } else box.setValue(initial);
         box.moveCursorToEnd(false);
         wantsFocus = true;
     }

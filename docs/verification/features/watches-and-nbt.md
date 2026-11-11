@@ -45,6 +45,25 @@ prefix for all three Watch kinds, including `Health` and `Pos[0]`.
 logical viewport (640×480 window, GUI scale 2).
 These use presentation fixtures and do not establish server read execution.
 
+## Add to Watch from Contexts
+
+The selected entity context row has an **Add to Watches** hover action (the entity-NBT
+watch icon, between Copy UUID and Move camera), and the same entry appears in the row's
+right-click/Shift+F10 menu. It opens the Watch section's inline expression row with
+`entity ` and the cursor in the path slot, so completion lists the selected context's
+NBT keys; Enter adds an unbound `entity <path>` watch that follows the selected live
+entity context (owner decision in #142). Position-only contexts have neither the
+action nor the menu entry. Both are disabled, with a tooltip reason, while a control
+request is pending, outside a pause, or for a recorded context that has no live
+occurrence in the current pause; the action re-checks the pause and selection when it
+runs. The NBT tree's field pin is unchanged and still binds the entity's UUID: its
+right-click adds the path once per current entity context, which unbound watches
+cannot express. `WatchExpressionTest` covers the `entity ` path slot and the unbound
+round trip; `DebuggerContextAddWatchGameTest` drives the action, the menu entry, a
+pending control, completion, Tab/Enter and the resulting value against a real paused
+server, in English at 1280x900 and Korean at the 320x240 viewport
+(`codon-context-add-watch-*` captures).
+
 ## User path and expected result
 
 Regular Watches default to 280 logical pixels (previously 360), bounded by the same
@@ -103,8 +122,8 @@ contexts with no current-pause occurrence cannot open a live NBT tree; when room
 permits, the empty NBT area explains that no historical NBT was captured. The NBT
 tree is part of the selected Contexts row's in-place expansion: it follows that row
 and is narrower than the list so the two scrollbars never share hits. Its field pin
-is the row's Add to Watch action and produces the same entity-NBT `WatchSpec` as
-before. A recorded
+still produces the same UUID-bound entity-NBT `WatchSpec` as before (`entity <path>
+<uuid>`); the row's own Add to Watches action is described below. A recorded
 context which still maps to a live occurrence may show NBT, explicitly labeled as
 a current-pause read rather than a historical value. Query/occurrence matching is unchanged. Keyboard focus uses a filled corner
 caret, and the scrollbar is neutral. Foreground text/icons bypass panel opacity.
@@ -135,8 +154,10 @@ data modify storage codon:verify counter set value 0
 3. Step through the update and inspect at the next stop. The score changes by one;
    the storage watch stays zero. Missing objective/path/target must have an explicit
    status rather than masquerading as zero.
-4. Select the player context, expand entity NBT, and pin a scalar field such as
-   `Health`. It appears in Watches. Remove/re-add it and check that it refers to
+4. Select the player context, use its Add to Watches action, type `Health` and
+   press Enter: an unbound `entity Health` row shows the selected context's value.
+   Expand entity NBT and pin a scalar field such as `Health`. It appears in Watches
+   bound to that entity. Remove/re-add it and check that it refers to
    the intended entity/path. Select another context and inspect target changes.
 5. Expand compounds/lists, scroll beyond the first page, and return. Loaded rows
    stay aligned; pending rows do not operate on stale NBT. Check grouping and the
@@ -242,6 +263,7 @@ the repaired values and establish a complete baseline.
 | Cold persisted Storage baseline, real restart/Continue, deletion/creation and entity/score history | `test`: `PersistedStorageNamespacesTest`; `DebuggerColdStorageWatchGameTest`, `PauseWatchChangesGameTest`, `DebuggerAutomaticWatchGameTest` |
 | Truncated/partial Storage decode, withheld baseline, and repaired-world reopen | `test`: `StorageReadFailureTest` (actual untransformed vanilla reader); `DebuggerStorageReadFailureGameTest` (actual mixin/snapshot/reopen) |
 | Watch expression grammar | `coreTest`: `WatchExpressionTest` |
+| Contexts Add to Watches: row action, menu entry, pending/position-only states, `entity <path>` value | `DebuggerContextAddWatchGameTest` |
 | Inline row against a real server: completion, validation, Tab/Enter/Ctrl+Enter/Esc, resize focus, edit in place | `DebuggerWatchComposerGameTest` |
 | Inline row on a paused fixture: optional executors, literal holders, pin/delete, compact window | `DebuggerWatchEditorGameTest` |
 | Editor reader contract on the server thread | `WatchEditorTransportGameTest` |

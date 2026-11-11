@@ -120,11 +120,16 @@ public final class WatchPanel {
 
     /** Add (id &lt; 0) or edit a watch in the row under the header; cursor mode owns its text input. */
     public void beginComposer(long id, InputManager input, DebuggerOverlay overlay) {
+        beginComposer(id, "", input, overlay);
+    }
+
+    /** Add a watch whose expression starts with {@code initial}; completion continues from its end. */
+    public void beginComposer(long id, String initial, InputManager input, DebuggerOverlay overlay) {
         var client = Minecraft.getInstance();
         if (!(client.gui.screen() instanceof CodonScreen)) client.gui.setScreen(new CodonScreen(input, overlay));
         closeGroupingMenu();
         overlay.revealWatches();
-        composer.begin(id);
+        composer.begin(id, initial);
     }
     public Bounds bounds() { return bounds; }
     public Bounds scrollBounds() { return scrollBounds; }

@@ -72,6 +72,16 @@ class WatchExpressionTest {
         assertEquals("Attributes[", result.prefix());
     }
 
+    /** Contexts' Add to Watch opens the row with this text: the cursor sits in an empty path slot. */
+    @Test void entityKeywordAloneCompletesAnUnboundPath() {
+        var result = parse("entity ");
+        assertEquals(ENTITY_PATH, result.slot());
+        assertEquals("", result.prefix());
+        assertEquals(7, result.start());
+        assertNull(result.spec());
+        assertEquals("entity Health", WatchExpression.format(new WatchSpec(WatchSpec.Kind.ENTITY_NBT, "", "Health")));
+    }
+
     @Test void storageNeedsAnIdAndPathAndNormalisesTheNamespace() {
         assertEquals(STORAGE_ID, parse("storage demo").slot());
         assertEquals(STORAGE_PATH, parse("storage demo:state ").slot());
@@ -98,6 +108,7 @@ class WatchExpressionTest {
             WatchSpec.scoreHolder("points", "two words"),
             WatchSpec.scoreHolder("points", ID.toString()),
             new WatchSpec(WatchSpec.Kind.SCORE, "points", "", ID, null),
+            new WatchSpec(WatchSpec.Kind.ENTITY_NBT, "", "Health"),
             new WatchSpec(WatchSpec.Kind.ENTITY_NBT, "", "Items[{id:\"minecraft:stone\"}].count", ID, null),
             new WatchSpec(WatchSpec.Kind.STORAGE_NBT, "demo:state", "list[0].value")
         };
