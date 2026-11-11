@@ -63,6 +63,47 @@ class DebuggerEngineTest {
     }
 
     @Test
+    void stopWithoutRecipientIsSkippedInsteadOfParking() {
+        breakpoints.toggleFunction(tick(3));
+        sink.recipient = false;
+        engine.onExecutionStarted();
+        engine.onCommandStage(functionStage(1, 0, 3));
+        engine.onCommandStage(functionStage(2, 0, 3));
+        engine.onExecutionFinished();
+
+        assertEquals(0, controller.parkCount, "Nobody could see or release a parked host");
+        assertFalse(engine.isPaused());
+        assertTrue(sink.pauses.isEmpty());
+        assertEquals(2, sink.withoutRecipient.size());
+        assertTrue(sink.withoutRecipient.getFirst().startsWith("skipped "));
+    }
+
+    @Test
+    void losingTheLastRecipientWhileParkedReleasesTheStop() {
+        breakpoints.toggleFunction(tick(3));
+        int[] parks = {0};
+        ExecutionController leaving = resumed -> {
+            parks[0]++;
+            assertFalse(resumed.getAsBoolean());
+            sink.recipient = false;
+            assertTrue(resumed.getAsBoolean(), "The park loop must notice that no recipient remains");
+            return ExecutionController.ParkResult.RESUMED;
+        };
+        var released = new DebuggerEngine(breakpoints, step, callStack, leaving, sink);
+        released.onExecutionStarted();
+        released.onCommandStage(functionStage(1, 0, 3));
+
+        assertFalse(released.isPaused(), "Release as an explicit Resume would");
+        assertEquals(1, sink.pauses.size());
+        assertEquals(1, sink.resumes, "Former owners get terminal cleanup");
+        assertEquals(List.of("released " + new SourceLocation.Function(tick(3))), sink.withoutRecipient);
+
+        released.onCommandStage(functionStage(2, 0, 3));
+        assertEquals(1, parks[0], "Later stops in the same execution are skipped, not parked");
+        assertFalse(released.isPaused());
+    }
+
+    @Test
     void everyPauseHasAFreshQueryIdIncludingAfterReset() {
         breakpoints.toggleFunction(tick(3));
         engine.onCommandStage(functionStage(1, 0, 3));

@@ -125,6 +125,8 @@ debugger requests and bounded connection maintenance. It publishes already-appli
 world changes, but new chunk generation and effects requiring later ticks wait.
 Resume promptly on shared servers. An authorized operator can also send
 `codon resume` from the server console if the debugger client is unavailable.
+Breakpoints only stop while an operator with Codon installed is online. Without one, or
+when the last one leaves during a pause, execution continues and the server log records it.
 
 Breakpoint definitions are shared world state stored in
 `data/codon-breakpoints.json`. Watch definitions are stored per owner/player in
@@ -144,6 +146,9 @@ leaving your debugging session.
 - Flow records have limits of 24 stages, 128 contexts, 256 edges and 32 captured
   stack frames. Unsupported modifiers and incomplete continuations may leave
   warnings or unavailable values. Missing data is not a measured zero.
+- A stop with more than 1,024 call-stack frames or 4,096 execution contexts stays
+  paused with Continue and Step available, but its stack, contexts and flows are not
+  displayed; the header says the details are too large.
 - Stepping/call paths use observed command stages and call depth, rather than
   complete function-frame lifecycle information. Inspect the stop reason and
   recording warnings when interpreting a result.

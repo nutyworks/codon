@@ -3,6 +3,7 @@ package works.nuty.codon.core.port;
 import works.nuty.codon.core.model.BlockLocation;
 import works.nuty.codon.core.model.ExecutionFlowTrace;
 import works.nuty.codon.core.model.PauseSnapshot;
+import works.nuty.codon.core.model.SourceLocation;
 
 import java.util.List;
 import java.util.Set;
@@ -15,6 +16,21 @@ import java.util.Set;
 public interface DebuggerEventSink {
     /** The engine has paused execution; {@code snapshot} fully describes the pause. */
     void paused(PauseSnapshot snapshot);
+
+    /**
+     * Whether a live recipient can present a pause and release it. Without one the engine does not
+     * park: nobody could see the stop, and the host would stay frozen until an administrator acted.
+     */
+    default boolean hasPauseRecipient() {
+        return true;
+    }
+
+    /**
+     * A stop at {@code location} was not kept because no recipient could present it: skipped before
+     * parking, or {@code released} after every recipient of the paused stop disconnected.
+     */
+    default void pauseWithoutRecipient(SourceLocation location, boolean released) {
+    }
 
     /** Debugger inspection ended; restore normal player presentation. */
     void resumed();
