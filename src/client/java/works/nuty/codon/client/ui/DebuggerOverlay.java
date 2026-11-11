@@ -14,9 +14,9 @@ import org.jspecify.annotations.Nullable;
 import works.nuty.codon.client.input.InputManager;
 import works.nuty.codon.client.CodonClientMod;
 import works.nuty.codon.client.state.ClientDebuggerState;
-import works.nuty.codon.client.state.DebuggerPreferences.InspectorTab;
 import works.nuty.codon.client.ui.layout.DebuggerLayout;
 import works.nuty.codon.client.ui.layout.GizmoLabelLayout;
+import works.nuty.codon.client.ui.layout.DockLayout;
 import works.nuty.codon.client.ui.layout.WatchPanelLayout;
 import works.nuty.codon.client.ui.layout.DebuggerToolbarLayout;
 import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Anchor;
@@ -43,17 +43,21 @@ import static works.nuty.codon.client.state.DebuggerPreferences.*;
 
 /** Shared HUD/screen presentation. Only the menu screen registers the rendered controls. */
 public final class DebuggerOverlay {
-    private enum AuxiliaryPanel { NONE, INSPECTOR, WATCHES, BREAKPOINTS }
+    /** Compact windows show one dock section at a time, in the dock's own order. */
+    private enum AuxiliaryPanel { NONE, CONTEXTS, WATCHES, CALL_STACK, BREAKPOINTS }
     private static final Bounds EMPTY = new Bounds(0, 0, 0, 0);
     private static final int MAX_WORLD_LABELS = 20;
-    private static final int SOURCE_LIST_MIN_HEIGHT = 51;
-    private static final int SOURCE_COMPACT_MIN_HEIGHT = 40;
-    private static final int SOURCE_LIST_MAX_HEIGHT = 109;
-    private static final int SOURCE_ROWS_TOP = 32;
-    private static final int SOURCE_DETAILS_VIEWPORT_HEIGHT = 102;
-    private static final int SOURCE_DETAILS_MIN_HEIGHT = 22;
-    private static final int NBT_HEADER_VIEWPORT_HEIGHT = 20;
-    private static final int NBT_PREFERRED_VIEWPORT_HEIGHT = 71;
+    private static final int DOCK_GAP = 4;
+    private static final int CONTEXT_HEADER = 22;
+    private static final int CONTEXT_ROW = 18;
+    private static final int CONTEXT_PADDING = 3;
+    private static final int CONTEXT_ACTION = 14;
+    /** Header plus one row, so a docked section is never reduced to a title bar. */
+    private static final int CONTEXTS_MINIMUM = CONTEXT_HEADER + CONTEXT_ROW + CONTEXT_PADDING;
+    /** The NBT tree keeps its heading and two rows before the expansion gives up its detail lines. */
+    private static final int NBT_MINIMUM = 18 + 2 * 17 + 2;
+    private static final int NBT_PREFERRED = 18 + 8 * 17 + 2;
+    private static final int NBT_MESSAGE = 26;
     /** Blank advance (see font/inline_icon.json) reserving room for a toolbar icon inside wrapped text. */
     private static final int ICON_SLOT = 0xE000;
     private static final FontDescription ICON_SLOT_FONT =
@@ -79,18 +83,25 @@ public final class DebuggerOverlay {
     private int maxSourceOffset;
     private int lastSourceRows = -1;
     private int lastSelectedSource = -1;
-    private Bounds watchSummaryBounds = EMPTY;
     private final WatchPanel watchPanel;
+    private final CallStackPanel callStackPanel;
     private final BreakpointPanel breakpointPanel;
     private Bounds sourceScrollBounds = EMPTY;
+    private Bounds contextsBounds = EMPTY;
+    private Bounds dockArea = EMPTY;
+    /** The selected context row shows its details and NBT tree under it until clicked again. */
+    private boolean contextExpanded = true;
+    private final Map<DebuggerButton, Runnable> contextMenus = new HashMap<>();
     private Bounds viewTriggerBounds = EMPTY;
     private Bounds viewMenuBounds = EMPTY;
     private final List<DebuggerButton> viewMenuButtons = new ArrayList<>();
     private boolean viewMenuOpen;
-    private boolean showInspector;
+    private boolean showContexts;
     private boolean showWatches;
+    private boolean showCallStack;
     private boolean showBreakpoints;
-    /** Wide layouts dock Breakpoints beside Watches until toggled; compact ones use the auxiliary panel. */
+    /** Session-only section visibility; compact layouts use the auxiliary panel instead. */
+    private boolean callStackOpen = true;
     private boolean breakpointsOpen;
     private boolean compactAuxiliary;
     private boolean narrowAuxiliary;
@@ -108,6 +119,7 @@ public final class DebuggerOverlay {
         this.watchPanel = new WatchPanel(state);
         this.breakpointPanel = new BreakpointPanel(state);
         this.commandPanel = new CommandPanel(state, () -> { sourceOffset = 0; expandedGroup = List.of(); });
+        this.callStackPanel = new CallStackPanel(state, () -> { sourceOffset = 0; expandedGroup = List.of(); });
     }
 
     public works.nuty.codon.client.state.DebuggerPreferences preferences() { return state.preferences(); }
@@ -147,7 +159,9 @@ public final class DebuggerOverlay {
         commandPanel.openCondition(definition, marker);
     }
     boolean openFlowContextMenu(net.minecraft.client.gui.components.events.GuiEventListener focused) {
-        boolean opened = commandPanel.openContextMenu(focused);
+        Runnable context = contextMenus.get(focused);
+        if (context != null) context.run();
+        boolean opened = context != null || callStackPanel.openContextMenu(focused) || commandPanel.openContextMenu(focused);
         if (opened) panelResizing.cancel();
         return opened;
     }
@@ -184,8 +198,10 @@ public final class DebuggerOverlay {
         viewMenuButtons.clear();
         commandPanel.clearBounds();
         watchPanel.clearBounds();
+        callStackPanel.clearBounds();
         breakpointPanel.clearBounds();
-        watchSummaryBounds = EMPTY;
+        contextMenus.clear();
+        contextsBounds = dockArea = EMPTY;
         nbtPanel.clearBounds();
         if (client.level == null || client.player == null) {
             buttonCache.clear();
@@ -226,81 +242,57 @@ public final class DebuggerOverlay {
 
         int auxiliarySize = graphics.guiWidth() < 420 ? 2 : graphics.guiWidth() < 600 ? 1 : 0;
         if (auxiliarySize != lastAuxiliarySize) {
-            auxiliaryPanel = auxiliarySize == 1 ? AuxiliaryPanel.INSPECTOR : AuxiliaryPanel.NONE;
+            auxiliaryPanel = auxiliarySize == 1 ? AuxiliaryPanel.CONTEXTS : AuxiliaryPanel.NONE;
             lastAuxiliarySize = auxiliarySize;
         }
-        // An open expression row lives in the Watches panel, so compact layouts must show it.
-        // It is derived per frame, so closing the row restores the panel the user had chosen.
+        // An open expression row lives in the Watch section, so compact layouts must show it.
+        // It is derived per frame, so closing the row restores the section the user had chosen.
         AuxiliaryPanel shownPanel = auxiliarySize != 0 && watchPanel.composerOpen() ? AuxiliaryPanel.WATCHES : auxiliaryPanel;
         // Breakpoints is cursor-only: the passive HUD ignores the choice, so it keeps Flow and labels,
-        // and the next interactive frame shows the panel again.
+        // and the next interactive frame shows the section again.
         if (!interactive && shownPanel == AuxiliaryPanel.BREAKPOINTS) shownPanel = AuxiliaryPanel.NONE;
         compactAuxiliary = auxiliarySize != 0;
         narrowAuxiliary = auxiliarySize == 2;
-        showInspector = compactAuxiliary ? shownPanel == AuxiliaryPanel.INSPECTOR
+        showContexts = compactAuxiliary ? shownPanel == AuxiliaryPanel.CONTEXTS
             : state.preferences().inspectorVisible() != null ? state.preferences().inspectorVisible()
                 : graphics.guiWidth() >= 420 && graphics.guiHeight() >= 220;
         showWatches = compactAuxiliary ? shownPanel == AuxiliaryPanel.WATCHES
             : state.preferences().watchesVisible();
-        // Hiding Watches (View menu) ends the row, so its field never lingers unpainted.
+        // Hiding Watch (View menu) ends the row, so its field never lingers unpainted.
         if (!showWatches && watchPanel.composerOpen()) watchPanel.closeComposer();
-        // The saved-breakpoint list is a cursor-mode panel; the passive HUD never shows it.
+        showCallStack = compactAuxiliary ? shownPanel == AuxiliaryPanel.CALL_STACK : callStackOpen;
+        // The saved-breakpoint list is a cursor-mode section; the passive HUD never shows it.
         showBreakpoints = interactive && (compactAuxiliary ? shownPanel == AuxiliaryPanel.BREAKPOINTS : breakpointsOpen);
-        boolean sideColumn = showWatches || showBreakpoints;
-        boolean reserveSide = narrowAuxiliary ? false : showInspector || compactAuxiliary && sideColumn;
-        int maximumInspectorWidth = DebuggerLayout.maximumInspectorWidth(graphics.guiWidth(), sideColumn);
-        int inspectorWidth = Math.min(maximumInspectorWidth,
-            panelResizing.requestedWidth("inspector", preferences().inspectorWidth()));
-        // Explicit compact Watches and narrow Details use the workspace until closed.
+        boolean dockVisible = showContexts || showWatches || showCallStack || showBreakpoints;
+        // The narrow drawer covers the world until closed; wider layouts reserve the dock beside it.
+        boolean reserveDock = !narrowAuxiliary && dockVisible;
+        int maximumDockWidth = DebuggerLayout.maximumDockWidth(graphics.guiWidth());
+        int dockWidth = Math.min(maximumDockWidth, panelResizing.requestedWidth("dock", preferences().watchWidth()));
+        // Explicit compact Watch and Breakpoints, and any narrow drawer, use the workspace until closed.
         boolean showCommand = state.preferences().commandVisible()
             && !(narrowAuxiliary && shownPanel != AuxiliaryPanel.NONE
                 || compactAuxiliary && (shownPanel == AuxiliaryPanel.WATCHES || shownPanel == AuxiliaryPanel.BREAKPOINTS));
-        DebuggerLayout layout = DebuggerLayout.create(graphics.guiWidth(), graphics.guiHeight(), reserveSide,
+        DebuggerLayout layout = DebuggerLayout.create(graphics.guiWidth(), graphics.guiHeight(), reserveDock,
             showCommand
                 ? commandPanel.preferredHeight(graphics.guiWidth(), graphics.guiHeight(), snapshot) : 0,
-            inspectorWidth, DebuggerHudInsets.bottom(preferences()));
-        Bounds auxiliaryBounds = narrowAuxiliary
+            dockWidth, DebuggerHudInsets.bottom(preferences()));
+        Bounds dockBounds = narrowAuxiliary
             ? new Bounds(layout.world().x(), layout.world().y(),
                 Math.min(240, Math.max(0, layout.world().width() - 32)), layout.world().height())
-            : layout.inspector();
+            : layout.dock();
         navigationGroup = DebuggerNavigation.Group.TOOLBAR;
         renderToolbar(graphics, layout, input, snapshot);
         if (viewMenuOpen) renderViewMenu(graphics);
         if (viewMenuBounds.contains(mouseX, mouseY)) hoverX = hoverY = -1;
-        navigationGroup = DebuggerNavigation.Group.WATCH;
-        if (sideColumn) {
-            Bounds column = compactAuxiliary ? auxiliaryBounds
-                : WatchPanelLayout.available(layout, graphics.guiWidth(),
-                    panelResizing.requestedWidth("watch", preferences().watchWidth()));
-            // Wide layouts stack Breakpoints under Watches, leaving the list at least one row.
-            int stacked = showWatches && showBreakpoints ? Math.min(breakpointPanel.preferredHeight(),
-                Math.max(BreakpointPanel.MINIMUM_HEIGHT, column.height() / 2)) : 0;
-            if (showWatches) {
-                renderWatchSummary(graphics, stacked == 0 ? column : new Bounds(column.x(), column.y(), column.width(),
-                    Math.max(0, column.height() - stacked - 4)), hoverX, hoverY, interactive, input);
-            }
-            if (showBreakpoints) {
-                navigationGroup = DebuggerNavigation.Group.BREAKPOINT;
-                int top = stacked == 0 || watchPanel.bounds().height() == 0 ? column.y()
-                    : watchPanel.bounds().y() + watchPanel.bounds().height() + 4;
-                controls.addAll(breakpointPanel.render(graphics,
-                    new Bounds(column.x(), top, column.width(), Math.max(0, column.y() + column.height() - top)),
-                    navigation, scrollbars));
-            }
-        }
-        if (watchPanel.groupingMenuContains(mouseX, mouseY)) hoverX = hoverY = -1;
+        // World labels avoid the dock, and the selected context's details report whether it has a label.
+        if (dockVisible) dockArea = dockBounds;
         navigationGroup = DebuggerNavigation.Group.WORLD;
         if (!narrowAuxiliary || shownPanel == AuxiliaryPanel.NONE)
             renderWorldLabels(graphics, layout.world(), snapshot);
-        if (showInspector) renderInspector(graphics, auxiliaryBounds, snapshot, input);
-        if (interactive && !compactAuxiliary) {
-            if (showInspector) panelResizing.add("inspector", auxiliaryBounds, false,
-                MIN_INSPECTOR_WIDTH, maximumInspectorWidth, preferences()::setInspectorWidth);
-            if (showWatches) panelResizing.add("watch", watchPanel.bounds(), true,
-                MIN_WATCH_WIDTH, WatchPanelLayout.maximumWidth(layout), preferences()::setWatchWidth);
-            else if (showBreakpoints) panelResizing.add("watch", breakpointPanel.bounds(), true,
-                MIN_WATCH_WIDTH, WatchPanelLayout.maximumWidth(layout), preferences()::setWatchWidth);
-        }
+        if (dockVisible) renderDock(graphics, dockBounds, snapshot, interactive, input);
+        if (watchPanel.groupingMenuContains(mouseX, mouseY)) hoverX = hoverY = -1;
+        if (interactive && reserveDock && !compactAuxiliary)
+            panelResizing.add("dock", layout.dock(), false, MIN_WATCH_WIDTH, maximumDockWidth, preferences()::setWatchWidth);
         if (showCommand) {
             controls.addAll(commandPanel.render(graphics, layout.command(), snapshot, input, this, navigation));
         }
@@ -440,8 +432,8 @@ public final class DebuggerOverlay {
         else breakpointsOpen = !showBreakpoints;
     }
 
-    private static final int VIEW_MENU_ROWS = 7;
-    private static final int VIEW_MENU_OPACITY_ROW = 5;
+    private static final int VIEW_MENU_ROWS = 8;
+    private static final int VIEW_MENU_OPACITY_ROW = 6;
 
     private void renderViewMenu(GuiGraphicsExtractor graphics) {
         int menuWidth = Math.min(154, graphics.guiWidth() - 12);
@@ -461,19 +453,24 @@ public final class DebuggerOverlay {
             expandedGroup = List.of();
             sourceOffset = 0;
         });
-        viewMenuItem(1, component("codon.ui.details"), showInspector, () -> {
-            if (compactAuxiliary) auxiliaryPanel = showInspector ? AuxiliaryPanel.NONE : AuxiliaryPanel.INSPECTOR;
-            else state.preferences().setInspectorVisible(!showInspector);
+        // Dock sections, in the dock's order; Breakpoints is the toolbar's count button.
+        viewMenuItem(1, component("codon.ui.contexts"), showContexts, () -> {
+            if (compactAuxiliary) auxiliaryPanel = showContexts ? AuxiliaryPanel.NONE : AuxiliaryPanel.CONTEXTS;
+            else state.preferences().setInspectorVisible(!showContexts);
         });
         viewMenuItem(2, component("codon.watch.title"), showWatches, () -> {
             if (compactAuxiliary) auxiliaryPanel = showWatches ? AuxiliaryPanel.NONE : AuxiliaryPanel.WATCHES;
             else state.preferences().setWatchesVisible(!showWatches);
         });
+        viewMenuItem(3, component("codon.ui.callstack.title"), showCallStack, () -> {
+            if (compactAuxiliary) auxiliaryPanel = showCallStack ? AuxiliaryPanel.NONE : AuxiliaryPanel.CALL_STACK;
+            else callStackOpen = !showCallStack;
+        });
         boolean command = state.preferences().commandVisible();
-        viewMenuItem(3, component("codon.ui.command"), command,
+        viewMenuItem(4, component("codon.ui.command"), command,
             () -> state.preferences().setCommandVisible(!command));
         boolean idleBadge = state.preferences().idleBadgeVisible();
-        viewMenuItem(4, component("codon.ui.idle_badge"), idleBadge,
+        viewMenuItem(5, component("codon.ui.idle_badge"), idleBadge,
             () -> state.preferences().setIdleBadgeVisible(!idleBadge));
         Bounds opacity = viewMenuRow(VIEW_MENU_OPACITY_ROW);
         int labelWidth = client.font.width(component("codon.ui.opacity")) + 14;
@@ -483,7 +480,7 @@ public final class DebuggerOverlay {
         controls.add(opacitySlider);
         viewMenuButtons.add(opacitySlider);
         navigation.bind("background-opacity", DebuggerNavigation.Group.VIEW_MENU, opacitySlider);
-        viewMenuItem(6, component("codon.ui.scale.title"), false,
+        viewMenuItem(7, component("codon.ui.scale.title"), false,
             () -> { if (client.gui.screen() != null) client.gui.setScreen(new UiScaleScreen(client.gui.screen(), state.preferences())); });
     }
 
@@ -533,7 +530,7 @@ public final class DebuggerOverlay {
                 || Math.abs(projected.x) > 1 || Math.abs(projected.y) > 1) continue;
             double x = (projected.x + 1) * 0.5 * graphics.guiWidth();
             double y = (1 - projected.y) * 0.5 * graphics.guiHeight();
-            if (!labelArea.contains(x, y) || watchSummaryBounds.contains(x, y) || breakpointPanel.bounds().contains(x, y)) continue;
+            if (!labelArea.contains(x, y) || dockArea.contains(x, y)) continue;
             // A transition's output prefix is exactly the current stage's inputs; appended drops
             // are historical markers, not live inspector/Watch/NBT indices.
             if (index < inspectorSourceCount) visibleSources.add(index);
@@ -544,7 +541,7 @@ public final class DebuggerOverlay {
         }
         List<GizmoLabelLayout.Label> labels = GizmoLabelLayout.layout(anchors, labelArea,
             selectedIndex, state.gizmoMode() != ClientDebuggerState.GizmoMode.LABELS,
-            Stream.of(watchSummaryBounds, breakpointPanel.bounds()).filter(bounds -> bounds.width() > 0).toList(),
+            Stream.of(dockArea).filter(bounds -> bounds.width() > 0).toList(),
             MAX_WORLD_LABELS);
         for (GizmoLabelLayout.Label label : labels) {
             List<Integer> indices = label.sourceIndices();
@@ -577,9 +574,9 @@ public final class DebuggerOverlay {
                     expandedGroup = List.of();
                     sourceOffset = index;
                 }
-                if (compactAuxiliary) auxiliaryPanel = AuxiliaryPanel.INSPECTOR;
+                if (compactAuxiliary) auxiliaryPanel = AuxiliaryPanel.CONTEXTS;
                 else state.preferences().setInspectorVisible(true);
-                state.preferences().setInspectorTab(InspectorTab.SOURCES);
+                contextExpanded = true;
             }), statusIndex);
             // A group names its representative; its status remains available even in a mixed group.
             if (state.isWorldSourceChanged(index)) sourceButton.withChangedDot(component("codon.ui.flow_changed"));
@@ -588,155 +585,331 @@ public final class DebuggerOverlay {
 
     }
 
-    /** Saved pins first, followed by every change captured at this stop. */
-    private void renderWatchSummary(GuiGraphicsExtractor graphics, Bounds available,
-                                    int mouseX, int mouseY, boolean interactive, InputManager input) {
-        controls.addAll(watchPanel.render(graphics, available, mouseX, mouseY, interactive, input, this, navigation, scrollbars));
-        watchSummaryBounds = watchPanel.bounds();
+    /**
+     * The left dock: Contexts, Watch, Call stack and Breakpoints, stacked in that order. Each visible
+     * section keeps at least a header and one row; spare height grows the lists toward their content.
+     */
+    private void renderDock(GuiGraphicsExtractor graphics, Bounds dock, @Nullable PauseSnapshot snapshot,
+                            boolean interactive, InputManager input) {
+        List<AuxiliaryPanel> kinds = new ArrayList<>();
+        List<DockLayout.Section> sections = new ArrayList<>();
+        if (showContexts) {
+            kinds.add(AuxiliaryPanel.CONTEXTS);
+            // After every section's minimum, an expanded tree reserves its heading and two rows.
+            boolean tree = snapshot != null && contextExpanded && nbtPanel.hasSelectedSource()
+                && contextIndices().contains(state.selectedSourceIndex());
+            sections.add(new DockLayout.Section(CONTEXTS_MINIMUM, tree ? NBT_MINIMUM : 0,
+                Math.max(CONTEXTS_MINIMUM, contextsPreferredHeight(dock.width(), snapshot, input))));
+        }
+        if (showWatches) {
+            kinds.add(AuxiliaryPanel.WATCHES);
+            sections.add(section(WatchPanel.MINIMUM_HEIGHT, watchPanel.preferredHeight()));
+        }
+        if (showCallStack) {
+            kinds.add(AuxiliaryPanel.CALL_STACK);
+            sections.add(section(CallStackPanel.MINIMUM_HEIGHT, callStackPanel.preferredHeight()));
+        }
+        if (showBreakpoints) {
+            kinds.add(AuxiliaryPanel.BREAKPOINTS);
+            sections.add(section(BreakpointPanel.MINIMUM_HEIGHT, breakpointPanel.preferredHeight()));
+        }
+        int[] heights = DockLayout.heights(dock.height(), DOCK_GAP, sections);
+        // Height left below every section goes to Watch, else Contexts, so the longest lists can grow.
+        int used = 0, placed = 0;
+        for (int height : heights) if (height > 0) { used += height; placed++; }
+        int spare = dock.height() - used - Math.max(0, placed - 1) * DOCK_GAP;
+        int receiver = kinds.indexOf(AuxiliaryPanel.WATCHES);
+        if (receiver < 0 || heights[receiver] == 0) receiver = kinds.indexOf(AuxiliaryPanel.CONTEXTS);
+        if (receiver >= 0 && heights[receiver] > 0 && spare > 0) heights[receiver] += spare;
+        int y = dock.y();
+        int carry = 0;
+        for (int i = 0; i < kinds.size(); i++) {
+            if (heights[i] == 0) continue;
+            Bounds area = new Bounds(dock.x(), y, dock.width(),
+                Math.max(0, Math.min(heights[i] + carry, dock.y() + dock.height() - y)));
+            int rendered = switch (kinds.get(i)) {
+                case CONTEXTS -> renderContexts(graphics, area, snapshot, input);
+                case WATCHES -> {
+                    navigationGroup = DebuggerNavigation.Group.WATCH;
+                    controls.addAll(watchPanel.render(graphics, area, hoverX, hoverY, interactive, input, this,
+                        navigation, scrollbars));
+                    yield watchPanel.bounds().height();
+                }
+                case CALL_STACK -> {
+                    controls.addAll(callStackPanel.render(graphics, area, navigation, scrollbars));
+                    yield callStackPanel.bounds().height();
+                }
+                case BREAKPOINTS -> {
+                    navigationGroup = DebuggerNavigation.Group.BREAKPOINT;
+                    controls.addAll(breakpointPanel.render(graphics, area, navigation, scrollbars));
+                    yield breakpointPanel.bounds().height();
+                }
+                case NONE -> 0;
+            };
+            carry = area.height() - rendered;
+            y += rendered + (rendered > 0 ? DOCK_GAP : 0);
+        }
     }
 
-    private void renderInspector(GuiGraphicsExtractor graphics, Bounds area, @Nullable PauseSnapshot snapshot, InputManager input) {
-        panel(graphics, area);
-        if (area.height() < 40) return;
-        if (snapshot == null) {
-            // The icon matches the toolbar's Source button so the control is easy to find.
-            Component sourceButton = Component.empty()
-                .append(Component.literal(Character.toString(ICON_SLOT)).withStyle(style -> style.withFont(ICON_SLOT_FONT)))
-                .append(component("codon.source.title"));
-            wrapped(graphics, Component.translatable("codon.ui.idle_hint",
-                keybind(input.breakpointKey.getTranslatedKeyMessage()), sourceButton,
-                keybind(input.menuKey.getTranslatedKeyMessage())), new Bounds(area.x() + 8, area.y() + 9,
-                area.width() - 16, area.height() - 18), MUTED, DebuggerIcon.SOURCE_FILE);
-            return;
-        }
-        renderSourcesWithDetails(graphics, area, snapshot);
+    private static DockLayout.Section section(int minimum, int preferred) {
+        return new DockLayout.Section(minimum, Math.max(minimum, preferred));
     }
 
-    private void renderSourcesWithDetails(GuiGraphicsExtractor graphics, Bounds body,
-                                          PauseSnapshot snapshot) {
-        sectionDivider(graphics, body);
-        renderSourcesWithDetails(graphics, body, snapshot, 0);
-    }
-
-    private void renderSourcesWithDetails(GuiGraphicsExtractor graphics, Bounds body,
-                                          PauseSnapshot snapshot, int headingInset) {
-        // Inspector regions are viewport allocations. Tree loading and expansion must never move controls.
-        boolean hasNbt = nbtPanel.hasSelectedSource();
-        int nbtMinimum = hasNbt ? Math.min(NBT_PREFERRED_VIEWPORT_HEIGHT,
-            Math.max(0, body.height() - SOURCE_COMPACT_MIN_HEIGHT - SOURCE_DETAILS_MIN_HEIGHT)) : 0;
-        int listHeight = Math.min(body.height(),
-            Math.max(SOURCE_LIST_MIN_HEIGHT, Math.min(SOURCE_LIST_MAX_HEIGHT, body.height() / 3)));
-        // The compact caption and one source row need 40 pixels. Reserve the rest
-        // for actual NBT rows when the taller Flow detail band leaves a short inspector.
-        if (hasNbt) listHeight = Math.min(listHeight,
-            Math.max(SOURCE_COMPACT_MIN_HEIGHT, body.height() - nbtMinimum - SOURCE_DETAILS_MIN_HEIGHT));
-        int remainingHeight = body.height() - listHeight;
-        if (hasNbt && remainingHeight < NBT_HEADER_VIEWPORT_HEIGHT) {
-            listHeight = body.height();
-            remainingHeight = 0;
-        }
-        int detailHeight = Math.min(SOURCE_DETAILS_VIEWPORT_HEIGHT,
-            Math.max(0, remainingHeight - nbtMinimum));
-        if (detailHeight < SOURCE_DETAILS_MIN_HEIGHT
-            || hasNbt && remainingHeight - detailHeight < NBT_HEADER_VIEWPORT_HEIGHT) detailHeight = 0;
-        int nbtHeight = Math.max(0, remainingHeight - detailHeight);
-        navigationGroup = DebuggerNavigation.Group.SOURCES;
-        renderSources(graphics, new Bounds(body.x(), body.y(), body.width(), listHeight), snapshot, headingInset);
-        navigationGroup = DebuggerNavigation.Group.SOURCE_DETAILS;
-        if (detailHeight > 0) renderSourceDetails(graphics,
-            new Bounds(body.x(), body.y() + listHeight, body.width(), detailHeight), 0);
-        navigationGroup = DebuggerNavigation.Group.NBT;
-        Bounds nbtBounds = new Bounds(body.x() + 3, body.y() + listHeight + detailHeight, body.width() - 6, nbtHeight);
-        if (nbtHeight > 0 && !hasNbt && state.selectedPauseSourceIndex() < 0
-            && state.selectedSource() != null && state.selectedSource().entity() != null) {
-            wrapped(graphics, component("codon.nbt.history_unavailable"),
-                new Bounds(nbtBounds.x() + 4, nbtBounds.y() + 5, nbtBounds.width() - 8, nbtBounds.height() - 5), MUTED);
-        }
-        if (nbtHeight > 0) nbtPanel.render(graphics, nbtBounds,
-            hoverX, hoverY, navigation, scrollbars,
-            (id, bounds, label, active, selected, action) -> button(id, bounds, label, active, selected, true, false, action)
-                .withFlatChrome());
-    }
-
-    private void renderSources(GuiGraphicsExtractor graphics, Bounds area, PauseSnapshot snapshot, int headingInset) {
-        boolean compactCaption = area.height() < SOURCE_ROWS_TOP + 19;
-        int rowTop = compactCaption ? 21 : SOURCE_ROWS_TOP;
-        String heading = expandedGroup.isEmpty() ? tr("codon.ui.contexts")
-            : Component.translatable("codon.ui.group", expandedGroup.size()).getString();
-        if (compactCaption) heading = contextProvenance();
-        text(graphics, heading, area.x() + 7 + headingInset, area.y() + 6, area.width() - 42 - headingInset, TEXT);
-        // The Flow detail band owns the selected stage and its stop/recorded state; this line only says which contexts are listed.
-        if (!compactCaption) text(graphics, contextProvenance(), area.x() + 7, area.y() + 18, area.width() - 14, MUTED);
-        if (!expandedGroup.isEmpty()) {
-            navigation.add("all-sources", DebuggerNavigation.Group.SOURCES, -1, 0, () -> { });
-            button("all-sources", new Bounds(area.x() + area.width() - 39, area.y() + 2, 35, 15),
-                component("codon.ui.all"), true, false, false, false, () -> { expandedGroup = List.of(); sourceOffset = 0; });
-        }
+    /** Displayed context indices: the expanded world-label group, or every context of the stage. */
+    private List<Integer> contextIndices() {
         int sourceCount = state.displayedSources().size();
         // Any selection path that bypasses the reset must never index past the displayed list.
         if (expandedGroup.stream().anyMatch(index -> index >= sourceCount)) expandedGroup = List.of();
-        List<Integer> indices = expandedGroup;
-        if (indices.isEmpty()) {
-            List<Integer> all = new ArrayList<>(state.displayedSources().size());
-            for (int i = 0; i < state.displayedSources().size(); i++) all.add(i);
-            indices = all;
+        if (!expandedGroup.isEmpty()) return expandedGroup;
+        List<Integer> all = new ArrayList<>(sourceCount);
+        for (int i = 0; i < sourceCount; i++) all.add(i);
+        return all;
+    }
+
+    private Component idleHint(InputManager input) {
+        // The icon matches the toolbar's Source button so the control is easy to find.
+        Component sourceButton = Component.empty()
+            .append(Component.literal(Character.toString(ICON_SLOT)).withStyle(style -> style.withFont(ICON_SLOT_FONT)))
+            .append(component("codon.source.title"));
+        return Component.translatable("codon.ui.idle_hint",
+            keybind(input.breakpointKey.getTranslatedKeyMessage()), sourceButton,
+            keybind(input.menuKey.getTranslatedKeyMessage()));
+    }
+
+    private int contextsPreferredHeight(int width, @Nullable PauseSnapshot snapshot, InputManager input) {
+        if (snapshot == null)
+            return CONTEXT_HEADER + client.font.split(idleHint(input), Math.max(1, width - 16)).size() * 11 + 6;
+        int rows = Math.max(1, contextIndices().size());
+        PauseSource source = state.selectedSource();
+        int expansion = 0;
+        if (contextExpanded && source != null && contextIndices().contains(state.selectedSourceIndex()))
+            expansion = detailLines(source, width - 14).size() * 11 + 6 + nbtPreferredHeight(source);
+        return CONTEXT_HEADER + rows * CONTEXT_ROW + expansion + CONTEXT_PADDING;
+    }
+
+    private int nbtPreferredHeight(PauseSource source) {
+        if (nbtPanel.hasSelectedSource()) return NBT_PREFERRED;
+        return historyOnly(source) ? NBT_MESSAGE : 0;
+    }
+
+    /** A recorded entity context of an earlier stage has no NBT of its own; reads use the actual pause. */
+    private boolean historyOnly(PauseSource source) {
+        return !nbtPanel.hasSelectedSource() && state.selectedPauseSourceIndex() < 0 && source.entity() != null;
+    }
+
+    /**
+     * Contexts section: a header with the count and where the contexts were recorded, one row per context,
+     * and the selected row expanded in place into its details and NBT tree. Returns the height drawn.
+     */
+    private int renderContexts(GuiGraphicsExtractor graphics, Bounds area, @Nullable PauseSnapshot snapshot,
+                               InputManager input) {
+        navigationGroup = DebuggerNavigation.Group.SOURCES;
+        if (area.width() < 72 || area.height() < CONTEXTS_MINIMUM) return 0;
+        int headingY = area.y() + (CONTEXT_HEADER - client.font.lineHeight) / 2 + 1;
+        if (snapshot == null) {
+            int height = Math.min(area.height(), contextsPreferredHeight(area.width(), null, input));
+            contextsBounds = new Bounds(area.x(), area.y(), area.width(), height);
+            panel(graphics, contextsBounds);
+            text(graphics, tr("codon.ui.contexts.count", 0), area.x() + 7, headingY, area.width() - 14, TEXT);
+            wrapped(graphics, idleHint(input), new Bounds(area.x() + 8, area.y() + CONTEXT_HEADER + 1,
+                area.width() - 16, height - CONTEXT_HEADER - 3), MUTED, DebuggerIcon.SOURCE_FILE);
+            return height;
         }
-        int rows = Math.max(0, (area.height() - rowTop) / 19);
-        maxSourceOffset = Math.max(0, indices.size() - Math.max(1, rows));
-        int selectedSource = state.selectedSourceIndex();
-        if (rows > 0 && (rows != lastSourceRows || selectedSource != lastSelectedSource)) {
-            int selectedRow = indices.indexOf(selectedSource);
-            // Keep the inspected entity identifiable after a resize or an external selection.
-            // Clicking an already visible row and ordinary wheel scrolling keep their positions.
-            if (selectedRow >= 0 && selectedRow < sourceOffset) sourceOffset = selectedRow;
-            else if (selectedRow >= sourceOffset + rows) sourceOffset = selectedRow - rows + 1;
-        }
-        lastSourceRows = rows;
-        lastSelectedSource = selectedSource;
-        sourceOffset = Math.max(0, Math.min(sourceOffset, maxSourceOffset));
-        sourceScrollBounds = area;
-        if (rows > 0) {
-            for (int row = 0; row < indices.size(); row++) {
-                int logicalRow = row;
-                navigation.add("source-" + indices.get(row), DebuggerNavigation.Group.SOURCES, row, 0,
-                    () -> sourceOffset = revealRow(logicalRow, sourceOffset, rows, maxSourceOffset));
+        List<Integer> indices = contextIndices();
+        int viewport = Math.max(0, area.height() - CONTEXT_HEADER - CONTEXT_PADDING);
+        int selected = state.selectedSourceIndex();
+        PauseSource selectedSource = state.selectedSource();
+        int selectedRow = contextExpanded && selectedSource != null ? indices.indexOf(selected) : -1;
+        // The expansion is a viewport allocation: tree loading and NBT expansion never move the rows.
+        List<DetailLine> details = List.of();
+        int expansion = 0, detailHeight = 0, nbtHeight = 0;
+        if (selectedRow >= 0) {
+            details = detailLines(selectedSource, area.width() - 14);
+            int detailPreferred = details.size() * 11 + 6;
+            expansion = Math.min(detailPreferred + nbtPreferredHeight(selectedSource), Math.max(0, viewport - CONTEXT_ROW));
+            nbtHeight = nbtPanel.hasSelectedSource()
+                ? Math.max(Math.min(NBT_MINIMUM, expansion), expansion - detailPreferred)
+                : Math.max(0, expansion - detailPreferred);
+            detailHeight = expansion - nbtHeight;
+            if (detailHeight < 17) {
+                nbtHeight += detailHeight;
+                detailHeight = 0;
             }
         }
+        int count = indices.size();
+        List<Integer> expansions = new ArrayList<>(java.util.Collections.nCopies(count, 0));
+        if (selectedRow >= 0) expansions.set(selectedRow, expansion);
+        var rows = new WatchPanelLayout.Rows(java.util.Collections.nCopies(count, true),
+            java.util.Collections.nCopies(count, 0), java.util.Collections.nCopies(count, false), expansions);
+        maxSourceOffset = rows.maximumOffset(viewport);
+        if (viewport != lastSourceRows || selected != lastSelectedSource) {
+            // Keep the inspected context identifiable after a resize or an external selection.
+            // Clicking an already visible row and ordinary wheel scrolling keep their positions.
+            int row = indices.indexOf(selected);
+            if (row >= 0) sourceOffset = rows.reveal(row, sourceOffset, viewport);
+        }
+        lastSourceRows = viewport;
+        lastSelectedSource = selected;
+        for (int row = 0; row < count; row++) {
+            int index = indices.get(row);
+            int logicalRow = row;
+            Runnable reveal = () -> sourceOffset = Math.clamp(rows.reveal(logicalRow, sourceOffset, viewport), 0, maxSourceOffset);
+            navigation.add("source-" + index, DebuggerNavigation.Group.SOURCES, row, 0, reveal);
+            if (state.displayedSources().get(index).entity() != null)
+                navigation.add("copy-uuid-" + index, DebuggerNavigation.Group.SOURCES, row, 1, reveal);
+            if (index == selected) navigation.add("move-to-source", DebuggerNavigation.Group.SOURCES, row, 2, reveal);
+        }
         navigation.revealFocus(DebuggerNavigation.Group.SOURCES);
-        if (indices.isEmpty() && area.height() >= rowTop + 12) {
-            var withheld = state.isPaused() ? state.withheldPauseDetails() : null;
+        sourceOffset = Math.clamp(sourceOffset, 0, maxSourceOffset);
+        int end = rows.visibleEnd(sourceOffset, viewport);
+        int content = count == 0 ? CONTEXT_ROW : rows.height(sourceOffset, end);
+        int height = Math.min(area.height(), CONTEXT_HEADER + content + CONTEXT_PADDING);
+        contextsBounds = new Bounds(area.x(), area.y(), area.width(), height);
+        sourceScrollBounds = new Bounds(area.x(), area.y() + CONTEXT_HEADER, area.width(), height - CONTEXT_HEADER);
+        panel(graphics, contextsBounds);
+
+        var withheld = state.isPaused() ? state.withheldPauseDetails() : null;
+        int actionWidth = expandedGroup.isEmpty() ? 0 : 39;
+        String heading = expandedGroup.isEmpty()
+            ? tr("codon.ui.contexts.count", count == 0 && withheld != null ? withheld.pauseSourceCount() : count)
+            : tr("codon.ui.group", expandedGroup.size());
+        // The Flow detail band owns the selected stage; the header only says which contexts are listed.
+        int headingWidth = Math.min(client.font.width(heading), area.width() - 14 - actionWidth);
+        text(graphics, heading, area.x() + 7, headingY, headingWidth, TEXT);
+        text(graphics, " · " + contextProvenance(), area.x() + 7 + headingWidth, headingY,
+            area.width() - 14 - actionWidth - headingWidth, MUTED);
+        if (!expandedGroup.isEmpty()) {
+            navigation.add("all-sources", DebuggerNavigation.Group.SOURCES, -1, 0, () -> { });
+            button("all-sources", new Bounds(area.x() + area.width() - 39, area.y() + 3, 35, 15),
+                component("codon.ui.all"), true, false, false, false, () -> { expandedGroup = List.of(); sourceOffset = 0; });
+        }
+        if (count == 0) {
             String empty = withheld == null ? tr("codon.ui.no_sources")
                 : Component.translatable("codon.ui.details_withheld_counts",
                     withheld.pauseSourceCount(), withheld.callStackSize()).getString();
-            text(graphics, empty, area.x() + 7, area.y() + rowTop + 3, area.width() - 14, MUTED);
+            text(graphics, empty, area.x() + 7, area.y() + CONTEXT_HEADER + 5, area.width() - 14, MUTED);
         }
-        for (int row = 0; row < rows && sourceOffset + row < indices.size(); row++) {
-            int index = indices.get(sourceOffset + row);
+        for (int row = sourceOffset; row < end; row++) {
+            int index = indices.get(row);
+            int y = area.y() + CONTEXT_HEADER + rows.height(sourceOffset, row);
             PauseSource source = state.displayedSources().get(index);
-            String name = sourceLabel(source, index, state.isDisplayedSourceDropped(index),
-                state.isDisplayedSourceCreated(index));
-            Component title = Component.literal(name);
+            boolean isSelected = index == selected;
+            int actions = (source.entity() != null ? CONTEXT_ACTION + 2 : 0) + (isSelected ? CONTEXT_ACTION + 2 : 0);
+            Bounds rowArea = new Bounds(area.x() + 4, y, area.width() - 10, CONTEXT_ROW - 1);
             // The row draws its title (a clipped one is echoed by the button); the tooltip adds only status and dimension.
             List<Component> notes = new ArrayList<>();
             if (state.isDisplayedSourceChanged(index)) notes.add(component("codon.ui.flow_changed"));
             if (!source.dimension().equals(dimension())) notes.add(Component.literal(shortDimension(source.dimension())));
-            int labelWidth = area.width() - 13;
-            colorSourceButton(button("source-" + index, new Bounds(area.x() + 5, area.y() + rowTop + row * 19, labelWidth, 17),
-                title, true, index == state.selectedSourceIndex(), true, false, () -> {
-                    if (state.snapshot() == snapshot) {
+            DebuggerButton rowButton = colorSourceButton(button("source-" + index,
+                new Bounds(rowArea.x(), y, rowArea.width() - actions, CONTEXT_ROW - 1),
+                Component.literal(sourceLabel(source, index, state.isDisplayedSourceDropped(index),
+                    state.isDisplayedSourceCreated(index))), true, isSelected, true, false, () -> {
+                    if (state.snapshot() != snapshot) return;
+                    // Clicking the selected row folds its details; any other row selects and expands.
+                    if (state.selectedSourceIndex() == index) contextExpanded = !contextExpanded;
+                    else {
                         state.selectSource(index);
-                        state.preferences().setInspectorTab(InspectorTab.SOURCES);
+                        contextExpanded = true;
                     }
-                }).withFlatChrome(), index).setTooltip(notes.isEmpty() ? null : Tooltip.create(joinLines(notes)));
-        }
-        if (rows > 0 && indices.size() > rows) {
-            if (area.height() - (rowTop + rows * 19) >= 9) {
-                text(graphics, (sourceOffset + 1) + "–" + Math.min(indices.size(), sourceOffset + rows) + " / " + indices.size(),
-                    area.x() + 7, area.y() + area.height() - 8, area.width() - 14, MUTED);
+                }).withFlatChrome(), index);
+            rowButton.setTooltip(notes.isEmpty() ? null : Tooltip.create(joinLines(notes)));
+            Runnable menu = () -> openContextMenu(snapshot, index, rowArea);
+            rowButton.withSecondaryAction(menu).withNarrationHint(component("codon.ui.contexts.menu_hint"));
+            contextMenus.put(rowButton, menu);
+            renderContextActions(rowArea, source, index, isSelected);
+            if (row == selectedRow && expansion > 0) {
+                int expansionY = y + CONTEXT_ROW;
+                if (detailHeight > 0)
+                    renderContextDetails(graphics, new Bounds(area.x() + 4, expansionY, area.width() - 8, detailHeight), details);
+                navigationGroup = DebuggerNavigation.Group.NBT;
+                // Narrower than the list, so the tree's scrollbar never shares hits with the Contexts scrollbar.
+                Bounds nbtBounds = new Bounds(area.x() + 3, expansionY + detailHeight, area.width() - 10, nbtHeight);
+                if (nbtHeight > 0 && historyOnly(selectedSource)) {
+                    wrapped(graphics, component("codon.nbt.history_unavailable"),
+                        new Bounds(nbtBounds.x() + 4, nbtBounds.y() + 3, nbtBounds.width() - 8, nbtBounds.height() - 3), MUTED);
+                }
+                if (nbtHeight > 0) nbtPanel.render(graphics, nbtBounds, hoverX, hoverY, navigation, scrollbars,
+                    (id, bounds, label, active, selectedButton, action) ->
+                        button(id, bounds, label, active, selectedButton, true, false, action).withFlatChrome());
+                navigationGroup = DebuggerNavigation.Group.SOURCES;
             }
-            scrollbar(graphics, "sources", value -> sourceOffset = value, area.x() + area.width() - 5, area.y() + rowTop, Math.max(1, rows * 19 - 2),
-                sourceOffset, maxSourceOffset, rows, indices.size());
         }
+        if (maxSourceOffset > 0 && end > sourceOffset) {
+            int top = area.y() + CONTEXT_HEADER;
+            int visible = rows.height(sourceOffset, end);
+            int total = rows.height(0, count);
+            scrollbar(graphics, "sources", value -> sourceOffset = value, area.x() + area.width() - 4, top,
+                Math.max(1, visible - 1), sourceOffset, maxSourceOffset, visible, total);
+        }
+        return height;
+    }
+
+    /** Row actions on the right: copy an entity's UUID, and move the camera to the selected context. */
+    private void renderContextActions(Bounds row, PauseSource source, int index, boolean selected) {
+        int x = row.x() + row.width();
+        int y = row.y() + (row.height() - CONTEXT_ACTION) / 2;
+        if (selected) {
+            x -= CONTEXT_ACTION;
+            var freecam = CodonClientMod.freecam();
+            String status = freecam == null ? "unavailable" : freecam.selectedAnchorStatus(client);
+            iconButton("move-to-source", new Bounds(x, y, CONTEXT_ACTION, CONTEXT_ACTION),
+                component("codon.ui.move_to_source"), DebuggerIcon.FREECAM, status.equals("ready"),
+                () -> { if (freecam != null) freecam.moveToSelectedAnchor(client); })
+                .withoutChrome()
+                // Ready needs no sentence beyond the icon label; only an unavailable state has a reason to show.
+                .setTooltip(status.equals("ready") ? null : Tooltip.create(component("codon.ui.move_to_source." + status)));
+            x -= 2;
+        }
+        if (source.entity() == null) return;
+        x -= CONTEXT_ACTION;
+        String uuid = source.entity().uuid().toString();
+        boolean copied = uuid.equals(copiedUuid) && System.nanoTime() < copiedUuidUntil;
+        DebuggerButton copy = iconButton("copy-uuid-" + index, new Bounds(x, y, CONTEXT_ACTION, CONTEXT_ACTION),
+            Component.literal("UUID: " + uuid + "\n" + tr(copied ? "codon.ui.copied" : "codon.ui.copy")),
+            copied ? DebuggerIcon.CONFIRM : DebuggerIcon.COPY_UUID, true, () -> copyUuid(uuid)).withoutChrome();
+        // The selected row keeps its actions visible; other rows reveal theirs on hover or focus.
+        if (!selected && !copied) copy.revealOnHover(row.x(), row.y(), row.width(), row.height());
+    }
+
+    private void copyUuid(String uuid) {
+        client.keyboardHandler.setClipboard(uuid);
+        copiedUuid = uuid;
+        copiedUuidUntil = System.nanoTime() + 4_000_000_000L;
+    }
+
+    /** Right-click or Shift+F10: the menu acts on its row, so it first selects that row as a click would. */
+    private void openContextMenu(@Nullable PauseSnapshot snapshot, int index, Bounds anchor) {
+        var parent = client.gui.screen();
+        if (parent == null || state.snapshot() != snapshot || index >= state.displayedSources().size()) return;
+        if (state.selectedSourceIndex() != index) {
+            state.selectSource(index);
+            contextExpanded = true;
+        }
+        PauseSource source = state.displayedSources().get(index);
+        closeViewMenu();
+        scrollbars.release();
+        panelResizing.cancel();
+        var menu = new DebuggerContextMenu(parent, component("codon.ui.contexts"), anchor,
+            Component.literal(sourceLabel(source, index, state.isDisplayedSourceDropped(index))), () -> {
+                if (state.snapshot() != snapshot || state.selectedSourceIndex() != index) return List.of();
+                List<DebuggerContextMenu.Item> items = new ArrayList<>();
+                if (source.entity() != null) {
+                    String uuid = source.entity().uuid().toString();
+                    items.add(new DebuggerContextMenu.Item(component("codon.ui.copy_uuid"), DebuggerIcon.COPY_UUID, true,
+                        Component.literal(uuid), () -> copyUuid(uuid)));
+                }
+                var freecam = CodonClientMod.freecam();
+                String status = freecam == null ? "unavailable" : freecam.selectedAnchorStatus(client);
+                items.add(new DebuggerContextMenu.Item(component("codon.ui.move_to_source"), DebuggerIcon.FREECAM,
+                    status.equals("ready"), status.equals("ready") ? null : component("codon.ui.move_to_source." + status),
+                    () -> { if (freecam != null) freecam.moveToSelectedAnchor(client); }));
+                items.add(new DebuggerContextMenu.Item(component(contextExpanded
+                    ? "codon.ui.contexts.collapse" : "codon.ui.contexts.expand"),
+                    contextExpanded ? DebuggerIcon.DETAILS_CLOSED : DebuggerIcon.DETAILS_OPEN, true, null,
+                    () -> contextExpanded = !contextExpanded));
+                return items;
+            }, event -> false, () -> navigation.requestFocus("source-" + index));
+        ScreenLayers.open(parent, menu);
     }
 
     private String contextProvenance() {
@@ -750,93 +923,62 @@ public final class DebuggerOverlay {
         return tr(inputs ? "codon.ui.contexts.inputs" : "codon.ui.contexts.outputs", stage.index() + 1);
     }
 
-    private void renderSourceDetails(GuiGraphicsExtractor graphics, Bounds area, int headingInset) {
+    /** One detail line; a before/after pair shares a scale so its values stay comparable. */
+    private record DetailLine(String text, int color, float scale) { }
+
+    private List<DetailLine> detailLines(PauseSource source, int width) {
+        List<DetailLine> lines = new ArrayList<>();
+        ExecutionFlowContext parent = state.selectedSourceDropped() ? null : state.selectedFlowParent();
+        PauseSource before = parent == null ? null : parent.source();
+        if (before != null && !Objects.equals(before.entity(), source.entity()))
+            lines.add(new DetailLine("← " + name(before), MUTED, 1));
+        lines.add(new DetailLine(shortDimension(source.dimension()), TEXT, 1));
+        if (before != null && !before.dimension().equals(source.dimension()))
+            lines.add(new DetailLine("← " + shortDimension(before.dimension()), MUTED, 1));
+        pair(lines, SourceDetailsFormatting.position(source), SourceDetailsFormatting.previousPosition(before, source), width);
+        String yaw = tr("codon.ui.rotation.yaw"), pitch = tr("codon.ui.rotation.pitch");
+        pair(lines, SourceDetailsFormatting.rotation(source, yaw, pitch),
+            SourceDetailsFormatting.previousRotation(before, source, yaw, pitch), width);
+        return lines;
+    }
+
+    private void pair(List<DetailLine> lines, String current, String previous, int width) {
+        int widest = Math.max(client.font.width(current), client.font.width(previous));
+        float scale = Math.min(1.0f, Math.max(1, width) / (float) Math.max(1, widest));
+        lines.add(new DetailLine(current, TEXT, scale));
+        if (!previous.isEmpty()) lines.add(new DetailLine(previous, MUTED, scale));
+    }
+
+    /** The selected context's details, under its row; status icons share the first line. */
+    private void renderContextDetails(GuiGraphicsExtractor graphics, Bounds area, List<DetailLine> lines) {
         PauseSource source = state.selectedSource();
         if (source == null) return;
-        int y = area.y() + 6;
-        int accent = sourceColor(state.selectedSourceIndex(), TEAL);
-        int iconX = area.x() + area.width() - 23;
-        var freecam = CodonClientMod.freecam();
-        String status = freecam == null ? "unavailable" : freecam.selectedAnchorStatus(client);
-        iconButton("move-to-source", new Bounds(iconX, y - 3, 16, 16),
-            component("codon.ui.move_to_source"), DebuggerIcon.FREECAM, status.equals("ready"),
-            () -> { if (freecam != null) freecam.moveToSelectedAnchor(client); })
-            .withoutChrome()
-            // Ready needs no sentence beyond the icon label; only an unavailable state has a reason to show.
-            .setTooltip(status.equals("ready") ? null : Tooltip.create(component("codon.ui.move_to_source." + status)));
-        iconX -= 18;
-        boolean copied = source.entity() != null && source.entity().uuid().toString().equals(copiedUuid)
-            && System.nanoTime() < copiedUuidUntil;
-        if (source.entity() != null) {
-            String uuid = source.entity().uuid().toString();
-            iconButton("copy-uuid", new Bounds(iconX, y - 3, 16, 16),
-                Component.literal("UUID: " + uuid + "\n" + tr(copied ? "codon.ui.copied" : "codon.ui.copy")),
-                copied ? DebuggerIcon.CONFIRM : DebuggerIcon.COPY_UUID, true, () -> {
-                    client.keyboardHandler.setClipboard(uuid);
-                    copiedUuid = uuid;
-                    copiedUuidUntil = System.nanoTime() + 4_000_000_000L;
-                }).withoutChrome();
-            iconX -= 18;
-        }
+        int y = area.y() + 4;
+        int iconX = area.x() + area.width() - 18;
         if (!visibleSources.contains(state.selectedSourceIndex())) {
-            sourceStatusIcon(graphics, iconX, y - 3, DebuggerIcon.OUTSIDE_VIEWPORT, AMBER,
+            sourceStatusIcon(graphics, iconX, y - 4, DebuggerIcon.OUTSIDE_VIEWPORT, AMBER,
                 component(source.dimension().equals(dimension()) ? "codon.ui.offscreen" : "codon.ui.other_dimension"));
             iconX -= 18;
         }
         if (state.selectedSourceDropped() || state.selectedSourceCreated() || state.selectedSourceChanged()) {
             boolean dropped = state.selectedSourceDropped();
             boolean created = state.selectedSourceCreated();
-            sourceStatusIcon(graphics, iconX, y - 3,
+            sourceStatusIcon(graphics, iconX, y - 4,
                 dropped ? DebuggerIcon.SOURCE_EXCLUDED : created ? DebuggerIcon.SOURCE_CREATED : DebuggerIcon.SOURCE_CHANGED,
                 dropped ? RED : created ? GREEN : PURPLE,
                 component(dropped ? "codon.ui.flow_removed" : created ? "codon.ui.flow_created" : "codon.ui.flow_changed"));
             iconX -= 18;
         }
-        text(graphics, copied ? tr("codon.ui.copied")
-            : sourceLabel(source, state.selectedSourceIndex(), state.selectedSourceDropped(),
-                state.selectedSourceCreated()),
-            area.x() + 7 + headingInset, y, iconX + 16 - area.x() - 9 - headingInset, accent);
-        y += 16;
-        ExecutionFlowContext parent = state.selectedSourceDropped() ? null : state.selectedFlowParent();
-        PauseSource before = parent == null ? null : parent.source();
-        if (before != null && !Objects.equals(before.entity(), source.entity())) {
-            if (y + 9 > area.y() + area.height()) return;
-            text(graphics, "← " + name(before), area.x() + 7, y, area.width() - 14, MUTED);
+        for (int i = 0; i < lines.size() && y + 9 <= area.y() + area.height(); i++) {
+            DetailLine line = lines.get(i);
+            int width = (i == 0 ? iconX + 18 - area.x() : area.width()) - 8;
+            if (line.scale() < 1) sourceTransformText(graphics, line.text(), area.x() + 4, y, line.scale(), line.color());
+            else text(graphics, line.text(), area.x() + 4, y, width, line.color());
             y += 11;
         }
-        if (y + 9 > area.y() + area.height()) return;
-        text(graphics, shortDimension(source.dimension()), area.x() + 7, y, area.width() - 14, TEXT);
-        y += 11;
-        if (before != null && !before.dimension().equals(source.dimension())) {
-            if (y + 9 > area.y() + area.height()) return;
-            text(graphics, "← " + shortDimension(before.dimension()), area.x() + 7, y, area.width() - 14, MUTED);
-            y += 11;
-        }
-        y = sourceValueRows(graphics, area, y, SourceDetailsFormatting.position(source),
-            SourceDetailsFormatting.previousPosition(before, source));
-        String yaw = tr("codon.ui.rotation.yaw"), pitch = tr("codon.ui.rotation.pitch");
-        sourceValueRows(graphics, area, y, SourceDetailsFormatting.rotation(source, yaw, pitch),
-            SourceDetailsFormatting.previousRotation(before, source, yaw, pitch));
     }
 
-    private int sourceValueRows(GuiGraphicsExtractor graphics, Bounds area, int y,
-                                String current, String previous) {
-        // Keep each pair at the same scale so the before/after values remain comparable.
-        int widest = Math.max(client.font.width(current), client.font.width(previous));
-        float scale = Math.min(1.0f, Math.max(1, area.width() - 14) / (float) Math.max(1, widest));
-        if (y + 9 > area.y() + area.height()) return y;
-        sourceTransformText(graphics, current, area, y, scale, TEXT);
-        y += 11;
-        if (!previous.isEmpty() && y + 9 <= area.y() + area.height()) {
-            sourceTransformText(graphics, previous, area, y, scale, MUTED);
-            y += 11;
-        }
-        return y;
-    }
-
-    private void sourceTransformText(GuiGraphicsExtractor graphics, String value, Bounds area,
-                                     int y, float scale, int color) {
-        int x = area.x() + 7;
+    private void sourceTransformText(GuiGraphicsExtractor graphics, String value, int x, int y, float scale, int color) {
         graphics.pose().pushMatrix();
         graphics.pose().translate(x, y + (client.font.lineHeight * (1.0f - scale)) / 2.0f);
         graphics.pose().scale(scale, scale);
@@ -885,7 +1027,8 @@ public final class DebuggerOverlay {
     }
 
     public boolean scroll(double x, double y, double scrollX, double amount) {
-        if (watchPanel.scroll(x, y, amount) || breakpointPanel.scroll(x, y, amount)) return true;
+        if (watchPanel.scroll(x, y, amount) || breakpointPanel.scroll(x, y, amount)
+            || callStackPanel.scroll(x, y, amount)) return true;
         if (commandPanel.scroll(x, y, scrollX, amount) || nbtPanel.scroll(x, y, amount)) return true;
         int delta = amount > 0 ? -1 : amount < 0 ? 1 : 0;
         if (delta == 0) return false;
@@ -1024,14 +1167,6 @@ public final class DebuggerOverlay {
 
     private static String name(PauseSource source) {
         return source.entity() == null ? tr("codon.ui.position_source") : source.entity().name();
-    }
-
-    private static String location(SourceLocation location) {
-        return switch (location) {
-            case SourceLocation.Function function -> function.location().function() + ":" + function.location().line();
-            case SourceLocation.Block block -> tr("codon.ui.command_block") + " " + block.block().x() + ", " + block.block().y() + ", " + block.block().z();
-            case SourceLocation.Player player -> player.name();
-        };
     }
 
     private static MutableComponent component(String key) {

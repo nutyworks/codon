@@ -19,8 +19,8 @@ Use the [shared setup](../README.md#prepare-and-launch) and place an impulse com
 block pointing into an unconditional, always-active chain command block. Give them
 `say first` and `say second`. Add a breakpoint to the first, then trigger it once.
 
-1. At the stop, press `V`. Inspect the current command, call path and execution
-   contexts. The world remains paused while navigating the UI.
+1. At the stop, press `V`. Inspect the current command, the docked Call stack and
+   Contexts sections. The world remains paused while navigating the UI.
 2. `F7` (Into) advances to the next command stage, including deeper function calls.
    One step must not silently execute the whole remaining chain.
 3. Repeat the fixture with `F8` (Over): the next stop is at the same or shallower

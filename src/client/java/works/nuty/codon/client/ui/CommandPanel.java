@@ -16,7 +16,6 @@ import works.nuty.codon.client.state.ClientStagePreviewState;
 import works.nuty.codon.client.ui.layout.CommandFlowLayout;
 import works.nuty.codon.client.ui.layout.CommandFlowLayout.Part;
 import works.nuty.codon.client.ui.layout.GizmoLabelLayout.Bounds;
-import works.nuty.codon.core.model.CallFrame;
 import works.nuty.codon.core.model.BreakpointCondition;
 import works.nuty.codon.core.model.BreakpointDefinition;
 import works.nuty.codon.core.model.BreakpointTarget;
@@ -40,7 +39,7 @@ import java.util.function.ToIntFunction;
 import static works.nuty.codon.client.ui.DebuggerTheme.*;
 import static works.nuty.codon.client.ui.layout.CommandFlowLayout.CELL_HORIZONTAL_PADDING;
 
-/** A single command surface: its call path, recorded clauses, and the authoritative stop. */
+/** A single command surface: its recorded clauses and the authoritative stop. */
 public final class CommandPanel {
     private static final Bounds EMPTY = new Bounds(0, 0, 0, 0);
     private static final int DETAIL_HEIGHT = 26;
@@ -57,14 +56,10 @@ public final class CommandPanel {
     private final List<DebuggerButton> buttons = new ArrayList<>();
     private boolean expanded;
     private int commandOffset;
-    private int stackOffset;
     private int maxCommandOffset;
-    private int maxStackOffset;
     private Bounds commandBounds = EMPTY;
-    private Bounds stackBounds = EMPTY;
     private final Map<DebuggerButton, Runnable> contextMenus = new HashMap<>();
     private @Nullable Selection lastSelection;
-    private @Nullable StackSelection lastStackSelection;
     private @Nullable PauseSnapshot renderedSnapshot;
     private final ClientFlowPreviewRequests previewRequests = new ClientFlowPreviewRequests();
     private DebuggerNavigation navigation;
@@ -130,7 +125,7 @@ public final class CommandPanel {
         used.clear();
         buttons.clear();
         renderedSnapshot = snapshot;
-        commandBounds = stackBounds = EMPTY;
+        commandBounds = EMPTY;
         contextMenus.clear();
         if (area.width() < 20 || area.height() < 18) return finish();
         graphics.fill(area.x(), area.y(), area.x() + area.width(), area.y() + area.height(), DebuggerTheme.color(PANEL));
@@ -165,16 +160,12 @@ public final class CommandPanel {
         }
         int actionLeft = renderActions(new Bounds(area.x() + 4, actionY, area.width() - 8, 17));
         if (area.height() >= 40) {
-            // Recent chat can leave a short panel: retain path, selected clause and actions.
+            // Recent chat can leave a short panel: retain the selected clause and actions.
+            // The call stack is a dock section, so Flow keeps only its stage cells.
             boolean shortPanel = area.height() < 66;
-            boolean sharedPathRow = area.height() < 58;
             int y = area.y() + (shortPanel ? 1 : 3);
-            // The strip always sits directly above the actions; a short panel gives up its path row for it.
+            // The strip always sits directly above the actions.
             int stripY = actionY - 4 - BreakpointConditionStrip.HEIGHT;
-            if (!sharedPathRow && (strip == null || stripY >= y + (shortPanel ? 18 : 19))) {
-                renderPath(graphics, new Bounds(area.x() + 4, y, area.width() - 8, 17), snapshot);
-                y += shortPanel ? 18 : 19;
-            }
             // Fixed full-width detail band: selected state never changes clause widths or action positions.
             int detailHeight = shortPanel ? 0 : Math.min(DETAIL_HEIGHT,
                 Math.max(0, actionY - y - MARKER_SIZE - 6));
@@ -219,91 +210,10 @@ public final class CommandPanel {
             String footer = stage == null ? "" : conditionSummary(stage);
             if (hasFlowWarning()) footer = (footer.isEmpty() ? "" : footer + " · ")
                 + tr("codon.ui.flow_detail.trace_warning", warningSummary(state.selectedExecutionFlow()));
-            if (sharedPathRow) {
-                // Keep the 18-pixel clause row even when chat leaves only 40–57 pixels.
-                renderPath(graphics, new Bounds(summaryX, actionY,
-                    Math.max(0, actionLeft - summaryX - 6), 17), snapshot);
-            } else {
-                drawText(graphics, detailHeight < client.font.lineHeight + 2 ? detail.title() : footer,
-                    summaryX, actionY + 4, Math.max(0, actionLeft - summaryX - 6), MUTED);
-            }
+            drawText(graphics, detailHeight < client.font.lineHeight + 2 ? detail.title() : footer,
+                summaryX, actionY + 4, Math.max(0, actionLeft - summaryX - 6), MUTED);
         }
         return finish();
-    }
-
-    private void renderPath(GuiGraphicsExtractor graphics, Bounds area, PauseSnapshot snapshot) {
-        navigationGroup = DebuggerNavigation.Group.CALL_PATH;
-        List<CallFrame> frames = state.displayedCallStack();
-        // Withheld frames were measured by the server; never present them as zero or unrecorded.
-        var withheld = frames.isEmpty() && state.isPaused() ? state.withheldPauseDetails() : null;
-        String title = tr("codon.ui.call_stack", withheld != null ? withheld.callStackSize() : frames.size());
-        int titleWidth = Math.min(client.font.width(title) + 10, Math.max(0, area.width() / 2));
-        drawText(graphics, title, area.x() + 3, area.y() + 4, titleWidth - 6, MUTED);
-        int left = area.x() + titleWidth;
-        int available = Math.max(0, area.width() - titleWidth);
-        if (frames.isEmpty()) {
-            drawText(graphics, tr(withheld != null ? "codon.ui.details_withheld" : "codon.ui.stack_unavailable"),
-                left + 3, area.y() + 4, available - 6, MUTED);
-            return;
-        }
-        if (available < 5) return;
-        int total = 0;
-        int selectedStart = 0;
-        int selectedEnd = 0;
-        for (int i = frames.size() - 1; i >= 0; i--) {
-            int width = client.font.width(frameLabel(snapshot, i)) + 10 + frameIconWidth(i);
-            if (i == state.selectedCallFrameIndex()) { selectedStart = total; selectedEnd = total + width; }
-            int start = total;
-            int end = total + width;
-            navigation.add("path-" + i + "-" + frames.get(i).invocationId(), navigationGroup, 0, frames.size() - 1 - i,
-                () -> {
-                    if (end - start > available) {
-                        if (end <= stackOffset || start >= stackOffset + available) stackOffset = start;
-                    } else if (start < stackOffset) stackOffset = start;
-                    else if (end > stackOffset + available) stackOffset = Math.max(start, end - available);
-                    stackOffset = Math.clamp(stackOffset, 0, maxStackOffset);
-                });
-            total += width + (i > 0 ? 8 : 0);
-        }
-        maxStackOffset = Math.max(0, total - available);
-        StackSelection selection = new StackSelection(frames, state.selectedCallFrameIndex(), available);
-        if (!selection.equals(lastStackSelection)) {
-            if (selectedEnd - selectedStart > available) stackOffset = selectedEnd - available;
-            else if (selectedStart < stackOffset) stackOffset = selectedStart;
-            else if (selectedEnd > stackOffset + available) stackOffset = selectedEnd - available;
-            lastStackSelection = selection;
-        }
-        stackOffset = Math.clamp(stackOffset, 0, maxStackOffset);
-        navigation.revealFocus(DebuggerNavigation.Group.CALL_PATH);
-        stackBounds = area;
-        int x = left - stackOffset;
-        for (int i = frames.size() - 1; i >= 0; i--) {
-            String label = frameLabel(snapshot, i);
-            int width = client.font.width(label) + 10 + frameIconWidth(i);
-            int visibleLeft = Math.max(left, x);
-            int visibleRight = Math.min(left + available, x + width);
-            if (visibleRight - visibleLeft >= 5) {
-                DebuggerButton frame = button("path-" + i + "-" + frames.get(i).invocationId(),
-                    new Bounds(visibleLeft, area.y(), visibleRight - visibleLeft, 15), Component.literal(label),
-                    true, state.selectedCallFrameIndex() == i, frameAction(i))
-                    .withHorizontalViewport(visibleLeft - x, width);
-                if (frameIconWidth(i) > 0) frame.withTextIcon(DebuggerIcon.PAUSE);
-                if (i == state.selectedCallFrameIndex() && state.isViewingCurrentCommand()) frame.withStatusColor(AMBER, AMBER_SURFACE);
-                frame.setTooltip(Tooltip.create(frameTooltip(frames.get(i))));
-            }
-            x += width;
-            if (i > 0 && x + 2 >= left && x + 8 <= left + available)
-                drawText(graphics, "›", x + 2, area.y() + 4, 6, MUTED);
-            x += 8;
-        }
-        if (maxStackOffset > 0) {
-            int thumb = Math.min(available, Math.max(5, available * available / total));
-            scrollbars.add("path", true, left, area.y() + 16, available, 1, thumb, stackOffset, maxStackOffset,
-                value -> stackOffset = value);
-            int thumbX = left + (available - thumb) * stackOffset / maxStackOffset;
-            graphics.fill(left, area.y() + 16, left + available, area.y() + 17, DebuggerTheme.color(BORDER));
-            graphics.fill(thumbX, area.y() + 16, thumbX + thumb, area.y() + 17, DebuggerTheme.color(SCROLLBAR));
-        }
     }
 
     private int renderActions(Bounds area) {
@@ -982,12 +892,6 @@ public final class CommandPanel {
     }
 
     public boolean scroll(double x, double y, double scrollX, double amount) {
-        if (stackBounds.contains(x, y)) {
-            double movement = scrollX != 0 ? scrollX : amount;
-            if (movement == 0) return false;
-            stackOffset = (int) Math.clamp(stackOffset - movement * 24, 0, maxStackOffset);
-            return true;
-        }
         int delta = amount > 0 ? -1 : amount < 0 ? 1 : 0;
         if (delta == 0) return false;
         if (commandBounds.contains(x, y)) {
@@ -997,16 +901,7 @@ public final class CommandPanel {
     }
 
     public void clearBounds() {
-        commandBounds = stackBounds = EMPTY;
-    }
-
-    private Runnable frameAction(int index) {
-        CallFrame expected = state.displayedCallStack().get(index);
-        return () -> {
-            if (index >= state.displayedCallStack().size() || !state.displayedCallStack().get(index).equals(expected)) return;
-            state.selectCallFrame(index);
-            changed();
-        };
+        commandBounds = EMPTY;
     }
 
     private void changed() {
@@ -1048,30 +943,9 @@ public final class CommandPanel {
         graphics.fill(x, top, x + 2, top + thumb, DebuggerTheme.color(SCROLLBAR));
     }
 
-    private String frameLabel(PauseSnapshot snapshot, int index) {
-        return location(state.displayedCallStack().get(index).location());
-    }
-
-    private int frameIconWidth(int index) {
-        return state.isPausedCallFrame(state.displayedCallStack().get(index)) ? DebuggerButton.TEXT_ICON_INSET : 0;
-    }
-
-    private static Component frameTooltip(CallFrame frame) {
-        return ClientFormatting.sourceLocation(frame.location()).copy().append("\n" + frame.command().text());
-    }
-
-    private static String location(SourceLocation location) {
-        return switch (location) {
-            case SourceLocation.Function function -> function.location().function() + ":" + function.location().line();
-            case SourceLocation.Block block -> tr("codon.ui.command_block") + " " + block.block().x() + ", " + block.block().y() + ", " + block.block().z();
-            case SourceLocation.Player player -> player.name();
-        };
-    }
-
     private static String tr(String key, Object... args) { return Component.translatable(key, args).getString(); }
 
     private int labelWidth(String key) { return client.font.width(Component.translatable(key)) + 10; }
 
     private record Selection(PauseSnapshot snapshot, int frame, int flow, int stage, int unobserved, int width, int height) { }
-    private record StackSelection(List<CallFrame> frames, int selected, int rows) { }
 }

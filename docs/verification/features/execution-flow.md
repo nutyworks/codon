@@ -9,7 +9,37 @@ separate acceptance checks.
 
 ## User path and expected result
 
-The UI scaffold uses shared neutral surfaces and flat Contexts, call-path and Flow
+### Docked Contexts and Call stack
+
+Contexts and the call stack are sections of the left dock, which stacks **Contexts**,
+**Watch**, **Call stack** and **Breakpoints** in that order (View toggles the first
+three; the toolbar count toggles Breakpoints). The dock is reserved beside the world,
+never over it; drag its right edge to resize it (220–640 pixels, saved as `watchWidth`).
+Every visible section keeps its header and one row; spare height grows sections toward
+their content, and a dock too short for a section's minimum drops the trailing
+sections instead of overlapping them. Below 600 GUI pixels the dock shows one section
+at a time; below 420 it becomes a drawer over the world until closed.
+
+- **Contexts** — the header shows the count and which stage supplied the contexts
+  (`Contexts (3) · Before stage 2`), plus **All** while a world-label group is
+  expanded. Clicking a row selects that context; the selected row expands in place
+  into its details (parent, dimension, position and rotation with before/after
+  values) and its NBT tree, whose field pins are the Add to Watch action (the same
+  `WatchSpec` as before). Clicking the selected row again folds it. Row actions on
+  the right copy an entity's UUID (revealed on hover or focus) and, on the selected
+  row, move the camera to the context. Right-click or Shift+F10 opens Copy UUID,
+  Move camera and Show/Hide details. While running, the empty section explains how
+  to set a breakpoint.
+- **Call stack** — a vertical list, innermost frame first, so depth never overflows
+  sideways; the wheel and Up/Down scroll it. Selecting a row selects that frame for
+  Flow. The paused frame keeps its pause icon and amber when it is current. A
+  function frame's hover action opens it in Source; right-click or Shift+F10 offers
+  Show in Flow, Open in Source and Copy location. Withheld stacks say so instead of
+  showing zero; with no stop the section says to pause at a breakpoint.
+- **Flow** keeps only the stage cells, the selection detail band and actions; it no
+  longer has a call-path strip.
+
+The UI scaffold uses shared neutral surfaces and flat Contexts, call-stack and Flow
 buttons: idle rows have no repeated frame, hover has a neutral fill, selection keeps
 its semantic fill and underline, and keyboard focus has a filled corner caret.
 Foreground text and icons remain opaque when panel opacity is reduced. Live amber,
@@ -26,8 +56,8 @@ no count line reserve no count width. The shared count row remains when observed
 counts are shown; hidden Unrun labels do not produce a replacement badge. Stage
 targets, secondary actions and selection colors retain their existing semantics. Marker
 and warning controls use separate 18×18 targets with a 19-pixel layout slot.
-Character wrapping, row scrolling and call-path horizontal scrolling retain their
-existing behavior with the denser clause geometry.
+Character wrapping and row scrolling retain their existing behavior with the denser
+clause geometry.
 
 The actual paused Flow stage uses amber text/counts and its existing amber selected
 surface, without a pause glyph. The first clause fragment no longer reserves the
@@ -36,7 +66,7 @@ needed. Amber is guarded by live paused state plus the actual flow/stage identit
 so browsing a different recorded stage retains teal selection without moving the
 execution indicator. The stopped clause tooltip explicitly names Stop and the stage
 number; the selection detail band's textual Stop state and narration target remain.
-Breakpoint controls, toolbar controls and call-path markers are unchanged.
+Breakpoint controls, toolbar controls and call-stack markers are unchanged.
 
 The follow-up crop `Screenshot 2026-10-03 at 15.27.53.png` shows the space before
 `at @s`, inside the clause after its breakpoint marker. Parsed stage text includes
@@ -51,8 +81,8 @@ detail band states it once and both panels write it as `stage N` / `N단계`. Co
 labels only the stage which supplies its displayed contexts. Complete modifier records show outputs plus
 excluded inputs; terminal, unfinished or incomplete-lineage records show inputs.
 A predecessor's outputs retain that predecessor's stage number. Empty observed
-context sets are not relabeled as missing recordings. Very short inspector viewports
-use the provenance caption as the heading to retain a selectable context row.
+context sets are not relabeled as missing recordings. The provenance follows the
+count in the Contexts header, so a short dock still retains a selectable context row.
 
 Flow has a persistent two-line selection detail band with a keyboard focus/narration
 target. It names Stop/Recorded/Selected, the stage number, observation state and
@@ -155,7 +185,8 @@ establish native pixels or malicious-server timing.
 - [BuildContextsMixin](../../../src/main/java/works/nuty/codon/mixin/BuildContextsMixin.java), [CommandTrace](../../../src/main/java/works/nuty/codon/adapter/CommandTrace.java): native execution instrumentation.
 - [ExecutionFlowRecorder](../../../src/core/java/works/nuty/codon/core/service/ExecutionFlowRecorder.java): recorded stages and lineage.
 - [ExecutionFlowTimeline](../../../src/client/java/works/nuty/codon/client/state/ExecutionFlowTimeline.java), [ClientDebuggerState](../../../src/client/java/works/nuty/codon/client/state/ClientDebuggerState.java): selection and chronology.
-- [CommandPanel](../../../src/client/java/works/nuty/codon/client/ui/CommandPanel.java): command, stage and call-path presentation.
+- [CommandPanel](../../../src/client/java/works/nuty/codon/client/ui/CommandPanel.java): command and stage presentation.
+- [DebuggerOverlay](../../../src/client/java/works/nuty/codon/client/ui/DebuggerOverlay.java) (`renderDock`, `renderContexts`), [CallStackPanel](../../../src/client/java/works/nuty/codon/client/ui/CallStackPanel.java), [DockLayout](../../../src/client/java/works/nuty/codon/client/ui/layout/DockLayout.java): docked Contexts and Call stack sections.
 
 ## Choose verification
 
@@ -193,6 +224,9 @@ continues execution. This does not truncate or remap source indices.
 | Flow options/markers for never-observed stages, rejection feedback, recovered previews, then first-occurrence terminal and conditional stops | `DebuggerUnobservedFlowBreakpointGameTest`; `clientTest`: `ClientUnobservedFlowSelectionTest`, `ClientFlowPreviewRequestsTest`, `CommandFlowLayoutTest` |
 | Continuations and incomplete-record warnings | `DebuggerContinuationRecordingGameTest` |
 | Expanded context group cleared when Breakpoints navigation selects a shorter stage (no stale indices) | `DebuggerPresentationGameTest` |
+| Dock section allocation and order | `clientTest`: `DockLayoutTest`, `DebuggerLayoutTest` |
+| Docked Call stack list: deep stacks scroll, frame selection, frame tooltips; Contexts row copy action and View → Contexts | `DebuggerPresentationGameTest` (`codon-call-stack-*`, `codon-copy-uuid-confirmed`, `codon-icon-contexts-closed`), `FlowLegacyConditionGameTest` |
+| Keyboard: Contexts rows and row actions, Call stack Up/Down reveal | `DebuggerKeyboardNavigationGameTest` |
 | Rendered context indicators, stable selection/grouping, dot size at 1.00/1.50/2.25 scales, EN/KO hover/focus explanations | `DebuggerPresentationGameTest`; `clientTest`: `GizmoLabelLayoutTest`; `test`: `DebuggerButtonTest` (narration and reused-button cleanup) |
 
 Example: `./gradlew runClientGameTest -PclientGameTest=DebuggerExecutionFlowGameTest`.

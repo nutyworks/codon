@@ -4,7 +4,7 @@
 
 Use the [shared setup](../README.md#prepare-and-launch) and pause at a breakpoint.
 The default binding is `H`; the same gesture works in world and debugger cursor mode.
-While running, the empty inspector explains how to set a command-block or Source
+While running, the empty Contexts section explains how to set a command-block or Source
 line breakpoint and enter cursor mode using the current key bindings. The Source
 label is preceded by the toolbar's Source icon, drawn in the wrapped text at any
 UI scale, so the button is easy to find. Help → Basics
@@ -35,19 +35,20 @@ reserves 60 vanilla GUI pixels above the hotbar/health and expands this inset to
 clear recent wrapped chat rows, honoring vanilla chat scale/spacing. The inset is
 converted to Codon's scale; fitting does not rewrite saved panel widths. Recent
 chat first reduces the world/detail viewport to retain selectable Command rows.
-If fewer than 58 pixels remain, the call path shares the action row to preserve an
-18-pixel command/marker row in a 40-pixel panel. Opening
+Flow has no call-path row (the call stack is a dock section), so a 40-pixel panel
+keeps an 18-pixel command/marker row above its actions. Opening
 chat continues to suppress the passive debugger HUD.
 
-At compact widths, explicitly opened Watches use the available workspace above the
-HUD; narrow Details drawers do the same, and closing them restores Command. Taller
-layouts retain context detail actions and NBT rows by reducing Command height before
-removing those controls. Short inspector viewports reserve the full NBT heading
-before source details; details disappear when they would push that heading outside
-the workspace.
+At compact widths the dock shows one section at a time (View → Contexts, Watch or
+Call stack, or the toolbar's Breakpoints count). Explicitly opened Watch and
+Breakpoints use the available workspace above the HUD; narrow drawers do the same,
+and closing them restores Command. Taller layouts retain context detail actions and
+NBT rows by reducing Command height before removing those controls. A short dock
+reserves the full NBT heading before source details; details disappear when they
+would push that heading outside the dock.
 
 HUD background opacity still follows the saved 0–100% preference. Modal forms,
-pickers, Details, breakpoint dialogs, Help and UI-scale settings keep an opaque
+pickers, breakpoint dialogs, Help and UI-scale settings keep an opaque
 reading surface and their dim scrim independently of that preference. Text alpha
 is not the cause of low-opacity world contrast. English/Korean Help describes this
 boundary.
@@ -171,7 +172,7 @@ survival health/hotbar at 854×480 and 1280×720, EN/KO, default/zero opacity. M
 screenshots face bright sky and dark terrain for each combination. Additional
 captures show idle/no-F3, idle/F3, paused/F3 and open chat in both languages. The
 Targeted captures also check five/ten recent chat rows and the 299/300-pixel height
-boundary. `DebuggerNbtTreeGameTest` checks heading containment in a 64-pixel inspector
+boundary. `DebuggerNbtTreeGameTest` checks heading containment in a 64-pixel dock
 with an actual paused entity source; an injected flow fixture has no live NBT executor.
 The fixture uses injected client snapshots, so use the real world-marker regression
 for H and server-pause safety. Inspect `codon-readable-*` images; this matrix does

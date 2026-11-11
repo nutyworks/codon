@@ -129,8 +129,10 @@ public final class DebuggerReadabilityGameTest implements FabricClientGameTest {
                             .findFirst().orElseThrow(() -> new AssertionError("Recent chat retains breakpoint markers"));
                         require(marker.getWidth() == 18 && marker.getHeight() == 18
                             && marker.getBottom() <= screen.height - inset, "Breakpoint targets retain their hit area");
-                        require(buttons.stream().anyMatch(button -> button.getMessage().getString().contains("demo:spawn_wave")),
-                            "Compressed Command keeps the selected call path");
+                        // The call stack is a dock section; compression never puts frame rows back into Flow.
+                        require(buttons.stream().noneMatch(button -> button.getMessage().getString().contains("demo:spawn_wave")
+                                && button.getBottom() > marker.getY() - 20),
+                            "Compressed Command keeps only stage cells; frames stay in the docked Call stack");
                         require(buttons.stream().anyMatch(button -> button.getMessage().getString()
                             .equals(Component.translatable("codon.ui.expand_command").getString())),
                             "Compressed Command keeps its actions");

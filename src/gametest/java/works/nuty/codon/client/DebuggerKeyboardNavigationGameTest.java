@@ -60,7 +60,7 @@ public final class DebuggerKeyboardNavigationGameTest implements FabricClientGam
             checkActionRowAndToolbar(context, screen, state);
             checkSourceListNavigation(context, screen, state);
             checkScrolledSourceDoesNotActivateOrReset(context, screen, state);
-            checkCallPathNavigation(context, screen, state);
+            checkCallStackNavigation(context, screen, state);
             checkNbtNavigation(context, screen, state);
             checkWatchContainers(context, state);
             checkHelpKeysAndTopicFocus(context, screen, state);
@@ -159,8 +159,13 @@ public final class DebuggerKeyboardNavigationGameTest implements FabricClientGam
         context.waitTicks(2);
         context.runOnClient(client -> {
             require(sourceIndex(focused(screen), state) == 2, "Down reaches the second source");
+            press(client, screen, InputConstants.KEY_RIGHT, InputConstants.KEYCODE_RIGHT, 0, InputType.KEYBOARD_ARROW);
+            require(focused(screen).icon() == DebuggerIcon.COPY_UUID, "Right reaches the row's copy action");
+            press(client, screen, InputConstants.KEY_LEFT, InputConstants.KEYCODE_LEFT, 0, InputType.KEYBOARD_ARROW);
+            require(sourceIndex(focused(screen), state) == 2, "Left returns from the row action to its row");
             press(client, screen, InputConstants.KEY_TAB, InputConstants.KEYCODE_TAB, 0, InputType.KEYBOARD_TAB);
-            require(focused(screen).icon() == DebuggerIcon.COPY_UUID, "Tab leaves Sources for the details container");
+            require(screen.getFocused() != null && sourceIndex(focused(screen), state) < 0
+                && focused(screen).icon() != DebuggerIcon.COPY_UUID, "Tab leaves Contexts for the next dock section");
             press(client, screen, InputConstants.KEY_TAB, InputConstants.KEYCODE_TAB, InputConstants.MOD_SHIFT,
                 InputType.KEYBOARD_TAB);
         });
@@ -187,7 +192,8 @@ public final class DebuggerKeyboardNavigationGameTest implements FabricClientGam
             press(client, screen, InputConstants.KEY_RETURN, InputConstants.KEYCODE_RETURN, 0, InputType.KEYBOARD_ARROW);
             require(state.selectedSourceIndex() == selected, "Enter cannot activate the wheel-hidden source");
             press(client, screen, InputConstants.KEY_TAB, InputConstants.KEYCODE_TAB, 0, InputType.KEYBOARD_TAB);
-            require(focused(screen).icon() == DebuggerIcon.COPY_UUID, "Tab exits a scrolled container");
+            require(screen.getFocused() != null && sourceIndex(focused(screen), state) < 0
+                && focused(screen).icon() != DebuggerIcon.COPY_UUID, "Tab exits a scrolled container");
             press(client, screen, InputConstants.KEY_TAB, InputConstants.KEYCODE_TAB, InputConstants.MOD_SHIFT,
                 InputType.KEYBOARD_TAB);
         });
@@ -196,7 +202,7 @@ public final class DebuggerKeyboardNavigationGameTest implements FabricClientGam
             "Shift+Tab reveals the remembered source after mouse scrolling"));
     }
 
-    private static void checkCallPathNavigation(ClientGameTestContext context, CodonScreen screen,
+    private static void checkCallStackNavigation(ClientGameTestContext context, CodonScreen screen,
                                                 ClientDebuggerState state) {
         context.runOnClient(client -> {
             PauseSnapshot base = DebuggerPresentationGameTest.fixture(client);
@@ -212,26 +218,35 @@ public final class DebuggerKeyboardNavigationGameTest implements FabricClientGam
                 base.pauseSources(), base.executionFlows(), base.reason(), base.pauseId()));
         });
         context.waitTicks(2);
+        // The docked Call stack lists the innermost frame first; Down walks toward the root caller.
+        // This 300-pixel-high dock fits two sections; hide Watch so Call stack is one of them.
+        context.runOnClient(client -> state.preferences().setWatchesVisible(false));
+        context.waitTicks(2);
         context.runOnClient(client -> screen.setFocused(button(screen, label -> label.equals("demo:spawn_wave:12"))));
         for (int index = 0; index < 9; index++) {
-            context.runOnClient(client -> press(client, screen, InputConstants.KEY_LEFT, InputConstants.KEYCODE_LEFT,
+            context.runOnClient(client -> press(client, screen, InputConstants.KEY_DOWN, InputConstants.KEYCODE_DOWN,
                 0, InputType.KEYBOARD_ARROW));
             context.waitTicks(2);
         }
         context.runOnClient(client -> require(focusedLabel(screen).contains("caller_9"),
-            "Left reveals the hidden call frame and preserves keyboard focus after rendering"));
+            "Down reveals the hidden call frame and preserves keyboard focus after rendering"));
         context.takeScreenshot("codon-keyboard-hidden-call-frame");
         for (int index = 0; index < 9; index++) {
-            context.runOnClient(client -> press(client, screen, InputConstants.KEY_RIGHT, InputConstants.KEYCODE_RIGHT,
+            context.runOnClient(client -> press(client, screen, InputConstants.KEY_UP, InputConstants.KEYCODE_UP,
                 0, InputType.KEYBOARD_ARROW));
             context.waitTicks(2);
         }
         context.runOnClient(client -> require(focusedLabel(screen).equals("demo:spawn_wave:12"),
-            "Right returns through the hidden call frames while keeping keyboard focus"));
+            "Up returns through the hidden call frames while keeping keyboard focus"));
+        context.runOnClient(client -> state.preferences().setWatchesVisible(true));
+        context.waitTicks(2);
     }
 
     private static void checkNbtNavigation(ClientGameTestContext context, CodonScreen screen,
                                            ClientDebuggerState state) {
+        // The tree is the selected Contexts row's expansion; give the dock room for its rows beside Call stack.
+        context.getInput().resizeWindow(1280, 720);
+        context.runOnClient(client -> state.preferences().setWatchesVisible(false));
         context.runOnClient(client -> {
             PauseSnapshot base = DebuggerPresentationGameTest.fixture(client);
             state.applyPause(new PauseSnapshot(base.location(), base.command(), base.depth(), base.callStack(),
@@ -260,6 +275,9 @@ public final class DebuggerKeyboardNavigationGameTest implements FabricClientGam
         context.waitTicks(2);
         context.runOnClient(client -> require(isNbtPin(focused(screen)), "NBT Up preserves the Watch action column"));
         context.takeScreenshot("codon-keyboard-nbt-hidden-row");
+        context.runOnClient(client -> state.preferences().setWatchesVisible(true));
+        context.getInput().resizeWindow(1280, 600);
+        context.waitTicks(2);
     }
 
     private static void checkHelpKeysAndTopicFocus(ClientGameTestContext context, CodonScreen parent,
@@ -332,11 +350,11 @@ public final class DebuggerKeyboardNavigationGameTest implements FabricClientGam
     }
 
     private static DebuggerButton sourceButton(CodonScreen screen, ClientDebuggerState state, int oneBasedIndex) {
-        var inspector = DebuggerLayout.create(screen.width, screen.height, true).inspector();
+        var dock = DebuggerLayout.create(screen.width, screen.height, true).dock();
         return screen.children().stream().filter(DebuggerButton.class::isInstance).map(DebuggerButton.class::cast)
-            .filter(button -> button.getX() >= inspector.x() && button.getRight() <= inspector.x() + inspector.width()
+            .filter(button -> button.getX() >= dock.x() && button.getRight() <= dock.x() + dock.width()
                 && sourceIndex(button, state) == oneBasedIndex)
-            .findFirst().orElseThrow(() -> new AssertionError("Required visible inspector source is missing"));
+            .findFirst().orElseThrow(() -> new AssertionError("Required visible Contexts row is missing"));
     }
 
     private static int sourceIndex(DebuggerButton button, ClientDebuggerState state) {

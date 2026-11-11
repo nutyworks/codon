@@ -27,7 +27,8 @@ public final class DebuggerScrollbarGameTest implements FabricClientGameTest {
     @Override
     public void runTest(ClientGameTestContext context) {
         try (TestSingleplayerContext ignored = context.worldBuilder().create()) {
-            context.getInput().resizeWindow(1280, 600);
+            // The dock stacks Contexts above Call stack; this height leaves the expanded NBT tree several rows.
+            context.getInput().resizeWindow(1280, 720);
             context.runOnClient(client -> {
                 client.options.guiScale().set(2);
                 client.resizeGui();
@@ -35,6 +36,8 @@ public final class DebuggerScrollbarGameTest implements FabricClientGameTest {
 
             ClientDebuggerState state = new ClientDebuggerState();
             CodonScreen screen = context.computeOnClient(client -> {
+                // Watch is not under test; hiding it gives the Contexts tree the dock's spare height.
+                state.preferences().setWatchesVisible(false);
                 PauseSnapshot base = DebuggerPresentationGameTest.fixture(client);
                 state.applyPause(new PauseSnapshot(base.location(), base.command(), base.depth(), base.callStack(),
                     base.pauseSources(), base.executionFlows(), base.reason(), 91));
@@ -110,7 +113,7 @@ public final class DebuggerScrollbarGameTest implements FabricClientGameTest {
         context.runOnClient(client -> {
             DebuggerButton first = button(screen, "#1 Zombie 1");
             screen.setFocused(first);
-            require(screen.getFocused() == first, "Source click starts after a normally focusable inspector widget");
+            require(screen.getFocused() == first, "Source click starts after a normally focusable Contexts row");
         });
         Track source = context.computeOnClient(client -> track(screen, "sources"));
         moveCursor(context, screen, source.x() + source.thickness() / 2.0, source.y() + source.length() - 1.0);
@@ -140,7 +143,7 @@ public final class DebuggerScrollbarGameTest implements FabricClientGameTest {
             require(offset == 0, "Native Sources drag back to the start persists after release");
             require(source.offset() == offset, "Rendered Sources thumb agrees with its released offset");
             require(sourceButtonOrNull(screen, "#1 Zombie 1") != null,
-                "Dragging Sources redraws the first inspector row after release");
+                "Dragging Sources redraws the first Contexts row after release");
         });
         context.takeScreenshot("codon-scrollbar-sources-drag");
     }
@@ -253,11 +256,11 @@ public final class DebuggerScrollbarGameTest implements FabricClientGameTest {
     }
 
     private static DebuggerButton sourceButtonOrNull(CodonScreen screen, String label) {
-        var inspector = works.nuty.codon.client.ui.layout.DebuggerLayout.create(screen.width, screen.height, true).inspector();
+        var dock = works.nuty.codon.client.ui.layout.DebuggerLayout.create(screen.width, screen.height, true).dock();
         return screen.children().stream().filter(DebuggerButton.class::isInstance).map(DebuggerButton.class::cast)
             .filter(button -> button.getMessage().getString().equals(label)
-                && button.getX() >= inspector.x() && button.getRight() <= inspector.x() + inspector.width()
-                && button.getY() >= inspector.y() && button.getBottom() <= inspector.y() + inspector.height())
+                && button.getX() >= dock.x() && button.getRight() <= dock.x() + dock.width()
+                && button.getY() >= dock.y() && button.getBottom() <= dock.y() + dock.height())
             .findFirst().orElse(null);
     }
 

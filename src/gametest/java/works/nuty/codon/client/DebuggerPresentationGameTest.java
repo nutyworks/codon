@@ -79,7 +79,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
             checkCommandPanel(context, screen, state);
             checkStableCommandActions(context, screen, state);
             checkVisibleClauseSelection(context, screen, state);
-            checkHorizontalCallPath(context, screen, state);
+            checkCallStackList(context, screen, state);
             checkSourceColors(context, screen, state);
             checkContextStatusLabels(context, screen, state);
             checkUuidCopyFeedback(context, screen, state);
@@ -204,11 +204,11 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
         String clipboard = context.computeOnClient(client -> client.keyboardHandler.getClipboard());
         try {
             String uuid = context.computeOnClient(client -> state.selectedSource().entity().uuid().toString());
-            context.runOnClient(client -> click(screen, button(screen, label -> label.startsWith("UUID: "))));
+            context.runOnClient(client -> click(screen, button(screen, label -> label.startsWith("UUID: " + uuid))));
             context.getInput().setCursorPos(0, 0);
             context.waitTicks(2);
             context.runOnClient(client -> {
-                DebuggerButton copied = button(screen, label -> label.startsWith("UUID: "));
+                DebuggerButton copied = button(screen, label -> label.startsWith("UUID: " + uuid));
                 require(client.keyboardHandler.getClipboard().equals(uuid), "Copy UUID writes the selected context UUID");
                 require(copied.icon() == DebuggerIcon.CONFIRM
                     && copied.getMessage().getString().contains(Component.translatable("codon.ui.copied").getString()),
@@ -217,11 +217,14 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
             context.takeScreenshot("codon-copy-uuid-confirmed");
             context.runOnClient(client -> state.selectSource(1));
             context.waitTicks(2);
-            context.runOnClient(client -> require(button(screen, label -> label.startsWith("UUID: ")).icon() == DebuggerIcon.COPY_UUID,
-                "Copied confirmation does not transfer to another context UUID"));
+            context.runOnClient(client -> {
+                String other = state.selectedSource().entity().uuid().toString();
+                require(!other.equals(uuid) && button(screen, label -> label.startsWith("UUID: " + other)).icon() == DebuggerIcon.COPY_UUID,
+                    "Copied confirmation does not transfer to another context UUID");
+            });
             context.runOnClient(client -> state.applyPause(fixture(client)));
             context.waitTicks(2);
-            context.runOnClient(client -> require(button(screen, label -> label.startsWith("UUID: ")).icon() == DebuggerIcon.COPY_UUID,
+            context.runOnClient(client -> require(button(screen, label -> label.startsWith("UUID: " + uuid)).icon() == DebuggerIcon.COPY_UUID,
                 "A new pause clears copied confirmation even for the same UUID"));
         } finally {
             context.runOnClient(client -> client.keyboardHandler.setClipboard(clipboard));
@@ -295,20 +298,20 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
             click(screen, button(screen, value -> value.equals("View")));
         });
         context.waitTicks(2);
-        context.runOnClient(client -> click(screen, button(screen, value -> value.contains("Details"))));
+        context.runOnClient(client -> click(screen, button(screen, DebuggerPresentationGameTest::contextsViewItem)));
         context.waitTicks(2);
         context.runOnClient(client -> {
-            require(Boolean.FALSE.equals(state.preferences().inspectorVisible()), "View menu closes Details");
+            require(Boolean.FALSE.equals(state.preferences().inspectorVisible()), "View menu closes the Contexts section");
             click(screen, button(screen, value -> value.equals("View")));
         });
-        context.takeScreenshot("codon-icon-details-closed");
+        context.takeScreenshot("codon-icon-contexts-closed");
         context.waitTicks(2);
-        context.runOnClient(client -> click(screen, button(screen, value -> value.contains("Details"))));
+        context.runOnClient(client -> click(screen, button(screen, DebuggerPresentationGameTest::contextsViewItem)));
         context.waitTicks(2);
     }
 
-    private static void checkHorizontalCallPath(ClientGameTestContext context, CodonScreen screen,
-                                                ClientDebuggerState state) {
+    private static void checkCallStackList(ClientGameTestContext context, CodonScreen screen,
+                                           ClientDebuggerState state) {
         context.runOnClient(client -> {
             PauseSnapshot original = fixture(client);
             List<CallFrame> frames = new ArrayList<>();
@@ -320,37 +323,50 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
                 original.pauseSources(), original.executionFlows(), original.reason(), original.pauseId()));
         });
         context.waitTicks(2);
-        context.runOnClient(client -> {
-            DebuggerButton leaf = button(screen, value -> value.equals("demo:spawn_wave:12"));
-            require(screen.children().stream().noneMatch(child -> child instanceof DebuggerButton control
-                && control.getMessage().getString().equals("demo:caller_9:9")), "Off-screen frames are not active widgets");
-            require(screen.mouseScrolled(leaf.getX() + 3, leaf.getY() + 3, 100, 0),
-                "Horizontal trackpad input scrolls the call path");
-        });
-        context.waitTicks(2);
+        // A deep stack is a vertical list inside the dock: it scrolls instead of overflowing sideways.
+        for (int attempt = 0; attempt < 10; attempt++) {
+            boolean reached = context.computeOnClient(client -> {
+                var dock = works.nuty.codon.client.ui.layout.DebuggerLayout.create(screen.width, screen.height, true).dock();
+                for (var child : screen.children()) if (child instanceof DebuggerButton control
+                    && control.getMessage().getString().matches("demo:(spawn_wave:12|caller_\\d:\\d)"))
+                    require(control.getX() >= dock.x() && control.getRight() <= dock.x() + dock.width(),
+                        "Every visible frame row stays inside the dock");
+                if (screen.children().stream().anyMatch(child -> child instanceof DebuggerButton control
+                    && control.getMessage().getString().equals("demo:caller_9:9"))) return true;
+                DebuggerButton visible = button(screen, value -> value.matches("demo:(spawn_wave:12|caller_\\d:\\d)"));
+                require(screen.mouseScrolled(visible.getX() + 3, visible.getY() + 3, 0, -1),
+                    "The mouse wheel scrolls the call stack list");
+                return false;
+            });
+            if (reached) break;
+            context.waitTicks(1);
+        }
         context.runOnClient(client -> {
             DebuggerButton root = button(screen, value -> value.equals("demo:caller_9:9"));
             click(screen, root);
-            require(state.selectedCallFrameIndex() == 9, "Horizontal scrolling makes the deepest caller selectable");
+            require(state.selectedCallFrameIndex() == 9, "Scrolling the list makes the deepest caller selectable");
             require(state.selectedCommand().text().equals("function demo:caller_8"), "Caller selection preserves its command");
         });
         context.waitTicks(2);
-        context.takeScreenshot("codon-horizontal-stack-root");
+        context.takeScreenshot("codon-call-stack-root");
         context.runOnClient(client -> {
             DebuggerButton root = button(screen, value -> value.equals("demo:caller_9:9"));
-            require(screen.mouseScrolled(root.getX() + 3, root.getY() + 3, 0, -100),
-                "A vertical mouse wheel also scrolls the horizontal path");
+            for (int i = 0; i < 10; i++) screen.mouseScrolled(root.getX() + 3, root.getY() + 3, 0, 1);
         });
         context.waitTicks(2);
         context.runOnClient(client -> {
-            click(screen, button(screen, value -> value.equals("demo:spawn_wave:12")));
-            require(state.selectedCallFrameIndex() == 0 && state.isViewingCurrentCommand(), "The scrolled leaf returns to the actual stop");
+            DebuggerButton leaf = button(screen, value -> value.equals("demo:spawn_wave:12"));
+            DebuggerButton caller = button(screen, value -> value.equals("demo:caller_1:1"));
+            require(leaf.getY() < caller.getY() && leaf.getX() == caller.getX(),
+                "The innermost frame heads the list and callers follow below it");
+            click(screen, leaf);
+            require(state.selectedCallFrameIndex() == 0 && state.isViewingCurrentCommand(), "The leaf returns to the actual stop");
             for (var child : screen.children()) if (child instanceof DebuggerButton control)
                 require(control.getX() >= 0 && control.getRight() <= screen.width,
-                    "Clipped frame hit boxes stay inside the screen");
+                    "Frame hit boxes stay inside the screen");
         });
         context.waitTicks(2);
-        context.takeScreenshot("codon-horizontal-stack-leaf");
+        context.takeScreenshot("codon-call-stack-leaf");
         context.runOnClient(client -> state.applyPause(fixture(client)));
         context.waitTicks(2);
     }
@@ -364,8 +380,13 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
                 "The paused frame uses a drawn pause icon");
             button(screen, value -> value.equals("demo:tick:4"));
             DebuggerButton condition = button(screen, value -> value.contains("if entity"));
-            require(condition.getY() == button(screen, value -> value.equals("demo:spawn_wave:12")).getY() + 19,
-                "Command clauses follow the call path directly without a duplicate location caption row");
+            DebuggerButton frame = button(screen, value -> value.equals("demo:spawn_wave:12"));
+            var dock = works.nuty.codon.client.ui.layout.DebuggerLayout.create(screen.width, screen.height, true).dock();
+            require(frame.getX() >= dock.x() && frame.getRight() <= dock.x() + dock.width()
+                    && condition.getY() > frame.getBottom()
+                    && screen.children().stream().noneMatch(child -> child instanceof DebuggerButton control
+                        && control.getMessage().getString().matches("demo:\\w+:\\d+") && control.getY() >= frame.getBottom() + 40),
+                "The call stack is a dock section above Flow; Flow keeps only its stage cells");
             click(screen, condition);
             require(state.selectedExecutionFlowStage().index() == 2 && state.displayedSources().size() == 10,
                 "A command clause selects its recorded condition stage and sources");
@@ -658,11 +679,11 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
             });
             context.waitTicks(2);
             context.runOnClient(client -> {
-                var inspector = works.nuty.codon.client.ui.layout.DebuggerLayout
-                    .create(screen.width, screen.height, true).inspector();
+                var dock = works.nuty.codon.client.ui.layout.DebuggerLayout
+                    .create(screen.width, screen.height, true).dock();
                 require(screen.children().stream().anyMatch(child -> child instanceof DebuggerButton button
-                    && button.getMessage().getString().equals(title) && button.getX() >= inspector.x()
-                    && button.getRight() <= inspector.x() + inspector.width()
+                    && button.getMessage().getString().equals(title) && button.getX() >= dock.x()
+                    && button.getRight() <= dock.x() + dock.width()
                     && button.hasChangedDot() == (sourceIndex == 2)),
                     "The Contexts viewport reveals the selected status and source identity: " + title);
                 for (String member : titles) require(slots.get(member).equals(WidgetBounds.of(worldLabelButton(screen, member))),
@@ -919,7 +940,7 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
 
     private static PauseSnapshot fixture(Minecraft client, boolean visibleDropped) {
         var player = client.player;
-        // Keep the fixture in the world viewport to the right of the source inspector.
+        // Keep the fixture in the world viewport to the right of the dock.
         double x = player.getX() - 2;
         double y = player.getY() + 0.1;
         double z = player.getZ() + 6;
@@ -1032,6 +1053,10 @@ public final class DebuggerPresentationGameTest implements FabricClientGameTest 
             result.add(new ExecutionFlowContext(firstId + i, sources.get(i)));
         }
         return List.copyOf(result);
+    }
+
+    private static boolean contextsViewItem(String label) {
+        return label.replaceFirst("^● ", "").strip().equals("Contexts");
     }
 
     private static DebuggerButton button(CodonScreen screen, Predicate<String> label) {

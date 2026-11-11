@@ -101,10 +101,10 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
                 checkWatchEditorRoute(context);
                 assertNoNbtControls(context);
                 selectSource(context, 1);
-                setInspectorVisible(context, false);
+                setContextsVisible(context, false);
                 assertNoNbtControls(context);
-                setInspectorVisible(context, true);
-                assertNbtHeaderIsInsideInspector(context);
+                setContextsVisible(context, true);
+                assertNbtHeaderIsInsideContexts(context);
                 assertPermanentNbtHeading(context);
                 assertNbtHeadingStableDuringReload(context, first.get().getUUID());
                 assertCompactNbtRemainsUsable(context, first.get().getUUID());
@@ -140,12 +140,12 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
                 assertNoNbtControls(context);
                 checkWatchEditorRoute(context);
                 selectSource(context, 1);
-                setInspectorVisible(context, false);
+                setContextsVisible(context, false);
                 assertNoNbtControls(context);
-                context.takeScreenshot("codon-nbt-hidden-inspector-pinned-watches");
+                context.takeScreenshot("codon-nbt-hidden-contexts-pinned-watches");
                 context.runOnClient(client -> require(CodonClientMod.state().watches().definitions().size() == 2,
-                    "hiding the source inspector preserves pinned watches"));
-                setInspectorVisible(context, true);
+                    "hiding the Contexts section preserves pinned watches"));
+                setContextsVisible(context, true);
                 selectSource(context, 2);
                 showNode(context, second.get().getUUID(), "  [0]:");
                 context.runOnClient(client -> {
@@ -269,7 +269,7 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
             "source selection changes the inspected NBT executor"));
     }
 
-    private static void setInspectorVisible(ClientGameTestContext context, boolean visible) {
+    private static void setContextsVisible(ClientGameTestContext context, boolean visible) {
         context.runOnClient(client -> CodonClientMod.state().preferences().setInspectorVisible(visible));
         context.waitTicks(3);
     }
@@ -287,15 +287,22 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
         });
     }
 
-    private static void assertNbtHeaderIsInsideInspector(ClientGameTestContext context) {
+    private static void assertNbtHeaderIsInsideContexts(ClientGameTestContext context) {
         context.runOnClient(client -> {
             CodonScreen screen = codonScreen(client.gui.screen());
             DebuggerButton header = button(screen, DebuggerNbtTreeGameTest::isNbtHeading);
-            var inspector = DebuggerLayout.create(screen.width, screen.height, true).inspector();
-            require(header.getX() >= inspector.x() && header.getX() + header.getWidth() <= inspector.x() + inspector.width()
-                    && header.getY() >= inspector.y() && header.getY() + header.getHeight() <= inspector.y() + inspector.height(),
-                "NBT controls are contained by the selected source inspector");
+            var dock = DebuggerLayout.create(screen.width, screen.height, true).dock();
+            require(header.getX() >= dock.x() && header.getX() + header.getWidth() <= dock.x() + dock.width()
+                    && header.getY() >= dock.y() && header.getY() + header.getHeight() <= dock.y() + dock.height(),
+                "NBT controls are contained by the docked Contexts section");
+            DebuggerButton row = selectedContextRow(screen);
+            require(header.getY() > row.getBottom(), "The selected context expands into its NBT tree in place, under its row");
         });
+    }
+
+    private static DebuggerButton selectedContextRow(CodonScreen screen) {
+        int index = CodonClientMod.state().selectedSourceIndex();
+        return button(screen, message -> message.startsWith("#" + (index + 1) + " ") || message.startsWith("[" + (index + 1) + "] "));
     }
 
     private static void openCodonScreen(ClientGameTestContext context) {
@@ -362,15 +369,21 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
         context.takeScreenshot("codon-nbt-heading-loaded");
     }
 
+    /** The tree follows its row, so switching entities keeps the heading's place relative to the selected row. */
     private static void switchSourceAndAssertNbtHeadingStable(ClientGameTestContext context, int index) {
         AtomicReference<Bounds> before = new AtomicReference<>();
-        context.runOnClient(client -> {
-            before.set(bounds(button(codonScreen(client.gui.screen()), DebuggerNbtTreeGameTest::isNbtHeading)));
-            CodonClientMod.state().selectSource(index);
-        });
+        context.runOnClient(client -> before.set(headingUnderSelectedRow(codonScreen(client.gui.screen()))));
+        context.runOnClient(client -> CodonClientMod.state().selectSource(index));
         context.waitTicks(3);
-        assertNbtHeadingBounds(context, before.get(), "switching selected entity keeps the NBT heading fixed");
+        context.runOnClient(client -> require(headingUnderSelectedRow(codonScreen(client.gui.screen())).equals(before.get()),
+            "switching selected entity keeps the NBT heading at the same place under its row"));
         context.takeScreenshot("codon-nbt-heading-source-switch");
+    }
+
+    private static Bounds headingUnderSelectedRow(CodonScreen screen) {
+        Bounds heading = bounds(button(screen, DebuggerNbtTreeGameTest::isNbtHeading));
+        DebuggerButton row = selectedContextRow(screen);
+        return new Bounds(heading.x(), heading.y() - row.getY(), heading.width(), heading.height());
     }
 
     private static void assertCompactNbtRemainsUsable(ClientGameTestContext context, UUID executor) {
@@ -379,12 +392,12 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
         context.runOnClient(client -> {
             CodonScreen screen = codonScreen(client.gui.screen());
             require(findButton(screen, DebuggerNbtTreeGameTest::isNbtHeading) == null,
-                "compact layout initially folds the Details panel");
+                "compact layout initially folds the Contexts section");
             click(screen, button(screen, label -> label.equals("View")));
         });
-        context.waitFor(client -> findButton(codonScreen(client.gui.screen()), label -> label.endsWith("Details")) != null, 50);
+        context.waitFor(client -> findButton(codonScreen(client.gui.screen()), label -> label.endsWith("Contexts")) != null, 50);
         context.runOnClient(client -> click(codonScreen(client.gui.screen()),
-            button(codonScreen(client.gui.screen()), label -> label.endsWith("Details"))));
+            button(codonScreen(client.gui.screen()), label -> label.endsWith("Contexts"))));
         context.waitFor(client -> findButton(codonScreen(client.gui.screen()), DebuggerNbtTreeGameTest::isNbtHeading) != null, 50);
         context.runOnClient(client -> {
             CodonScreen screen = codonScreen(client.gui.screen());
@@ -393,13 +406,13 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
             require(CodonClientMod.state().nbt().rows(executor).stream()
                 .filter(row -> row.kind() == ClientNbtState.Kind.NODE)
                 .anyMatch(row -> findButton(screen, label -> label.equals(rowLabel(row))) != null),
-                "A compact inspector displays NBT data, not only its heading");
+                "A compact Contexts section displays NBT data, not only its heading");
             require(heading.getY() >= 0 && heading.getBottom() <= screen.height,
                 "The compact NBT heading stays inside the screen");
         });
         context.takeScreenshot("codon-nbt-compact");
         // 18 GUI pixels shorter than the old header layout's 1024x576, so the single toolbar still leaves
-        // the same short 64-pixel inspector viewport this regression needs.
+        // the same short 64-pixel dock viewport this regression needs.
         context.getInput().resizeWindow(1024, 540);
         context.runOnClient(client -> {
             client.gui.hud.getChat().clearMessages(false);
@@ -409,14 +422,14 @@ public final class DebuggerNbtTreeGameTest implements FabricClientGameTest {
         context.runOnClient(client -> {
             CodonScreen screen = codonScreen(client.gui.screen());
             var preferences = CodonClientMod.state().preferences();
-            var inspector = DebuggerLayout.create(screen.width, screen.height, true, 104,
-                preferences.inspectorWidth(), works.nuty.codon.client.ui.DebuggerHudInsets.bottom(preferences)).inspector();
-            require(inspector.height() == 64, "The regression uses the short inspector viewport");
+            var dock = DebuggerLayout.create(screen.width, screen.height, true, 104,
+                preferences.watchWidth(), works.nuty.codon.client.ui.DebuggerHudInsets.bottom(preferences)).dock();
+            require(dock.height() == 64, "The regression uses the short dock viewport");
             DebuggerButton heading = button(screen, DebuggerNbtTreeGameTest::isNbtHeading);
-            require(heading.getY() >= inspector.y() && heading.getBottom() <= inspector.y() + inspector.height(),
+            require(heading.getY() >= dock.y() && heading.getBottom() <= dock.y() + dock.height(),
                 "Source details cannot push the NBT heading outside its reserved viewport");
         });
-        context.takeScreenshot("codon-nbt-short-inspector-heading");
+        context.takeScreenshot("codon-nbt-short-dock-heading");
         context.getInput().resizeWindow(1280, 900);
         context.waitTicks(3);
     }
